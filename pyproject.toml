@@ -15,8 +15,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Embedding/backends extras are added when the backends half lands, e.g.:
-#   backends = ["sentence-transformers", "tiktoken", "numpy"]
+# Reference vector adapter (vector_only): pinned embedding model + exact cosine.
+backends = ["sentence-transformers>=2.2", "numpy>=1.24"]
 dev = ["pytest>=8"]
 
 [tool.setuptools.packages.find]

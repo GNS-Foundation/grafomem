@@ -95,21 +95,7 @@ def run_trace(backend, trace: Trace, *, budget_tokens: int) -> RunResult:
     return result
 
 
-def recall_at_k(run: RunResult, trace: Trace) -> float:
-    """M1 — mean per-query recall against recall_targets. Queries with empty
-    targets are skipped (E1)."""
-    gt = trace.ground_truth
-    recalls: list[float] = []
-    for qr in run.per_query:
-        # recall_targets keyed by turn_id (UUID); QueryRun stores str(turn_id).
-        targets = next(
-            (t for tid, t in gt.recall_targets.items() if str(tid) == qr.turn_id),
-            set(),
-        )
-        if not targets:
-            continue
-        recalls.append(len(qr.retrieved & targets) / len(targets))
-    return sum(recalls) / len(recalls) if recalls else 0.0
+# M1/M2/M3 metrics live in aml.eval.metrics. The harness owns only the runner.
 
 
 # ============================================================================
@@ -122,6 +108,7 @@ if __name__ == "__main__":
     from aml.backends.persistence import PersistenceBackend
     from aml.generator.trace import Difficulty
     from aml.generator.workloads.w1 import generate_w1
+    from aml.eval.metrics import m1_recall
 
     print("GRAFOMEM eval harness — persistence floor M1 on W1\n")
 
@@ -140,7 +127,7 @@ if __name__ == "__main__":
         for seed in SEEDS:
             tr = generate_w1(seed=seed, difficulty=diff)
             run = run_trace(PersistenceBackend(), tr, budget_tokens=BUDGET)
-            per_seed.append(recall_at_k(run, tr))
+            per_seed.append(m1_recall(run, tr))
         overall.extend(per_seed)
         m, sd = mean(per_seed), pstdev(per_seed)
         lo, hi = min(per_seed), max(per_seed)
@@ -152,14 +139,14 @@ if __name__ == "__main__":
 
     # Sanity: recency floor must collapse with horizon (easy >> hard).
     easy_m = mean([
-        recall_at_k(run_trace(PersistenceBackend(),
+        m1_recall(run_trace(PersistenceBackend(),
                               generate_w1(seed=s, difficulty=Difficulty.EASY),
                               budget_tokens=BUDGET),
                     generate_w1(seed=s, difficulty=Difficulty.EASY))
         for s in SEEDS
     ])
     hard_m = mean([
-        recall_at_k(run_trace(PersistenceBackend(),
+        m1_recall(run_trace(PersistenceBackend(),
                               generate_w1(seed=s, difficulty=Difficulty.HARD),
                               budget_tokens=BUDGET),
                     generate_w1(seed=s, difficulty=Difficulty.HARD))
