@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
 """
-W2 experiment: persistence floor / vector_only / supersession_chain on Drift.
+W2 experiment: floor / vector_only / supersession_chain / bi_temporal on Drift,
+scored with CURRENT and HISTORICAL queries reported SEPARATELY.
 
-All three are scored on CURRENT queries ("what is S's P now?", target = head).
-Historical (as_of) queries are N/A for all three (none claim BI_TEMPORAL) and
-excluded from Q_W (E1) — reported as n_na.
+  - CURRENT  (as_of=None): target = chain head. Scored for all four backends.
+  - HISTORICAL (as_of=t):  target = the version valid at t. N/A for every
+                           non-BI_TEMPORAL backend (harness skips, E1); scored
+                           only for bi_temporal.
 
-The point of the three-way: vector_only and supersession_chain use the SAME
-BGE-small embedder. The only difference is the capability — supersession_chain
-calls supersede() to retire stale versions, so a current query sees one
-candidate per chain instead of d. If the tight-budget recall recovers from
-~1/depth toward ~1.0, that gain is attributable to the capability, not the
-model. That is the whole capability-gated thesis in one table.
-
-Default uses pinned BGE-small-en-v1.5; pass embed_fn for a stub/controlled run.
+The story in one table: vector_only and supersession_chain use the SAME BGE
+embedder as bi_temporal; the only differences are capabilities. supersession
+recovers tight-budget CURRENT recall (F4); bi_temporal additionally answers the
+HISTORICAL queries that are unscored for everyone else (F5) — the second axis.
 
 Usage:  python scripts/run_w2.py
 """
@@ -22,12 +20,13 @@ from __future__ import annotations
 
 from statistics import mean, pstdev
 
+from aml.backends.bi_temporal import BiTemporalVectorBackend
 from aml.backends.persistence import PersistenceBackend
 from aml.backends.supersession_chain import SupersessionVectorBackend
 from aml.backends.vector_only import REFERENCE_MODEL, VectorOnlyBackend
 from aml.eval.harness import run_trace
-from aml.eval.metrics import bootstrap_paired_ci, score_run
-from aml.generator.trace import Difficulty
+from aml.eval.metrics import _targets_by_turn
+from aml.generator.trace import Difficulty, TurnRole
 from aml.generator.workloads.w2 import generate_w2
 
 BUDGET = 512
@@ -36,13 +35,42 @@ DIFFICULTIES = [Difficulty.EASY, Difficulty.MEDIUM, Difficulty.HARD]
 SWEEP_BUDGETS = [32, 64, 128, 256, 512]
 
 
-def _runs(make_backend, diff, seeds, budget):
-    out = []
+def _is_historical(trace) -> dict[str, bool]:
+    out = {}
+    for s in trace.sessions:
+        for t in s.turns:
+            if t.role == TurnRole.AGENT_QUERY:
+                out[str(t.turn_id)] = t.as_of is not None
+    return out
+
+
+def m1_split(run, trace):
+    """(current_m1, historical_m1|nan, n_current, n_historical) for one run."""
+    kinds = _is_historical(trace)
+    tgt = _targets_by_turn(trace)
+    cur, hist = [], []
+    for qr in run.per_query:
+        T = tgt.get(qr.turn_id, set())
+        if not T:
+            continue
+        r = len(qr.retrieved & T) / len(T)
+        (hist if kinds.get(qr.turn_id) else cur).append(r)
+    cm = mean(cur) if cur else float("nan")
+    hm = mean(hist) if hist else float("nan")
+    return cm, hm, len(cur), len(hist)
+
+
+def _split_runs(make_backend, diff, seeds, budget):
+    cur, hist, n_hist = [], [], 0
     for s in seeds:
         tr = generate_w2(seed=s, difficulty=diff)
         run = run_trace(make_backend(), tr, budget_tokens=budget)
-        out.append((score_run(run, tr), run.n_na))
-    return out
+        cm, hm, _nc, nh = m1_split(run, tr)
+        cur.append(cm)
+        if nh:
+            hist.append(hm)
+            n_hist = nh
+    return cur, hist, n_hist
 
 
 def _resolve(embed_fn):
@@ -53,59 +81,68 @@ def _resolve(embed_fn):
     return _default_embedder(), REFERENCE_MODEL
 
 
+def _fmt(vals):
+    return f"{mean(vals):5.3f}+/-{pstdev(vals):5.3f}"
+
+
 def compare(embed_fn=None, seeds=SEEDS, difficulties=DIFFICULTIES, budget=BUDGET):
     embed_fn, label = _resolve(embed_fn)
 
-    print(f"\nW2 (Drift): floor / vector_only / supersession_chain [{label}]")
-    print(f"budget = {budget} chars   |   seeds = {seeds}   |   "
-          f"scoring CURRENT queries (historical = N/A)\n")
-    print(f"  {'diff':7s} {'backend':14s}  {'M1':14s} {'M2':8s} {'M3':9s} {'N/A':5s}")
-    print("  " + "-" * 62)
+    print(f"\nW2 (Drift): four backends, CURRENT vs HISTORICAL M1 [{label}]")
+    print(f"budget = {budget} chars   |   seeds = {seeds}\n")
+    print(f"  {'diff':7s} {'backend':14s}  {'current M1':14s} {'historical M1':14s}")
+    print("  " + "-" * 56)
 
-    def _agg(rows, key):
-        return mean(s[key] for s, _ in rows), pstdev(s[key] for s, _ in rows)
-
+    builders = [
+        ("floor", lambda: PersistenceBackend()),
+        ("vector_only", lambda: VectorOnlyBackend(embed_fn=embed_fn)),
+        ("supersession", lambda: SupersessionVectorBackend(embed_fn=embed_fn)),
+        ("bi_temporal", lambda: BiTemporalVectorBackend(embed_fn=embed_fn)),
+    ]
     for diff in difficulties:
-        floor = _runs(lambda: PersistenceBackend(), diff, seeds, budget)
-        vec = _runs(lambda: VectorOnlyBackend(embed_fn=embed_fn), diff, seeds, budget)
-        sup = _runs(lambda: SupersessionVectorBackend(embed_fn=embed_fn),
-                    diff, seeds, budget)
-
-        for name, rows in (("floor", floor), ("vector_only", vec),
-                           ("supersession", sup)):
-            m1, sd = _agg(rows, "m1")
-            m2, _ = _agg(rows, "m2")
-            m3, _ = _agg(rows, "m3")
-            print(f"  {diff.value:7s} {name:14s}  {m1:5.3f}+/-{sd:5.3f}  "
-                  f"{m2:6.3f}  {m3:7.1f}  {rows[0][1]:4d}")
-
-        # Headline: the capability gain (supersession vs vector, same embedder).
-        point, lo, hi = bootstrap_paired_ci(
-            [s["m1"] for s, _ in vec], [s["m1"] for s, _ in sup])
-        verdict = "capability gain" if lo > 0 else "no gain"
-        print(f"          dM1(supersession - vector) = {point:+.3f}  "
-              f"95% CI [{lo:+.3f}, {hi:+.3f}]  -> {verdict}")
-        print("  " + "-" * 62)
+        n_hist_seen = 0
+        for name, mk in builders:
+            cur, hist, n_hist = _split_runs(mk, diff, seeds, budget)
+            hist_col = _fmt(hist) if hist else "N/A"
+            if hist:
+                n_hist_seen = n_hist
+            print(f"  {diff.value:7s} {name:14s}  {_fmt(cur):14s} {hist_col:14s}")
+        print(f"          historical queries answerable only by bi_temporal "
+              f"({n_hist_seen} per seed)")
+        print("  " + "-" * 56)
     return embed_fn
 
 
-def sweep_hard(embed_fn, seeds=SEEDS, budgets=SWEEP_BUDGETS):
-    print("\nHard budget sweep — vector_only vs supersession_chain (CURRENT M1):\n")
-    print(f"  {'budget':7s}  {'vector M1':11s} {'supersession M1':16s} {'gain':6s}")
-    print("  " + "-" * 46)
+def sweep_current(embed_fn, seeds=SEEDS, budgets=SWEEP_BUDGETS):
+    print("\nHard CURRENT-query sweep — vector vs supersession vs bi_temporal:\n")
+    print(f"  {'budget':7s}  {'vector':9s} {'supersess':10s} {'bi_temp':9s}")
+    print("  " + "-" * 40)
     for B in budgets:
-        vec = _runs(lambda: VectorOnlyBackend(embed_fn=embed_fn),
-                    Difficulty.HARD, seeds, B)
-        sup = _runs(lambda: SupersessionVectorBackend(embed_fn=embed_fn),
-                    Difficulty.HARD, seeds, B)
-        vm = mean(s["m1"] for s, _ in vec)
-        sm = mean(s["m1"] for s, _ in sup)
-        print(f"  {B:6d}   {vm:9.3f}   {sm:14.3f}   {sm - vm:+.3f}")
-    print("  " + "-" * 46)
-    print("  (tight budgets: supersession leaves ONE current candidate per chain)")
+        v, _, _ = _split_runs(lambda: VectorOnlyBackend(embed_fn=embed_fn),
+                              Difficulty.HARD, seeds, B)
+        s, _, _ = _split_runs(lambda: SupersessionVectorBackend(embed_fn=embed_fn),
+                              Difficulty.HARD, seeds, B)
+        t, _, _ = _split_runs(lambda: BiTemporalVectorBackend(embed_fn=embed_fn),
+                              Difficulty.HARD, seeds, B)
+        print(f"  {B:6d}   {mean(v):7.3f}  {mean(s):8.3f}  {mean(t):7.3f}")
+    print("  " + "-" * 40)
+    print("  (bi_temporal == supersession on current: identical head retrieval)")
+
+
+def sweep_historical(embed_fn, seeds=SEEDS, budgets=SWEEP_BUDGETS):
+    print("\nHard HISTORICAL-query sweep — bi_temporal (N/A for all others):\n")
+    print(f"  {'budget':7s}  {'historical M1':14s}")
+    print("  " + "-" * 26)
+    for B in budgets:
+        _, h, _ = _split_runs(lambda: BiTemporalVectorBackend(embed_fn=embed_fn),
+                              Difficulty.HARD, seeds, B)
+        print(f"  {B:6d}   {mean(h):12.3f}")
+    print("  " + "-" * 26)
+    print("  (as_of slices to one version/chain -> W1-like frontier in the past)")
 
 
 if __name__ == "__main__":
     emb = compare()
-    sweep_hard(emb)
+    sweep_current(emb)
+    sweep_historical(emb)
     raise SystemExit(0)
