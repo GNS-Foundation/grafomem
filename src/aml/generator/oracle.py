@@ -1,5 +1,5 @@
 """
-GRAFOMEM ground-truth oracle — v0.1.0.
+GRAFOMEM ground-truth oracle — v0.1.1.
 
 Derives the canonical GroundTruth for a trace from its raw event stream.
 This is where the semantic rules from 01-workload-spec.md actually execute:
@@ -18,8 +18,15 @@ Output: final_facts (surviving facts, chains repaired) + GroundTruth.
 The generator assembles the returned final_facts + ground_truth into a Trace.
 
 This module raises OracleError on inconsistencies it cannot resolve
-(dangling references, V2/V4 violations, supersession cycles) — fail-fast
+(dangling references, V1/V2/V4 violations, supersession cycles) — fail-fast
 for generator bugs, before they reach the eval harness.
+
+Changelog
+    v0.1.1 — explicit V1 guard in the forward pass (defense-in-depth: the
+             oracle no longer assumes its turns came through the validating
+             Turn constructor); tenant-partitioned active_memory loop for a
+             T-times speedup on multi-tenant (W5) sweeps; guard-comment on
+             the t_tx-vs-t_v split in the bi-temporal validity gate.
 """
 
 from __future__ import annotations
@@ -171,6 +178,17 @@ def derive_ground_truth(
     for ev in events:
         turn = ev.turn
         t = turn.timestamp
+        # V1 (defense-in-depth): intra-turn disjointness. Also enforced at
+        # Turn construction, but the oracle does not trust that its turns
+        # came through the validating constructor (e.g. tampered deserialized
+        # input). Detonate before mutating any tracking set.
+        v1_overlap = set(turn.introduces) & set(turn.deletes)
+        if v1_overlap:
+            raise OracleError(
+                f"V1 violation: turn {turn.turn_id} introduces and deletes "
+                f"the same fact(s) "
+                f"{[b.hex()[:12] for b in sorted(v1_overlap)]}"
+            )
         # O1 step 1 (read) is handled in the active_memory pass below.
         # O1 step 2: introduce.
         for fid in turn.introduces:
@@ -225,6 +243,14 @@ def derive_ground_truth(
     recall_targets: dict[UUID, set[bytes]] = {}
     active_memory: dict[UUID, set[bytes]] = {}
 
+    # Partition facts by tenant once. The active_memory loop then scans only
+    # the current query's tenant slice, making the tenant filter structural
+    # rather than a per-fact check. T-times speedup on multi-tenant (W5)
+    # sweeps; a no-op (single None partition) for single-tenant workloads.
+    facts_by_tenant: dict[str | None, list[Fact]] = {}
+    for f in introduced_facts:
+        facts_by_tenant.setdefault(f.tenant_id, []).append(f)
+
     for ev in events:
         turn = ev.turn
         if turn.role != TurnRole.AGENT_QUERY:
@@ -234,7 +260,7 @@ def derive_ground_truth(
         tid = ev.tenant_id
 
         active: set[bytes] = set()
-        for f in introduced_facts:
+        for f in facts_by_tenant.get(tid, ()):      # tenant slice only
             fid = f.fact_id
             # Transaction-time gate: the agent must have been told this fact.
             intro = introduced_at.get(fid)
@@ -248,13 +274,18 @@ def derive_ground_truth(
             if f.valid_from > t_v:
                 continue
             # Valid-time upper bound, effective as of t_tx (O2-aware).
+            #
+            # NOTE: eff_vu is computed at TRANSACTION time t_tx (which
+            # deletions have taken effect by query time) but compared against
+            # VALID time t_v (when the fact was true in the world). This split
+            # is deliberate and correct: deletions are transaction-time events,
+            # validity is valid-time. Do NOT pass t_v into the helper — that
+            # would treat valid-time-future deletions as already-applied, which
+            # is a bug. (See annotation review, oracle v0.1.1.)
             eff_vu = _effective_valid_until_at(
                 f, t_tx, fact_index, deleted_facts,
             )
             if eff_vu is not None and eff_vu <= t_v:
-                continue
-            # Tenant isolation (None == None for single-tenant workloads).
-            if f.tenant_id != tid:
                 continue
             active.add(fid)
 
@@ -321,7 +352,7 @@ if __name__ == "__main__":
     from datetime import timedelta
     from uuid import uuid4
 
-    print("GRAFOMEM oracle.py — ground-truth derivation v0.1.0\n")
+    print("GRAFOMEM oracle.py — ground-truth derivation v0.1.1\n")
 
     base = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
 
@@ -458,5 +489,24 @@ if __name__ == "__main__":
         assert "unknown fact" in str(e)
     print("✓ Fail-fast: OracleError on dangling   "
           "(turn introduces a fact not in the fact set)")
+
+    # --- Test 6: explicit V1 guard (v0.1.1) -------------------------------
+    # Build a V1-violating turn by mutating a constructed turn's `deletes`
+    # to overlap `introduces` — bypassing Turn.__post_init__, simulating a
+    # tampered/deserialized turn the oracle must not trust.
+    fz = mk_fact("knows", "u", "Aria", base, seq=7)
+    bad_turn = user_turn(at(5), introduces=[fz.fact_id])
+    object.__setattr__(bad_turn, "deletes", [fz.fact_id])  # now intro ∩ del != ∅
+    s6 = Session(
+        session_id=uuid4(), start_time=base, end_time=at(10),
+        turns=[bad_turn],
+    )
+    try:
+        derive_ground_truth([fz], [s6])
+        raise AssertionError("expected OracleError on V1 violation")
+    except OracleError as e:
+        assert "V1 violation" in str(e)
+    print("✓ Defense-in-depth: V1 guard           "
+          "(oracle detonates on introduce ∩ delete, not trusting Turn)")
 
     print("\nAll oracle smoke checks green. Ready for validators.py + W1.")
