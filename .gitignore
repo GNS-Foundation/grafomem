@@ -2,7 +2,6 @@
 __pycache__/
 *.pyc
 .DS_Store
-results/
 corpus/traces/
 corpus/ground_truth/
 corpus/paraphrase_cache/
