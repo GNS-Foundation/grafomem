@@ -1,13 +1,14 @@
 {
-  "name": "grafomem-bench-v0.1.4",
+  "name": "grafomem-bench-v0.1.5",
   "schema_version": "0.1.3",
   "generator_version": "0.1.0",
-  "generated_at": "2026-05-20T12:14:08.788119+00:00",
-  "n_traces": 30,
-  "corpus_hash": "15c8be9425384d5e92ca81174bb243f0faee2c395d384ca8b0aaa9a13b0613e1",
+  "generated_at": "2026-05-20T13:27:34.941364+00:00",
+  "n_traces": 45,
+  "corpus_hash": "5f74fca8b88ab2a92d4ece959ba783fe32a4c0f1aa9febcb569c9b56fb3c40ea",
   "workload_hashes": {
     "W1": "3028af2d728db47c18ef6353d3881302ad527dcbdb6bc7370f9df093942b9459",
-    "W2": "5a39a2ebc18a412330b9316d38b66233ff6155c8befdb2c56ae7b16912a95af8"
+    "W2": "5a39a2ebc18a412330b9316d38b66233ff6155c8befdb2c56ae7b16912a95af8",
+    "W3": "2feea9abd2c86de6dd8df87acccd25a4551810bef23cc58ceef404959810be32"
   },
   "trace_hashes": {
     "W1_s0_easy": "ba7034ef3b9dbcaa734960618499edfbf1de69e3be7533bab706dfbd75e984ff",
@@ -39,6 +40,21 @@
     "W2_s3_medium": "6ba6104721b98cdc04363b1dcc27ca72e8082305f1011a8d0172e7855176a713",
     "W2_s4_easy": "d77ffa272f53c48135a9719b967e2e7b408d70c91da43d2f8bc6da4630816826",
     "W2_s4_hard": "37146f32cd7a8181cd4be689362ae006b32c8007a856e0c47bab61133ed9edcc",
-    "W2_s4_medium": "237f6f5e74a752344e9c785c46ef179dcb95a9796c5cb4f510dceb01bafae3b6"
+    "W2_s4_medium": "237f6f5e74a752344e9c785c46ef179dcb95a9796c5cb4f510dceb01bafae3b6",
+    "W3_s0_easy": "580edf25f448a59ee532d93fd2aba4d30990bfb75d13b1f991b9bb570edc02d1",
+    "W3_s0_hard": "d5d8f4e7ee213fef592d782dd9310e3a1fc46e6d14a76258182d1b848b6f863a",
+    "W3_s0_medium": "8171bbf11d553e1fec5e0a4dc1ed1b9328d37058723f5f1c63eee67d4c799191",
+    "W3_s1_easy": "4b0f83e02099c15f67cce0c81174ca9c0f1353c5be064f4616642099549c2b84",
+    "W3_s1_hard": "d303f1c35d61813c6a9f7fb8ccb19da9d29bf2e80cb8208d2de3c517586b4f60",
+    "W3_s1_medium": "2247535cb5a1079476d342e87d84fce5a8990d68bcacbf21e151c6b6684ee410",
+    "W3_s2_easy": "25f77dc0de353ddf5432422e24bd2638049a29cd052ccaa3c0adb6b0c1d237ed",
+    "W3_s2_hard": "ac3d0239278144f29c0172ff38e9f6c8ad454115d6bd6b692c9efa3a3970f084",
+    "W3_s2_medium": "f89d43471c59b9219faa23cf97c7c0d0116336443850257fc7c0dbcc214f16ae",
+    "W3_s3_easy": "5957fc785fdcf15ae6488b7f24596debe5d4d4cd7a8a72e542f990f1a065ebef",
+    "W3_s3_hard": "1bc1d7d9c72531d686aaca07acc72b779c8a34e783fdcb6d02b1991cb46d6fdc",
+    "W3_s3_medium": "5b293394e376992c985682299b1ea198a660fa85e59071aef34183c073225211",
+    "W3_s4_easy": "b7f6e472873188634728820c411f10eeec32c92a6f26afeaca13d35e43ba4093",
+    "W3_s4_hard": "5b89ab7941ff59af29f692f7d3bf262da0522890c8cf45ebb62bed82f558248d",
+    "W3_s4_medium": "2051a9ab7fda3a7ae7146a67153571fc30fa425a29b935b452caeaa87cea11ea"
   }
 }

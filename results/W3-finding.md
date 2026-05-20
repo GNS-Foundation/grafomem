@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | **Workload** | W3 — Distractor Noise (semantic discrimination) |
-| **Traces** | `generate_w3`, seeds 0–4, deterministic (R1); not yet in the locked corpus (see open items) |
+| **Traces** | `generate_w3`, seeds 0–4, deterministic (R1); locked in `grafomem-bench-v0.1.5`, W3 workload hash `2feea9ab…` |
 | **Seeds** | 5 (s = 0..4) |
 | **Backends** | `persistence` (floor), `vector_only` (BGE), `vector_only` (stub lexical baseline) |
 | **Embedders** | BGE-small-en-v1.5 (pinned, semantic) vs a bag-of-words stub (lexical) |
@@ -142,10 +142,10 @@ report half the picture. This is the thesis the suite was built to demonstrate.
 
 ## Open items surfaced by W3
 
-- **W3 not yet in the locked corpus.** `generate_w3` is deterministic (R1) but
-  not hash-pinned. Add `W3` to `corpus.toml` + `_GENERATORS` and regenerate for
-  `grafomem-bench-v0.1.5` (the per-workload rollups make this non-perturbing to
-  W1/W2 citations).
+- **[RESOLVED] W3 locked in the corpus.** W3 added to `corpus.toml` +
+  `_GENERATORS`; `grafomem-bench-v0.1.5` now hashes W1+W2+W3 (45 traces).
+  Rollups: W1 `3028af2d…` and W2 `5a39a2eb…` (both unchanged — no drift), W3
+  `2feea9ab…`; aggregate `5f74fca8…`. Closed.
 - **[RESOLVED] Capability inertness measured.** F7(c) is now a measured number,
   not just a logical claim: `run_w3`'s `inertness()` runs `supersession_chain`
   and `bi_temporal` on W3 hard and asserts per-seed `v == s == t` against

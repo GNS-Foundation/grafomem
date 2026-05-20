@@ -37,12 +37,14 @@ from aml.generator.trace import Difficulty, Trace, Workload, trace_to_dict
 from aml.generator.validators import validate_trace
 from aml.generator.workloads.w1 import generate_w1
 from aml.generator.workloads.w2 import generate_w2
+from aml.generator.workloads.w3 import generate_w3
 
 
 # Dispatch table: workload -> generator. Extended as W2-W6 land.
 _GENERATORS = {
     Workload.W1: generate_w1,
     Workload.W2: generate_w2,
+    Workload.W3: generate_w3,
 }
 
 
