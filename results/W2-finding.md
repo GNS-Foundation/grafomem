@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | **Workload** | W2 — Drift & Conflict (supersession) |
-| **Traces** | `generate_w2`, seeds 0–4, deterministic (R1); not yet in the locked corpus (see open items) |
+| **Traces** | `generate_w2`, seeds 0–4, deterministic (R1); locked in `grafomem-bench-v0.1.4`, W2 workload hash `5a39a2eb…` |
 | **Seeds** | 5 (s = 0..4) |
 | **Backends** | `persistence` (floor), `vector_only`, `supersession_chain`, `bi_temporal` |
 | **Embedder** | BGE-small-en-v1.5 (pinned; identical across all three vector backends) |
@@ -180,9 +180,10 @@ superset of `supersession_chain`, which is a strict superset of `vector_only`.
   no W1–W6 workload issues deletes, so a tombstone (close interval, no
   successor) is unbuilt by design. A future deletion+history workload would
   exercise it; building it now would be untested.
-- **W2 not yet in the locked corpus.** Findings cite `generate_w2` (deterministic
-  per R1) but not a corpus hash. Add `W2` to `corpus.toml` + the builder's
-  `_GENERATORS` and regenerate so W2 traces get a content hash like W1's.
+- **[RESOLVED] W2 locked in the corpus.** W2 added to `corpus.toml` +
+  `_GENERATORS`; `grafomem-bench-v0.1.4` now hashes W1+W2. Per-workload rollups
+  added to `corpus.lock`: W1 `3028af2d…` (unchanged — proves W1 didn't drift),
+  W2 `5a39a2eb…`. Aggregate `corpus_hash` `15c8be94…`. Closed.
 - **Budget as a first-class axis (reaffirmed).** As in W1, the canonical-budget
   view is misleading; report at >=2 budgets (tight + generous) by default.
 - **A "staleness" / data-hygiene metric.** M1/M2 do not fully capture that

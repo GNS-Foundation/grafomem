@@ -36,11 +36,13 @@ _REPO = Path(__file__).resolve().parent.parent
 from aml.generator.trace import Difficulty, Trace, Workload, trace_to_dict
 from aml.generator.validators import validate_trace
 from aml.generator.workloads.w1 import generate_w1
+from aml.generator.workloads.w2 import generate_w2
 
 
 # Dispatch table: workload -> generator. Extended as W2-W6 land.
 _GENERATORS = {
     Workload.W1: generate_w1,
+    Workload.W2: generate_w2,
 }
 
 
@@ -129,6 +131,19 @@ def main() -> int:
         except Exception:
             prior = None
 
+    # Per-workload rollup hashes — stable citations as the suite grows. Each is
+    # BLAKE2b-256 over that workload's sorted trace hashes; with a single
+    # workload it equals corpus_hash, and adding a workload never perturbs an
+    # existing one (W1's rollup is identical before and after W2 is added).
+    by_workload: dict[str, list[str]] = {}
+    for _nm, _h in trace_hashes.items():
+        by_workload.setdefault(_nm.split("_", 1)[0], []).append(_h)
+    workload_hashes = {
+        w: hashlib.blake2b("".join(sorted(hs)).encode("utf-8"),
+                           digest_size=32).hexdigest()
+        for w, hs in sorted(by_workload.items())
+    }
+
     lock = {
         "name": manifest["name"],
         "schema_version": manifest["schema_version"],
@@ -136,6 +151,7 @@ def main() -> int:
         "generated_at": datetime.now(tz=timezone.utc).isoformat(),
         "n_traces": len(trace_hashes),
         "corpus_hash": corpus_hash,
+        "workload_hashes": workload_hashes,
         "trace_hashes": dict(sorted(trace_hashes.items())),
     }
     lock_path.write_text(json.dumps(lock, indent=2), encoding="utf-8")
@@ -143,6 +159,8 @@ def main() -> int:
     print(f"\n{len(trace_hashes)} traces  |  {total_turns} turns  |  "
           f"{total_queries} queries")
     print(f"corpus_hash: {corpus_hash}")
+    for _w, _wh in workload_hashes.items():
+        print(f"  {_w}: {_wh}")
     if prior is None:
         print("(first build — no prior lock to compare)")
     elif prior == corpus_hash:
