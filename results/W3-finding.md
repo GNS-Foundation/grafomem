@@ -82,11 +82,14 @@ Seeds:          5 (s=0..4)
     W3 (with near-miss): 0.685
     penalty:             -0.116
 
-(c) Capability inertness (by construction):
-    W3 facts carry no superseded_by links and queries carry no as_of, so the
-    harness never dispatches supersede() and always passes as_of=None.
-    supersession_chain and bi_temporal therefore reduce EXACTLY to vector_only
-    on W3. The W2 capability lever of +0.585 (current recall@32) becomes +0.000.
+(c) Capability inertness (measured; per-seed exact equality asserted):
+    budget   vector   supersession   bi_temporal   delta
+       32     0.685      0.685          0.685       +0.000
+      512     1.000      1.000          1.000       +0.000
+    W3 carries no superseded_by links and no as_of, so supersede() is never
+    dispatched and as_of is always None: supersession_chain and bi_temporal are
+    bit-for-bit vector_only (run_w3 asserts v == s == t per seed). The W2
+    SUPERSESSION_CHAIN lever of +0.585 (current recall@32, F4) becomes +0.000.
 ```
 
 **Interpretation.** Signal and near-miss are structurally identical — same
@@ -143,10 +146,11 @@ report half the picture. This is the thesis the suite was built to demonstrate.
   not hash-pinned. Add `W3` to `corpus.toml` + `_GENERATORS` and regenerate for
   `grafomem-bench-v0.1.5` (the per-workload rollups make this non-perturbing to
   W1/W2 citations).
-- **Capability inertness is asserted by construction, not yet measured.** F7(c)
-  is logically airtight (no `superseded_by`, no `as_of`), but a one-line
-  empirical check — `supersession_chain` and `bi_temporal` on W3 hard returning
-  the same recall as `vector_only(BGE)` — would make it a reported number.
+- **[RESOLVED] Capability inertness measured.** F7(c) is now a measured number,
+  not just a logical claim: `run_w3`'s `inertness()` runs `supersession_chain`
+  and `bi_temporal` on W3 hard and asserts per-seed `v == s == t` against
+  `vector_only(BGE)` — identical (0.685 @32, 1.000 @512, delta +0.000), vs the
+  +0.585 the same lever gives on W2. Closed.
 - **The stub is a lexical baseline, not a graded model axis.** It demonstrates
   that *some* semantic content is necessary, but the BGE↔stub gap mixes
   "semantic vs lexical" with the stub's lack of stemming. A second real embedder
