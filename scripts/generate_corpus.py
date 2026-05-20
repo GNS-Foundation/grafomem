@@ -24,21 +24,18 @@ from __future__ import annotations
 
 import hashlib
 import json
-import sys
 import tomllib
 from datetime import datetime, timezone
 from itertools import product
 from pathlib import Path
 
-# --- import shim (until proper packaging) ----------------------------------
+# Repo root (for locating corpus/ paths). The aml package is import-resolvable
+# via the editable install (pip install -e .); no path manipulation needed.
 _REPO = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(_REPO / "src" / "aml" / "generator"))
 
-from trace import (  # type: ignore[import-not-found]  # noqa: E402
-    Difficulty, Trace, Workload, trace_to_dict,
-)
-from validators import validate_trace  # type: ignore[import-not-found]  # noqa: E402
-from workloads.w1 import generate_w1  # type: ignore[import-not-found]  # noqa: E402
+from aml.generator.trace import Difficulty, Trace, Workload, trace_to_dict
+from aml.generator.validators import validate_trace
+from aml.generator.workloads.w1 import generate_w1
 
 
 # Dispatch table: workload -> generator. Extended as W2-W6 land.

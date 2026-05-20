@@ -36,19 +36,9 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from uuid import UUID
 
-# Local import. When run as a script (python oracle.py) the module's own
-# directory is sys.path[0], so the sibling trace.py shadows stdlib `trace`.
-# When imported as a package module, fall back to the qualified path.
-try:
-    from trace import (  # type: ignore[import-not-found]
-        Difficulty, Fact, GroundTruth, Session, Trace, Turn, TurnRole,
-        Workload,
-    )
-except ImportError:  # pragma: no cover
-    from aml.generator.trace import (
-        Difficulty, Fact, GroundTruth, Session, Trace, Turn, TurnRole,
-        Workload,
-    )
+from aml.generator.trace import (
+    Difficulty, Fact, GroundTruth, Session, Trace, Turn, TurnRole, Workload,
+)
 
 
 # A sentinel "all deletions applied" transaction time for final-state derivation.

@@ -19,24 +19,14 @@ from __future__ import annotations
 
 import hashlib
 import math
-import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from uuid import UUID
 
-# --- import shim ------------------------------------------------------------
-# w1.py lives in generator/workloads/; trace.py and oracle.py are one level up
-# in generator/. Put that directory on the path so `python <path>` works
-# regardless of cwd. (Replaced by proper packaging at the harness milestone.)
-_GEN_DIR = Path(__file__).resolve().parent.parent
-if str(_GEN_DIR) not in sys.path:
-    sys.path.insert(0, str(_GEN_DIR))
-
-from trace import (  # type: ignore[import-not-found]  # noqa: E402
+from aml.generator.trace import (
     Difficulty, Fact, Session, Trace, Turn, TurnRole, Workload,
 )
-from oracle import derive_ground_truth  # type: ignore[import-not-found]  # noqa: E402
+from aml.generator.oracle import derive_ground_truth
 
 
 # ============================================================================
@@ -302,7 +292,7 @@ if __name__ == "__main__":
     import json
     import time
 
-    from trace import trace_to_dict, validate_trace_schema  # noqa: E402
+    from aml.generator.trace import trace_to_dict, validate_trace_schema
 
     print("GRAFOMEM workloads/w1.py — Stable Recall generator\n")
 
@@ -350,7 +340,7 @@ if __name__ == "__main__":
           f"(generated trace conforms to v0.1.2)")
 
     # --- Test 4: round-trip ------------------------------------------------
-    from trace import trace_from_dict  # noqa: E402
+    from aml.generator.trace import trace_from_dict
     d = trace_to_dict(tr)
     restored = trace_from_dict(json.loads(json.dumps(d)))
     assert {f.fact_id for f in restored.facts} == {f.fact_id for f in tr.facts}

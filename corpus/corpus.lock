@@ -2,7 +2,7 @@
   "name": "grafomem-bench-v0.1.3",
   "schema_version": "0.1.3",
   "generator_version": "0.1.0",
-  "generated_at": "2026-05-20T07:57:06.244728+00:00",
+  "generated_at": "2026-05-20T08:15:00.370138+00:00",
   "n_traces": 15,
   "corpus_hash": "3028af2d728db47c18ef6353d3881302ad527dcbdb6bc7370f9df093942b9459",
   "trace_hashes": {

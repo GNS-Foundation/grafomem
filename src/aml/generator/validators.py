@@ -35,10 +35,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-try:
-    from trace import Trace, TurnRole  # type: ignore[import-not-found]
-except ImportError:  # pragma: no cover
-    from aml.generator.trace import Trace, TurnRole
+from aml.generator.trace import Trace, TurnRole
 
 
 @dataclass(slots=True)
@@ -292,8 +289,8 @@ def _fmt(s) -> str:
 
 if __name__ == "__main__":
     from datetime import timezone
-    from workloads.w1 import generate_w1  # noqa: E402
-    from trace import Difficulty  # noqa: E402
+    from aml.generator.workloads.w1 import generate_w1
+    from aml.generator.trace import Difficulty
 
     print("GRAFOMEM validators.py — independent V1-V5 re-checks v0.1.1\n")
 
