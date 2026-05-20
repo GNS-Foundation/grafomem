@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | **Workload** | W4 — Long-Horizon Dependencies (scale / retention) |
-| **Traces** | `generate_w4`, seeds 0–4, deterministic (R1); not yet in the locked corpus (see open items) |
+| **Traces** | `generate_w4`, seeds 0–4, deterministic (R1); locked in `grafomem-bench-v0.1.6`, W4 workload hash `cd265aba…` |
 | **Seeds** | 5 (s = 0..4) |
 | **Backends** | `vector_only` (unbounded), `bounded_vector` (K=64), `persistence` (floor) |
 | **Embedder** | BGE-small-en-v1.5 (pinned) |
@@ -119,9 +119,10 @@ cliff? — i.e. compaction/summarization that keeps meaning at lower cost).
 
 ## Open items surfaced by W4
 
-- **W4 not yet in the locked corpus.** `generate_w4` is deterministic (R1) but
-  not hash-pinned. Add `W4` to `corpus.toml` + `_GENERATORS` and regenerate for
-  `grafomem-bench-v0.1.6` (per-workload rollups keep W1–W3 citations stable).
+- **[RESOLVED] W4 locked in the corpus.** W4 added to `corpus.toml` +
+  `_GENERATORS`; `grafomem-bench-v0.1.6` now hashes W1+W2+W3+W4 (60 traces,
+  50,734 turns). Rollups W1 `3028af2d…`, W2 `5a39a2eb…`, W3 `2feea9ab…` all
+  unchanged (no drift); W4 `cd265aba…`; aggregate `5b2fbcf5…`. Closed.
 - **Compaction is the missing lever.** F8 frames the tradeoff but our only
   bounded strategy is FIFO eviction. A compacting/summarizing backend — bound
   footprint by merging old facts rather than dropping them — would test whether
