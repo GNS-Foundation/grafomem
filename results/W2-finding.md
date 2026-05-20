@@ -5,8 +5,8 @@
 | **Workload** | W2 — Drift & Conflict (supersession) |
 | **Traces** | `generate_w2`, seeds 0–4, deterministic (R1); not yet in the locked corpus (see open items) |
 | **Seeds** | 5 (s = 0..4) |
-| **Backends** | `persistence` (floor), `vector_only`, `supersession_chain` |
-| **Embedder** | BGE-small-en-v1.5 (pinned; identical across both vector backends) |
+| **Backends** | `persistence` (floor), `vector_only`, `supersession_chain`, `bi_temporal` |
+| **Embedder** | BGE-small-en-v1.5 (pinned; identical across all three vector backends) |
 | **Date** | 2026-05-20 |
 
 Three-way at the canonical budget (512 chars), CURRENT queries only
@@ -101,12 +101,85 @@ benchmark was built to produce.
 
 ---
 
+## F5 — The `BI_TEMPORAL` capability reclaims the 375 historical (as_of) queries that are N/A for every other backend, answering them on a W1-like frontier — while staying identical to `supersession_chain` on current queries.
+
+```
+Workload:       W2, difficulty = hard
+Seeds:          5 (s=0..4)
+Backends:       bi_temporal vs supersession_chain / vector_only (SAME BGE-small)
+
+Current-query M1 (budget sweep):
+  budget    vector_only  supersession  bi_temporal
+     32        0.281         0.867         0.867
+     64        0.595         0.983         0.983
+    128        0.920         1.000         1.000
+    512        1.000         1.000         1.000
+  -> bi_temporal == supersession at every budget (identical head retrieval).
+
+Historical-query M1 (budget sweep) — bi_temporal only (N/A elsewhere):
+  budget    historical M1
+     32         0.855
+     64         0.980
+    128         0.999
+    512         1.000
+  -> 375 historical queries/seed (hard), unanswerable by any other backend.
+```
+
+**Interpretation.** `bi_temporal` stores each version's valid-time interval
+`[valid_from, valid_until)` and resolves `retrieve(as_of=t)` to the version
+valid at `t`. On current queries (`as_of=None`) it returns open-interval heads
+— exactly `supersession_chain`'s behaviour, and the two match to the digit at
+every budget, confirming the temporal machinery is purely additive (no
+current-query regression). On historical queries it does what no other backend
+can: the `as_of` falls inside a past version's window, and the interval filter
+slices each chain to the single version valid then — one candidate per (subject,
+predicate), the same unambiguous structure as W1. So the historical frontier
+(0.855 -> 1.000) mirrors the current frontier (0.867 -> 1.000) almost exactly:
+after `as_of` resolution, "what was true at time t" is structurally identical to
+"what is true now."
+
+The reclamation is the headline. For every non-`BI_TEMPORAL` backend the 375
+hard historical queries are not low-scoring — they are **unscorable** (the
+harness excludes them, E1), because those backends have no representation of
+"valid when." `bi_temporal` turns N/A into ~1.0. This is a capability that
+changes *which questions are answerable at all*, not merely how well — a
+stronger claim than F4's recall recovery.
+
+---
+
+## W2 synthesis — the capability ladder, embedder held constant
+
+W2 now exercises three backends across two orthogonal capability rungs, all on
+the identical BGE-small embedder:
+
+```
+                       current Q (budget 32)        historical Q
+  vector_only          0.281  (version-confused)     N/A (no temporal model)
+  supersession_chain   0.867  (current heads only)   N/A (discards the past)
+  bi_temporal          0.867  (current heads only)   0.855 -> 1.000 (reclaimed)
+```
+
+Reading down the current column: the `SUPERSESSION_CHAIN` capability triples
+tight-budget recall (0.281 -> 0.867). Reading the historical column: the
+`BI_TEMPORAL` capability flips 375 queries from unanswerable to ~1.0. Neither
+gain touches the model — the embedder is constant throughout. This is the
+benchmark's core claim made concrete: on drift-heavy memory, what a backend
+*can represent* (current-only vs valid-time intervals) dominates how well it
+embeds. The ladder is monotone on this workload — `bi_temporal` is a strict
+superset of `supersession_chain`, which is a strict superset of `vector_only`.
+
+---
+
 ## Open items surfaced by W2
 
-- **Historical queries remain N/A.** 375 historical (as_of) queries on hard are
-  excluded for all three backends (none claim `BI_TEMPORAL`). A `bi_temporal`
-  adapter that stores valid-time intervals and honors `as_of` would reclaim
-  them — the second capability axis. This is the natural next adapter.
+- **[RESOLVED by F5] Historical queries.** The 375 historical (as_of) queries
+  were N/A for all current-only backends; the `bi_temporal` adapter (valid-time
+  intervals + `as_of` resolution) now answers them at ~1.0 (generous budget).
+  Closed.
+- **Bi-temporal delete (tombstone) untested.** `bi_temporal.delete` raises —
+  no W1–W6 workload issues deletes, so a tombstone (close interval, no
+  successor) is unbuilt by design. A future deletion+history workload would
+  exercise it; building it now would be untested.
 - **W2 not yet in the locked corpus.** Findings cite `generate_w2` (deterministic
   per R1) but not a corpus hash. Add `W2` to `corpus.toml` + the builder's
   `_GENERATORS` and regenerate so W2 traces get a content hash like W1's.
