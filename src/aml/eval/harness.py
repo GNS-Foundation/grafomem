@@ -43,6 +43,7 @@ class QueryRun:
 class RunResult:
     per_query: list[QueryRun] = field(default_factory=list)
     n_writes: int = 0
+    n_na: int = 0                  # queries excluded (capability not claimed, E1)
 
 
 def _ordered_turns(trace: Trace):
@@ -57,31 +58,59 @@ def _ordered_turns(trace: Trace):
 
 def run_trace(backend, trace: Trace, *, budget_tokens: int) -> RunResult:
     caps = backend.capabilities()
+    has_super = Capability.SUPERSESSION_CHAIN in caps
+    has_bitemporal = Capability.BI_TEMPORAL in caps
+    has_delete = Capability.HARD_DELETE in caps
+
+    fact_by_id = {f.fact_id: f for f in trace.facts}
+    # F_old.superseded_by == F_new.fact_id, so this maps new_fid -> old_fid:
+    # the predecessor a freshly-introduced fact supersedes.
+    predecessor_of = {
+        f.superseded_by: f.fact_id
+        for f in trace.facts if f.superseded_by is not None
+    }
+
     ref_to_fids: dict[object, set[bytes]] = {}
     fid_to_ref: dict[bytes, object] = {}
     result = RunResult()
 
     for _ts, _si, _ti, turn in _ordered_turns(trace):
-        if turn.introduces:
-            ref = backend.write(turn.content, WriteOptions())
-            ref_to_fids[ref] = set(turn.introduces)
-            for fid in turn.introduces:
-                fid_to_ref[fid] = ref
+        for fid in turn.introduces:
+            fact = fact_by_id.get(fid)
+            # valid_from is honored by BI_TEMPORAL backends, silently ignored
+            # otherwise (doc 02 §6.2), so it's safe to always pass.
+            opts = WriteOptions(valid_from=fact.valid_from if fact else None)
+            old_fid = predecessor_of.get(fid)
+            if has_super and old_fid is not None and old_fid in fid_to_ref:
+                ref = backend.supersede(fid_to_ref[old_fid], turn.content, opts)
+            else:
+                # No supersession capability (or no predecessor): a plain write.
+                # For drift workloads this means the backend accumulates stale
+                # versions alongside current ones — the failure under test.
+                ref = backend.write(turn.content, opts)
+            ref_to_fids[ref] = ref_to_fids.get(ref, set()) | {fid}
+            fid_to_ref[fid] = ref
             result.n_writes += 1
 
-        if turn.deletes:
-            if Capability.HARD_DELETE in caps:
-                for fid in turn.deletes:
-                    r = fid_to_ref.get(fid)
-                    if r is not None:
-                        backend.delete(r)
-            # else: no-op — content persists (the leak Check L catches)
+        if turn.deletes and has_delete:
+            for fid in turn.deletes:
+                r = fid_to_ref.get(fid)
+                if r is not None:
+                    backend.delete(r)
+            # without HARD_DELETE: no-op — content persists (Check L catches it)
 
         if turn.role == TurnRole.AGENT_QUERY:
+            # as_of (historical) queries require BI_TEMPORAL; otherwise the
+            # query is N/A for this backend and excluded from Q_W (E1).
+            if turn.as_of is not None and not has_bitemporal:
+                result.n_na += 1
+                continue
             backend.flush()
-            mems = backend.retrieve(
-                turn.content, RetrieveOptions(budget_tokens=budget_tokens),
+            opts = RetrieveOptions(
+                budget_tokens=budget_tokens,
+                as_of=turn.as_of if has_bitemporal else None,
             )
+            mems = backend.retrieve(turn.content, opts)
             retrieved: set[bytes] = set()
             for m in mems:
                 retrieved |= ref_to_fids.get(m.ref, set())
