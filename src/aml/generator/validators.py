@@ -1,5 +1,5 @@
 """
-GRAFOMEM trace validators — v0.1.0.
+GRAFOMEM trace validators — v0.1.1.
 
 Independent re-checks of the V-rules in 01-workload-spec.md §7.3, plus
 reference integrity, tenant isolation, and ground-truth consistency.
@@ -10,16 +10,21 @@ checks the trace's GroundTruth against that independent derivation. If the
 oracle ever drifts from the spec, the validator catches the disagreement.
 This is what a corpus-builder gates on before accepting a trace.
 
+v0.1.1: active_memory is no longer serialized (trace v0.1.3), so V4 is now a
+direct per-required-fact retrievability check (introduced / not-deleted /
+valid / same-tenant) rather than a `requires ⊆ active_memory` set test. The
+old ACTIVE soundness check is retired — there is no serialized active_memory
+to audit, and re-deriving the full O(Q*F) set just to check it was wasteful.
+
 Rules checked:
     V1  intra-turn disjointness (introduces ∩ deletes = ∅)
     V2  live-target deletion (delete only existing, not-already-deleted facts)
     V3  no dangling chain references in final facts; chains terminate
-    V4  required facts are retrievable (requires ⊆ active_memory)
+    V4  required facts retrievable (per-fact: introduced/not-deleted/valid/tenant)
     V5  deletion ledger is reproducible from the turn stream
     REF reference integrity (every fact_id resolves to known universe)
     TENANT  introduces don't cross tenant boundaries (W5)
     CONSISTENCY  recall_targets == requires
-    ACTIVE  active_memory soundness (no deleted/unintroduced/wrong-tenant facts)
 
 Returns ALL violations found (does not stop at the first), so a corpus
 report can list everything wrong with a bad trace at once.
@@ -165,44 +170,63 @@ def validate_trace(trace: Trace) -> list[Violation]:
                 loc,
             ))
 
-        am = gt.active_memory.get(turn.turn_id, set())
-
-        # V4 — every required fact must be retrievable
-        missing = req - am
-        if missing:
-            v.append(Violation(
-                "V4",
-                f"required facts not in active_memory "
-                f"{[m.hex()[:12] for m in sorted(missing)]}",
-                loc,
-            ))
-
-        # ACTIVE — soundness of each active_memory entry
-        for fid in am:
-            d = re_deleted.get(fid)
-            if d is not None and d <= t_tx:
-                v.append(Violation(
-                    "ACTIVE",
-                    f"active_memory contains fact {fid.hex()[:12]} deleted "
-                    f"at or before query time",
-                    loc,
-                ))
+        # V4 — every required fact must be retrievable at the query.
+        # Re-derived directly per required fact (v0.1.1): active_memory is no
+        # longer serialized, and we never needed the full O(Q*F) set — only
+        # the membership test for the specific facts this query asks about.
+        # A fact is retrievable iff: introduced at/before transaction-time,
+        # not deleted by transaction-time, valid at valid-time, same tenant.
+        #
+        # The valid-time window is read from the FINAL fact. This is exact for
+        # workloads without hard deletion (W1-W6): a recall_target's own
+        # valid_from/valid_until directly decide its validity, and supersession
+        # is captured by the superseding facts' own windows. Under hard deletion
+        # (W8, deferred) a recall_target could be valid-then-shredded; its final
+        # window would be unrecoverable. Flagged for W8.
+        for fid in req:
             intro = introduced_at.get(fid)
             if intro is None or intro > t_tx:
                 v.append(Violation(
-                    "ACTIVE",
-                    f"active_memory contains fact {fid.hex()[:12]} not yet "
-                    f"introduced at query time",
+                    "V4",
+                    f"required fact {fid.hex()[:12]} not introduced by "
+                    f"query transaction-time",
                     loc,
                 ))
-            # Tenant: verifiable only for facts surviving in final state
-            # (deleted-later facts are shredded; their tenant is unrecoverable).
-            f = final_index.get(fid)
-            if f is not None and f.tenant_id != tenant:
+                continue
+            d = re_deleted.get(fid)
+            if d is not None and d <= t_tx:
                 v.append(Violation(
-                    "ACTIVE",
-                    f"active_memory fact {fid.hex()[:12]} tenant "
-                    f"{f.tenant_id!r} != query tenant {tenant!r}",
+                    "V4",
+                    f"required fact {fid.hex()[:12]} deleted at or before "
+                    f"query transaction-time",
+                    loc,
+                ))
+                continue
+            f = final_index.get(fid)
+            if f is None:
+                # Introduced, not deleted by t_tx, yet absent from final facts:
+                # only possible under deletion-after-query (shredded). Cannot
+                # verify the valid window. Benign for W1-W6 (never occurs).
+                continue
+            if f.valid_from > t_v:
+                v.append(Violation(
+                    "V4",
+                    f"required fact {fid.hex()[:12]} not valid at query "
+                    f"valid-time (valid_from in the future)",
+                    loc,
+                ))
+            elif f.valid_until is not None and t_v >= f.valid_until:
+                v.append(Violation(
+                    "V4",
+                    f"required fact {fid.hex()[:12]} no longer valid at query "
+                    f"valid-time (past valid_until)",
+                    loc,
+                ))
+            if f.tenant_id != tenant:
+                v.append(Violation(
+                    "V4",
+                    f"required fact {fid.hex()[:12]} tenant {f.tenant_id!r} "
+                    f"!= query tenant {tenant!r}",
                     loc,
                 ))
 
@@ -271,7 +295,7 @@ if __name__ == "__main__":
     from workloads.w1 import generate_w1  # noqa: E402
     from trace import Difficulty  # noqa: E402
 
-    print("GRAFOMEM validators.py — independent V1-V5 re-checks v0.1.0\n")
+    print("GRAFOMEM validators.py — independent V1-V5 re-checks v0.1.1\n")
 
     # --- Test 1: clean W1 easy validates ----------------------------------
     tr = generate_w1(seed=0, difficulty=Difficulty.EASY)
@@ -306,16 +330,29 @@ if __name__ == "__main__":
     assert "CONSISTENCY" in rules, f"CONSISTENCY not caught; got {rules}"
     print("✓ Tampered recall_targets            (CONSISTENCY caught)")
 
-    # --- Test 5: drop a required fact from active_memory -> V4 -------------
-    tr = generate_w1(seed=3, difficulty=Difficulty.EASY)
-    q_id = next(
-        t.turn_id for s in tr.sessions for t in s.turns
-        if t.role == TurnRole.AGENT_QUERY
-    )
-    tr.ground_truth.active_memory[q_id] = set()  # drop everything
+    # --- Test 5: query requires a not-yet-introduced fact -> V4 -----------
+    # active_memory is no longer serialized; V4 is now re-derived per fact.
+    # Corrupt a query's `requires` to demand a fact introduced AFTER it, and
+    # keep recall_targets consistent so V4 fires in isolation (no CONSISTENCY).
+    tr = generate_w1(seed=3, difficulty=Difficulty.MEDIUM)
+    intro_time: dict[bytes, datetime] = {}
+    queries = []
+    for s in tr.sessions:
+        for t in s.turns:
+            if t.role == TurnRole.AGENT_QUERY:
+                queries.append(t)
+            for fid in t.introduces:
+                intro_time.setdefault(fid, t.timestamp)
+    queries.sort(key=lambda t: t.timestamp)
+    early_q = queries[0]
+    later = [fid for fid, ts in intro_time.items() if ts > early_q.timestamp]
+    late_fid = max(later, key=lambda fid: intro_time[fid])
+    early_q.requires = [late_fid]                          # bypass post-init
+    tr.ground_truth.recall_targets[early_q.turn_id] = {late_fid}
     rules = {i.rule for i in validate_trace(tr)}
     assert "V4" in rules, f"V4 not caught; got {rules}"
-    print("✓ Emptied active_memory for a query  (V4 caught)")
+    assert "CONSISTENCY" not in rules, f"CONSISTENCY should be clean; got {rules}"
+    print("✓ Query requires future fact         (V4 caught, isolated)")
 
     # --- Test 6: dangling superseded_by -> V3 -----------------------------
     tr = generate_w1(seed=4, difficulty=Difficulty.EASY)

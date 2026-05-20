@@ -1,5 +1,5 @@
 """
-GRAFOMEM trace data model — v0.1.2.
+GRAFOMEM trace data model — v0.1.3.
 
 Implements the data types defined in 01-workload-spec.md v0.1.2:
     - Fact (§3.2) — content-addressed via BLAKE2b-128, with Lamport sequence
@@ -8,6 +8,9 @@ Implements the data types defined in 01-workload-spec.md v0.1.2:
     - GroundTruth (§3.5) — the derived oracle structure
     - Trace (§3.1) — the top-level corpus unit
     - ParaphraseMeta (§6)
+
+v0.1.3 drops active_memory from serialization (purely-derived O(Q*F) view,
+unused on disk); recompute via the oracle if ever needed.
 
 v0.1.2 adds Turn.as_of: the valid-time of an agent_query turn, passed to
 backend retrieve(as_of=...). Required to express W2 pre-supersession queries.
@@ -46,7 +49,7 @@ except ImportError as e:
 # Constants
 # ============================================================================
 
-SCHEMA_VERSION: str = "0.1.2"
+SCHEMA_VERSION: str = "0.1.3"
 GENERATOR_VERSION: str = "0.1.0"
 
 FACT_ID_BYTES: int = 16  # BLAKE2b-128 digest
@@ -463,14 +466,16 @@ def ground_truth_to_dict(gt: GroundTruth) -> dict[str, Any]:
     def sorted_hex_list(s: set[bytes]) -> list[str]:
         return sorted(b.hex() for b in s)
 
+    # NOTE (v0.1.3): active_memory is intentionally NOT serialized. It is a
+    # purely derived O(queries x facts) view (the full retrievable set per
+    # query) that bloated W1-hard traces to ~20MB. No consumer needs it on
+    # disk: the scorer uses recall_targets + deleted_facts, and the validator
+    # checks per-required-fact retrievability directly. It can be recomputed
+    # from facts + sessions via the oracle if a future metric ever needs it.
     return {
         "recall_targets": {
             str(tid): sorted_hex_list(facts)
             for tid, facts in gt.recall_targets.items()
-        },
-        "active_memory": {
-            str(tid): sorted_hex_list(facts)
-            for tid, facts in gt.active_memory.items()
         },
         "superseded_chains": {
             head.hex(): [f.hex() for f in chain]
@@ -577,9 +582,9 @@ _ISO_MICROSECOND = {
 
 TRACE_SCHEMA: dict[str, Any] = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://grafomem.org/schemas/trace-v0.1.1.json",
+    "$id": "https://grafomem.org/schemas/trace-v0.1.3.json",
     "title": "GRAFOMEM Trace",
-    "description": "Trace schema v0.1.1 per 01-workload-spec.md",
+    "description": "Trace schema v0.1.3 per 01-workload-spec.md",
     "type": "object",
     "required": [
         "schema_version", "trace_id", "workload", "difficulty", "seed",
@@ -827,6 +832,9 @@ if __name__ == "__main__":
         sessions=[session],
     )
 
+    # Populate a derived active_memory entry to prove serialization drops it.
+    trace.ground_truth.active_memory[turn.turn_id] = {f1.fact_id}
+
     d = trace_to_dict(trace)
     json_str = json.dumps(d, indent=2)
     restored = trace_from_dict(json.loads(json_str))
@@ -834,8 +842,12 @@ if __name__ == "__main__":
     assert restored.facts[0].fact_id == f1.fact_id
     assert restored.sessions[0].turns[0].turn_id == turn.turn_id
     assert restored.trace_id == trace.trace_id
+    assert "active_memory" not in d["ground_truth"], \
+        "active_memory must NOT be serialized (v0.1.3)"
+    assert restored.ground_truth.active_memory == {}, \
+        "active_memory must round-trip as empty (recompute on demand)"
     print(f"✓ Round-trip serialization clean     "
-          f"(JSON size: {len(json_str)} bytes)")
+          f"(JSON size: {len(json_str)} bytes; active_memory dropped)")
 
     # --- Test 7: JSON-Schema validation -----------------------------------
     if jsonschema is not None:
