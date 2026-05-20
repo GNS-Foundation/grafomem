@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """
-W2 experiment: vector_only (BGE-small) vs persistence floor on Drift & Conflict.
+W2 experiment: persistence floor / vector_only / supersession_chain on Drift.
 
-Neither backend claims BI_TEMPORAL, so historical (as_of) queries are N/A for
-both and excluded from Q_W (E1) — reported as the n_na count. Scoring is over
-CURRENT queries: "what is S's P now?", whose target is the chain head.
+All three are scored on CURRENT queries ("what is S's P now?", target = head).
+Historical (as_of) queries are N/A for all three (none claim BI_TEMPORAL) and
+excluded from Q_W (E1) — reported as n_na.
 
-The W2 story is in the budget sweep. A backend without SUPERSESSION_CHAIN keeps
-every version ("Rome" and "Milan"), and cosine cannot tell which is current —
-both match "where does S live?" equally. At a tight budget the backend returns
-the wrong (superseded) version about as often as the right one, so current-query
-recall drops toward chance. A supersession backend would keep only the head and
-score ~1.0 — that gap is what W2 is built to expose.
+The point of the three-way: vector_only and supersession_chain use the SAME
+BGE-small embedder. The only difference is the capability — supersession_chain
+calls supersede() to retire stale versions, so a current query sees one
+candidate per chain instead of d. If the tight-budget recall recovers from
+~1/depth toward ~1.0, that gain is attributable to the capability, not the
+model. That is the whole capability-gated thesis in one table.
 
-Default uses pinned BGE-small-en-v1.5. Pass embed_fn for a stub/controlled rerun.
+Default uses pinned BGE-small-en-v1.5; pass embed_fn for a stub/controlled run.
 
 Usage:  python scripts/run_w2.py
 """
@@ -23,6 +23,7 @@ from __future__ import annotations
 from statistics import mean, pstdev
 
 from aml.backends.persistence import PersistenceBackend
+from aml.backends.supersession_chain import SupersessionVectorBackend
 from aml.backends.vector_only import REFERENCE_MODEL, VectorOnlyBackend
 from aml.eval.harness import run_trace
 from aml.eval.metrics import bootstrap_paired_ci, score_run
@@ -55,50 +56,53 @@ def _resolve(embed_fn):
 def compare(embed_fn=None, seeds=SEEDS, difficulties=DIFFICULTIES, budget=BUDGET):
     embed_fn, label = _resolve(embed_fn)
 
-    print(f"\nW2 (Drift): vector_only [{label}] vs persistence floor")
+    print(f"\nW2 (Drift): floor / vector_only / supersession_chain [{label}]")
     print(f"budget = {budget} chars   |   seeds = {seeds}   |   "
-          f"scoring CURRENT queries (historical = N/A, no BI_TEMPORAL)\n")
-    print(f"  {'diff':7s} {'backend':8s}  {'M1':14s} {'M2':8s} {'M3':10s} {'N/A':5s}")
-    print("  " + "-" * 56)
+          f"scoring CURRENT queries (historical = N/A)\n")
+    print(f"  {'diff':7s} {'backend':14s}  {'M1':14s} {'M2':8s} {'M3':9s} {'N/A':5s}")
+    print("  " + "-" * 62)
+
+    def _agg(rows, key):
+        return mean(s[key] for s, _ in rows), pstdev(s[key] for s, _ in rows)
 
     for diff in difficulties:
         floor = _runs(lambda: PersistenceBackend(), diff, seeds, budget)
-        vec = _runs(lambda: VectorOnlyBackend(embed_fn=embed_fn),
+        vec = _runs(lambda: VectorOnlyBackend(embed_fn=embed_fn), diff, seeds, budget)
+        sup = _runs(lambda: SupersessionVectorBackend(embed_fn=embed_fn),
                     diff, seeds, budget)
+
+        for name, rows in (("floor", floor), ("vector_only", vec),
+                           ("supersession", sup)):
+            m1, sd = _agg(rows, "m1")
+            m2, _ = _agg(rows, "m2")
+            m3, _ = _agg(rows, "m3")
+            print(f"  {diff.value:7s} {name:14s}  {m1:5.3f}+/-{sd:5.3f}  "
+                  f"{m2:6.3f}  {m3:7.1f}  {rows[0][1]:4d}")
+
+        # Headline: the capability gain (supersession vs vector, same embedder).
         point, lo, hi = bootstrap_paired_ci(
-            [s["m1"] for s, _ in floor], [s["m1"] for s, _ in vec])
-
-        def row(name, rows):
-            m1 = mean(s["m1"] for s, _ in rows)
-            sd = pstdev(s["m1"] for s, _ in rows)
-            m2 = mean(s["m2"] for s, _ in rows)
-            m3 = mean(s["m3"] for s, _ in rows)
-            na = rows[0][1]
-            print(f"  {diff.value:7s} {name:8s}  {m1:5.3f}+/-{sd:5.3f}  "
-                  f"{m2:6.3f}  {m3:8.1f}  {na:4d}")
-
-        row("floor", floor)
-        row("vector", vec)
-        verdict = "beats floor" if lo > 0 else "inconclusive"
-        print(f"          dM1 = {point:+.3f}  95% CI [{lo:+.3f}, {hi:+.3f}]"
-              f"  -> {verdict}")
-        print("  " + "-" * 56)
+            [s["m1"] for s, _ in vec], [s["m1"] for s, _ in sup])
+        verdict = "capability gain" if lo > 0 else "no gain"
+        print(f"          dM1(supersession - vector) = {point:+.3f}  "
+              f"95% CI [{lo:+.3f}, {hi:+.3f}]  -> {verdict}")
+        print("  " + "-" * 62)
     return embed_fn
 
 
 def sweep_hard(embed_fn, seeds=SEEDS, budgets=SWEEP_BUDGETS):
-    print("\nHard-difficulty budget sweep (vector_only, CURRENT queries):\n")
-    print(f"  {'budget':7s}  {'M1':8s} {'M2':8s} {'M3':10s}")
-    print("  " + "-" * 38)
+    print("\nHard budget sweep — vector_only vs supersession_chain (CURRENT M1):\n")
+    print(f"  {'budget':7s}  {'vector M1':11s} {'supersession M1':16s} {'gain':6s}")
+    print("  " + "-" * 46)
     for B in budgets:
-        rows = _runs(lambda: VectorOnlyBackend(embed_fn=embed_fn),
-                     Difficulty.HARD, seeds, B)
-        m1 = mean(s["m1"] for s, _ in rows)
-        m2 = mean(s["m2"] for s, _ in rows)
-        m3 = mean(s["m3"] for s, _ in rows)
-        print(f"  {B:6d}   {m1:6.3f}  {m2:6.3f}  {m3:8.1f}")
-    print("  " + "-" * 38)
-    print("  (tight budget: can it pick the CURRENT version over superseded ones?)")
+        vec = _runs(lambda: VectorOnlyBackend(embed_fn=embed_fn),
+                    Difficulty.HARD, seeds, B)
+        sup = _runs(lambda: SupersessionVectorBackend(embed_fn=embed_fn),
+                    Difficulty.HARD, seeds, B)
+        vm = mean(s["m1"] for s, _ in vec)
+        sm = mean(s["m1"] for s, _ in sup)
+        print(f"  {B:6d}   {vm:9.3f}   {sm:14.3f}   {sm - vm:+.3f}")
+    print("  " + "-" * 46)
+    print("  (tight budgets: supersession leaves ONE current candidate per chain)")
 
 
 if __name__ == "__main__":
