@@ -61,6 +61,7 @@ def run_trace(backend, trace: Trace, *, budget_tokens: int) -> RunResult:
     has_super = Capability.SUPERSESSION_CHAIN in caps
     has_bitemporal = Capability.BI_TEMPORAL in caps
     has_delete = Capability.HARD_DELETE in caps
+    has_tenant = Capability.MULTI_TENANT in caps
 
     fact_by_id = {f.fact_id: f for f in trace.facts}
     # F_old.superseded_by == F_new.fact_id, so this maps new_fid -> old_fid:
@@ -86,6 +87,10 @@ def run_trace(backend, trace: Trace, *, budget_tokens: int) -> RunResult:
                 valid_from=fact.valid_from if fact else None,
                 metadata=({"subject": fact.subject, "predicate": fact.predicate}
                           if fact else {}),
+                # tenant_id honored by MULTI_TENANT backends, silently None
+                # otherwise (vector_only raises on a non-None tenant_id), so
+                # W1-W4/W6 are unchanged. The fact's owning tenant is its home.
+                tenant_id=(fact.tenant_id if (has_tenant and fact) else None),
             )
             old_fid = predecessor_of.get(fid)
             if has_super and old_fid is not None and old_fid in fid_to_ref:
@@ -116,6 +121,9 @@ def run_trace(backend, trace: Trace, *, budget_tokens: int) -> RunResult:
             opts = RetrieveOptions(
                 budget_tokens=budget_tokens,
                 as_of=turn.as_of if has_bitemporal else None,
+                # the query is issued by its session's tenant; MULTI_TENANT
+                # backends scope to it, others see None (no change to W1-W4/W6).
+                tenant_id=(trace.sessions[_si].tenant_id if has_tenant else None),
             )
             mems = backend.retrieve(turn.content, opts)
             retrieved: set[bytes] = set()
