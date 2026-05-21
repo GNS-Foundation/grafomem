@@ -78,8 +78,15 @@ def run_trace(backend, trace: Trace, *, budget_tokens: int) -> RunResult:
         for fid in turn.introduces:
             fact = fact_by_id.get(fid)
             # valid_from is honored by BI_TEMPORAL backends, silently ignored
-            # otherwise (doc 02 §6.2), so it's safe to always pass.
-            opts = WriteOptions(valid_from=fact.valid_from if fact else None)
+            # otherwise (doc 02 §6.2), so it's safe to always pass. Structured
+            # subject/predicate metadata is carried for backends that operate on
+            # entity keys (e.g. delete-by-subject); ranking backends ignore it,
+            # so W1-W4 results are unchanged.
+            opts = WriteOptions(
+                valid_from=fact.valid_from if fact else None,
+                metadata=({"subject": fact.subject, "predicate": fact.predicate}
+                          if fact else {}),
+            )
             old_fid = predecessor_of.get(fid)
             if has_super and old_fid is not None and old_fid in fid_to_ref:
                 ref = backend.supersede(fid_to_ref[old_fid], turn.content, opts)
