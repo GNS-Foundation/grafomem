@@ -1,15 +1,16 @@
 {
-  "name": "grafomem-bench-v0.1.6",
+  "name": "grafomem-bench-v0.1.7",
   "schema_version": "0.1.3",
   "generator_version": "0.1.0",
-  "generated_at": "2026-05-20T22:16:52.394710+00:00",
-  "n_traces": 60,
-  "corpus_hash": "5b2fbcf54ad76bc1fbf0fb4ca6da5ffaaadc88744a0b9d2e7f9816c04bb1c20c",
+  "generated_at": "2026-05-21T15:12:50.990435+00:00",
+  "n_traces": 75,
+  "corpus_hash": "f10265e2973ae8e19b8ebbd65cfb3dfed6a872821db2f853dc30b936c0b45f1b",
   "workload_hashes": {
     "W1": "3028af2d728db47c18ef6353d3881302ad527dcbdb6bc7370f9df093942b9459",
     "W2": "5a39a2ebc18a412330b9316d38b66233ff6155c8befdb2c56ae7b16912a95af8",
     "W3": "2feea9abd2c86de6dd8df87acccd25a4551810bef23cc58ceef404959810be32",
-    "W4": "cd265abad10e8d0af69427f6a3b3abf062f89777ef1758ec51d06705d4a5e481"
+    "W4": "cd265abad10e8d0af69427f6a3b3abf062f89777ef1758ec51d06705d4a5e481",
+    "W6": "a758332bb77c4422a8074fdc71db309de06786b71d20699de601a86807d4acf0"
   },
   "trace_hashes": {
     "W1_s0_easy": "ba7034ef3b9dbcaa734960618499edfbf1de69e3be7533bab706dfbd75e984ff",
@@ -71,6 +72,21 @@
     "W4_s3_medium": "fb67723c0831165e0d561ed8d11a2eaeb819d9cb005ca2cdceda546e84e9a09c",
     "W4_s4_easy": "8753796d7ad68e9a05900ed3ab4bd4e16c480047d57dd907f2194ec7c8b2d4ce",
     "W4_s4_hard": "5f7f85673a7f744e30c3bedba9259c45c2f958f39f6c2e84529109074553e892",
-    "W4_s4_medium": "6956e4b1f6d930840fb65eed9a5ab3361eeecc3b426d8e759a23286a84307037"
+    "W4_s4_medium": "6956e4b1f6d930840fb65eed9a5ab3361eeecc3b426d8e759a23286a84307037",
+    "W6_s0_easy": "e6586a13f5fcfe16fc7c3436028c53743d6b89607967acb4e1f6a5b79fa3f6c0",
+    "W6_s0_hard": "4b4f56794604663990fbc90ee50958385e4641382ed001fdc7bf88de981cfe4f",
+    "W6_s0_medium": "ebfe9eebaffb551706992ed3c0cbcf97a2e78756892c057f1723cc3950830116",
+    "W6_s1_easy": "e0bd391e712ab8cb06030318d7ed1f6be6ffbe205af72f50a9e73dd18bc75014",
+    "W6_s1_hard": "4bc2822e13a799d0a868b0955f5b31b71e22c44f04e64b4f65b9204b37e98793",
+    "W6_s1_medium": "bc8001d06460eeba53e968cda6d6b92aa16e19723a0b29de5c0669e47e375d66",
+    "W6_s2_easy": "4821542bfc84f41933901dd5e191ea82357d8a917640ee484b7e736611aa356c",
+    "W6_s2_hard": "48484aab626fb7f2cd380459e969a7e3758d93834f9e41053f6266b86fa15e96",
+    "W6_s2_medium": "1b40673ad001b9009ab05ffa1d0cc1c0b559e78accdf447394b159ac2f029bab",
+    "W6_s3_easy": "5a21a0e529453270d2fa215471c2d8b46e8c82cf82e5761b0dc9e3e9c459d074",
+    "W6_s3_hard": "c2018cde11decc968eda3fa81bdb84b99d76d5fda89b82ee5005ea8bc9d4f302",
+    "W6_s3_medium": "c3f446aaefc28b56594eec3b5caeeed0b1030af9d402352a462f802fcfc6fe59",
+    "W6_s4_easy": "fc4909f9d6b92d6cf2557cc8a8e35fa0cfa5d893be6aea64e99525bfcc52fb92",
+    "W6_s4_hard": "18c83e18f2b661a4b734d2ee7f3b8efcca12568c75255fb632510372609988e4",
+    "W6_s4_medium": "55e151c168dd1ffccb7e826331b7378742203899afe6be3b01e48e16ffa20331"
   }
 }

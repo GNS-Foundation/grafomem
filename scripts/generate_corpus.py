@@ -39,6 +39,7 @@ from aml.generator.workloads.w1 import generate_w1
 from aml.generator.workloads.w2 import generate_w2
 from aml.generator.workloads.w3 import generate_w3
 from aml.generator.workloads.w4 import generate_w4
+from aml.generator.workloads.w6 import generate_w6
 
 
 # Dispatch table: workload -> generator. Extended as W2-W6 land.
@@ -47,6 +48,7 @@ _GENERATORS = {
     Workload.W2: generate_w2,
     Workload.W3: generate_w3,
     Workload.W4: generate_w4,
+    Workload.W6: generate_w6,
 }
 
 

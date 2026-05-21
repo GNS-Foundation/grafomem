@@ -79,6 +79,7 @@ policy** (W4). W6 adds a fourth, orthogonal to all three:
 python scripts/run_w6.py        # real BGE; ~seconds
 ```
 
-Traces: `generate_w6`, seeds 0–4, difficulty hard, deterministic (R1). W6 corpus
-inclusion pending (`grafomem-bench-v0.1.7`); the per-workload rollup hash will be
-cited here once locked.
+Traces: `generate_w6`, seeds 0–4, deterministic (R1). Locked in
+`grafomem-bench-v0.1.7`; W6 workload rollup
+`a758332bb77c4422a8074fdc71db309de06786b71d20699de601a86807d4acf0`. Adding W6
+leaves the W1–W4 rollups byte-identical (verified on regeneration).
