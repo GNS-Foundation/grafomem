@@ -5,11 +5,11 @@
 # cross-product, generates + validates each trace, and records the R3
 # corpus content hash (and per-workload rollup hashes) in corpus.lock.
 
-name = "grafomem-bench-v0.1.7"
+name = "grafomem-bench-v0.1.8"
 schema_version = "0.1.3"
 generator_version = "0.1.0"
-description = "GRAFOMEM v0.1.x suite. W1 (Stable Recall) + W2 (Drift & Conflict) + W3 (Distractor Noise) + W4 (Long-Horizon Dependencies) + W6 (Deletion / Leakage); W5 (Tenant Isolation) pending. 5 seeds x 3 difficulties."
+description = "GRAFOMEM v0.1.x suite. W1 (Stable Recall) + W2 (Drift & Conflict) + W3 (Distractor Noise) + W4 (Long-Horizon Dependencies) + W5 (Tenant Isolation) + W6 (Deletion / Leakage). 5 seeds x 3 difficulties."
 
-workloads = ["W1", "W2", "W3", "W4", "W6"]
+workloads = ["W1", "W2", "W3", "W4", "W5", "W6"]
 seeds = [0, 1, 2, 3, 4]
 difficulties = ["easy", "medium", "hard"]

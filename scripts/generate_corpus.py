@@ -39,6 +39,7 @@ from aml.generator.workloads.w1 import generate_w1
 from aml.generator.workloads.w2 import generate_w2
 from aml.generator.workloads.w3 import generate_w3
 from aml.generator.workloads.w4 import generate_w4
+from aml.generator.workloads.w5 import generate_w5
 from aml.generator.workloads.w6 import generate_w6
 
 
@@ -48,6 +49,7 @@ _GENERATORS = {
     Workload.W2: generate_w2,
     Workload.W3: generate_w3,
     Workload.W4: generate_w4,
+    Workload.W5: generate_w5,
     Workload.W6: generate_w6,
 }
 
