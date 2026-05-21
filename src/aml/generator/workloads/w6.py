@@ -159,7 +159,14 @@ def generate_w6(seed: int, difficulty: Difficulty) -> Trace:
         workload=Workload.W6,
         difficulty=difficulty,
         seed=seed,
-        facts=result.final_facts,
+        # W6 carries the FULL introduced tape (survivors + to-be-deleted), not
+        # just survivors. Deletion is the one operation that *removes* facts, and
+        # the harness must replay every write — with subject/predicate metadata —
+        # before the delete turns fire, or delete-by-subject backends never see
+        # the deleted fact's subject. The surviving set is the tape minus
+        # ground_truth.deleted_facts. (For non-deletion workloads nothing is
+        # removed, so trace.facts == survivors.)
+        facts=all_facts,
         sessions=sessions,
         ground_truth=result.ground_truth,
     )
@@ -190,10 +197,11 @@ if __name__ == "__main__":
         tr = generate_w6(seed=0, difficulty=diff)
         q, dp, sp, dels = parts(tr)
         n_deleted = len(tr.ground_truth.deleted_facts)
+        survivors = len(tr.facts) - n_deleted
         assert n_deleted == params.n_subjects, f"{diff.value}: {n_deleted} deleted != {params.n_subjects}"
         assert len(dp) == params.n_subjects, f"{diff.value}: deleted-probes {len(dp)}"
-        print(f"  {diff.value:7s}: {len(tr.facts):3d} facts, {n_deleted:2d} deleted, "
-              f"{len(sp):2d} survivor-probes + {len(dp):2d} deleted-probes")
+        print(f"  {diff.value:7s}: {len(tr.facts):3d} tape ({survivors:3d} survive, "
+              f"{n_deleted:2d} deleted), {len(sp):2d} survivor-probes + {len(dp):2d} deleted-probes")
 
     # --- Test 2: recall_targets shape (survivor non-empty, deleted empty) --
     tr = generate_w6(seed=0, difficulty=Difficulty.MEDIUM)
@@ -203,25 +211,29 @@ if __name__ == "__main__":
     assert all(len(rt[t.turn_id]) == 1 for t in sp), "survivor-probe target must be one fact"
     print(f"\n✓ recall_targets        (deleted-probes empty, survivor-probes singleton)")
 
-    # --- Test 3: leakage is testable — deleted facts are real & dated ------
+    # --- Test 3: leakage is testable — deleted facts are in the tape & dated -
     deleted = tr.ground_truth.deleted_facts
     assert all(isinstance(ts, datetime) for ts in deleted.values())
-    fact_ids = {f.fact_id for f in tr.facts}
-    # deleted facts are NOT in final_facts (the oracle removed them):
-    assert not (set(deleted) & fact_ids), "deleted facts should not be in final_facts"
+    tape_ids = {f.fact_id for f in tr.facts}
+    # deleted facts ARE in the tape (the harness must write them so they can be
+    # deleted / can leak), and every one is recorded in the deletion ledger:
+    assert set(deleted) <= tape_ids, "deleted facts must be present in the tape"
     print(f"✓ Deletion ledger       ({len(deleted)} facts deleted w/ timestamps, "
-          f"absent from final_facts)")
+          f"present in tape so writable & leak-testable)")
 
-    # --- Test 4: over-deletion is testable — each deleted subject keeps one -
-    surv_subjects = {f.subject for f in tr.facts}
-    # every subject that had a deletion still has >=1 surviving fact:
-    by_subject = {}
+    # --- Test 4: over-deletion is testable — each deleted subject keeps a surv -
+    by_subject_survivors = {}
     for f in tr.facts:
-        by_subject.setdefault(f.subject, 0)
-        by_subject[f.subject] += 1
-    assert all(c >= 1 for c in by_subject.values())
-    print(f"✓ Over-deletion testable ({len(surv_subjects)} subjects retain a survivor "
-          f"sharing the deleted subject)")
+        if f.fact_id in deleted:
+            continue
+        by_subject_survivors.setdefault(f.subject, 0)
+        by_subject_survivors[f.subject] += 1
+    deleted_subjects = {f.subject for f in tr.facts if f.fact_id in deleted}
+    # every subject that had a deletion still has >=1 SURVIVING fact in the tape,
+    # so a delete-by-subject backend can be caught over-deleting it:
+    assert all(by_subject_survivors.get(s, 0) >= 1 for s in deleted_subjects)
+    print(f"✓ Over-deletion testable ({len(deleted_subjects)} deleted subjects each "
+          f"retain a survivor sharing the subject)")
 
     # --- Test 5: validators clean -----------------------------------------
     for diff in _W6_PARAMS:
