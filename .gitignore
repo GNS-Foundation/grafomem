@@ -7,3 +7,5 @@ corpus/ground_truth/
 corpus/paraphrase_cache/
 src/*.egg-info/
 build/
+~$*
+.~lock.*
