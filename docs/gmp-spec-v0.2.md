@@ -1,12 +1,13 @@
-# GRAFOMEM Memory Protocol (GMP) — v0.1 (draft)
+# GRAFOMEM Memory Protocol (GMP) — v0.2 (draft)
 
 Camilo Ayerbe Posada · GNS Foundation · ULISSY s.r.l. · grafomem.com
 
-> **Status:** draft, v0.1. This document specifies *semantics*. It is the
+> **Status:** draft, v0.2. This document specifies *semantics*. It is the
 > follow-up promised in §6 and §8 of *GRAFOMEM: A Reproducible Benchmark for Agent
 > Memory* (the "paper"): the paper establishes, empirically, the dimensions a
 > memory standard cannot leave unspecified (requirements R1–R5 and findings
-> F1–F13); this document commits to a specification of each. Every normative
+> F1–F13); this document commits to a specification of each. v0.1 specified the
+> five core capabilities (§3–§6); v0.2 adds provenance (§7.5). Every normative
 > section cites the requirement and the findings it rests on, and Appendix A is the
 > full traceability matrix. Working name; rename at will.
 
@@ -363,16 +364,57 @@ the suite adapts to the declaration (paper §3.7, anchor B1).
 - `CRYPTOGRAPHIC_PROVENANCE` implies `PROVENANCE`.
 - `AUDIT` is the floor for `audit()`.
 
-### 7.4 v0.1 normative subset
+### 7.4 Normative subsets
 
 GMP v0.1 fully specifies `SUPERSESSION_CHAIN`, `BI_TEMPORAL`, `HARD_DELETE`,
-`MULTI_TENANT`, and `AUDIT` (§3–§6). The remaining four —
-`CROSS_SESSION_PROPAGATION`, `CONFLICT_DETECTION`, `PROVENANCE`, and
-`CRYPTOGRAPHIC_PROVENANCE` — are **reserved**: present in the enumeration, exercised
-by no reference backend in the paper (Appendix A), and specified in a later version.
-`CRYPTOGRAPHIC_PROVENANCE` is sketched: an Ed25519 signature over the 16-byte
-`fact_id`, verified by the canonical `verify_provenance` (Appendix B). A store MUST
-NOT claim a reserved capability under v0.1 conformance.
+`MULTI_TENANT`, and `AUDIT` (§3–§6). GMP v0.2 adds `PROVENANCE` to the normative
+subset and `CRYPTOGRAPHIC_PROVENANCE` as an optional extension — a store MAY decline
+to sign, but if it claims the flag it MUST honor §7.5. The remaining two —
+`CROSS_SESSION_PROPAGATION` and `CONFLICT_DETECTION` — are **reserved**: present in
+the enumeration, specified in a later version. A store MUST NOT claim a reserved
+capability under conformance.
+
+### 7.5 Provenance — `PROVENANCE` (v0.2 normative) and `CRYPTOGRAPHIC_PROVENANCE` (v0.2 optional)
+
+Provenance attaches integrity metadata to a memory without changing *which* memories
+retrieve: it is verifiability, not ranking. Both flags are independent of the
+embedder and of the retrieval result, so Proposition 2 (swap the embedder, the
+guarantees are unchanged) holds for them as it does for the safety capabilities.
+
+**`PROVENANCE` — MUST if claimed.** Every memory returned by `retrieve` or `audit`
+MUST carry a non-null `source` (`SourceMeta`) with at least `write_id` — a stable
+identifier for the write event, for which the opaque ref is a sufficient choice — and
+`written_at`, the store's record of the write time. A store that declares
+`PROVENANCE` and returns `source = None`, or omits `write_id`, is in violation.
+Provenance MUST survive the read path and any persistence boundary (process restart).
+
+**`CRYPTOGRAPHIC_PROVENANCE` — MUST if claimed; implies `PROVENANCE` (§7.3).** When
+`WriteOptions.signing_key` is set, the store MUST sign the memory's `fact_id` with
+that Ed25519 key and populate `source.signature` (64 bytes) and `source.public_key`
+(32 bytes); `written_by` SHOULD record the public key. Verification is the canonical
+`verify_provenance(memory, expected_fact_id)` (Appendix B): a memory verifies iff its
+signature is valid over `expected_fact_id` under its public key. Because the signature
+binds to the exact `fact_id`, post-write tampering is detectable — a verifier that
+recomputes the `fact_id` from altered content gets `False`.
+
+**The content-store `fact_id`.** §1.2 defines the *structured* `fact_id` over
+`(tenant_id, predicate, subject, object, valid_from)` — the identity of a fact. A
+*content store* (the GMP reference and SQLite backends) holds verbalized content, not
+a (P, S, O) triple, and its `write(content, options)` never receives the triple; its
+cryptographic commitment is therefore over the unit it actually stores:
+
+```
+fact_id = BLAKE2b-128(content ‖ sep ‖ tenant_id)        # content-store binding
+```
+
+with `sep` the unit separator and a null tenant encoded as the empty string.
+`valid_from` is deliberately excluded: provenance MUST be verifiable from the
+*retrieved* memory, and a store that keeps `valid_from` at reduced precision (an epoch
+REAL) would not reproduce it byte-for-byte, whereas content and tenant round-trip
+exactly. Versions are already distinguished by differing content, so `valid_from` is
+not needed for identity here. This is the content-store binding of the §1.2
+commitment; a structured-fact store signs the §1.2 `fact_id` directly. Either way the
+signed object is the canonical identifier of the unit committed to.
 
 ---
 
@@ -408,6 +450,14 @@ a direction passes only when the interval excludes the failing outcome.
 | `BI_TEMPORAL` | `as_of=t` resolves to the version valid at `t` | one | F5 |
 | `HARD_DELETE` | no leak of deleted facts **and** no over-deletion of survivors | **two** | F10, F11 |
 | `MULTI_TENANT` | no cross-tenant leak **and** no in-tenant over-restriction | **two** | F12, F13 |
+| `PROVENANCE` | every written memory exposes `source` (`write_id` + `written_at`) | one | — |
+| `CRYPTOGRAPHIC_PROVENANCE` | a signed write verifies **and** an altered-content `fact_id` does not | **two** | — |
+
+The two provenance rows are *constructed* tests (like `AUDIT`): the suite writes its
+own probes — unsigned for `PROVENANCE`, signed with a generated Ed25519 key for
+`CRYPTOGRAPHIC_PROVENANCE` — rather than replaying a workload, since provenance is
+integrity metadata and does not change retrieval. The two-sided crypto test gates
+signature validity (`>= 1 - eps`) and tamper acceptance (`<= eps`).
 
 ### 8.4 Reporting
 
