@@ -69,6 +69,14 @@ CREATE INDEX IF NOT EXISTS idx_mem_open   ON memories(valid_until);
 _COLS = ("ref", "content", "written_at", "metadata",
          "valid_from", "valid_until", "tenant_id", "superseded_by")
 
+# sqlite-vec caps a KNN query's k at 4096. Below this the ranking is exact (k = N);
+# above it we take the top-4096 by similarity, then apply the GMP filter and budget.
+# That is standard top-k ANN and fine for budget-sized retrieval. A highly selective
+# filter over a very large store (e.g. a tiny tenant) could under-retrieve under
+# rank-then-filter — the filtered-ANN problem — which v0.2 addresses with partition-key
+# prefiltering. Conformance stores stay well under the cap, so the suite is unaffected.
+_KNN_MAX = 4096
+
 
 def _to_ts(dt: datetime | None) -> float | None:
     if dt is None:
@@ -210,27 +218,39 @@ class SQLiteGMPBackend:
         if not n:
             return []
         qvec = serialize_float32(_normalize(self._embed(query)).tolist())
-        ranked = self._conn.execute(                       # full ranking; filter below
-            "SELECT rowid FROM vec_memories WHERE embedding MATCH ? "
-            "ORDER BY distance LIMIT ?", (qvec, n),
-        ).fetchall()
-
         budget = options.budget_tokens if options.budget_tokens is not None else float("inf")
-        out: list[Memory] = []
-        used = 0
-        for (ref,) in ranked:
-            if ref not in candidates:
-                continue
-            row = self._conn.execute(
-                f"SELECT {', '.join(_COLS)} FROM memories WHERE ref = ?", (ref,)
-            ).fetchone()
-            if row is None:
-                continue
-            if used + len(row[1]) > budget:                # greedy char budget; stop on overflow
-                break
-            out.append(self._row_to_memory(row))
-            used += len(row[1])
-        return out
+
+        # Adaptive over-fetch: pull a small top-k first (cheap), filter to candidates and
+        # fill the char budget greedily in similarity order. If the budget didn't fill and
+        # rows remain, widen k and retry — so a non-selective filter resolves in one cheap
+        # query, while a selective one (tenant / as_of) grows only as far as needed, bounded
+        # by sqlite-vec's k cap. Below the cap with k >= N this is exact.
+        k = 64
+        while True:
+            kk = min(k, n, _KNN_MAX)
+            ranked = self._conn.execute(
+                "SELECT rowid FROM vec_memories WHERE embedding MATCH ? "
+                "ORDER BY distance LIMIT ?", (qvec, kk),
+            ).fetchall()
+            out: list[Memory] = []
+            used = 0
+            overflowed = False
+            for (ref,) in ranked:
+                if ref not in candidates:
+                    continue
+                row = self._conn.execute(
+                    f"SELECT {', '.join(_COLS)} FROM memories WHERE ref = ?", (ref,)
+                ).fetchone()
+                if row is None:
+                    continue
+                if used + len(row[1]) > budget:            # budget is the limit -> done
+                    overflowed = True
+                    break
+                out.append(self._row_to_memory(row))
+                used += len(row[1])
+            if overflowed or kk >= n or kk >= _KNN_MAX:     # budget full, or saw every row
+                return out
+            k *= 4                                          # selective filter -> widen and retry
 
     def audit(self) -> Iterator[Memory]:
         rows = self._conn.execute(
