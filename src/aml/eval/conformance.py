@@ -19,6 +19,8 @@ Capability -> workload -> pass condition (GMP §8.3; paper Appendix A):
     BI_TEMPORAL         W2 as_of       historical recall = 1                        (F5)
     HARD_DELETE         W6             deleted leakage = 0  AND  survivor recall = 1 (F10,F11)
     MULTI_TENANT        W5             cross-tenant leakage = 0 AND in-tenant recall=1 (F12,F13)
+    PROVENANCE          constructed   source (write_id + written_at) round-trips
+    CRYPTOGRAPHIC_PROVENANCE constructed  signed write verifies; altered content does not
 
 A direction PASSES iff its bootstrap CI *excludes the failing outcome* (GMP §8.2),
 with a tolerance matched to the direction's nature:
@@ -56,7 +58,9 @@ from aml.backends.interface import (
     Capability,
     ConformanceViolation,
     WriteOptions,
+    verify_provenance,
 )
+from aml.provenance import fact_id_for_content
 from aml.eval.harness import run_trace
 from aml.eval.metrics import _targets_by_turn, bootstrap_paired_ci
 from aml.generator.trace import Difficulty
@@ -197,6 +201,54 @@ def _test_audit(factory: StoreFactory, seeds, budget) -> CapabilityResult:
                             [_recall_dir("audit completeness", ok, floor=1.0 - EPS)])
 
 
+def _test_provenance(factory: StoreFactory, seeds, budget) -> CapabilityResult:
+    """Constructed invariant: every written memory carries provenance — a non-None
+    source with write_id and written_at — through audit(). A backend that declares
+    PROVENANCE but returns source=None (or drops write_id) is in violation."""
+    ok = []
+    for s in seeds:
+        store = factory()
+        contents = [f"provenance probe {i} (seed {s})" for i in range(8)]
+        for c in contents:
+            store.write(c, WriteOptions())
+        store.flush()
+        memos = list(store.audit())
+        good = len(memos) == len(contents) and all(
+            m.source is not None and m.source.write_id is not None
+            and m.source.written_at is not None for m in memos)
+        ok.append(1.0 if good else 0.0)
+    return CapabilityResult(Capability.PROVENANCE, "constructed",
+                            [_recall_dir("provenance round-trip", ok, floor=1.0 - EPS)])
+
+
+def _test_crypto_provenance(factory, seeds, budget):
+    """CRYPTOGRAPHIC_PROVENANCE two-sided: a signed write verifies against its content
+    fact_id (validity), and a fact_id for ALTERED content does NOT (tamper rejection —
+    the signature binds to the exact bytes). Crypto dep is touched only here."""
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from cryptography.hazmat.primitives.serialization import (
+        Encoding, NoEncryption, PrivateFormat,
+    )
+    valid_ps, tamper_ps = [], []
+    for s in seeds:
+        store = factory()
+        key = Ed25519PrivateKey.generate().private_bytes(
+            Encoding.Raw, PrivateFormat.Raw, NoEncryption())
+        contents = [f"signed probe {i} (seed {s})" for i in range(8)]
+        for c in contents:
+            store.write(c, WriteOptions(signing_key=key))
+        store.flush()
+        valid, tamper = [], []
+        for m in store.audit():
+            valid.append(1.0 if verify_provenance(
+                m, fact_id_for_content(m.content, m.tenant_id)) else 0.0)
+            tamper.append(1.0 if verify_provenance(
+                m, fact_id_for_content(m.content + "X", m.tenant_id)) else 0.0)
+        valid_ps.append(mean(valid) if valid else 0.0)
+        tamper_ps.append(mean(tamper) if tamper else 0.0)
+    return valid_ps, tamper_ps
+
+
 def _measure_w2_current(factory, seeds, budget):
     """SUPERSESSION_CHAIN: on current (as_of=None) queries, the answer set must be
     heads only — no superseded version may appear — and the head must be recalled."""
@@ -327,6 +379,16 @@ def run_conformance(
         results.append(CapabilityResult(
             Capability.MULTI_TENANT, "W5",
             [_leak_dir("cross-tenant leakage", leak), _recall_dir("in-tenant recall", rec, floor=REC_FLOOR)]))
+
+    if Capability.PROVENANCE in declared:
+        results.append(_test_provenance(store_factory, seeds, budget))
+
+    if Capability.CRYPTOGRAPHIC_PROVENANCE in declared:
+        valid, tamper = _test_crypto_provenance(store_factory, seeds, budget)
+        results.append(CapabilityResult(
+            Capability.CRYPTOGRAPHIC_PROVENANCE, "constructed",
+            [_recall_dir("signature validity", valid, floor=1.0 - EPS),
+             _leak_dir("tamper acceptance", tamper)]))
 
     profile = ConformanceProfile(name, declared, results)
 

@@ -54,9 +54,12 @@ from datetime import datetime, timezone
 
 import numpy as np
 
-from aml.backends.gmp_reference import GMP_V01_PROFILE
-from aml.backends.interface import Capability, Memory, RetrieveOptions, WriteOptions
+from aml.backends.gmp_reference import GMP_V02_PROFILE
+from aml.backends.interface import (
+    Capability, Memory, RetrieveOptions, SourceMeta, WriteOptions,
+)
 from aml.backends.vector_only import _default_embedder
+from aml.provenance import fact_id_for_content, sign_provenance
 
 try:
     import sqlite_vec
@@ -83,12 +86,16 @@ CREATE TABLE IF NOT EXISTS memories (
     valid_from    REAL,
     valid_until   REAL,
     tenant_id     TEXT,
-    superseded_by INTEGER
+    superseded_by INTEGER,
+    written_by    TEXT,
+    signature     BLOB,
+    public_key    BLOB
 );
 """
 
 _COLS = ("ref", "content", "written_at", "metadata",
-         "valid_from", "valid_until", "tenant_id", "superseded_by")
+         "valid_from", "valid_until", "tenant_id", "superseded_by",
+         "written_by", "signature", "public_key")
 
 # sqlite-vec caps a KNN query's k at 4096. With the metadata filter applied in-engine,
 # the query returns the filtered top-k by similarity. We bound k by the char budget
@@ -216,18 +223,20 @@ class SQLiteGMPBackend:
 
     # -- GMP operations ---------------------------------------------------
     def capabilities(self) -> set[Capability]:
-        return set(GMP_V01_PROFILE)
+        return set(GMP_V02_PROFILE)
 
     def write(self, content: str, options: WriteOptions):
         emb = _normalize(self._embed(content))
         if emb.shape[0] != self._dim:
             raise ValueError(f"embedding dim {emb.shape[0]} != store dim {self._dim}")
+        written_by, signature, public_key = self._provenance(content, options)
         cur = self._conn.execute(
-            "INSERT INTO memories(content, written_at, metadata, valid_from, "
-            "valid_until, tenant_id, superseded_by) VALUES (?,?,?,?,?,?,?)",
+            "INSERT INTO memories(content, written_at, metadata, valid_from, valid_until, "
+            "tenant_id, superseded_by, written_by, signature, public_key) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?)",
             (content, datetime.now(timezone.utc).isoformat(),
              json.dumps(options.metadata or {}), _to_ts(options.valid_from),
-             None, options.tenant_id, None),
+             None, options.tenant_id, None, written_by, signature, public_key),
         )
         ref = cur.lastrowid
         # New write is current -> open interval (valid_until = OPEN_UNTIL).
@@ -238,6 +247,18 @@ class SQLiteGMPBackend:
              _vec_tenant(options.tenant_id), _vec_from(options.valid_from), OPEN_UNTIL),
         )
         return ref
+
+    @staticmethod
+    def _provenance(content: str, options: WriteOptions):
+        """Provenance columns for a write. CRYPTOGRAPHIC_PROVENANCE: a signing_key signs
+        the content fact_id and records the public key (also the writer identity).
+        Unsigned writes store NULLs; write_id (= the ref) and written_at still provide
+        PROVENANCE on read. Returns (written_by, signature, public_key)."""
+        if options.signing_key is None:
+            return None, None, None
+        fid = fact_id_for_content(content, options.tenant_id)
+        sig, pub = sign_provenance(options.signing_key, fid)
+        return pub.hex(), sig, pub
 
     def write_many(self, items: list[tuple[str, WriteOptions]]) -> list[int]:
         """Bulk-ingest fast-path: embed every content in ONE batched forward pass and
@@ -260,11 +281,14 @@ class SQLiteGMPBackend:
         try:
             for (content, options), row in zip(items, embs):
                 emb = _normalize(row)
+                written_by, signature, public_key = self._provenance(content, options)
                 cur = self._conn.execute(
-                    "INSERT INTO memories(content, written_at, metadata, valid_from, "
-                    "valid_until, tenant_id, superseded_by) VALUES (?,?,?,?,?,?,?)",
+                    "INSERT INTO memories(content, written_at, metadata, valid_from, valid_until, "
+                    "tenant_id, superseded_by, written_by, signature, public_key) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?)",
                     (content, now, json.dumps(options.metadata or {}),
-                     _to_ts(options.valid_from), None, options.tenant_id, None),
+                     _to_ts(options.valid_from), None, options.tenant_id, None,
+                     written_by, signature, public_key),
                 )
                 ref = cur.lastrowid
                 self._conn.execute(
@@ -370,11 +394,17 @@ class SQLiteGMPBackend:
 
     # -- internals --------------------------------------------------------
     def _row_to_memory(self, row) -> Memory:
-        ref, content, written_at, metadata, vf, vu, tenant, sby = row
+        ref, content, written_at, metadata, vf, vu, tenant, sby, written_by, sig, pub = row
+        wat = datetime.fromisoformat(written_at)
         return Memory(
-            ref=ref, content=content, written_at=datetime.fromisoformat(written_at),
+            ref=ref, content=content, written_at=wat,
             metadata=json.loads(metadata), valid_from=_from_ts(vf),
-            valid_until=_from_ts(vu), tenant_id=tenant, superseded_by=sby, source=None,
+            valid_until=_from_ts(vu), tenant_id=tenant, superseded_by=sby,
+            source=SourceMeta(
+                write_id=str(ref), written_at=wat, written_by=written_by,
+                signature=bytes(sig) if sig is not None else None,
+                public_key=bytes(pub) if pub is not None else None,
+            ),
         )
 
 
@@ -394,8 +424,8 @@ if __name__ == "__main__":
     from aml.backends.interface import MemoryBackend
     from aml.eval.conformance import run_conformance
 
-    print("GRAFOMEM SQLite + sqlite-vec store — GMP v0.1, v0.2 metadata pre-filter "
-          "(BGE embedder)\n")
+    print("GRAFOMEM SQLite + sqlite-vec store — GMP v0.2 (metadata pre-filter + "
+          "provenance, BGE embedder)\n")
 
     t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
     t1 = t0 + timedelta(days=30)
@@ -403,7 +433,7 @@ if __name__ == "__main__":
 
     b = SQLiteGMPBackend(path)                             # default embedder = BGE (fixed dim)
     assert isinstance(b, MemoryBackend)
-    assert b.capabilities() == set(GMP_V01_PROFILE)
+    assert b.capabilities() == set(GMP_V02_PROFILE)
     r0 = b.write("Aria lives in Rome", WriteOptions(valid_from=t0, tenant_id="A"))
     b.supersede(r0, "Aria lives in Milan", WriteOptions(valid_from=t1, tenant_id="A"))
     b.write("Bruno lives in Naples", WriteOptions(valid_from=t0, tenant_id="B"))
@@ -424,13 +454,36 @@ if __name__ == "__main__":
     b2.close()
     print("✓ persists across reopen   (head = Milan; as_of(t0+5d) = Rome; tenant B clean)")
 
+    # Provenance persists: a signed write's signature survives the file round-trip.
+    from aml.backends.interface import verify_provenance
+    from aml.provenance import fact_id_for_content
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from cryptography.hazmat.primitives.serialization import (
+        Encoding, NoEncryption, PrivateFormat,
+    )
+
+    ppath = str(Path(tempfile.mkdtemp()) / "prov.db")
+    bp = SQLiteGMPBackend(ppath)
+    key = Ed25519PrivateKey.generate().private_bytes(
+        Encoding.Raw, PrivateFormat.Raw, NoEncryption())
+    rp = bp.write("Aria prefers tea", WriteOptions(signing_key=key, tenant_id="A"))
+    bp.flush()
+    bp.close()                                            # <- process boundary
+    bp2 = SQLiteGMPBackend(ppath)                          # reopen
+    mp = next(m for m in bp2.audit() if m.ref == rp)
+    assert mp.source is not None and mp.source.write_id == str(rp)
+    assert verify_provenance(mp, fact_id_for_content(mp.content, mp.tenant_id)) is True
+    assert verify_provenance(mp, fact_id_for_content("Aria prefers coffee", mp.tenant_id)) is False
+    bp2.close()
+    print("✓ provenance persists      (signed write verifies after reopen; tamper fails)")
+
     print("\n  running the conformance suite (fresh :memory: stores, BGE embedder)...")
     profile = run_conformance(lambda: SQLiteGMPBackend(":memory:"),
                               name="SQLiteGMPBackend", seeds=range(2))
     print(f"  SUPPORTS {{{', '.join(sorted(c.value for c in profile.supported))}}}")
-    assert profile.supported == set(GMP_V01_PROFILE), set(GMP_V01_PROFILE) - profile.supported
+    assert profile.supported == set(GMP_V02_PROFILE), set(GMP_V02_PROFILE) - profile.supported
     assert not profile.violations, [r.capability.value for r in profile.violations]
 
-    print("\n✓ Persistent store passes the full GMP v0.1 profile, no violations.\n"
+    print("\n✓ Persistent store passes the full GMP v0.2 profile, no violations.\n"
           "  Same contract as the in-memory reference — now on a file, with the GMP filter\n"
-          "  pushed into the vector index as metadata columns.")
+          "  in the vector index and provenance (incl. signatures) persisted alongside.")

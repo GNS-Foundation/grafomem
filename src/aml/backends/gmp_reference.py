@@ -41,12 +41,13 @@ import numpy as np
 
 from aml.backends.interface import (
     Capability,
-    CapabilityNotSupported,
     Memory,
     RetrieveOptions,
+    SourceMeta,
     WriteOptions,
 )
 from aml.backends.vector_only import REFERENCE_MODEL, EmbedFn, _default_embedder
+from aml.provenance import fact_id_for_content, sign_provenance
 
 __grafomem_interface__ = "0.1.1"
 
@@ -61,6 +62,15 @@ GMP_V01_PROFILE = frozenset({
     Capability.MULTI_TENANT,
 })
 
+# GMP v0.2 adds provenance: PROVENANCE (normative — source round-trips through the
+# store) and CRYPTOGRAPHIC_PROVENANCE (optional extension — Ed25519 over the content
+# fact_id, §4.1). Still reserved for a design pass: CROSS_SESSION_PROPAGATION,
+# CONFLICT_DETECTION.
+GMP_V02_PROFILE = GMP_V01_PROFILE | {
+    Capability.PROVENANCE,
+    Capability.CRYPTOGRAPHIC_PROVENANCE,
+}
+
 
 class GMPReferenceBackend:
     """A single BGE vector store that honors versioning, deletion, and tenancy —
@@ -71,8 +81,8 @@ class GMPReferenceBackend:
         "underlying_system": "reference",
         "embedding_model": REFERENCE_MODEL,
         "vector_store": "numpy-bruteforce-cosine-exact",
-        "spec": "GMP v0.1",
-        "profile": "AUDIT, SUPERSESSION_CHAIN, BI_TEMPORAL, HARD_DELETE, MULTI_TENANT",
+        "spec": "GMP v0.2",
+        "profile": "v0.1 core + PROVENANCE + CRYPTOGRAPHIC_PROVENANCE",
         "identity": "tenant-scoped (GMP §1.2, D2)",
         "notes": "Composes versioning + deletion + tenancy on one BGE core; "
                  "ranking is embedder-pluggable (GMP §4).",
@@ -92,27 +102,38 @@ class GMPReferenceBackend:
         return self._embed_fn(texts)
 
     def capabilities(self) -> set[Capability]:
-        return set(GMP_V01_PROFILE)
+        return set(GMP_V02_PROFILE)
 
     def write(self, content: str, options: WriteOptions) -> int:
-        # MULTI_TENANT and BI_TEMPORAL are claimed, so tenant_id and valid_from are
-        # honored (never raise). CRYPTOGRAPHIC_PROVENANCE is reserved (§7.4): refuse.
-        if options.signing_key is not None:
-            raise CapabilityNotSupported(
-                Capability.CRYPTOGRAPHIC_PROVENANCE, "write")
+        # All v0.2 caps are claimed: tenant_id / valid_from are honored, and every
+        # write carries provenance (source). A signing_key additionally signs the
+        # content fact_id (CRYPTOGRAPHIC_PROVENANCE).
         ref = self._next
         self._next += 1
+        written_at = datetime.now(tz=timezone.utc)
         self._store[ref] = Memory(
             ref=ref, content=content,
-            written_at=datetime.now(tz=timezone.utc),
+            written_at=written_at,
             metadata=dict(options.metadata),
             valid_from=options.valid_from,
             tenant_id=options.tenant_id,
+            source=self._make_source(ref, content, written_at, options),
         )
         self._vec[ref] = self._embed([content])[0]
         self._vfrom[ref] = options.valid_from
         self._vuntil[ref] = None                          # open until superseded
         return ref
+
+    def _make_source(self, ref: int, content: str, written_at,
+                     options: WriteOptions) -> SourceMeta:
+        # PROVENANCE: write_id + written_at on every write. CRYPTOGRAPHIC_PROVENANCE:
+        # given a signing_key, sign the content fact_id and record the public key.
+        src = SourceMeta(write_id=str(ref), written_at=written_at)
+        if options.signing_key is not None:
+            fid = fact_id_for_content(content, options.tenant_id)
+            src.signature, src.public_key = sign_provenance(options.signing_key, fid)
+            src.written_by = src.public_key.hex()
+        return src
 
     def supersede(self, old_ref, content: str, options: WriteOptions) -> int:
         # The successor's valid_from closes the predecessor's interval (§3.2,
@@ -188,13 +209,13 @@ if __name__ == "__main__":
     from aml.backends.interface import MemoryBackend
     from aml.backends.vector_only import _stub_embedder
 
-    print("GRAFOMEM GMPReferenceBackend — full GMP v0.1 profile (STUB embedder)\n")
+    print("GRAFOMEM GMPReferenceBackend — full GMP v0.2 profile (STUB embedder)\n")
 
     b = GMPReferenceBackend(embed_fn=_stub_embedder())
     assert isinstance(b, MemoryBackend)
-    assert b.capabilities() == set(GMP_V01_PROFILE)
+    assert b.capabilities() == set(GMP_V02_PROFILE)
     print("✓ capabilities                       "
-          "(AUDIT, SUPERSESSION_CHAIN, BI_TEMPORAL, HARD_DELETE, MULTI_TENANT)")
+          "(v0.1 core + PROVENANCE + CRYPTOGRAPHIC_PROVENANCE)")
 
     # Versioning + as_of, scoped to tenant A; tenant B holds its own fact.
     t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -230,6 +251,25 @@ if __name__ == "__main__":
     assert b.delete(r2) is False
     print("✓ honest delete                      (unrecoverable via retrieve + audit; idempotent)")
 
+    # Provenance: every memory carries source; a signed write verifies, tampering fails.
+    from aml.backends.interface import verify_provenance
+    from aml.provenance import fact_id_for_content
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from cryptography.hazmat.primitives.serialization import (
+        Encoding, NoEncryption, PrivateFormat,
+    )
+
+    bp = GMPReferenceBackend(embed_fn=_stub_embedder())
+    key = Ed25519PrivateKey.generate().private_bytes(
+        Encoding.Raw, PrivateFormat.Raw, NoEncryption())
+    rp = bp.write("Aria prefers tea", WriteOptions(signing_key=key, tenant_id="A"))
+    bp.flush()
+    m = next(m for m in bp.audit() if m.ref == rp)
+    assert m.source is not None and m.source.write_id == str(rp)
+    assert verify_provenance(m, fact_id_for_content(m.content, m.tenant_id)) is True
+    assert verify_provenance(m, fact_id_for_content("Aria prefers coffee", m.tenant_id)) is False
+    print("✓ provenance + signature             (source round-trips; signed verifies; tamper fails)")
+
     # The headline: certify against the conformance suite itself.
     from aml.eval.conformance import run_conformance
 
@@ -238,8 +278,8 @@ if __name__ == "__main__":
         name="GMPReferenceBackend")
     print(f"\n  conformance profile -> SUPPORTS "
           f"{{{', '.join(sorted(c.value for c in profile.supported))}}}")
-    missing = set(GMP_V01_PROFILE) - profile.supported
+    missing = set(GMP_V02_PROFILE) - profile.supported
     assert not missing, f"does not pass: {missing}"
     assert not profile.violations, [r.capability.value for r in profile.violations]
-    print("\n✓ PASSES the full GMP v0.1 conformance suite — no violations.")
+    print("\n✓ PASSES the full GMP v0.2 conformance suite — no violations.")
     print("  spec -> suite -> certified reference implementation. Loop closed.")
