@@ -156,7 +156,12 @@ v0.1 normative subset: `{AUDIT, SUPERSESSION_CHAIN, BI_TEMPORAL, HARD_DELETE, MU
 - **Batched embedding** on the ingest path — **done.** A `write_many` fast-path embeds a
   batch in one forward pass under one transaction: **97 → 847 items/s (8.6×)**, same
   resulting store. Optional accelerator; the single-`write` Protocol path is unchanged.
-- **Reserved capabilities** (the remaining four flags) and the provenance path. Next.
+- **Reserved capabilities** — provenance pair **done.** `PROVENANCE` (normative) and
+  `CRYPTOGRAPHIC_PROVENANCE` (optional) are implemented in both backends and certified
+  by the v0.2 conformance suite: Ed25519 over a content-store fact_id, `source`
+  persisted (signatures survive restart). `CONFLICT_DETECTION` and
+  `CROSS_SESSION_PROPAGATION` stay deferred to a design pass — each needs a semantic
+  definition before it can be benchmarked.
 
 The arc is protocol-first: the spec and suite are the standard; the implementations are
 the proof it's real and runnable. "Postgres for agent memory" is the destination, not
