@@ -72,31 +72,34 @@ load-bearing ones:
 ## Latency — reference store, locked corpus
 
 Full corpus (W1–W6) ingested into one growing SQLite + sqlite-vec store (N = 38,882
-rows), BGE-small embeddings, on an Apple-Silicon laptop:
+rows), BGE-small embeddings, on an Apple-Silicon laptop. Numbers are post-v0.2 (the
+metadata-column pre-filter):
 
 | op | count | p50 | p95 |
 |---|---:|---:|---:|
-| write | 37,015 | 10.89ms | 14.69ms |
-| supersede | 2,262 | 10.88ms | 14.58ms |
-| delete | 395 | **0.02ms** | 0.04ms |
-| retrieve | 15,342 | 13.07ms | 82.23ms |
+| write | 37,015 | 10.17ms | 13.66ms |
+| supersede | 2,262 | 9.85ms | 12.90ms |
+| delete | 395 | **0.03ms** | 0.05ms |
+| retrieve | 15,342 | 11.27ms | **27.80ms** |
 
 What the numbers say:
 
-- **The embedder is the floor.** Every op that embeds sits at ~11ms; `delete` (the one
-  op that doesn't) is 0.02ms. The store's own machinery is sub-millisecond. Write
-  throughput (~89/s) is single-item BGE on MPS — the ingestion lever is *batched*
+- **The embedder is the floor.** Every op that embeds sits at ~10ms; `delete` (the one
+  op that doesn't) is 0.03ms. The store's own machinery is sub-millisecond. Write
+  throughput (~97/s) is single-item BGE on MPS — the ingestion lever is *batched*
   embedding, not the store.
-- **Retrieve p50 is flat to ~25k rows** (~12ms, embed-bound), then climbs to 26ms at
-  38k — sqlite-vec is brute-force (no ANN index yet), so search cost is O(N) but small
-  in C until the store is large.
-- **The p95 tail (82ms) is selective queries** (`as_of`, tenant) — the place a v0.2
-  metadata-column pre-filter pays off. p50 won't move; the tail and correctness-at-scale
-  will.
-- **sqlite-vec ≈ numpy brute force** on pure-vector workloads up to 10k (sub-millisecond
-  margins under the embed floor). The store's value at this scale is **persistence and
-  not pinning the corpus in RAM**, not speed — confirming the in-memory reference was
-  the right default below large scale.
+- **The v0.2 pre-filter crushed the tail.** In v0.1, selective queries (`as_of`, tenant)
+  ranked-then-filtered and triggered an adaptive widening loop, putting retrieve p95 at
+  **82ms**. v0.2 pushes the tenant/valid-time predicate into the KNN as metadata columns
+  and bounds `k` by the char budget — p95 fell to **27.80ms** (−66%) with identical
+  results, and the high-N p50 sits *at or below* v0.1's flat region.
+- **Retrieve p50 still grows with N** (~10ms under 10k → ~25ms at 25–50k). sqlite-vec is
+  brute-force — there is no ANN index — so the scan is O(N). The pre-filter made
+  retrieval *correct and tight*, not *sublinear*; the next lever for retrieve-at-scale is
+  an actual ANN index, not more tuning. At 38k rows / 25ms p50 it isn't needed yet.
+- **sqlite-vec ≈ numpy brute force** on pure-vector workloads (every bucket within ~1ms).
+  The store's value at this scale is **persistence and not pinning the corpus in RAM**,
+  not speed — confirming the in-memory reference is the right default below large scale.
 
 ---
 
@@ -141,12 +144,16 @@ reference (certified), HTTP+JSON wire binding (suite passes over a socket), pers
 SQLite + sqlite-vec store (survives restart, passes the full profile), scale probe.
 v0.1 normative subset: `{AUDIT, SUPERSESSION_CHAIN, BI_TEMPORAL, HARD_DELETE, MULTI_TENANT}`.
 
-**v0.2 — next.**
+**v0.2 — in progress.**
 
-- **Metadata-column pre-filter** in the store: move `tenant_id` / valid-time into the
-  vec0 table, sentinel-encode nulls (sqlite-vec metadata filters don't support `IS NULL`),
-  filter KNN-natively. Buys the p95 tail and exact selective-filter retrieval at scale.
-- **Batched embedding** on the ingest path — the real write-throughput lever.
+- **Metadata-column pre-filter** in the store — **done.** `tenant_id` / valid-time live
+  in the vec0 table (nulls sentinel-encoded, since sqlite-vec metadata filters don't
+  support `IS NULL`); the KNN filters natively and `k` is bounded by the char budget.
+  Drops retrieve p95 82→28ms with identical results and exact selective-filter retrieval;
+  the O(N) brute-force scan remains (no ANN index — a separate lever, not needed at this
+  scale).
+- **Batched embedding** on the ingest path — the real write-throughput lever (writes are
+  ~97/s, single-item BGE). Next.
 - **Reserved capabilities** (the remaining four flags) and the provenance path.
 
 The arc is protocol-first: the spec and suite are the standard; the implementations are
