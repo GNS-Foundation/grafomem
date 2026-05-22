@@ -1,0 +1,330 @@
+"""
+GRAFOMEM GMP v0.1 — persistent reference store on SQLite + sqlite-vec.
+
+The first implementation you'd actually *run*: memories survive process restart,
+and the vector search is a real ANN index instead of numpy brute force. Same GMP
+semantics as `GMPReferenceBackend`, same conformance profile — now backed by a file.
+
+Design (correctness-first cut; see chat header for rationale):
+  - Memories are rows in `memories`. `valid_from`/`valid_until` are stored as epoch
+    REALs (numeric comparison is exact and tz-safe; lexicographic ISO comparison
+    breaks silently on mixed offsets/precision). A parallel `vec0` virtual table
+    holds the embeddings with `rowid = ref`.
+  - The GMP candidate filter is the same conjunction as the reference, expressed as
+    a WHERE clause: tenant match (NULL matches NULL) AND the valid-time clause
+    (`valid_until IS NULL` for current; `valid_from <= t < valid_until` for as_of).
+    Honest delete is a real DELETE from both tables. Leakage gates therefore pass by
+    construction — a forbidden row is never a candidate, whatever the ranking.
+  - Ranking matches the reference's exact cosine: vectors are unit-normalized before
+    store/query, so sqlite-vec's L2 KNN orders identically to cosine. Greedy char
+    budget over the filtered candidates in similarity order.
+
+Requires: `pip install sqlite-vec`, plus a FIXED-dimension embedder (the default BGE
+is 384-d). A vector index is fixed-width by construction, so the variable-dim
+char-bag stub used elsewhere for embedder-invariance does not apply here — a real
+ANN store wants real dense vectors. macOS note: some Python builds disable sqlite3
+extension loading; if so this falls back to apsw (`pip install apsw`), which bundles
+a SQLite with extensions enabled, and raises a clear error if neither is available.
+"""
+
+from __future__ import annotations
+
+import json
+from collections.abc import Iterator
+
+import sqlite3
+from datetime import datetime, timezone
+
+import numpy as np
+
+from aml.backends.gmp_reference import GMP_V01_PROFILE
+from aml.backends.interface import Capability, Memory, RetrieveOptions, WriteOptions
+from aml.backends.vector_only import _default_embedder
+
+try:
+    import sqlite_vec
+    from sqlite_vec import serialize_float32
+except ImportError:                              # surfaced with a fix in _open()
+    sqlite_vec = None
+
+    def serialize_float32(_):                    # type: ignore[misc]
+        raise RuntimeError("sqlite-vec not installed — `pip install sqlite-vec`")
+
+
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS memories (
+    ref           INTEGER PRIMARY KEY AUTOINCREMENT,
+    content       TEXT NOT NULL,
+    written_at    TEXT NOT NULL,
+    metadata      TEXT NOT NULL,
+    valid_from    REAL,
+    valid_until   REAL,
+    tenant_id     TEXT,
+    superseded_by INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_mem_tenant ON memories(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_mem_open   ON memories(valid_until);
+"""
+
+_COLS = ("ref", "content", "written_at", "metadata",
+         "valid_from", "valid_until", "tenant_id", "superseded_by")
+
+
+def _to_ts(dt: datetime | None) -> float | None:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:                        # naive -> assume UTC (consistent both sides)
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.timestamp()
+
+
+def _from_ts(ts) -> datetime | None:
+    return datetime.fromtimestamp(ts, tz=timezone.utc) if ts is not None else None
+
+
+def _normalize(v) -> np.ndarray:
+    arr = np.asarray(v, dtype=np.float32)
+    n = float(np.linalg.norm(arr))
+    return arr / n if n > 0.0 else arr           # zero vector left as-is (no div-by-zero)
+
+
+class _Result:
+    """Mimics the slice of a sqlite3 cursor the backend reads, over a buffered apsw row list."""
+
+    def __init__(self, rows, lastrowid, rowcount):
+        self._rows = rows
+        self.lastrowid = lastrowid
+        self.rowcount = rowcount
+
+    def fetchall(self):
+        return self._rows
+
+    def fetchone(self):
+        return self._rows[0] if self._rows else None
+
+    def __iter__(self):
+        return iter(self._rows)
+
+
+class _ApswConn:
+    """Adapts an apsw connection to the sqlite3-style API the backend uses."""
+
+    def __init__(self, conn):
+        self._c = conn
+
+    def execute(self, sql, params=None):
+        cur = self._c.execute(sql, params) if params else self._c.execute(sql)
+        rows = list(cur)                                   # apsw yields a tuple per row
+        return _Result(rows, self._c.last_insert_rowid(), self._c.changes())
+
+    def executescript(self, sql):
+        self._c.execute(sql)                               # apsw runs all statements in the string
+
+    def commit(self):
+        pass                                               # apsw is autocommit outside explicit txns
+
+    def close(self):
+        self._c.close()
+
+
+def _open(db_path: str):
+    if sqlite_vec is None:
+        raise RuntimeError("sqlite-vec not installed — `pip install sqlite-vec`")
+    # Preferred path: stdlib sqlite3, if this Python was built with extension loading.
+    if hasattr(sqlite3.Connection, "enable_load_extension"):
+        conn = sqlite3.connect(db_path, isolation_level=None)   # autocommit -> durable per op
+        conn.enable_load_extension(True)
+        sqlite_vec.load(conn)
+        conn.enable_load_extension(False)
+        return conn
+    # Fallback (common on macOS): apsw bundles a SQLite with extension loading enabled.
+    try:
+        import apsw
+    except ImportError as e:
+        raise RuntimeError(
+            "this Python's sqlite3 has no loadable-extension support (common on macOS), "
+            "and apsw is not installed. Fix: `pip install apsw` — it bundles a SQLite with "
+            "extensions enabled and this module auto-detects it. Then re-run."
+        ) from e
+    conn = apsw.Connection(db_path)
+    conn.enableloadextension(True)
+    conn.loadextension(sqlite_vec.loadable_path())
+    conn.enableloadextension(False)
+    return _ApswConn(conn)
+
+
+class SQLiteGMPBackend:
+    """A persistent MemoryBackend (GMP v0.1 profile) on SQLite + sqlite-vec."""
+
+    __grafomem_interface__ = "0.1.1"
+
+    def __init__(self, db_path: str = ":memory:", embed_fn=None) -> None:
+        self._embed = embed_fn or _default_embedder()
+        self._conn = _open(db_path)
+        self._dim = int(np.asarray(self._embed("dimension probe")).shape[0])
+        self._conn.executescript(_SCHEMA)
+        self._conn.execute(
+            f"CREATE VIRTUAL TABLE IF NOT EXISTS vec_memories "
+            f"USING vec0(embedding float[{self._dim}])"
+        )
+
+    # -- GMP operations ---------------------------------------------------
+    def capabilities(self) -> set[Capability]:
+        return set(GMP_V01_PROFILE)
+
+    def write(self, content: str, options: WriteOptions):
+        emb = _normalize(self._embed(content))
+        if emb.shape[0] != self._dim:
+            raise ValueError(f"embedding dim {emb.shape[0]} != store dim {self._dim}")
+        cur = self._conn.execute(
+            "INSERT INTO memories(content, written_at, metadata, valid_from, "
+            "valid_until, tenant_id, superseded_by) VALUES (?,?,?,?,?,?,?)",
+            (content, datetime.now(timezone.utc).isoformat(),
+             json.dumps(options.metadata or {}), _to_ts(options.valid_from),
+             None, options.tenant_id, None),
+        )
+        ref = cur.lastrowid
+        self._conn.execute("INSERT INTO vec_memories(rowid, embedding) VALUES (?, ?)",
+                           (ref, serialize_float32(emb.tolist())))
+        return ref
+
+    def supersede(self, old_ref, content: str, options: WriteOptions):
+        new_ref = self.write(content, options)
+        # close the old version's interval at the new version's start, link the chain
+        self._conn.execute(
+            "UPDATE memories SET valid_until = ?, superseded_by = ? WHERE ref = ?",
+            (_to_ts(options.valid_from), new_ref, old_ref),
+        )
+        return new_ref
+
+    def delete(self, ref) -> bool:
+        cur = self._conn.execute("DELETE FROM memories WHERE ref = ?", (ref,))
+        self._conn.execute("DELETE FROM vec_memories WHERE rowid = ?", (ref,))
+        return cur.rowcount > 0
+
+    def retrieve(self, query: str, options: RetrieveOptions) -> list[Memory]:
+        candidates = self._candidate_refs(options)
+        if not candidates:
+            return []
+        (n,) = self._conn.execute("SELECT COUNT(*) FROM vec_memories").fetchone()
+        if not n:
+            return []
+        qvec = serialize_float32(_normalize(self._embed(query)).tolist())
+        ranked = self._conn.execute(                       # full ranking; filter below
+            "SELECT rowid FROM vec_memories WHERE embedding MATCH ? "
+            "ORDER BY distance LIMIT ?", (qvec, n),
+        ).fetchall()
+
+        budget = options.budget_tokens if options.budget_tokens is not None else float("inf")
+        out: list[Memory] = []
+        used = 0
+        for (ref,) in ranked:
+            if ref not in candidates:
+                continue
+            row = self._conn.execute(
+                f"SELECT {', '.join(_COLS)} FROM memories WHERE ref = ?", (ref,)
+            ).fetchone()
+            if row is None:
+                continue
+            if used + len(row[1]) > budget:                # greedy char budget; stop on overflow
+                break
+            out.append(self._row_to_memory(row))
+            used += len(row[1])
+        return out
+
+    def audit(self) -> Iterator[Memory]:
+        rows = self._conn.execute(
+            f"SELECT {', '.join(_COLS)} FROM memories ORDER BY ref"
+        ).fetchall()
+        return iter([self._row_to_memory(r) for r in rows])
+
+    def flush(self) -> None:
+        self._conn.commit()                                # no-op under autocommit; explicit anyway
+
+    def close(self) -> None:
+        self._conn.close()
+
+    # -- internals --------------------------------------------------------
+    def _candidate_refs(self, options: RetrieveOptions) -> set:
+        clauses, params = [], []
+        if options.tenant_id is None:
+            clauses.append("tenant_id IS NULL")
+        else:
+            clauses.append("tenant_id = ?")
+            params.append(options.tenant_id)
+
+        if options.as_of is None:
+            clauses.append("valid_until IS NULL")          # current = open interval / chain head
+        else:
+            t = _to_ts(options.as_of)
+            clauses.append("(valid_from IS NULL OR valid_from <= ?)")
+            params.append(t)
+            clauses.append("(valid_until IS NULL OR ? < valid_until)")
+            params.append(t)
+
+        sql = "SELECT ref FROM memories WHERE " + " AND ".join(clauses)
+        return {r[0] for r in self._conn.execute(sql, params)}
+
+    def _row_to_memory(self, row) -> Memory:
+        ref, content, written_at, metadata, vf, vu, tenant, sby = row
+        return Memory(
+            ref=ref, content=content, written_at=datetime.fromisoformat(written_at),
+            metadata=json.loads(metadata), valid_from=_from_ts(vf),
+            valid_until=_from_ts(vu), tenant_id=tenant, superseded_by=sby, source=None,
+        )
+
+
+# ============================================================================
+# Self-validating smoke — `python -m aml.backends.sqlite_gmp`
+#
+#   1. persistence: write a chain + a second tenant, close, REOPEN the file,
+#      assert current / as_of / tenant queries all survived.
+#   2. conformance: run the suite on fresh in-memory stores; assert full profile.
+# ============================================================================
+
+if __name__ == "__main__":
+    import tempfile
+    from datetime import timedelta
+    from pathlib import Path
+
+    from aml.backends.interface import MemoryBackend
+    from aml.eval.conformance import run_conformance
+
+    print("GRAFOMEM SQLite + sqlite-vec store — GMP v0.1 (BGE embedder)\n")
+
+    t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    t1 = t0 + timedelta(days=30)
+    path = str(Path(tempfile.mkdtemp()) / "store.db")
+
+    b = SQLiteGMPBackend(path)                             # default embedder = BGE (fixed dim)
+    assert isinstance(b, MemoryBackend)
+    assert b.capabilities() == set(GMP_V01_PROFILE)
+    r0 = b.write("Aria lives in Rome", WriteOptions(valid_from=t0, tenant_id="A"))
+    b.supersede(r0, "Aria lives in Milan", WriteOptions(valid_from=t1, tenant_id="A"))
+    b.write("Bruno lives in Naples", WriteOptions(valid_from=t0, tenant_id="B"))
+    b.flush()
+    b.close()                                              # <- process boundary
+    print(f"wrote 3 memories to {path}, closed the connection")
+
+    b2 = SQLiteGMPBackend(path)                            # reopen the same file
+    cur = [m.content for m in b2.retrieve("Where does Aria live?",
+                                          RetrieveOptions(tenant_id="A", budget_tokens=512))]
+    assert cur == ["Aria lives in Milan"], cur
+    past = [m.content for m in b2.retrieve("Where does Aria live?",
+            RetrieveOptions(as_of=t0 + timedelta(days=5), tenant_id="A", budget_tokens=512))]
+    assert past == ["Aria lives in Rome"], past
+    bq = [m.content for m in b2.retrieve("Where does Aria live?",
+                                         RetrieveOptions(tenant_id="B", budget_tokens=512))]
+    assert all("Aria" not in x for x in bq), bq
+    b2.close()
+    print("✓ persists across reopen   (head = Milan; as_of(t0+5d) = Rome; tenant B clean)")
+
+    print("\n  running the conformance suite (fresh :memory: stores, BGE embedder)...")
+    profile = run_conformance(lambda: SQLiteGMPBackend(":memory:"),
+                              name="SQLiteGMPBackend", seeds=range(2))
+    print(f"  SUPPORTS {{{', '.join(sorted(c.value for c in profile.supported))}}}")
+    assert profile.supported == set(GMP_V01_PROFILE), set(GMP_V01_PROFILE) - profile.supported
+    assert not profile.violations, [r.capability.value for r in profile.violations]
+
+    print("\n✓ Persistent store passes the full GMP v0.1 profile, no violations.\n"
+          "  Same contract as the in-memory reference — now on a file, with a real ANN index.")
