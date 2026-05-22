@@ -85,9 +85,10 @@ metadata-column pre-filter):
 What the numbers say:
 
 - **The embedder is the floor.** Every op that embeds sits at ~10ms; `delete` (the one
-  op that doesn't) is 0.03ms. The store's own machinery is sub-millisecond. Write
-  throughput (~97/s) is single-item BGE on MPS — the ingestion lever is *batched*
-  embedding, not the store.
+  op that doesn't) is 0.03ms. The store's own machinery is sub-millisecond. Single-item
+  write throughput is ~97/s on MPS — and a `write_many` bulk-ingest path that batches the
+  embedder under one transaction hits **847/s (8.6×)** with an identical resulting store,
+  confirming the embedder, not the store, was the entire write cost.
 - **The v0.2 pre-filter crushed the tail.** In v0.1, selective queries (`as_of`, tenant)
   ranked-then-filtered and triggered an adaptive widening loop, putting retrieve p95 at
   **82ms**. v0.2 pushes the tenant/valid-time predicate into the KNN as metadata columns
@@ -152,9 +153,10 @@ v0.1 normative subset: `{AUDIT, SUPERSESSION_CHAIN, BI_TEMPORAL, HARD_DELETE, MU
   Drops retrieve p95 82→28ms with identical results and exact selective-filter retrieval;
   the O(N) brute-force scan remains (no ANN index — a separate lever, not needed at this
   scale).
-- **Batched embedding** on the ingest path — the real write-throughput lever (writes are
-  ~97/s, single-item BGE). Next.
-- **Reserved capabilities** (the remaining four flags) and the provenance path.
+- **Batched embedding** on the ingest path — **done.** A `write_many` fast-path embeds a
+  batch in one forward pass under one transaction: **97 → 847 items/s (8.6×)**, same
+  resulting store. Optional accelerator; the single-`write` Protocol path is unchanged.
+- **Reserved capabilities** (the remaining four flags) and the provenance path. Next.
 
 The arc is protocol-first: the spec and suite are the standard; the implementations are
 the proof it's real and runnable. "Postgres for agent memory" is the destination, not

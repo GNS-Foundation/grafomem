@@ -5,6 +5,7 @@ The first implementation you'd actually *run*: memories survive process restart,
 the GMP candidate filter runs *inside* the vector search instead of as a Python set
 intersection. Same GMP semantics as `GMPReferenceBackend`, same conformance profile —
 now backed by a file, with the tenant/valid-time predicate pushed into the index.
+A `write_many` bulk-ingest fast-path batches the embedder under one transaction.
 
 What changed in v0.2 (the metadata-column pre-filter):
   - The vec0 table carries `tenant_id`, `valid_from`, `valid_until` as *metadata
@@ -237,6 +238,47 @@ class SQLiteGMPBackend:
              _vec_tenant(options.tenant_id), _vec_from(options.valid_from), OPEN_UNTIL),
         )
         return ref
+
+    def write_many(self, items: list[tuple[str, WriteOptions]]) -> list[int]:
+        """Bulk-ingest fast-path: embed every content in ONE batched forward pass and
+        insert under a single transaction. Produces the same rows as calling write() for
+        each item in order (same refs, embeddings, valid-time/tenant) — only `written_at`
+        is the single batch instant rather than per-item. Amortizes the embedder, which
+        the latency probe shows is the entire per-write cost. Not part of the
+        MemoryBackend Protocol; an optional accelerator for loading a store up front.
+
+        items: list of (content, WriteOptions). Returns the assigned refs, in order.
+        """
+        if not items:
+            return []
+        embs = self._embed([c for c, _ in items])         # one batched forward pass -> (n, d)
+        if embs.ndim != 2 or embs.shape[1] != self._dim:
+            raise ValueError(f"batched embedding shape {embs.shape} != (n, {self._dim})")
+        now = datetime.now(timezone.utc).isoformat()
+        refs: list[int] = []
+        self._conn.execute("BEGIN")
+        try:
+            for (content, options), row in zip(items, embs):
+                emb = _normalize(row)
+                cur = self._conn.execute(
+                    "INSERT INTO memories(content, written_at, metadata, valid_from, "
+                    "valid_until, tenant_id, superseded_by) VALUES (?,?,?,?,?,?,?)",
+                    (content, now, json.dumps(options.metadata or {}),
+                     _to_ts(options.valid_from), None, options.tenant_id, None),
+                )
+                ref = cur.lastrowid
+                self._conn.execute(
+                    "INSERT INTO vec_memories(rowid, embedding, tenant_id, valid_from, "
+                    "valid_until) VALUES (?,?,?,?,?)",
+                    (ref, serialize_float32(emb.tolist()),
+                     _vec_tenant(options.tenant_id), _vec_from(options.valid_from), OPEN_UNTIL),
+                )
+                refs.append(ref)
+            self._conn.execute("COMMIT")
+        except Exception:
+            self._conn.execute("ROLLBACK")
+            raise
+        return refs
 
     def supersede(self, old_ref, content: str, options: WriteOptions):
         new_ref = self.write(content, options)
