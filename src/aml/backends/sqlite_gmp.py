@@ -90,10 +90,10 @@ _COLS = ("ref", "content", "written_at", "metadata",
          "valid_from", "valid_until", "tenant_id", "superseded_by")
 
 # sqlite-vec caps a KNN query's k at 4096. With the metadata filter applied in-engine,
-# the query returns the filtered top-k by similarity. For a filtered pool <= 4096 that
-# is every candidate (exact); for a larger pool it is the 4096 most-similar candidates,
-# from which a char-budget retrieval (tens of items) always fills off the top. So k is a
-# fixed budget-generous bound, not something we widen.
+# the query returns the filtered top-k by similarity. We bound k by the char budget
+# (at most `budget` items can fit, each >= 1 char), so a budget-512 retrieve asks for
+# ~513 rows, not thousands — exact, and cheap to materialize. An unbounded-budget query
+# falls back to min(_KNN_MAX, N): all candidates up to the engine cap.
 _KNN_MAX = 4096
 
 
@@ -264,7 +264,17 @@ class SQLiteGMPBackend:
         if not n:
             return []
         qvec = serialize_float32(_normalize(self._embed(query)).tolist())
-        budget = options.budget_tokens if options.budget_tokens is not None else float("inf")
+        if options.budget_tokens is None:
+            budget = float("inf")
+            k = min(_KNN_MAX, n)                      # unbounded budget: all candidates
+        else:
+            budget = options.budget_tokens
+            # A char budget admits at most `budget` items (each is >= 1 char), so a
+            # top-k of budget+1 is provably sufficient and never under-returns — and it
+            # avoids materializing thousands of ranked rows when only a few fill the
+            # budget (the min(_KNN_MAX, N) form did, inflating p50 at large N for no
+            # change in result).
+            k = max(1, min(_KNN_MAX, budget + 1))
 
         # GMP candidate predicate, pushed into the KNN as metadata conditions.
         conds, params = ["tenant_id = ?"], [_vec_tenant(options.tenant_id)]
@@ -278,9 +288,10 @@ class SQLiteGMPBackend:
             conds.append("valid_until > ?")
             params.append(t)
 
-        # Single filtered KNN: top-k among the candidates, by similarity. k is a fixed
-        # bound (literal — some sqlite-vec versions reject a bound k), not widened.
-        k = min(_KNN_MAX, n)
+        # Single filtered KNN: the top-k candidates by similarity (k computed above
+        # from the budget; a literal in the SQL — some sqlite-vec versions reject a
+        # bound k). The in-engine filter means these k are already candidates, so no
+        # widening and no rank-then-filter under-retrieval.
         filt = "".join(f" AND {c}" for c in conds)
         ranked = self._conn.execute(
             f"SELECT rowid FROM vec_memories WHERE embedding MATCH ? AND k = {k}"
