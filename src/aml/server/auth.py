@@ -15,9 +15,9 @@ import logging
 import os
 from dataclasses import dataclass
 
-from fastapi import HTTPException, Request
+from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 
 logger = logging.getLogger("grafomem.auth")
 
@@ -75,24 +75,28 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
             )
             return await call_next(request)
 
-        # Token auth
+        # Token auth — return JSONResponse directly (not HTTPException,
+        # which doesn't propagate correctly from BaseHTTPMiddleware).
         auth_header = request.headers.get("Authorization", "")
         if not auth_header.startswith("Bearer "):
-            raise HTTPException(
+            return JSONResponse(
                 status_code=401,
-                detail="Missing or malformed Authorization header. "
-                       "Expected: Bearer <token>",
+                content={
+                    "detail": "Missing or malformed Authorization header. "
+                              "Expected: Bearer <token>",
+                },
             )
 
         token = auth_header[7:].strip()
         tenant_id = self.tokens.get(token)
         if tenant_id is None:
-            raise HTTPException(
+            return JSONResponse(
                 status_code=403,
-                detail="Invalid token. Not mapped to any tenant.",
+                content={"detail": "Invalid token. Not mapped to any tenant."},
             )
 
         request.state.tenant = TenantContext(
             tenant_id=tenant_id, authenticated=True
         )
         return await call_next(request)
+
