@@ -1,0 +1,46 @@
+# GRAFOMEM canonical finding registry — single source of truth for F-numbers.
+#
+# The paper's Appendix C and the results/W*-finding.md cards are PROJECTIONS of
+# this file (emitted by findings.py). Never hand-assign an F-number elsewhere.
+#
+# Invariants (enforced by findings.py + findings.lock):
+#   immutable   — an id, once published, binds permanently to one finding
+#   append-only — new findings take the next free number; existing ids never move
+#   no reuse    — a withdrawn finding is status="retired" (tombstoned), never deleted
+#   documents may carry gaps (the paper cites W1-W6 + W10); the registry may not,
+#   except for tombstones.
+
+registry_version = "1"
+canonical_corpus = "grafomem-bench-v0.2.0"
+corpus_hash = "f049820bc24505111595b030ee9b2e6abd1812e80e96e3e770e1bbbcfb077ca6"
+
+finding = [
+  # W1 Stable Recall
+  { id = "F1",  workload = "W1",  metric = "M1",              status = "confirmed",      embedder = "bge-small-en-v1.5", producer = "scripts/run_w1.py",  headline = 'Semantic retrieval clears the recency floor: vector 1.000 vs floor 0.596 (med) / 0.358 (hard).' },
+  { id = "F2",  workload = "W1",  metric = "M1",              status = "confirmed",      embedder = "bge-small-en-v1.5", producer = "scripts/run_w1.py",  headline = 'Efficiency frontier: 0.801 recall at a 32-char budget (precision 0.864); ~17x cost to reach 1.000.' },
+  # W2 Drift & Conflict
+  { id = "F3",  workload = "W2",  metric = "M1",              status = "confirmed",      embedder = "bge-small-en-v1.5", producer = "scripts/run_w2.py",  headline = 'Drift "budget illusion": vector collapses to 0.281 at a tight budget (vs 0.801 no-drift); generous-budget recall is a flood with stale versions.' },
+  { id = "F4",  workload = "W2",  metric = "M1",              status = "confirmed",      embedder = "bge-small-en-v1.5", producer = "scripts/run_w2.py",  headline = 'SUPERSESSION_CHAIN recovers tight-budget recall 0.281->0.867 (+0.585 @ 32), embedder held constant.' },
+  { id = "F5",  workload = "W2",  metric = "M1",              status = "confirmed",      embedder = "bge-small-en-v1.5", producer = "scripts/run_w2.py",  headline = 'BI_TEMPORAL reclaims 373 historical (as_of) queries/seed (hard): N/A -> ~1.0.' },
+  # W3 Distractor Noise
+  { id = "F6",  workload = "W3",  metric = "M2",              status = "confirmed",      embedder = "bge-small-en-v1.5", producer = "scripts/run_w3.py",  headline = 'Distractor noise is a precision tax: recall saturates to 1.000 while precision craters to 0.050.' },
+  { id = "F7",  workload = "W3",  metric = "M1",              status = "confirmed",      embedder = "bge-small-en-v1.5", producer = "scripts/run_w3.py",  headline = 'The embedder is the lever (+0.510 recall @ 32: BGE 0.685 vs stub 0.175); capabilities inert (+0.000).' },
+  # W4 Long-Horizon
+  { id = "F8",  workload = "W4",  metric = "M1",              status = "confirmed",      embedder = "bge-small-en-v1.5", producer = "scripts/run_w4.py",  headline = 'Recall-vs-footprint: unbounded flat 1.000 at linear cost; bounded (K=64) flat cost, overall recall 0.659->0.348.' },
+  { id = "F9",  workload = "W4",  metric = "M1",              status = "confirmed",      embedder = "invariant",         producer = "scripts/run_w4.py",  headline = 'Bounded-K forgetting cliff at exactly d = K = 64; structural and embedder-invariant.' },
+  # W6 Deletion / Leakage
+  { id = "F10", workload = "W6",  metric = "leakage",         status = "confirmed",      embedder = "invariant",         producer = "scripts/run_w6.py",  headline = 'soft_delete claims HARD_DELETE yet leaks at 1.000 (claim != behavior); audit and retrieve disagree.' },
+  { id = "F11", workload = "W6",  metric = "survivor_recall", status = "confirmed",      embedder = "invariant",         producer = "scripts/run_w6.py",  headline = 'coarse_delete over-deletes: leakage 0.000 but survivor recall 0.000.' },
+  # W5 Multi-Tenant
+  { id = "F12", workload = "W5",  metric = "M7",              status = "confirmed",      embedder = "invariant",         producer = "scripts/run_w5.py",  headline = 'leaky_tenant claims MULTI_TENANT yet leaks at 1.000 (claim != behavior); leakage orthogonal to recall (1.000).' },
+  { id = "F13", workload = "W5",  metric = "M1",              status = "confirmed",      embedder = "invariant",         producer = "scripts/run_w5.py",  headline = 'over_isolating over-restricts: leakage 0.000 but in-tenant recall 0.000.' },
+  # W7 / W8 / W9 — TRANSCRIBE from results/W{7,8,9}-finding.md (placeholders keep contiguity)
+  { id = "F14", workload = "W7",  metric = "?",               status = "needs-reconfirm", embedder = "stub",             producer = "scripts/run_w7.py",  headline = 'TRANSCRIBE from results/W7-finding.md' },
+  { id = "F15", workload = "W7",  metric = "?",               status = "needs-reconfirm", embedder = "stub",             producer = "scripts/run_w7.py",  headline = 'TRANSCRIBE from results/W7-finding.md' },
+  { id = "F16", workload = "W8",  metric = "?",               status = "needs-reconfirm", embedder = "stub",             producer = "scripts/run_w8.py",  headline = 'TRANSCRIBE from results/W8-finding.md (W8 held out of corpus)' },
+  { id = "F17", workload = "W9",  metric = "?",               status = "needs-reconfirm", embedder = "stub",             producer = "scripts/run_w9.py",  headline = 'TRANSCRIBE from results/W9-finding.md' },
+  { id = "F18", workload = "W9",  metric = "?",               status = "needs-reconfirm", embedder = "stub",             producer = "scripts/run_w9.py",  headline = 'TRANSCRIBE from results/W9-finding.md' },
+  # W10 Concurrency & Isolation — corrected numbering (was F14/F15 in the paper)
+  { id = "F19", workload = "W10", metric = "M8",              status = "confirmed",      embedder = "deterministic",     producer = "scripts/run_w10.py", headline = 'no_isolation claims serializable yet delivers read-committed (claim != behavior); over-claim downgraded against its declaration, M8 0.25.' },
+  { id = "F20", workload = "W10", metric = "M8",              status = "confirmed",      embedder = "deterministic",     producer = "scripts/run_w10.py", headline = 'resurrecting holds serializable on the anomaly probes but revives a committed delete (durability, durable = no), M8 0.75.' },
+]
