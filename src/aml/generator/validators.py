@@ -153,6 +153,12 @@ def validate_trace(trace: Trace) -> list[Violation]:
     for ts, _si, _ti, turn, tenant in ordered:
         if turn.role != TurnRole.AGENT_QUERY:
             continue
+        if turn.txn_id is not None:
+            # W10: a concurrent read is set-valued — its permissible result
+            # depends on the backend's isolation level and is validated at eval
+            # time by aml.eval.concurrency (§10), not by the single-valued
+            # V-rules. It has no single recall_target by design.
+            continue
         loc = str(turn.turn_id)
         t_tx = ts
         t_v = turn.as_of if turn.as_of is not None else t_tx
@@ -267,7 +273,80 @@ def validate_trace(trace: Trace) -> list[Violation]:
                 break
             seen.add(cur)
 
+    # --- W10 (§4.10) — concurrency-group structure (additive; W1-W9 inert) -
+    v.extend(_validate_concurrency(trace))
+
     return v
+
+
+def _validate_concurrency(trace: Trace) -> list[Violation]:
+    """W10 structural re-checks: a well-formed concurrency-group DAG. Only fires
+    when concurrency_groups is non-empty, so W1-W9 are unaffected. The set-valued
+    SEMANTICS (permissible outcomes per isolation level) are an eval-time concern
+    of aml.eval.concurrency (§10); here we re-derive only the STRUCTURE the
+    extractor and runner depend on, without trusting the generator."""
+    v: list[Violation] = []
+    if not trace.concurrency_groups:
+        return v
+
+    turns_by_txn: dict = {}
+    for s in trace.sessions:
+        for t in s.turns:
+            if t.txn_id is not None:
+                turns_by_txn.setdefault(t.txn_id, []).append(t)
+
+    declared: set = set()
+    for g in trace.concurrency_groups:
+        loc = f"{g.subject}/{g.predicate}:{g.anomaly.value}"
+        ids = [tx.txn_id for tx in g.transactions]
+        idset = set(ids)
+        if len(ids) != len(idset):
+            v.append(Violation("W10", "duplicate txn_id within group", loc))
+        if len(g.transactions) < 2:
+            v.append(Violation(
+                "W10",
+                f"anomaly needs >= 2 transactions, has {len(g.transactions)}",
+                loc))
+        for tx in g.transactions:
+            declared.add(tx.txn_id)
+            if not turns_by_txn.get(tx.txn_id):
+                v.append(Violation(
+                    "W10", f"transaction {str(tx.txn_id)[:8]} has no turns", loc))
+            for dep in tx.depends_on:
+                if dep not in idset:
+                    v.append(Violation(
+                        "W10",
+                        f"transaction {str(tx.txn_id)[:8]} depends_on "
+                        f"{str(dep)[:8]} outside its group", loc))
+        if _has_cycle(g.transactions):
+            v.append(Violation("W10", "cyclic happens-before DAG", loc))
+
+    for txn_id in turns_by_txn:
+        if txn_id not in declared:
+            v.append(Violation(
+                "W10",
+                f"turn tagged txn_id {str(txn_id)[:8]} not declared in any group"))
+    return v
+
+
+def _has_cycle(transactions: list) -> bool:
+    """DFS cycle detection over the happens-before DAG (intra-group edges)."""
+    deps = {tx.txn_id: list(tx.depends_on) for tx in transactions}
+    color: dict = {tid: 0 for tid in deps}  # 0=white 1=gray 2=black
+
+    def visit(u) -> bool:
+        color[u] = 1
+        for w in deps.get(u, ()):
+            if w not in color:           # edge out of the group; flagged elsewhere
+                continue
+            if color[w] == 1:
+                return True
+            if color[w] == 0 and visit(w):
+                return True
+        color[u] = 2
+        return False
+
+    return any(c == 0 and visit(t) for t, c in list(color.items()))
 
 
 def validate_trace_strict(trace: Trace) -> None:
