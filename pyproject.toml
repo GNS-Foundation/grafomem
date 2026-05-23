@@ -4,20 +4,26 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "grafomem"
-version = "0.1.3"
-description = "GRAFOMEM — a research-grade agent-memory benchmark framework"
+version = "0.2.0"
+description = "GRAFOMEM — agent-memory conformance benchmark and compliance toolkit"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
 authors = [{ name = "Camilo Ayerbe Posada" }]
 dependencies = [
     "jsonschema>=4",
+    "click>=8",
 ]
+
+[project.scripts]
+grafomem = "aml.cli:main"
 
 [project.optional-dependencies]
 # Reference vector adapter (vector_only): pinned embedding model + exact cosine.
 backends = ["sentence-transformers>=2.2", "numpy>=1.24"]
 store = ["sqlite-vec", "apsw"]
+crypto = ["cryptography>=41"]
+all = ["grafomem[crypto,backends,store]"]
 dev = ["pytest>=8"]
 
 [tool.setuptools.packages.find]
