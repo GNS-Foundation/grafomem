@@ -148,6 +148,75 @@ def run_trace(backend, trace: Trace, *, budget_tokens: int) -> RunResult:
     return result
 
 
+def run_trace_no_asof(backend, trace: Trace, *, budget_tokens: int) -> RunResult:
+    """Paired-run variant for M6: runs the SAME trace but strips as_of from all
+    queries, forcing the BI_TEMPORAL backend to answer with current state.
+
+    Historical queries still execute (unlike the normal run where non-BI_TEMPORAL
+    backends skip them), but without the as_of timestamp. This lets M6 measure
+    the recall advantage of bi-temporal retrieval vs current-only on historical data.
+    """
+    caps = backend.capabilities()
+    has_super = Capability.SUPERSESSION_CHAIN in caps
+    has_delete = Capability.HARD_DELETE in caps
+    has_tenant = Capability.MULTI_TENANT in caps
+
+    fact_by_id = {f.fact_id: f for f in trace.facts}
+    predecessor_of = {
+        f.superseded_by: f.fact_id
+        for f in trace.facts if f.superseded_by is not None
+    }
+
+    ref_to_fids: dict[object, set[bytes]] = {}
+    fid_to_ref: dict[bytes, object] = {}
+    result = RunResult()
+
+    for _ts, _si, _ti, turn in _ordered_turns(trace):
+        for fid in turn.introduces:
+            fact = fact_by_id.get(fid)
+            opts = WriteOptions(
+                valid_from=fact.valid_from if fact else None,
+                metadata=({"subject": fact.subject, "predicate": fact.predicate}
+                          if fact else {}),
+                tenant_id=(fact.tenant_id if (has_tenant and fact) else None),
+            )
+            old_fid = predecessor_of.get(fid)
+            if has_super and old_fid is not None and old_fid in fid_to_ref:
+                ref = backend.supersede(fid_to_ref[old_fid], turn.content, opts)
+            else:
+                ref = backend.write(turn.content, opts)
+            ref_to_fids[ref] = ref_to_fids.get(ref, set()) | {fid}
+            fid_to_ref[fid] = ref
+            result.n_writes += 1
+
+        if turn.deletes and has_delete:
+            for fid in turn.deletes:
+                r = fid_to_ref.get(fid)
+                if r is not None:
+                    backend.delete(r)
+
+        if turn.role == TurnRole.AGENT_QUERY:
+            backend.flush()
+            # KEY DIFFERENCE: as_of is always None — forces current-state retrieval
+            opts = RetrieveOptions(
+                budget_tokens=budget_tokens,
+                as_of=None,
+                tenant_id=(trace.sessions[_si].tenant_id if has_tenant else None),
+            )
+            mems = backend.retrieve(turn.content, opts)
+            retrieved: set[bytes] = set()
+            for m in mems:
+                retrieved |= ref_to_fids.get(m.ref, set())
+            result.per_query.append(QueryRun(
+                turn_id=str(turn.turn_id),
+                retrieved=retrieved,
+                n_returned=len(mems),
+                content_chars=sum(len(m.content) for m in mems),
+            ))
+
+    return result
+
+
 # M1/M2/M3 metrics live in aml.eval.metrics. The harness owns only the runner.
 
 

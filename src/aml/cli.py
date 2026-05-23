@@ -122,6 +122,55 @@ def check(backend):
 
 
 # ============================================================================
+# grafomem init
+# ============================================================================
+
+@main.command()
+@click.argument("directory", default=".")
+def init(directory):
+    """Scaffold a new GMP backend adapter project.
+
+    Copies the adapter template (my_backend.py, conftest.py, pyproject.toml,
+    README.md) into DIRECTORY. Existing files are not overwritten.
+
+    \b
+    Examples:
+        grafomem init                  # scaffold in current dir
+        grafomem init my-adapter/      # scaffold in my-adapter/
+    """
+    import shutil
+
+    # Locate the adapter_template/ bundled with grafomem
+    template_dir = Path(__file__).resolve().parent.parent.parent / "adapter_template"
+    if not template_dir.is_dir():
+        click.echo(f"✗ Template directory not found at {template_dir}", err=True)
+        sys.exit(1)
+
+    target = Path(directory)
+    target.mkdir(parents=True, exist_ok=True)
+
+    copied, skipped = 0, 0
+    for src in sorted(template_dir.iterdir()):
+        if src.name.startswith(".") or src.name == "__pycache__":
+            continue
+        dst = target / src.name
+        if dst.exists():
+            click.echo(f"  ⚠ {src.name} — already exists, skipping")
+            skipped += 1
+        else:
+            shutil.copy2(src, dst)
+            click.echo(f"  ✓ {src.name}")
+            copied += 1
+
+    click.echo(f"\n✓ Scaffolded {copied} file(s) into {target.resolve()}"
+               + (f" ({skipped} skipped)" if skipped else ""))
+    click.echo("\nNext steps:")
+    click.echo("  1. Edit my_backend.py — wire in your storage system")
+    click.echo("  2. grafomem check -b my_backend:MyBackend")
+    click.echo("  3. grafomem conformance -b my_backend:MyBackend -o report.json")
+
+
+# ============================================================================
 # grafomem conformance
 # ============================================================================
 

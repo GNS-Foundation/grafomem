@@ -22,7 +22,7 @@ import random
 from statistics import mean
 
 from aml.eval.harness import RunResult
-from aml.generator.trace import Trace
+from aml.generator.trace import Trace, TurnRole
 
 
 def _targets_by_turn(trace: Trace) -> dict[str, set[bytes]]:
@@ -116,6 +116,60 @@ def m7_tenant_isolation(run: RunResult, trace: Trace) -> float | None:
     if traps == 0:
         return None
     return 1.0 - (leaks / traps)
+
+
+def m6_temporal_consistency(
+    run_with_asof: RunResult,
+    run_without_asof: RunResult,
+    trace: Trace,
+) -> float | None:
+    """M6 — temporal consistency gap on W2 historical queries.
+
+    Compares two runs of the SAME W2 trace on the SAME BI_TEMPORAL backend:
+      - run_with_asof:    normal run (as_of queries use their historical timestamp)
+      - run_without_asof: stripped run (as_of forced to None → queries ask for current)
+
+    Returns the mean recall difference (with_asof - without_asof) on the
+    historical query subset. Positive means bi-temporal retrieval improves recall.
+    Returns None if the trace has no historical queries.
+
+    Usage:
+        tr = generate_w2(seed=0, difficulty=Difficulty.HARD)
+        backend1, backend2 = factory(), factory()
+        run_a = run_trace(backend1, tr, budget_tokens=512)
+        run_b = run_trace_no_asof(backend2, tr, budget_tokens=512)
+        m6 = m6_temporal_consistency(run_a, run_b, tr)
+    """
+    tgt = _targets_by_turn(trace)
+
+    # Identify which queries are historical (have as_of in the trace)
+    historical_turns = set()
+    for session in trace.sessions:
+        for turn in session.turns:
+            if turn.role == TurnRole.AGENT_QUERY and turn.as_of is not None:
+                historical_turns.add(str(turn.turn_id))
+
+    if not historical_turns:
+        return None
+
+    # Index run results by turn_id
+    with_idx = {qr.turn_id: qr for qr in run_with_asof.per_query}
+    without_idx = {qr.turn_id: qr for qr in run_without_asof.per_query}
+
+    diffs = []
+    for tid in historical_turns:
+        targets = tgt.get(tid, set())
+        if not targets:
+            continue
+        # Recall with as_of
+        qr_a = with_idx.get(tid)
+        recall_a = len(qr_a.retrieved & targets) / len(targets) if qr_a else 0.0
+        # Recall without as_of (current-only)
+        qr_b = without_idx.get(tid)
+        recall_b = len(qr_b.retrieved & targets) / len(targets) if qr_b else 0.0
+        diffs.append(recall_a - recall_b)
+
+    return mean(diffs) if diffs else None
 
 
 def score_run(run: RunResult, trace: Trace) -> dict:
