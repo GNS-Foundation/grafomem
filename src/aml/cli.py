@@ -137,7 +137,9 @@ def check(backend):
               help="Write report to file (default: stdout summary)")
 @click.option("--format", "fmt", default="json", type=click.Choice(["json", "markdown"]),
               help="Report format when --output is used (default: json)")
-def conformance(backend, embedder, seeds, budget, strict, output, fmt):
+@click.option("--sign-key", type=click.Path(exists=True), default=None,
+              help="Ed25519 private key file (32 raw bytes) to sign the report")
+def conformance(backend, embedder, seeds, budget, strict, output, fmt, sign_key):
     """Run the GMP conformance suite against a backend.
 
     Tests only declared capabilities — honest omission is never penalized.
@@ -165,9 +167,16 @@ def conformance(backend, embedder, seeds, budget, strict, output, fmt):
     if output:
         corpus_hash = _read_corpus_hash()
         report = from_profile(profile, corpus_hash=corpus_hash)
+
+        if sign_key:
+            from aml.eval.report import sign_report
+            key_bytes = Path(sign_key).read_bytes()
+            report = sign_report(report, key_bytes)
+            click.echo(f"\n🔐 Report signed (Ed25519, pubkey={report.signed_by[:16]}...)")
+
         content = to_markdown(report) if fmt == "markdown" else to_json(report)
         Path(output).write_text(content)
-        click.echo(f"\nReport ({fmt}) written to {output}")
+        click.echo(f"Report ({fmt}) written to {output}")
 
 
 

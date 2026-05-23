@@ -13,6 +13,7 @@ The JSON schema is stable across minor versions; fields are additive-only.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -84,6 +85,10 @@ class ComplianceReport:
     # Violations summary
     violations: list[str] = field(default_factory=list)
 
+    # Cryptographic signature (optional — set by sign_report())
+    signature: str | None = None       # hex-encoded Ed25519 signature
+    signed_by: str | None = None       # hex-encoded Ed25519 public key
+
 
 def from_profile(profile, *, corpus_hash: str = "unknown") -> ComplianceReport:
     """Build a ComplianceReport from a ConformanceProfile."""
@@ -135,9 +140,64 @@ def from_profile(profile, *, corpus_hash: str = "unknown") -> ComplianceReport:
     )
 
 
+def _canonical_payload(report: ComplianceReport) -> str:
+    """Canonical JSON for signing: sorted keys, compact separators,
+    signature/signed_by excluded (they aren't part of the signed content)."""
+    d = asdict(report)
+    d.pop("signature", None)
+    d.pop("signed_by", None)
+    return json.dumps(d, sort_keys=True, separators=(",", ":"), default=str)
+
+
 def to_json(report: ComplianceReport) -> str:
     """Serialize to JSON string."""
     return json.dumps(asdict(report), indent=2, default=str)
+
+
+def sign_report(report: ComplianceReport, signing_key: bytes) -> ComplianceReport:
+    """Ed25519-sign a ComplianceReport. Returns a new report with signature
+    and signed_by fields populated.
+
+    signing_key: 32-byte Ed25519 private seed (same format as WriteOptions.signing_key).
+    """
+    try:
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from cryptography.hazmat.primitives.serialization import (
+            Encoding, PublicFormat,
+        )
+    except ImportError as exc:
+        raise RuntimeError(
+            "sign_report requires grafomem[crypto] (pip install grafomem[crypto])"
+        ) from exc
+
+    payload = _canonical_payload(report).encode("utf-8")
+    priv = Ed25519PrivateKey.from_private_bytes(signing_key)
+    sig = priv.sign(payload)
+    pub = priv.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+
+    # Return a new report with signature fields set
+    from dataclasses import replace
+    return replace(report, signature=sig.hex(), signed_by=pub.hex())
+
+
+def verify_report(report: ComplianceReport) -> bool:
+    """Verify the Ed25519 signature on a ComplianceReport.
+    Returns True if the signature is valid, False otherwise.
+    Returns False if the report is unsigned."""
+    if not report.signature or not report.signed_by:
+        return False
+    try:
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+    except ImportError:
+        return False
+
+    payload = _canonical_payload(report).encode("utf-8")
+    try:
+        pub = Ed25519PublicKey.from_public_bytes(bytes.fromhex(report.signed_by))
+        pub.verify(bytes.fromhex(report.signature), payload)
+        return True
+    except Exception:
+        return False
 
 
 def to_markdown(report: ComplianceReport) -> str:
@@ -203,6 +263,20 @@ def to_markdown(report: ComplianceReport) -> str:
             f"> **Result:** M8 = {report.m8_conformance_rate:.3f}. "
             f"{len(report.violations)} violation(s) detected. "
             f"The store does NOT fully conform to its declared capabilities.",
+        ])
+
+    # Signature status
+    if report.signature:
+        lines.extend([
+            f"",
+            f"## 🔐 Cryptographic Signature",
+            f"",
+            f"| Field | Value |",
+            f"|---|---|",
+            f"| Signed by | `{report.signed_by[:16]}...` |",
+            f"| Signature | `{report.signature[:32]}...` |",
+            f"| Algorithm | Ed25519 |",
+            f"| Status | {'✅ Valid' if verify_report(report) else '❌ Invalid'} |",
         ])
 
     return "\n".join(lines) + "\n"
