@@ -175,8 +175,12 @@ def init(directory):
 # ============================================================================
 
 @main.command()
-@click.option("--backend", "-b", required=True,
+@click.option("--backend", "-b", default=None,
               help="Backend class as MODULE:CLASS (e.g. aml.backends.gmp_reference:GMPReferenceBackend)")
+@click.option("--url", "-u", default=None,
+              help="Audit a live server URL (e.g. https://grafomem-production.up.railway.app)")
+@click.option("--token", "-t", default=None,
+              help="Bearer token for authenticated servers (used with --url)")
 @click.option("--embedder", "-e", default="stub", type=click.Choice(["stub", "bge"]),
               help="Embedding function to use (default: stub)")
 @click.option("--seeds", "-s", default=5, type=int, help="Number of seeds (default: 5)")
@@ -188,20 +192,50 @@ def init(directory):
               help="Report format when --output is used (default: json)")
 @click.option("--sign-key", type=click.Path(exists=True), default=None,
               help="Ed25519 private key file (32 raw bytes) to sign the report")
-def conformance(backend, embedder, seeds, budget, strict, output, fmt, sign_key):
-    """Run the GMP conformance suite against a backend.
+def conformance(backend, url, token, embedder, seeds, budget, strict, output, fmt, sign_key):
+    """Run the GMP conformance suite against a backend or live server.
 
     Tests only declared capabilities — honest omission is never penalized.
     Emits per-capability PASS/FAIL with two-sided directional metrics and
     the M8 conformance rate.
+
+    \b
+    Local backend:
+        grafomem conformance -b aml.backends.gmp_reference:GMPReferenceBackend
+
+    \b
+    Live server audit:
+        grafomem conformance --url https://grafomem-production.up.railway.app
+        grafomem conformance --url https://my-server.com --token gfm_abc123
+
+    \b
+    Signed certificate:
+        grafomem conformance --url https://my-server.com -o report.json --sign-key key.bin
     """
+    if not backend and not url:
+        raise click.UsageError("Provide either --backend/-b or --url/-u")
+    if backend and url:
+        raise click.UsageError("Provide --backend or --url, not both")
+
     from aml.eval.conformance import run_conformance, print_profile
     from aml.eval.report import from_profile, to_json, to_markdown
 
-    factory = _make_factory(backend, embedder)
-    name = backend.rsplit(":", 1)[-1]
+    # Build the factory: local class or remote GMPClient
+    if url:
+        from aml.wire import GMPClient
+        name = url.rstrip("/").split("//")[-1]  # e.g. "grafomem-production.up.railway.app"
+        factory = lambda: GMPClient.create(url, auth_token=token)
+        click.echo(f"GRAFOMEM remote conformance audit")
+        click.echo(f"  Target:  {url}")
+        click.echo(f"  Auth:    {'Bearer token' if token else 'none'}")
+        click.echo(f"  Seeds:   {seeds}")
+        click.echo(f"  Budget:  {budget}")
+        click.echo()
+    else:
+        factory = _make_factory(backend, embedder)
+        name = backend.rsplit(":", 1)[-1]
+        click.echo(f"GRAFOMEM conformance suite — {name} (seeds={seeds}, budget={budget})\n")
 
-    click.echo(f"GRAFOMEM conformance suite — {name} (seeds={seeds}, budget={budget})\n")
     t0 = time.perf_counter()
 
     profile = run_conformance(

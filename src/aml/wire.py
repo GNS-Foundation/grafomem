@@ -305,56 +305,70 @@ def start_background(backend_factory: BackendFactory, host: str = "127.0.0.1"):
 # ---------------------------------------------------------------------------
 
 class GMPClient:
-    """Implements the MemoryBackend Protocol by proxying to a GMP HTTP server."""
+    """Implements the MemoryBackend Protocol by proxying to a GMP HTTP server.
 
-    __grafomem_interface__ = "0.1.1"
+    Supports optional Bearer token authentication for production servers.
+    Pass ``auth_token`` to authenticate all requests.
+    """
 
-    def __init__(self, base_url: str, store_id: str) -> None:
+    __grafomem_interface__ = "0.2.0"
+
+    def __init__(self, base_url: str, store_id: str, *,
+                 auth_token: str | None = None) -> None:
         self.base_url = base_url.rstrip("/")
         self.store_id = store_id
+        self._auth_token = auth_token
 
     @classmethod
-    def create(cls, base_url: str) -> "GMPClient":
+    def create(cls, base_url: str, *,
+               auth_token: str | None = None) -> "GMPClient":
         """Create a fresh store on the server and return a client bound to it."""
-        sid = _request(base_url.rstrip("/") + f"{API}/stores", "POST", {})["store_id"]
-        return cls(base_url, sid)
+        sid = _request(base_url.rstrip("/") + f"{API}/stores", "POST", {},
+                       auth_token=auth_token)["store_id"]
+        return cls(base_url, sid, auth_token=auth_token)
 
     def _url(self, op: str) -> str:
         return f"{self.base_url}{API}/stores/{self.store_id}/{op}"
 
+    def _req(self, url: str, method: str, body: dict | None = None) -> dict:
+        return _request(url, method, body, auth_token=self._auth_token)
+
     def capabilities(self) -> set[Capability]:
-        out = _request(self._url("capabilities"), "GET")
+        out = self._req(self._url("capabilities"), "GET")
         return {Capability(c) for c in out["capabilities"]}
 
     def write(self, content: str, options: WriteOptions):
-        return _request(self._url("write"), "POST",
-                        {"content": content, "options": enc_write_options(options)})["ref"]
+        return self._req(self._url("write"), "POST",
+                         {"content": content, "options": enc_write_options(options)})["ref"]
 
     def supersede(self, old_ref, content: str, options: WriteOptions):
-        return _request(self._url("supersede"), "POST",
-                        {"old_ref": old_ref, "content": content,
-                         "options": enc_write_options(options)})["ref"]
+        return self._req(self._url("supersede"), "POST",
+                         {"old_ref": old_ref, "content": content,
+                          "options": enc_write_options(options)})["ref"]
 
     def delete(self, ref) -> bool:
-        return bool(_request(self._url("delete"), "POST", {"ref": ref})["deleted"])
+        return bool(self._req(self._url("delete"), "POST", {"ref": ref})["deleted"])
 
     def retrieve(self, query: str, options: RetrieveOptions) -> list[Memory]:
-        out = _request(self._url("retrieve"), "POST",
-                       {"query": query, "options": enc_retrieve_options(options)})
+        out = self._req(self._url("retrieve"), "POST",
+                        {"query": query, "options": enc_retrieve_options(options)})
         return [dec_memory(m) for m in out["memories"]]
 
     def audit(self) -> Iterator[Memory]:
-        out = _request(self._url("audit"), "GET")
+        out = self._req(self._url("audit"), "GET")
         return iter([dec_memory(m) for m in out["memories"]])
 
     def flush(self) -> None:
-        _request(self._url("flush"), "POST", {})
+        self._req(self._url("flush"), "POST", {})
 
 
-def _request(url: str, method: str, body: dict | None = None) -> dict:
+def _request(url: str, method: str, body: dict | None = None, *,
+             auth_token: str | None = None) -> dict:
     data = json.dumps(body).encode("utf-8") if body is not None else None
-    req = urllib.request.Request(url, data=data, method=method,
-                                 headers={"Content-Type": "application/json"})
+    headers = {"Content-Type": "application/json"}
+    if auth_token:
+        headers["Authorization"] = f"Bearer {auth_token}"
+    req = urllib.request.Request(url, data=data, method=method, headers=headers)
     try:
         with urllib.request.urlopen(req) as resp:
             return json.loads(resp.read().decode("utf-8"))
