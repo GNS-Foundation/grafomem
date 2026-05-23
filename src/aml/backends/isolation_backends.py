@@ -79,8 +79,13 @@ class _ConcurrentStoreBase:
 
     # --- base contract -----------------------------------------------------
     def capabilities(self) -> set[Capability]:
-        return {Capability.CONCURRENCY_CONTROL, Capability.SUPERSESSION_CHAIN,
-                Capability.AUDIT, Capability.HARD_DELETE}
+        # CONCURRENCY_CONTROL only: these are W10-spectrum demonstrators. Their
+        # retrieve() is a minimal head-return (not a ranking store), so they do
+        # NOT pass W2/W6 — claiming SUPERSESSION_CHAIN/HARD_DELETE/AUDIT would be
+        # an over-declaration the conformance suite (rightly) flags. Concurrent
+        # supersede/delete are exercised through submit_concurrent, not the base
+        # retrieval contract.
+        return {Capability.CONCURRENCY_CONTROL}
 
     def write(self, content: str, options: WriteOptions) -> int:
         meta = dict(options.metadata)
