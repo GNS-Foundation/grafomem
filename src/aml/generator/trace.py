@@ -77,6 +77,7 @@ class Workload(StrEnum):
     W5 = "W5"  # Multi-Tenant Isolation
     W6 = "W6"  # Deletion & Leakage
     W7 = "W7"  # Conflict Detection
+    W9 = "W9"  # Cross-Session Deletion ("Right to Be Forgotten")
 
 
 class Difficulty(StrEnum):
