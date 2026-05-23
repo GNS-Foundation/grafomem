@@ -34,9 +34,9 @@ Clean-room research project. [grafomem.com](https://grafomem.com)
 
 | Layer | What it is | Where |
 |---|---|---|
-| **Benchmark** | 6 workloads, 13 findings, locked corpus (90 traces, 55,014 turns, 15,342 queries) | `src/aml/generator/`, `scripts/run_w*.py` |
+| **Benchmark** | 9 workloads (W1–W9), 18 findings; locked corpus 120 traces / 60,554 turns / 17,132 queries (v0.1.9) | `src/aml/generator/`, `scripts/run_w*.py` |
 | **Paper** | arXiv technical report | `docs/grafomem-paper.pdf` |
-| **Spec** | GMP v0.1 — protocol semantics (RFC 2119) | `docs/gmp-spec-v0.1.md` |
+| **Spec** | GMP v0.2 (draft) — protocol semantics (RFC 2119) | `docs/gmp-spec-v0.2.md` |
 | **Conformance** | executable §8: `supports X` ≝ passes the suite for X | `src/aml/eval/conformance.py` |
 | **Reference** | in-memory backend, self-certifying | `src/aml/backends/gmp_reference.py` |
 | **Wire** | HTTP + JSON binding; the client *is* a `MemoryBackend` | `src/aml/wire.py` |
@@ -46,6 +46,8 @@ Each layer certifies the one beside it. The reference backend runs the conforman
 suite **on itself**; the wire client runs the *same* suite **over a socket**; the
 SQLite store runs it **on a file**. The contract is transport- and
 implementation-independent by construction — not by assertion.
+
+**v0.2 in progress:** W7–W9 built (findings F14–F18); W7/W9 corpus-locked, W8 held out; W10 (operational concurrency) designed — §4.10, gmp-spec §10.
 
 ---
 
