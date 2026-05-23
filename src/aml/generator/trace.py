@@ -105,7 +105,7 @@ class TxnAnomaly(StrEnum):
     LOST_UPDATE = "lost_update"
     WRITE_SKEW = "write_skew"
     NON_REPEATABLE_READ = "non_repeatable_read"
-    PHANTOM = "phantom"
+    PHANTOM = "phantom"              # reserved; no v1 probe (same lattice cut as write_skew)
     # §10.4 durability probe, NOT an isolation anomaly: a committed delete that a
     # concurrent supersede revives. It belongs to no lattice level (permissible
     # nowhere) and is checked by aml.eval.concurrency.resurrects() via the group's

@@ -169,9 +169,12 @@ Spec = LostUpdateSpec | WriteSkewSpec | NonRepeatableReadSpec
 ALLOWED: dict[IsolationLevel, frozenset[TxnAnomaly]] = {
     IsolationLevel.READ_COMMITTED: frozenset({
         TxnAnomaly.NON_REPEATABLE_READ, TxnAnomaly.LOST_UPDATE,
-        TxnAnomaly.WRITE_SKEW, TxnAnomaly.PHANTOM,
+        TxnAnomaly.WRITE_SKEW, TxnAnomaly.PHANTOM,  # PHANTOM: no v1 probe (same cut as write_skew)
     }),
-    IsolationLevel.SNAPSHOT: frozenset({TxnAnomaly.WRITE_SKEW, TxnAnomaly.PHANTOM}),
+    IsolationLevel.SNAPSHOT: frozenset({
+        TxnAnomaly.WRITE_SKEW,
+        TxnAnomaly.PHANTOM,  # PHANTOM: no v1 probe; deferred — needs range-query infrastructure
+    }),
     IsolationLevel.SERIALIZABLE: frozenset(),
 }
 
