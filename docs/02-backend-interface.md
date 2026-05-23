@@ -323,9 +323,10 @@ How the eval harness adapts to each backend's declared capabilities.
 | **W3** Distractor Noise | — | None. |
 | **W4** Long-Horizon | — | None. |
 | **W5** Multi-Tenant Isolation | `MULTI_TENANT` | If absent: workload skipped (backend marked "single-tenant only"). |
-| **W6** Concurrent Updates | — | If `CONFLICT_DETECTION` absent: backend cannot achieve `conflict_flag` classification; defaults to observed behavior class. |
-| **W7** Forgetting Curve *(v0.2)* | — | TBD. |
-| **W8** Right to Be Forgotten *(v0.2)* | `HARD_DELETE`, `CROSS_SESSION_PROPAGATION` | If either absent: workload skipped. |
+| **W6** Deletion & Leakage | — | `delete()` dispatched only to `HARD_DELETE` backends; others no-op and leak (leaky baseline). Leakage via Check L (§8); over-deletion via survivor-probe recall. |
+| **W7** Conflict Detection *(deferred, v0.2)* | — | If `CONFLICT_DETECTION` absent: backend cannot reach `conflict_flag`; defaults to observed behavior class. |
+| **W8** Forgetting Curve *(deferred, v0.2)* | — | TBD. |
+| **W9** Cross-Session Deletion *(deferred, v0.2)* | `HARD_DELETE`, `CROSS_SESSION_PROPAGATION` | If either absent: workload skipped. |
 
 The deletion-leakage check (§8) and the cryptographic-provenance check (§8) are **always** run, regardless of workload, on backends that claim the relevant capability.
 

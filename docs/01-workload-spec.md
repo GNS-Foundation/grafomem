@@ -321,9 +321,51 @@ The same `(workload, seed, difficulty, options)` MUST produce the same Trace byt
 
 **RQs addressed:** RQ5 (provenance/privacy boundaries).
 
-### 4.6 W6 — Concurrent Updates
+### 4.6 W6 — Deletion & Leakage
 
-**Purpose:** Test consistency semantics when multiple paths update the same fact under temporal overlap.
+**Purpose:** Test the deletion half of the privacy primitive — when the agent is told to forget a fact, it must actually be gone, and *only* that fact. The boundary fails in two directions: **leakage** (a forgotten fact resurfaces — a privacy violation) and **over-deletion** (facts that were *not* deleted are dropped — a correctness violation). Paired with W5 (tenant isolation), this is the two-sided privacy boundary a protocol must enforce on the read path.
+
+**Procedure:** (reuses the W1 vocabulary, templates, oracle, and validators unchanged)
+1. Select `n_subjects` subjects from the controlled person pool. Give each subject `facts_per_subject` distinct-predicate facts, all sharing `valid_from = t0`, with trace-unique monotonic `sequence`.
+2. For each subject, designate the **first** fact as the one to delete and the rest as **survivors**.
+3. Emit turns in three phases:
+   a. **Introduce** every fact — survivors *and* to-be-deleted — as `user` turns (`introduces=[fact_id]`).
+   b. **Delete** one fact per subject, after all introductions, as a `user` turn (`content="(forget) …"`, `deletes=[fact_id]`).
+   c. **Probe** (order shuffled), one pair per subject:
+      - **deleted-probe** — `agent_query`, `requires=[]`, content = the deleted fact's question. Correct answer is empty; the deleted fact must not appear.
+      - **survivor-probe** — `agent_query`, `requires=[F_survivor]`, content = a surviving fact's question. The survivor must still be retrievable.
+4. Split turns into `n_sessions`; derive ground truth via the W1 oracle. Total queries = 2 × `n_subjects`.
+
+**Trace contents (W6-specific).** Unlike non-deletion workloads, where `Trace.facts` holds only the surviving set, **W6 carries the full introduced tape** — survivors *and* deleted facts — because the harness must replay every write, with subject/predicate metadata, *before* the delete turns fire. Without this, a delete-by-subject backend never observes the deleted fact's subject and its over-deletion cannot be caught. The surviving set is `Trace.facts` minus `GroundTruth.deleted_facts`.
+
+**Difficulty parameters:**
+
+| Difficulty | subjects | facts / subject | sessions | deletions |
+|---|---|---|---|---|
+| easy | 10 | 2 | 1 | 10 |
+| medium | 25 | 3 | 4 | 25 |
+| hard | 44 | 4 | 10 | 44 |
+
+One fact per subject is deleted (deletions = subjects), and every deleted subject keeps ≥ 1 survivor — so subject-level over-deletion is always detectable.
+
+**Eval mode — two-sided, on the read path:**
+- **Leakage** (privacy, false-positive). A query leaks if its retrieved set contains a fact deleted at or before the query's timestamp, scored against `GroundTruth.deleted_facts = {fact_id: deleted_at}`. This is operationalised as the always-on **Check L** (see `02-backend-interface.md` §8); it concentrates on the deleted-probes, whose correct answer is empty.
+- **Over-deletion** (correctness, false-negative). Recall (M1) over the survivor-probes. A backend that purges more than asked — e.g. by subject — scores below 1.0 here.
+- A backend **passes only if** leakage ≤ ε *and* survivor recall ≥ 1 − ε. The directions are independent: exact-fact deletion passes both; a tombstone the read path ignores leaks; delete-by-subject over-deletes. The harness dispatches `delete(ref)` only to backends declaring `HARD_DELETE`; others no-op, so the content persists and leaks — the leaky baseline.
+
+**Oracle/validator note.** The oracle rejects any query that *requires* a deleted fact, so deleted-probes carry `requires=[]` and an empty recall target (V4 satisfied — nothing required). Leakage is therefore not a trace-validator concern; it is scored at eval time against the deletion ledger.
+
+**RQs addressed:** RQ5 (privacy boundaries — the deletion half; paired with W5).
+
+---
+
+> **Workloads §4.7–§4.9 are deferred (v0.2+).** They are specified but **not** part of the locked v0.1 corpus, which is W1–W6. Numbering continues above the built suite so it never collides with the locked traces. Each is the realised home of a capability the interface currently reserves: §4.7 ↔ `CONFLICT_DETECTION`, §4.9 ↔ `CROSS_SESSION_PROPAGATION`. They become benchmarkable once each has a generator.
+
+### 4.7 W7 — Conflict Detection *(deferred, v0.2)* — formerly "Concurrent Updates"
+
+**Status:** Specified; no generator, not in the corpus. Maps to the reserved `CONFLICT_DETECTION` capability.
+
+**Purpose:** Test consistency semantics when multiple paths update the same fact under temporal overlap. ("Concurrency" here is **logical** — overlapping validity windows — not parallel execution; it exercises conflict *resolution*, not isolation-level concurrency control. See the note after §4.9.)
 
 **Procedure:**
 1. Generate base facts as in W1.
@@ -331,7 +373,7 @@ The same `(workload, seed, difficulty, options)` MUST produce the same Trace byt
 3. All facts retain microsecond-distinct `valid_from` and trace-unique `sequence`. "Concurrency" is encoded in **window overlap** (`valid_until` of write A is later than `valid_from` of write B, or vice versa), NOT in shared timestamps.
 4. Queries are placed after the conflict window.
 
-**Eval mode — behavior classification, not binary correctness:** Backends without consistency semantics fail predictably. W6 classifies each backend's behavior into one of:
+**Eval mode — behavior classification, not binary correctness.** Backends without consistency semantics fail predictably. Each backend's behavior classifies into one of:
 
 - `last_write_wins` — final state matches the chronologically later write
 - `first_write_wins` — final state matches the earlier write
@@ -340,9 +382,31 @@ The same `(workload, seed, difficulty, options)` MUST produce the same Trace byt
 - `silent_data_loss` — neither value is retrievable
 - `non_deterministic` — varies across seeds
 
-This is the only workload that does not produce a scalar correctness score. Its finding is a capability map.
+This is the only planned workload that does not produce a scalar correctness score; its finding is a capability map. A backend without `CONFLICT_DETECTION` cannot reach the `conflict_flag` class and defaults to its observed behavior class.
 
 **RQs addressed:** RQ2 (conflict resolution at concurrency), partial RQ6.
+
+### 4.8 W8 — Forgetting Curve *(deferred, v0.2)* — TBD
+
+**Status:** Procedure TBD; no generator, not in the corpus. A retention-axis workload, sibling to W4; introduces no new capability flag.
+
+**Purpose:** Test whether a store that *decays or compacts* old facts — rather than dropping them at a hard bound — holds recall over distance at sub-linear footprint. Where W4 measures the cliff of a bounded store that **evicts**, W8 would measure the curve of one that **summarises or merges**, against its declared retention policy.
+
+**Procedure:** TBD. (Candidate: extend W4's long-horizon dependency chains, vary the store's compaction/decay policy, and trace recall as a joint function of fact age and footprint.)
+
+### 4.9 W9 — Cross-Session Deletion *(deferred, v0.2)* — "Right to Be Forgotten"
+
+**Status:** No generator, not in the corpus. The cross-session extension of W6; home of the reserved `CROSS_SESSION_PROPAGATION` capability.
+
+**Required capabilities:** `HARD_DELETE`, `CROSS_SESSION_PROPAGATION`.
+
+**Purpose:** Test that a deletion **propagates** — a fact forgotten in one session must not resurface through any other session or replica of the same backend instance. Where W6 verifies single-store deletion (forget here, gone here), W9 verifies that "forget" is global: delete in session A, probe in session B, and the fact must be gone there too. A backend lacking `CROSS_SESSION_PROPAGATION` is skipped — it cannot make the guarantee.
+
+**Procedure:** TBD. (Candidate: W6's introduce/delete structure, but with each deletion issued in a different session from both the introduction and the matching deleted-probe.)
+
+---
+
+> **Not yet specified — true concurrency control.** None of W7–W9 covers *operational* concurrency: parallel readers and writers contending for the same fact under a declared isolation level (serializable, snapshot, read-committed). W7's "concurrency" is logical window-overlap (conflict resolution); isolation-level control is a distinct axis with no workload and no reserved capability — the genuinely net-new item for a future design pass.
 
 ---
 

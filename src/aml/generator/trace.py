@@ -75,7 +75,7 @@ class Workload(StrEnum):
     W3 = "W3"  # Distractor Noise
     W4 = "W4"  # Long-Horizon Dependencies
     W5 = "W5"  # Multi-Tenant Isolation
-    W6 = "W6"  # Concurrent Updates
+    W6 = "W6"  # Deletion & Leakage
 
 
 class Difficulty(StrEnum):
