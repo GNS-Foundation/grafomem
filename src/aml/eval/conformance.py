@@ -63,10 +63,12 @@ from aml.backends.interface import (
 from aml.provenance import fact_id_for_content
 from aml.eval.harness import run_trace
 from aml.eval.metrics import _targets_by_turn, bootstrap_paired_ci
-from aml.generator.trace import Difficulty
+from aml.generator.trace import Difficulty, TxnAnomaly
 from aml.generator.workloads.w2 import generate_w2
 from aml.generator.workloads.w5 import generate_w5
 from aml.generator.workloads.w6 import generate_w6
+from aml.generator.workloads.w10 import generate_w10
+from aml.eval.concurrency_runner import run_w10
 
 EPS = 5e-3          # leakage gate: exact, embedder-invariant (safety direction)
 REC_FLOOR = 0.5     # over-restriction gate: detects collapse, not embedder noise
@@ -330,6 +332,25 @@ def _measure_w5(factory, seeds, budget):
     return leak_ps, rec_ps
 
 
+def _measure_w10(factory, seeds, budget):
+    """CONCURRENCY_CONTROL two-sided (generalizes run_w10.measure to one store):
+    the isolation DOWNGRADE rate over the lattice probes (the over-claim
+    direction — achieved level weaker than declared) and the §10.4 RESURRECTION
+    rate over the durable-delete probes. Both should be 0 for a conformant store.
+    `budget` is unused — W10 stores are synthetic (no retrieval/embedder)."""
+    dg_ps, res_ps = [], []
+    for s in seeds:
+        tr = generate_w10(seed=s, difficulty=DEFAULT_DIFF)
+        verdicts = run_w10(factory(), tr)
+        lattice = [v for v in verdicts if v.anomaly is not TxnAnomaly.RESURRECTION]
+        resur = [v for v in verdicts if v.anomaly is TxnAnomaly.RESURRECTION]
+        dg_ps.append(mean([0.0 if v.status == "OK" else 1.0 for v in lattice])
+                     if lattice else float("nan"))
+        res_ps.append(mean([0.0 if v.status == "OK" else 1.0 for v in resur])
+                      if resur else float("nan"))
+    return dg_ps, res_ps
+
+
 # ---------------------------------------------------------------------------
 # The suite
 # ---------------------------------------------------------------------------
@@ -379,6 +400,23 @@ def run_conformance(
         results.append(CapabilityResult(
             Capability.MULTI_TENANT, "W5",
             [_leak_dir("cross-tenant leakage", leak), _recall_dir("in-tenant recall", rec, floor=REC_FLOOR)]))
+
+    if Capability.CONCURRENCY_CONTROL in declared:
+        # The suite verifies behavior against the store's CLAIM, so it needs the
+        # store's declared isolation policy. A store that declares the capability
+        # but does not expose `declared_policy` cannot be checked -> non-conformant.
+        if getattr(probe, "declared_policy", None) is None:
+            results.append(CapabilityResult(
+                Capability.CONCURRENCY_CONTROL, "W10",
+                [DirectionResult("declared policy exposed",
+                                 "store exposes declared_policy",
+                                 0.0, (0.0, 0.0), False)]))
+        else:
+            dg, res = _measure_w10(store_factory, seeds, budget)
+            results.append(CapabilityResult(
+                Capability.CONCURRENCY_CONTROL, "W10",
+                [_leak_dir("isolation downgrade (over-claim)", dg),
+                 _leak_dir("delete resurrection (§10.4)", res)]))
 
     if Capability.PROVENANCE in declared:
         results.append(_test_provenance(store_factory, seeds, budget))
@@ -447,6 +485,10 @@ if __name__ == "__main__":
     from aml.backends.tenant_backends import (
         LeakyTenant, OverIsolating, TenantScoped,
     )
+    from aml.backends.isolation_backends import (
+        NoIsolationStore, ReadCommittedStore, ResurrectingStore,
+        SerializableStore, SnapshotStore,
+    )
 
     print("GRAFOMEM conformance suite — GMP v0.1 §8 (STUB embedder)\n"
           "supported = passes the suite, NOT declares the flag.")
@@ -462,6 +504,11 @@ if __name__ == "__main__":
         ("tenant_scoped",                     lambda: TenantScoped(embed_fn=emb)),
         ("leaky_tenant (claims MULTI_TENANT)", lambda: LeakyTenant(embed_fn=emb)),
         ("over_isolating",                    lambda: OverIsolating(embed_fn=emb)),
+        ("serializable_store",                       SerializableStore),
+        ("snapshot_store",                           SnapshotStore),
+        ("read_committed_store",                     ReadCommittedStore),
+        ("no_isolation_store (claims SERIALIZABLE)", NoIsolationStore),
+        ("resurrecting_store (claims SERIALIZABLE)", ResurrectingStore),
     ]
     profiles = [run_conformance(mk, name=nm) for nm, mk in stores]
     for p in profiles:
@@ -472,7 +519,16 @@ if __name__ == "__main__":
     violators = {p.store.split()[0] for p in profiles if p.violations}
     assert "soft_delete" in violators, "soft_delete should be a HARD_DELETE violation"
     assert "leaky_tenant" in violators, "leaky_tenant should be a MULTI_TENANT violation"
+    assert "no_isolation_store" in violators, \
+        "no_isolation should be a CONCURRENCY_CONTROL over-claim violation"
+    assert "resurrecting_store" in violators, \
+        "resurrecting should be a §10.4 durability violation"
+    assert "serializable_store" not in violators, \
+        "serializable_store honors its claim and should PASS CONCURRENCY_CONTROL"
     print("\n✓ Claim != behavior is caught: soft_delete and leaky_tenant declare "
           "the\n  safety flag, pass the type contract, and are flagged VIOLATIONS.")
+    print("✓ Same for concurrency: no_isolation_store (claims serializable, delivers\n"
+          "  read_committed) and resurrecting_store (§10.4) are CONCURRENCY_CONTROL\n"
+          "  VIOLATIONS; the three honest stores pass at their declared level.")
     print("\nConformance suite green. This is the executable meaning of "
           "\"supports X\" in GMP §8.")
