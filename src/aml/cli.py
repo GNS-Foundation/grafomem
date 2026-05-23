@@ -248,12 +248,35 @@ def run(backend, embedder, workload, seeds, difficulty, budget, output):
             else:
                 agg[metric] = {"mean": float("inf"), "std": 0.0, "values": vals}
 
+        # M4 latency: merge all seeds' latency data
+        from collections import defaultdict
+        all_lats = defaultdict(list)
+        for s in seed_scores:
+            m4 = s.get("m4", {})
+            for op, stats in m4.items():
+                all_lats[op].append(stats)
+        if all_lats:
+            agg["m4"] = {
+                op: {
+                    "p50_mean": mean(d["p50"] for d in dlist),
+                    "p95_mean": mean(d["p95"] for d in dlist),
+                    "p99_mean": mean(d["p99"] for d in dlist),
+                }
+                for op, dlist in all_lats.items()
+            }
+
         click.echo(f"\n  Aggregate ({seeds} seeds):")
         click.echo(f"    M1 = {agg['m1']['mean']:.3f} ± {agg['m1']['std']:.3f}")
         click.echo(f"    M2 = {agg['m2']['mean']:.3f} ± {agg['m2']['std']:.3f}")
         m3_val = agg["m3"]["mean"]
         m3_str = f"{m3_val:.1f}" if m3_val != float("inf") else "inf"
         click.echo(f"    M3 = {m3_str} ± {agg['m3']['std']:.1f}")
+        if "m4" in agg:
+            for op in ("write", "retrieve", "supersede", "delete"):
+                if op in agg["m4"]:
+                    d = agg["m4"][op]
+                    click.echo(f"    M4.{op:10s}  P50={d['p50_mean']:.2f}ms  "
+                               f"P95={d['p95_mean']:.2f}ms  P99={d['p99_mean']:.2f}ms")
         all_results[wname] = agg
 
     if output:

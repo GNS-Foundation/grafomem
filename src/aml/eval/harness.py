@@ -1,5 +1,5 @@
 """
-GRAFOMEM eval harness — trace runner + M1 Recall@K (03-eval-metrics.md §4.1).
+GRAFOMEM eval harness — trace runner + per-query scoring (03-eval-metrics.md).
 
 The runner replays a trace against any MemoryBackend in canonical
 (timestamp, session_index, turn_index) order:
@@ -12,15 +12,15 @@ The runner replays a trace against any MemoryBackend in canonical
 Retrieved Memory.ref values are mapped back to fact_ids via the write-time
 ledger (refs are opaque join keys, B5), giving per-query retrieved fact sets.
 
-M1 is then the mean per-query recall against GroundTruth.recall_targets.
-
-Supersession dispatch is intentionally not handled yet — W2 will define how the
-turn stream encodes supersession, and the runner gains a branch then. W1 has
-neither deletes nor supersessions, so this runner scores it end to end today.
+M1–M3 are computed from RunResult by metrics.py. M4 (latency) is recorded here
+via per-operation perf_counter instrumentation; M5–M7 are computed in metrics.py
+from RunResult + trace metadata.
 """
 
 from __future__ import annotations
 
+import time
+from collections import defaultdict
 from dataclasses import dataclass, field
 
 from aml.backends.interface import (
@@ -44,6 +44,8 @@ class RunResult:
     per_query: list[QueryRun] = field(default_factory=list)
     n_writes: int = 0
     n_na: int = 0                  # queries excluded (capability not claimed, E1)
+    # M4 latency: op_type -> list of durations (seconds)
+    op_latencies: dict[str, list[float]] = field(default_factory=lambda: defaultdict(list))
 
 
 def _ordered_turns(trace: Trace):
@@ -94,12 +96,13 @@ def run_trace(backend, trace: Trace, *, budget_tokens: int) -> RunResult:
             )
             old_fid = predecessor_of.get(fid)
             if has_super and old_fid is not None and old_fid in fid_to_ref:
+                t0 = time.perf_counter()
                 ref = backend.supersede(fid_to_ref[old_fid], turn.content, opts)
+                result.op_latencies['supersede'].append(time.perf_counter() - t0)
             else:
-                # No supersession capability (or no predecessor): a plain write.
-                # For drift workloads this means the backend accumulates stale
-                # versions alongside current ones — the failure under test.
+                t0 = time.perf_counter()
                 ref = backend.write(turn.content, opts)
+                result.op_latencies['write'].append(time.perf_counter() - t0)
             ref_to_fids[ref] = ref_to_fids.get(ref, set()) | {fid}
             fid_to_ref[fid] = ref
             result.n_writes += 1
@@ -108,7 +111,9 @@ def run_trace(backend, trace: Trace, *, budget_tokens: int) -> RunResult:
             for fid in turn.deletes:
                 r = fid_to_ref.get(fid)
                 if r is not None:
+                    t0 = time.perf_counter()
                     backend.delete(r)
+                    result.op_latencies['delete'].append(time.perf_counter() - t0)
             # without HARD_DELETE: no-op — content persists (Check L catches it)
 
         if turn.role == TurnRole.AGENT_QUERY:
@@ -117,7 +122,9 @@ def run_trace(backend, trace: Trace, *, budget_tokens: int) -> RunResult:
             if turn.as_of is not None and not has_bitemporal:
                 result.n_na += 1
                 continue
+            t0 = time.perf_counter()
             backend.flush()
+            result.op_latencies['flush'].append(time.perf_counter() - t0)
             opts = RetrieveOptions(
                 budget_tokens=budget_tokens,
                 as_of=turn.as_of if has_bitemporal else None,
@@ -125,7 +132,9 @@ def run_trace(backend, trace: Trace, *, budget_tokens: int) -> RunResult:
                 # backends scope to it, others see None (no change to W1-W4/W6).
                 tenant_id=(trace.sessions[_si].tenant_id if has_tenant else None),
             )
+            t0 = time.perf_counter()
             mems = backend.retrieve(turn.content, opts)
+            result.op_latencies['retrieve'].append(time.perf_counter() - t0)
             retrieved: set[bytes] = set()
             for m in mems:
                 retrieved |= ref_to_fids.get(m.ref, set())

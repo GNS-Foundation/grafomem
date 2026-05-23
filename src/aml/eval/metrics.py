@@ -1,5 +1,5 @@
 """
-GRAFOMEM evaluation metrics — M1, M2, M3 + paired bootstrap CI (doc 03 §4).
+GRAFOMEM evaluation metrics — M1–M7 + paired bootstrap CI (doc 03 §4).
 
 All three are computed from a RunResult (per-query retrieved fact sets + return
 counts + returned content size) against a trace's GroundTruth.recall_targets.
@@ -66,13 +66,70 @@ def m3_tokens_per_fact(run: RunResult, trace: Trace) -> float:
     return (total_size / total_tp) if total_tp > 0 else float("inf")
 
 
-def score_run(run: RunResult, trace: Trace) -> dict[str, float]:
-    """All three primary metrics for one run."""
-    return {
+def m4_latency(run: RunResult) -> dict[str, dict[str, float]]:
+    """M4 — per-operation latency percentiles (P50/P95/P99), in milliseconds.
+    Returns a dict keyed by operation type (write, supersede, delete, retrieve,
+    flush). Empty operations are omitted."""
+    import math
+    result = {}
+    for op, durations in run.op_latencies.items():
+        if not durations:
+            continue
+        s = sorted(durations)
+        n = len(s)
+        result[op] = {
+            "p50": s[n // 2] * 1000,
+            "p95": s[min(math.ceil(n * 0.95) - 1, n - 1)] * 1000,
+            "p99": s[min(math.ceil(n * 0.99) - 1, n - 1)] * 1000,
+            "count": n,
+        }
+    return result
+
+
+def m5_storage(backend) -> dict[str, float] | None:
+    """M5 — storage footprint. Returns bytes_per_fact and total_bytes if the
+    backend implements storage_bytes(); otherwise None."""
+    fn = getattr(backend, "storage_bytes", None)
+    if fn is None:
+        return None
+    total = fn()
+    if total is None:
+        return None
+    # n_facts is not available here; caller supplies it.
+    return {"total_bytes": total}
+
+
+def m7_tenant_isolation(run: RunResult, trace: Trace) -> float | None:
+    """M7 — tenant isolation score for W5 trap queries.
+    Returns 1 - (leaked queries / trap queries), or None if no trap queries.
+    A trap query is one whose requires set is empty (the answer doesn’t exist
+    in this tenant). A leak is when retrieved is non-empty for such a query."""
+    tgt = _targets_by_turn(trace)
+    traps = 0
+    leaks = 0
+    for qr in run.per_query:
+        targets = tgt.get(qr.turn_id, set())
+        if not targets:  # trap query: no valid facts for this tenant
+            traps += 1
+            if qr.retrieved:  # backend returned something -> leak
+                leaks += 1
+    if traps == 0:
+        return None
+    return 1.0 - (leaks / traps)
+
+
+def score_run(run: RunResult, trace: Trace) -> dict:
+    """All available metrics for one run. M1–M3 always; M4 if latency data exists;
+    M5/M6/M7 computed externally (not from a single RunResult)."""
+    scores: dict = {
         "m1": m1_recall(run, trace),
         "m2": m2_precision(run, trace),
         "m3": m3_tokens_per_fact(run, trace),
     }
+    lat = m4_latency(run)
+    if lat:
+        scores["m4"] = lat
+    return scores
 
 
 def bootstrap_paired_ci(
