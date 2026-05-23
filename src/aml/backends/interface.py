@@ -291,7 +291,17 @@ class ConcurrentMemoryBackend(MemoryBackend, Protocol):
     does not implement submit_concurrent, and the W10 suite skips it (§10) —
     exactly as a non-MULTI_TENANT store is skipped under W5. The capability flag
     is the operational gate; this Protocol is its type. Such backends declare
-    __grafomem_interface__ = INTERFACE_VERSION_V2."""
+    __grafomem_interface__ = INTERFACE_VERSION_V2.
+
+    `declared_policy` is the store's CLAIMED isolation policy — level, conflict
+    rule, and coverage guarantee. It self-describes the concurrency claim, the
+    parallel of capabilities() for the capability set, so the runner and the W10
+    conformance suite can compare achieved behavior against the claim and flag
+    over-claims (§10.5). The runner reads it and passes it as `policy` to
+    submit_concurrent; the store then realizes some execution admissible under
+    it."""
+
+    declared_policy: IsolationPolicy
 
     def submit_concurrent(self, group: ConcurrentGroup,
                           policy: IsolationPolicy) -> ConcurrentResult:
@@ -467,6 +477,10 @@ if __name__ == "__main__":
         """AUDIT + CONCURRENCY_CONTROL. Trivial submit_concurrent (no real
         isolation — that is the backend spectrum, not the contract). Proves the
         extension Protocol is implementable and the gate discriminates."""
+        declared_policy = IsolationPolicy(
+            level=IsolationLevel.READ_COMMITTED,
+            conflict_rule=ConflictRule.LAST_COMMITTER_WINS,
+            coverage_guarantee=frozenset())
         def capabilities(self) -> set[Capability]:
             return {Capability.AUDIT, Capability.CONCURRENCY_CONTROL}
         def submit_concurrent(self, group: ConcurrentGroup,
@@ -478,6 +492,7 @@ if __name__ == "__main__":
     assert isinstance(cc, ConcurrentMemoryBackend)      # and the extension
     assert not isinstance(b, ConcurrentMemoryBackend)   # 7-method backend is not
     assert Capability.CONCURRENCY_CONTROL in cc.capabilities()
+    assert isinstance(cc.declared_policy, IsolationPolicy)   # self-describes its claim
     pol = IsolationPolicy(
         level=IsolationLevel.SNAPSHOT,
         conflict_rule=ConflictRule.FIRST_COMMITTER_WINS,
