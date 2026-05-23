@@ -109,6 +109,26 @@ def _read_corpus_hash() -> str:
 
 
 # ============================================================================
+# grafomem check
+# ============================================================================
+
+@main.command()
+@click.option("--backend", "-b", required=True,
+              help="Backend class as MODULE:CLASS")
+def check(backend):
+    """Quick pre-flight validation of a backend adapter.
+
+    Checks Protocol compliance, method signatures, and basic round-trip
+    BEFORE running the full conformance suite. Fails fast with actionable errors.
+    """
+    from aml.adapter_check import print_check
+    cls = _load_backend_class(backend)
+    ok = print_check(cls)
+    if not ok:
+        sys.exit(1)
+
+
+# ============================================================================
 # grafomem conformance
 # ============================================================================
 
