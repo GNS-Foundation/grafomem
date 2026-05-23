@@ -72,15 +72,8 @@ def _resolve_embedder(name: str):
         from aml.backends.vector_only import _stub_embedder
         return _stub_embedder()
     elif name == "bge":
-        try:
-            from sentence_transformers import SentenceTransformer
-        except ImportError:
-            raise click.UsageError(
-                "BGE embedder requires sentence-transformers. "
-                "Install with: pip install grafomem[backends]"
-            )
-        model = SentenceTransformer("BAAI/bge-small-en-v1.5")
-        return lambda texts: model.encode(texts, normalize_embeddings=True).tolist()
+        from aml.backends.vector_only import _default_embedder
+        return _default_embedder()
     else:
         raise click.BadParameter(f"Unknown embedder: {name!r}. Use 'stub' or 'bge'.")
 
