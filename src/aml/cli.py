@@ -527,7 +527,15 @@ def serve(host, port, backend, db, embedder, mcp, mcp_port, auth, batch, batch_s
                 kwargs["embed_fn"] = _default_embedder()
             else:
                 from aml.backends.vector_only import _stub_embedder
-                kwargs["embed_fn"] = _stub_embedder()
+                _batch_fn = _stub_embedder()
+                # SQLiteGMPBackend calls embed_fn(string), stub expects list[str].
+                # Wrap to handle both calling conventions.
+                def _single_str_stub(text):
+                    import numpy as np
+                    if isinstance(text, str):
+                        return _batch_fn([text])[0]
+                    return _batch_fn(text)
+                kwargs["embed_fn"] = _single_str_stub
         if "db_path" in sig.parameters:
             kwargs["db_path"] = db
         return cls(**kwargs)
