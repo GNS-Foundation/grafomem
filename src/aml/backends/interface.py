@@ -8,7 +8,9 @@ types, the exception classes, and the canonical Ed25519 provenance verifier.
 Design anchors (doc 02 §2):
   B1  capabilities are declared, not inferred — the harness adapts to the
       declaration and never penalizes honest omissions.
-  B3  the interface is minimal but sufficient — seven methods, no more.
+  B3  the interface is minimal but sufficient — seven methods in the v0.1
+      core. v0.2 adds an eighth, submit_concurrent, gated by CONCURRENCY_CONTROL
+      on the ConcurrentMemoryBackend extension (§10); the v0.1 core is unchanged.
   B4  hard delete is honest deletion — a deleted ref is unrecoverable via any
       surface; a soft-delete shadow disqualifies the HARD_DELETE claim.
   B5  MemoryRef is opaque to the harness — refs are pass-through tokens whose
@@ -28,8 +30,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
 from typing import Any, Protocol, TypeVar, runtime_checkable
+from uuid import UUID
 
 INTERFACE_VERSION = "0.1.1"
+INTERFACE_VERSION_V2 = "0.2.0"  # backends implementing the §10 concurrency extension
 
 
 # ============================================================================
@@ -46,6 +50,7 @@ class Capability(StrEnum):
     PROVENANCE = "provenance"
     CRYPTOGRAPHIC_PROVENANCE = "cryptographic_provenance"
     AUDIT = "audit"
+    CONCURRENCY_CONTROL = "concurrency_control"  # v0.2; gates submit_concurrent (§10)
 
 
 # ============================================================================
@@ -105,6 +110,108 @@ class RetrieveOptions:
     as_of: datetime | None = None           # honored if BI_TEMPORAL; default = now
     tenant_id: str | None = None            # honored if MULTI_TENANT
     top_k: int | None = None                # non-contractual hint
+
+
+# ============================================================================
+# Concurrency types (§10) — v0.2, gated by CONCURRENCY_CONTROL
+# ============================================================================
+
+# A caller-assigned transaction correlation key — a UUID carried through from the
+# trace's Transaction.txn_id, or a str for hand-built groups (tests / conformance
+# probes). Opaque to the store, which echoes it back unchanged in
+# ConcurrentResult.committed/aborted; it is NOT a store-generated ref (cf.
+# MemoryRef / B5 — that one the store owns; this one the runner owns).
+TxnId = str | UUID
+
+
+class IsolationLevel(StrEnum):
+    READ_COMMITTED = "read_committed"   # observable floor under immediate-commit (§10.2)
+    SNAPSHOT = "snapshot"
+    SERIALIZABLE = "serializable"
+
+
+class ConflictRule(StrEnum):
+    FIRST_COMMITTER_WINS = "first_committer_wins"
+    LAST_COMMITTER_WINS = "last_committer_wins"
+    ABORT_BOTH = "abort_both"
+    MERGE = "merge"
+
+
+@dataclass(slots=True)
+class IsolationPolicy:
+    """Declared by a CONCURRENCY_CONTROL store (§10.1). `level` and `conflict_rule`
+    fix the permissible-outcome set; `conflict_rule` MUST resolve both write-write
+    and write-delete conflicts (§10.1). `coverage_guarantee` is the agent-readable
+    set of anomaly names the store claims to exclude (§10.5; names mirror
+    trace.TxnAnomaly values), against which the suite reports claimed-vs-achieved."""
+    level: IsolationLevel
+    conflict_rule: ConflictRule
+    coverage_guarantee: frozenset[str] = frozenset()
+
+
+class OpKind(StrEnum):
+    WRITE = "write"
+    SUPERSEDE = "supersede"
+    DELETE = "delete"
+    READ = "read"
+
+
+@dataclass(slots=True)
+class TxnOp:
+    """One operation inside a submitted transaction. `content`+`write_options`
+    carry a WRITE/SUPERSEDE payload; `target` is the old ref for SUPERSEDE/DELETE;
+    `query`+`retrieve_options` a READ (used to expose non-repeatable reads)."""
+    kind: OpKind
+    content: str | None = None
+    target: Any | None = None
+    query: str | None = None
+    write_options: WriteOptions | None = None
+    retrieve_options: RetrieveOptions | None = None
+
+
+@dataclass(slots=True)
+class SubmittedTxn:
+    """A transaction in a concurrent group: an ordered op list plus its
+    happens-before predecessors. Transactions incomparable in the DAG are
+    concurrent (§4.10)."""
+    txn_id: TxnId
+    ops: list[TxnOp] = field(default_factory=list)
+    depends_on: list[TxnId] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class ConcurrentGroup:
+    """A contended-key group submitted to a store under one IsolationPolicy.
+    `subject`/`predicate` anchor the primary contended key; individual ops may
+    touch a related key (e.g. the second fact of a write-skew invariant).
+
+    Distinct from trace.ConcurrencyGroup (note the near-identical name): that is
+    the trace-level *spec* structure and carries the planted `anomaly`; this is
+    the backend-facing *submission* and does not. The W10 runner translates one
+    into the other, assembling each transaction's ops from the turns sharing its
+    txn_id."""
+    subject: str
+    predicate: str
+    transactions: list[SubmittedTxn] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class ConcurrentResult:
+    """What a store committed for a submitted group (§10.6). The store applies its
+    own isolation and reports the outcome; the runner/oracle judges it against the
+    permissible-finals set — the store never grades itself.
+
+      final_state  every live memory after the group, across all touched keys,
+                   carrying superseded_by (lets the oracle check the supersession
+                   chain / lost-update, §10.2).
+      reads        per reader transaction, its observed read results in order
+                   (lets the oracle check non-repeatable read).
+      committed /  conflict resolution under conflict_rule (which writer won; who
+      aborted      aborted under abort_both / first-committer-wins)."""
+    final_state: list[Memory] = field(default_factory=list)
+    reads: dict[TxnId, list[list[Memory]]] = field(default_factory=dict)
+    committed: list[TxnId] = field(default_factory=list)
+    aborted: list[TxnId] = field(default_factory=list)
 
 
 # ============================================================================
@@ -170,6 +277,28 @@ class MemoryBackend(Protocol):
     def flush(self) -> None:
         """Block until preceding mutations are durable + visible. Always
         required; no-op for synchronous in-memory backends (§6.7)."""
+        ...
+
+
+# ============================================================================
+# CONCURRENCY_CONTROL extension (§10) — the eighth method, gated
+# ============================================================================
+
+@runtime_checkable
+class ConcurrentMemoryBackend(MemoryBackend, Protocol):
+    """A store claiming CONCURRENCY_CONTROL implements this extension of the
+    seven-method core (B3 unchanged). A store that does NOT claim the capability
+    does not implement submit_concurrent, and the W10 suite skips it (§10) —
+    exactly as a non-MULTI_TENANT store is skipped under W5. The capability flag
+    is the operational gate; this Protocol is its type. Such backends declare
+    __grafomem_interface__ = INTERFACE_VERSION_V2."""
+
+    def submit_concurrent(self, group: ConcurrentGroup,
+                          policy: IsolationPolicy) -> ConcurrentResult:
+        """Execute one concurrent group under the declared policy and return the
+        committed outcome (§10.6). No real threads — the store realizes some
+        admissible serialization deterministically; the runner/oracle checks
+        membership in the permissible set. Requires CONCURRENCY_CONTROL."""
         ...
 
 
@@ -285,10 +414,11 @@ if __name__ == "__main__":
     assert isinstance(b, MemoryBackend), "trivial backend does not satisfy Protocol"
     print("✓ Implements MemoryBackend Protocol  (runtime_checkable isinstance)")
 
-    # --- Test 2: 9 independent capability flags ---------------------------
-    assert len(set(Capability)) == 9, f"expected 9 flags, got {len(set(Capability))}"
+    # --- Test 2: 10 independent capability flags (v0.2: +CONCURRENCY_CONTROL)
+    assert len(set(Capability)) == 10, f"expected 10 flags, got {len(set(Capability))}"
     assert Capability("audit") is Capability.AUDIT  # StrEnum value round-trip
-    print("✓ Capability enum                    (9 flags, StrEnum values stable)")
+    assert Capability("concurrency_control") is Capability.CONCURRENCY_CONTROL
+    print("✓ Capability enum                    (10 flags, StrEnum values stable)")
 
     # --- Test 3: write + retrieve round-trips content ---------------------
     r1 = b.write("user lives in Rome", WriteOptions())
@@ -331,6 +461,42 @@ if __name__ == "__main__":
                                      written_at=datetime.now(tz=timezone.utc)),
                              b"\x00" * 16) is False
     print("✓ verify_provenance returns False    (no signature -> Check P fails)")
+
+    # --- Test 8: CONCURRENCY_CONTROL extension Protocol (v0.2, §10) --------
+    class _ConcurrentToy(_Trivial):
+        """AUDIT + CONCURRENCY_CONTROL. Trivial submit_concurrent (no real
+        isolation — that is the backend spectrum, not the contract). Proves the
+        extension Protocol is implementable and the gate discriminates."""
+        def capabilities(self) -> set[Capability]:
+            return {Capability.AUDIT, Capability.CONCURRENCY_CONTROL}
+        def submit_concurrent(self, group: ConcurrentGroup,
+                              policy: IsolationPolicy) -> ConcurrentResult:
+            return ConcurrentResult(committed=[t.txn_id for t in group.transactions])
+
+    cc = _ConcurrentToy()
+    assert isinstance(cc, MemoryBackend)                # base contract intact
+    assert isinstance(cc, ConcurrentMemoryBackend)      # and the extension
+    assert not isinstance(b, ConcurrentMemoryBackend)   # 7-method backend is not
+    assert Capability.CONCURRENCY_CONTROL in cc.capabilities()
+    pol = IsolationPolicy(
+        level=IsolationLevel.SNAPSHOT,
+        conflict_rule=ConflictRule.FIRST_COMMITTER_WINS,
+        coverage_guarantee=frozenset({"non_repeatable_read", "lost_update"}),
+    )
+    grp = ConcurrentGroup(
+        subject="user_9", predicate="prefers",
+        transactions=[
+            SubmittedTxn(txn_id="T1", ops=[TxnOp(OpKind.WRITE, content="tea",
+                                                 write_options=WriteOptions())]),
+            SubmittedTxn(txn_id="T2", ops=[TxnOp(OpKind.WRITE, content="coffee",
+                                                 write_options=WriteOptions())],
+                         depends_on=["T1"]),
+        ],
+    )
+    res = cc.submit_concurrent(grp, pol)
+    assert isinstance(res, ConcurrentResult) and res.committed == ["T1", "T2"]
+    print("✓ CONCURRENCY_CONTROL extension      "
+          "(submit_concurrent gated; base contract intact; §10)")
 
     print("\nAll interface smoke checks green. Contract is implementable; "
           "ready for persistence.py baseline.")
