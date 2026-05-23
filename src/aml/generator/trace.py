@@ -9,6 +9,11 @@ Implements the data types defined in 01-workload-spec.md v0.1.2:
     - Trace (§3.1) — the top-level corpus unit
     - ParaphraseMeta (§6)
 
+v0.2 (opt-in; W10 only) adds Turn.txn_id and a Transaction/ConcurrencyGroup
+happens-before DAG (Trace.concurrency_groups), schema_version "0.2.0". Existing
+W1-W9 traces stay at 0.1.3 and byte-identical (new fields omit-if-absent in the
+canonical form, so content hashes are preserved). See §4.10 / gmp-spec §10.
+
 v0.1.3 drops active_memory from serialization (purely-derived O(Q*F) view,
 unused on disk); recompute via the oracle if ever needed.
 
@@ -50,6 +55,7 @@ except ImportError as e:
 # ============================================================================
 
 SCHEMA_VERSION: str = "0.1.3"
+SCHEMA_VERSION_V2: str = "0.2.0"  # W10 concurrency traces (§4.10 / gmp-spec §10)
 GENERATOR_VERSION: str = "0.1.0"
 
 FACT_ID_BYTES: int = 16  # BLAKE2b-128 digest
@@ -79,6 +85,7 @@ class Workload(StrEnum):
     W7 = "W7"  # Conflict Detection
     W8 = "W8"  # Forgetting Curve (retention policy)
     W9 = "W9"  # Cross-Session Deletion ("Right to Be Forgotten")
+    W10 = "W10"  # Operational Concurrency & Isolation (schema v0.2)
 
 
 class Difficulty(StrEnum):
@@ -91,6 +98,14 @@ class TurnRole(StrEnum):
     USER = "user"
     AGENT_QUERY = "agent_query"
     AGENT_RESPONSE = "agent_response"
+
+
+class TxnAnomaly(StrEnum):
+    """Diagnostic anomaly a W10 concurrency group plants (schema v0.2; §4.10)."""
+    LOST_UPDATE = "lost_update"
+    WRITE_SKEW = "write_skew"
+    NON_REPEATABLE_READ = "non_repeatable_read"
+    PHANTOM = "phantom"
 
 
 # ============================================================================
@@ -271,6 +286,7 @@ class Turn:
     requires: list[bytes] = field(default_factory=list)
     expected_response: str | None = None
     as_of: datetime | None = None
+    txn_id: UUID | None = None  # W10: tags the transaction this turn belongs to (schema v0.2)
 
     def __post_init__(self) -> None:
         if self.timestamp.tzinfo is None:
@@ -334,6 +350,26 @@ class GroundTruth:
 
 
 @dataclass(slots=True)
+class Transaction:
+    """A node in a W10 concurrency group: the turns sharing this txn_id, plus its
+    happens-before predecessors (the DAG edges). Transactions incomparable in the
+    DAG are concurrent. (schema v0.2; §4.10)"""
+    txn_id: UUID
+    depends_on: list[UUID] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class ConcurrencyGroup:
+    """A contended-key group of 2-3 concurrent transactions with one planted
+    anomaly. Ground truth is set-valued (permissible serializations), derived by
+    the oracle; this structure carries the inputs. (schema v0.2; §4.10)"""
+    subject: str
+    predicate: str
+    anomaly: TxnAnomaly                                  # required: it sets the permissible-finals
+    transactions: list[Transaction] = field(default_factory=list)
+
+
+@dataclass(slots=True)
 class Trace:
     """Top-level trace unit. See 01-workload-spec.md §3.1.
 
@@ -354,6 +390,7 @@ class Trace:
     generated_at: datetime = field(
         default_factory=lambda: datetime.now(tz=timezone.utc),
     )
+    concurrency_groups: list[ConcurrencyGroup] = field(default_factory=list)  # W10 (schema v0.2)
 
 
 # ============================================================================
@@ -409,7 +446,7 @@ def fact_from_dict(d: dict[str, Any]) -> Fact:
 
 
 def turn_to_dict(t: Turn) -> dict[str, Any]:
-    return {
+    d = {
         "turn_id": str(t.turn_id),
         "role": t.role.value,
         "content": t.content,
@@ -423,6 +460,9 @@ def turn_to_dict(t: Turn) -> dict[str, Any]:
             _format_iso_microsecond(t.as_of) if t.as_of is not None else None
         ),
     }
+    if t.txn_id is not None:                       # omit-if-absent (R5)
+        d["txn_id"] = str(t.txn_id)
+    return d
 
 
 def turn_from_dict(d: dict[str, Any]) -> Turn:
@@ -440,6 +480,7 @@ def turn_from_dict(d: dict[str, Any]) -> Turn:
             _parse_iso_microsecond(d["as_of"])
             if d.get("as_of") is not None else None
         ),
+        txn_id=(UUID(d["txn_id"]) if d.get("txn_id") is not None else None),
     )
 
 
@@ -520,9 +561,37 @@ def ground_truth_from_dict(d: dict[str, Any]) -> GroundTruth:
     )
 
 
+def concurrency_group_to_dict(g: ConcurrencyGroup) -> dict[str, Any]:
+    return {
+        "subject": g.subject,
+        "predicate": g.predicate,
+        "anomaly": g.anomaly.value,
+        "transactions": [
+            {"txn_id": str(tx.txn_id),
+             "depends_on": [str(x) for x in tx.depends_on]}
+            for tx in g.transactions
+        ],
+    }
+
+
+def concurrency_group_from_dict(d: dict[str, Any]) -> ConcurrencyGroup:
+    return ConcurrencyGroup(
+        subject=d["subject"],
+        predicate=d["predicate"],
+        anomaly=TxnAnomaly(d["anomaly"]),
+        transactions=[
+            Transaction(
+                txn_id=UUID(tx["txn_id"]),
+                depends_on=[UUID(x) for x in tx.get("depends_on", [])],
+            )
+            for tx in d.get("transactions", [])
+        ],
+    )
+
+
 def trace_to_dict(trace: Trace) -> dict[str, Any]:
     """Serialize a Trace to a JSON-compatible dict."""
-    return {
+    d = {
         "schema_version": trace.schema_version,
         "trace_id": str(trace.trace_id),
         "workload": trace.workload.value,
@@ -542,6 +611,11 @@ def trace_to_dict(trace: Trace) -> dict[str, Any]:
             } if trace.paraphrase_meta else None
         ),
     }
+    if trace.concurrency_groups:                   # omit-if-absent (R5)
+        d["concurrency_groups"] = [
+            concurrency_group_to_dict(g) for g in trace.concurrency_groups
+        ]
+    return d
 
 
 def trace_from_dict(d: dict[str, Any]) -> Trace:
@@ -561,6 +635,10 @@ def trace_from_dict(d: dict[str, Any]) -> Trace:
         sessions=[session_from_dict(s) for s in d.get("sessions", [])],
         ground_truth=ground_truth_from_dict(d.get("ground_truth", {})),
         paraphrase_meta=paraphrase,
+        concurrency_groups=[
+            concurrency_group_from_dict(g)
+            for g in d.get("concurrency_groups", [])
+        ],
     )
 
 
@@ -595,7 +673,7 @@ TRACE_SCHEMA: dict[str, Any] = {
         "ground_truth",
     ],
     "properties": {
-        "schema_version": {"const": SCHEMA_VERSION},
+        "schema_version": {"enum": [SCHEMA_VERSION, SCHEMA_VERSION_V2]},
         "trace_id": _UUID_STR,
         "workload": {"enum": [w.value for w in Workload]},
         "difficulty": {"enum": [d.value for d in Difficulty]},
@@ -688,6 +766,9 @@ TRACE_SCHEMA: dict[str, Any] = {
                                         _ISO_MICROSECOND, {"type": "null"},
                                     ],
                                 },
+                                "txn_id": {
+                                    "oneOf": [_UUID_STR, {"type": "null"}],
+                                },
                             },
                         },
                     },
@@ -704,6 +785,7 @@ TRACE_SCHEMA: dict[str, Any] = {
                 "deleted_facts": {"type": "object"},
             },
         },
+        "concurrency_groups": {"type": "array"},  # loose by design; tighten at W10 lock (increment 6)
         "paraphrase_meta": {
             "oneOf": [
                 {"type": "null"},
@@ -890,5 +972,44 @@ if __name__ == "__main__":
         assert "as_of" in str(e)
     print(f"✓ as_of rejected on non-query turns  "
           f"(only agent_query carries valid-time)")
+
+    # --- Test 9: W10 Turn.txn_id round-trip + omit-if-absent (schema v0.2) -
+    txid = uuid4()
+    w_turn = Turn(
+        turn_id=uuid4(), role=TurnRole.USER, content="x", content_template="x",
+        timestamp=t0, introduces=[f1.fact_id], txn_id=txid,
+    )
+    wd = turn_to_dict(w_turn)
+    assert wd["txn_id"] == str(txid)
+    assert turn_from_dict(wd).txn_id == txid
+    assert "txn_id" not in turn_to_dict(turn), \
+        "txn_id must be OMITTED (not null) when absent — R5 discipline"
+    print(f"✓ Turn.txn_id round-trips            "
+          f"(omitted when absent; schema v0.2)")
+
+    # --- Test 10: W10 ConcurrencyGroup serialization (schema v0.2) ---------
+    txa, txb = uuid4(), uuid4()
+    grp = ConcurrencyGroup(
+        subject="user_42", predicate="lives_in", anomaly=TxnAnomaly.WRITE_SKEW,
+        transactions=[Transaction(txa), Transaction(txb, depends_on=[txa])],
+    )
+    w10_trace = Trace(
+        trace_id=uuid4(), workload=Workload.W10, difficulty=Difficulty.MEDIUM,
+        seed=0, facts=[f1], sessions=[session],
+        schema_version=SCHEMA_VERSION_V2, concurrency_groups=[grp],
+    )
+    wd2 = trace_to_dict(w10_trace)
+    assert wd2["schema_version"] == SCHEMA_VERSION_V2
+    assert wd2["concurrency_groups"][0]["anomaly"] == "write_skew"
+    assert wd2["concurrency_groups"][0]["transactions"][1]["depends_on"] == [str(txa)]
+    if jsonschema is not None:
+        validate_trace_schema(wd2)
+    restored2 = trace_from_dict(json.loads(json.dumps(wd2)))
+    assert restored2.concurrency_groups[0].anomaly == TxnAnomaly.WRITE_SKEW
+    assert restored2.concurrency_groups[0].transactions[1].depends_on == [txa]
+    assert "concurrency_groups" not in trace_to_dict(trace), \
+        "concurrency_groups must be OMITTED when empty — R5 discipline"
+    print(f"✓ ConcurrencyGroup serialization     "
+          f"(DAG round-trips; omitted when absent; schema v0.2)")
 
     print(f"\nAll smoke checks green. Ready for oracle.py.")
