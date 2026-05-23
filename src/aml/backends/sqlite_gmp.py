@@ -205,21 +205,57 @@ def _open(db_path: str):
 
 
 class SQLiteGMPBackend:
-    """A persistent MemoryBackend (GMP v0.1 profile) on SQLite + sqlite-vec."""
+    """A persistent MemoryBackend (GMP v0.2 profile) on SQLite + sqlite-vec.
 
-    __grafomem_interface__ = "0.1.1"
+    Production hardening (v0.2):
+    - WAL journal mode for concurrent read/write access
+    - Composite B-tree index on (tenant_id, valid_until, valid_from) for fast non-vector lookups
+    - Sentinel-encoded metadata columns (no NULLs in searchable columns)
+    - storage_bytes() for M5 metric reporting
+    """
+
+    __grafomem_interface__ = "0.2.0"
 
     def __init__(self, db_path: str = ":memory:", embed_fn=None) -> None:
         self._embed = embed_fn or _default_embedder()
+        self._db_path = db_path
         self._conn = _open(db_path)
+
+        # Production pragmas: WAL enables concurrent readers during writes;
+        # synchronous=NORMAL is safe with WAL and avoids fsync on every commit.
+        if db_path != ":memory:":
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._conn.execute("PRAGMA synchronous=NORMAL")
+
         self._dim = int(np.asarray(self._embed("dimension probe")).shape[0])
         self._conn.executescript(_SCHEMA)
+
+        # Composite B-tree index for non-vector queries (audit by tenant, delete lookups).
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mem_tenant_valid "
+            "ON memories(tenant_id, valid_until, valid_from)"
+        )
+
         # vec0 carries the filter predicate as metadata columns alongside the embedding.
         self._conn.execute(
             f"CREATE VIRTUAL TABLE IF NOT EXISTS vec_memories USING vec0("
             f"embedding float[{self._dim}], "
             f"tenant_id text, valid_from integer, valid_until integer)"
         )
+
+    # -- Storage reporting (M5, duck-typed) --------------------------------
+    def storage_bytes(self) -> int | None:
+        """Report the SQLite database size in bytes.  Used by M5 via duck-typed getattr."""
+        if self._db_path == ":memory:":
+            return None
+        try:
+            row = self._conn.execute(
+                "SELECT page_count * page_size "
+                "FROM pragma_page_count(), pragma_page_size()"
+            ).fetchone()
+            return int(row[0]) if row else None
+        except Exception:
+            return None
 
     # -- GMP operations ---------------------------------------------------
     def capabilities(self) -> set[Capability]:

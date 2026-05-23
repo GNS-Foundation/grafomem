@@ -482,6 +482,102 @@ def verify():
 
 
 # ============================================================================
+# grafomem serve
+# ============================================================================
+
+@main.command()
+@click.option("--host", default="0.0.0.0", help="Bind address")
+@click.option("--port", "-p", default=8642, type=int, help="Port")
+@click.option("--backend", "-b",
+              default="aml.backends.sqlite_gmp:SQLiteGMPBackend",
+              help="Backend class as MODULE:CLASS")
+@click.option("--db", default="grafomem.db", help="SQLite database path")
+@click.option("--embedder", "-e", type=click.Choice(["stub", "bge"]),
+              default="bge", help="Embedder for vector backends")
+@click.option("--mcp", type=click.Choice(["none", "stdio", "sse"]),
+              default="none", help="MCP transport mode")
+@click.option("--mcp-port", default=8643, type=int, help="Port for MCP SSE transport")
+@click.option("--auth", type=click.Choice(["none", "token"]),
+              default="none", help="Authentication mode")
+@click.option("--batch/--no-batch", default=False,
+              help="Enable batched ingestion for writes")
+@click.option("--batch-size", default=64, type=int,
+              help="Batch size for ingestion queue")
+def serve(host, port, backend, db, embedder, mcp, mcp_port, auth, batch, batch_size):
+    """Start the GRAFOMEM memory server.
+
+    \b
+    Examples:
+        grafomem serve                            # default SQLite + BGE, port 8642
+        grafomem serve --mcp stdio                # MCP over stdin/stdout for agents
+        grafomem serve --mcp sse --mcp-port 8643  # MCP over HTTP+SSE
+        grafomem serve --auth token --batch       # multi-tenant + batched ingestion
+    """
+    import inspect
+
+    cls = _load_backend_class(backend)
+    sig = inspect.signature(cls.__init__)
+
+    # Build the factory depending on whether the backend needs db_path/embed_fn
+    def _factory():
+        kwargs = {}
+        if "embed_fn" in sig.parameters:
+            if embedder == "bge":
+                from aml.backends.vector_only import _default_embedder
+                kwargs["embed_fn"] = _default_embedder()
+            else:
+                from aml.backends.vector_only import _stub_embedder
+                kwargs["embed_fn"] = _stub_embedder()
+        if "db_path" in sig.parameters:
+            kwargs["db_path"] = db
+        return cls(**kwargs)
+
+    # MCP mode: run the MCP server directly (no FastAPI)
+    if mcp in ("stdio", "sse"):
+        import asyncio
+        click.echo(f"GRAFOMEM MCP server (transport={mcp})")
+
+        if mcp == "stdio":
+            from aml.server.mcp import run_mcp_stdio
+            asyncio.run(run_mcp_stdio(_factory))
+        else:
+            from aml.server.mcp import run_mcp_sse
+            asyncio.run(run_mcp_sse(_factory, host=host, port=mcp_port))
+        return
+
+    # HTTP mode: FastAPI server
+    try:
+        import uvicorn
+        from aml.server.app import create_app
+    except ImportError as e:
+        click.echo(
+            f"✗ Server dependencies not installed: {e}\n"
+            f"  Install with: pip install grafomem[server]",
+            err=True,
+        )
+        sys.exit(1)
+
+    app = create_app(
+        backend_factory=_factory,
+        auth_mode=auth,
+        enable_batching=batch,
+        batch_size=batch_size,
+    )
+
+    click.echo(f"GRAFOMEM server v0.2.0")
+    click.echo(f"  Backend:   {backend}")
+    click.echo(f"  Database:  {db}")
+    click.echo(f"  Embedder:  {embedder}")
+    click.echo(f"  Auth:      {auth}")
+    click.echo(f"  Batching:  {'ON (batch_size=' + str(batch_size) + ')' if batch else 'OFF'}")
+    click.echo(f"  Listening: http://{host}:{port}")
+    click.echo(f"  Docs:      http://{host}:{port}/docs")
+    click.echo()
+
+    uvicorn.run(app, host=host, port=port, log_level="info")
+
+
+# ============================================================================
 # Smoke check
 # ============================================================================
 
