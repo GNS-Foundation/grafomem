@@ -1,15 +1,21 @@
-# GRAFOMEM — Workload Specification v0.1.1
+# GRAFOMEM — Workload Specification v0.1.2
 
 | Field | Value |
 |---|---|
 | **Status** | Draft |
 | **Schema version** | 0.1.1 |
-| **Last updated** | 2026-05-19 |
+| **Last updated** | 2026-05-23 |
 | **Authors** | Camilo Ayerbe Posada · Claude (engineering partner) |
 
 ---
 
 ## Changelog
+
+**v0.1.2 (2026-05-23)** — Realign W6 with the built deletion workload; document deferred workloads.
+
+- §4.6 W6: *Concurrent Updates* → *Deletion & Leakage*. The spec now matches the built generator; the locked corpus and the `Workload.W6` enum value are unchanged.
+- New §4.7–§4.9 (deferred): Conflict Detection, Forgetting Curve, Cross-Session Deletion — the written-up homes for the reserved `CONFLICT_DETECTION` and `CROSS_SESSION_PROPAGATION` capabilities.
+- §5 R4: published suite name corrected to `grafomem-bench-v0.1.8` (the locked corpus), decoupled from the spec version.
 
 **v0.1.1 (2026-05-19)** — Inside-session deletion as a first-class Turn effect.
 
@@ -418,7 +424,7 @@ This is the only planned workload that does not produce a scalar correctness sco
 
 **R3 — Corpus hash.** A canonical corpus (suite of traces) has a content hash computed as `BLAKE2b-256` over sorted per-trace content hashes. Every published finding cites the corpus hash it was measured on.
 
-**R4 — Seed registry.** A `corpus.yaml` manifest lists the exact `(workload, seed, difficulty)` tuples constituting a published benchmark suite. v0.1.1's suite is named `grafomem-bench-v0.1.1`.
+**R4 — Seed registry.** A `corpus.yaml` manifest lists the exact `(workload, seed, difficulty)` tuples constituting a published benchmark suite. The current locked suite is named `grafomem-bench-v0.1.8`.
 
 ---
 
