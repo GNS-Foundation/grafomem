@@ -1,5 +1,5 @@
 """
-GRAFOMEM GMP v0.1 wire binding — HTTP + JSON.
+GRAFOMEM GMP v0.2 wire binding — HTTP + JSON.
 
 The spec (GMP §0, D1) defers the wire encoding; this is it. It turns GMP from an
 in-process Python Protocol (`interface.py`) into a *network* protocol: a server
@@ -375,25 +375,25 @@ def _request(url: str, method: str, body: dict | None = None) -> dict:
 #
 # Stands up a server wrapping GMPReferenceBackend, drives every operation through
 # the client over HTTP, then runs the conformance suite through the client and
-# asserts the full GMP v0.1 profile. The protocol crosses a socket unchanged.
+# asserts the full GMP v0.2 profile. The protocol crosses a socket unchanged.
 # ============================================================================
 
 if __name__ == "__main__":
     from datetime import timedelta, timezone
 
     from aml.backends.interface import MemoryBackend
-    from aml.backends.gmp_reference import GMP_V01_PROFILE, GMPReferenceBackend
+    from aml.backends.gmp_reference import GMP_V02_PROFILE, GMPReferenceBackend
     from aml.backends.vector_only import _stub_embedder
     from aml.eval.conformance import run_conformance
 
-    print("GRAFOMEM wire binding — GMP v0.1 over HTTP+JSON (STUB embedder)\n")
+    print("GRAFOMEM wire binding — GMP v0.2 over HTTP+JSON (STUB embedder)\n")
 
     server, url = start_background(lambda: GMPReferenceBackend(embed_fn=_stub_embedder()))
     print(f"server up at {url}")
 
     c = GMPClient.create(url)
     assert isinstance(c, MemoryBackend)
-    assert c.capabilities() == set(GMP_V01_PROFILE)
+    assert c.capabilities() == set(GMP_V02_PROFILE)
     print("✓ client is a MemoryBackend          (capabilities round-trip over HTTP)")
 
     t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -424,9 +424,9 @@ if __name__ == "__main__":
     profile = run_conformance(lambda: GMPClient.create(url),
                               name="GMPClient->GMPReferenceBackend", seeds=range(2))
     print(f"  SUPPORTS {{{', '.join(sorted(x.value for x in profile.supported))}}}")
-    assert profile.supported == set(GMP_V01_PROFILE), set(GMP_V01_PROFILE) - profile.supported
+    assert profile.supported == set(GMP_V02_PROFILE), set(GMP_V02_PROFILE) - profile.supported
     assert not profile.violations, [r.capability.value for r in profile.violations]
 
     server.shutdown()
-    print("\n✓ The conformance suite passes over HTTP — full GMP v0.1 profile, no "
+    print("\n✓ The conformance suite passes over HTTP — full GMP v0.2 profile, no "
           "violations.\n  The protocol crosses a socket unchanged. Wire binding green.")

@@ -1,5 +1,5 @@
 """
-GRAFOMEM conformance suite — executable realization of GMP v0.1 §8.
+GRAFOMEM conformance suite — executable realization of GMP §8 (v0.2).
 
     "A store SUPPORTS capability X iff it PASSES the conformance suite for X."
     — not iff it *declares* X (GMP §8.1).
@@ -158,8 +158,19 @@ class ConformanceProfile:
 
     @property
     def untested(self) -> set[Capability]:
-        # Declared capabilities with no v0.1 test (e.g. reserved flags, GMP §7.4).
+        # Declared capabilities with no test (e.g. reserved flags, GMP §7.4).
         return self.declared - {r.capability for r in self.results}
+
+    @property
+    def conformance_rate(self) -> float:
+        """M8 — fraction of declared capabilities whose conformance test passed.
+        Capabilities that are declared but untested (no suite exists yet) are
+        excluded from the denominator, so M8 reflects only testable claims.
+        Returns 1.0 if no capabilities are tested (vacuously conformant)."""
+        tested = [r for r in self.results]  # every result was tested
+        if not tested:
+            return 1.0
+        return sum(1 for r in tested if r.passed) / len(tested)
 
 
 # ---------------------------------------------------------------------------
@@ -363,7 +374,7 @@ def run_conformance(
     budget: int = DEFAULT_BUDGET,
     strict: bool = False,
 ) -> ConformanceProfile:
-    """Run the GMP v0.1 conformance suite against `store_factory` (a callable
+    """Run the GMP conformance suite against `store_factory` (a callable
     returning a fresh store, as in run_w5/run_w6's `mk()`). Tests only declared
     capabilities; raises ConformanceViolation at the end if `strict` and any
     declared capability fails its suite."""
