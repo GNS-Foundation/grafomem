@@ -1,0 +1,15 @@
+# Docker
+*.pyc
+__pycache__
+.venv
+.env
+*.egg-info
+dist/
+build/
+.git
+.pytest_cache
+.mypy_cache
+.gemini/
+*.db
+*.db-wal
+*.db-shm
