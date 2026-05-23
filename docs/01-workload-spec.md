@@ -365,50 +365,113 @@ One fact per subject is deleted (deletions = subjects), and every deleted subjec
 
 ---
 
-> **Workloads §4.7–§4.9 are deferred (v0.2+).** They are specified but **not** part of the locked v0.1 corpus, which is W1–W6. Numbering continues above the built suite so it never collides with the locked traces. Each is the realised home of a capability the interface currently reserves: §4.7 ↔ `CONFLICT_DETECTION`, §4.9 ↔ `CROSS_SESSION_PROPAGATION`. They become benchmarkable once each has a generator.
+> **Workloads §4.7–§4.9 are built (v0.2) but not yet corpus-locked.** Each now has a
+> generator, a backend spectrum, and a runner, and is green; they are **not** part of the
+> locked v0.1 corpus, which remains W1–W6 (`corpus.lock` is unchanged — adding them to the
+> locked set is a separate, deliberate step). Numbering continues above the locked suite so
+> it never collides with the locked traces. Each is the realised home of the capability the
+> interface reserved for it: §4.7 ↔ `CONFLICT_DETECTION`, §4.9 ↔ `CROSS_SESSION_PROPAGATION`;
+> §4.8 introduces **no** new capability (a retention-policy workload). All three were built
+> purely additively over the v0.1 model — no change to `interface.py` or the eval harness;
+> `Workload.W7/W8/W9` are append-only enum members.
 
-### 4.7 W7 — Conflict Detection *(deferred, v0.2)* — formerly "Concurrent Updates"
+### 4.7 W7 — Conflict Detection *(built, v0.2)* — formerly "Concurrent Updates"
 
-**Status:** Specified; no generator, not in the corpus. Maps to the reserved `CONFLICT_DETECTION` capability.
+**Status:** Built (v0.2), not yet corpus-locked. Generator `workloads/w7.py`, conflict
+backend spectrum `backends/conflict_backends.py` (six classes), classifier
+`eval/w7_classify.py`, runner `scripts/run_w7.py`. Maps to the reserved
+`CONFLICT_DETECTION` capability. The conflict signal rides the `{subject, predicate}`
+write metadata the harness already passes (the same channel W6's coarse-delete backend
+uses), so no schema or oracle change was needed.
 
-**Purpose:** Test consistency semantics when multiple paths update the same fact under temporal overlap. ("Concurrency" here is **logical** — overlapping validity windows — not parallel execution; it exercises conflict *resolution*, not isolation-level concurrency control. See the note after §4.9.)
+**Purpose:** Test consistency semantics when multiple paths update the same fact under
+temporal overlap. ("Concurrency" here is **logical** — overlapping validity windows — not
+parallel execution; it exercises conflict *resolution*, not isolation-level concurrency
+control. See the note after §4.9.)
 
 **Procedure:**
 1. Generate base facts as in W1.
 2. For `concurrency_rate%` of facts, two sessions in different conceptual threads write conflicting updates whose validity windows overlap.
-3. All facts retain microsecond-distinct `valid_from` and trace-unique `sequence`. "Concurrency" is encoded in **window overlap** (`valid_until` of write A is later than `valid_from` of write B, or vice versa), NOT in shared timestamps.
-4. Queries are placed after the conflict window.
+3. All facts retain microsecond-distinct `valid_from` and trace-unique `sequence`. "Concurrency" is encoded in **window overlap** (`valid_until` of write A is later than `valid_from` of write B, or vice versa), NOT in shared timestamps. Both contested writes are left live (`superseded_by=None`), so the oracle places both in `active_memory` and validators stay clean.
+4. The conflict query `requires` the contested pair `[earlier, later]` (by `sequence`); what the backend surfaces for that slot is the measurement.
 
-**Eval mode — behavior classification, not binary correctness.** Backends without consistency semantics fail predictably. Each backend's behavior classifies into one of:
+**Eval mode — behavior classification, not binary correctness.** Backends without
+consistency semantics fail predictably. Each backend's behavior classifies into one of:
 
 - `last_write_wins` — final state matches the chronologically later write
 - `first_write_wins` — final state matches the earlier write
 - `merge` — both values retained in some form
-- `conflict_flag` — backend surfaces the conflict to the caller
+- `conflict_flag` — backend surfaces the conflict to the caller (requires `CONFLICT_DETECTION`)
 - `silent_data_loss` — neither value is retrievable
 - `non_deterministic` — varies across seeds
 
-This is the only planned workload that does not produce a scalar correctness score; its finding is a capability map. A backend without `CONFLICT_DETECTION` cannot reach the `conflict_flag` class and defaults to its observed behavior class.
+This is the only built workload that does not produce a scalar correctness score; its
+finding is a capability map (six reference backends in `conflict_backends.py` each exhibit
+one class). A backend without `CONFLICT_DETECTION` cannot reach the `conflict_flag` class
+and defaults to its observed behavior class.
 
 **RQs addressed:** RQ2 (conflict resolution at concurrency), partial RQ6.
 
-### 4.8 W8 — Forgetting Curve *(deferred, v0.2)* — TBD
+### 4.8 W8 — Forgetting Curve *(built, v0.2)*
 
-**Status:** Procedure TBD; no generator, not in the corpus. A retention-axis workload, sibling to W4; introduces no new capability flag.
+**Status:** Built (v0.2), not yet corpus-locked. Generator `workloads/w8.py`,
+importance-weighted backend `backends/retention_backends.py`, runner `scripts/run_w8.py`.
+A retention-axis workload, sibling to W4; introduces **no** new capability flag (all arms
+claim only `{AUDIT}` — retention is a declared policy, not a capability; gmp-spec §5.4).
 
-**Purpose:** Test whether a store that *decays or compacts* old facts — rather than dropping them at a hard bound — holds recall over distance at sub-linear footprint. Where W4 measures the cliff of a bounded store that **evicts**, W8 would measure the curve of one that **summarises or merges**, against its declared retention policy.
+**Purpose:** Test which facts a bounded store should *keep*. Where W4 measures the cliff of
+a recency-bounded store that evicts by age, W8 makes retention *policy* the discriminating
+axis: under a fixed footprint, does an importance-aware policy hold recall where FIFO drops
+it? (The built workload realises the retention axis via **importance-weighted eviction** —
+the path that fills the paper's stated gap, where FIFO was the only bounded policy
+evaluated. The original *summarise/merge/compact* variant from this section's first draft
+remains a possible future extension; it needs a summariser and is not what shipped.)
 
-**Procedure:** TBD. (Candidate: extend W4's long-horizon dependency chains, vary the store's compaction/decay policy, and trace recall as a joint function of fact age and footprint.)
+**Procedure:** A W4-style long-horizon torrent, but with **bimodal importance**: a sparse
+set of high-importance facts (importance 1.0) scattered at log-spaced distances among
+low-importance filler (0.1). Every query requires a high-importance fact. Two load-bearing
+invariants: the high facts number `n_high ≤ K` (so an importance store can keep *all* of
+them at the *same* capacity FIFO uses — a fair, equal-footprint comparison), and they
+straddle `K` (so FIFO's cliff is visible inside the queried set). Three retention arms at
+equal capacity `K`: `unbounded` (ceiling, linear footprint), `fifo(K)` (= W4's
+`bounded_vector`, importance-blind), `importance(K)` (evicts lowest-importance first).
+Recall is binned by distance and read against footprint (from `audit()`).
 
-### 4.9 W9 — Cross-Session Deletion *(deferred, v0.2)* — "Right to Be Forgotten"
+**Finding:** at identical footprint `K`, `importance(K)` matches the unbounded store's recall
+(1.000 at every distance) while `fifo(K)` cliffs at `d = K` and loses the far high facts
+(high-fact recall decaying with horizon). **Principled forgetting is Pareto-dominant on
+long-horizon recall** — the structural, embedder-invariant answer to the paper's open
+retention question.
 
-**Status:** No generator, not in the corpus. The cross-session extension of W6; home of the reserved `CROSS_SESSION_PROPAGATION` capability.
+### 4.9 W9 — Cross-Session Deletion *(built, v0.2)* — "Right to Be Forgotten"
+
+**Status:** Built (v0.2), not yet corpus-locked. Generator `workloads/w9.py`, cluster
+backends `backends/cross_session_backends.py`, runner `scripts/run_w9.py`. The
+cross-session extension of W6; home of the reserved `CROSS_SESSION_PROPAGATION` capability.
 
 **Required capabilities:** `HARD_DELETE`, `CROSS_SESSION_PROPAGATION`.
 
-**Purpose:** Test that a deletion **propagates** — a fact forgotten in one session must not resurface through any other session or replica of the same backend instance. Where W6 verifies single-store deletion (forget here, gone here), W9 verifies that "forget" is global: delete in session A, probe in session B, and the fact must be gone there too. A backend lacking `CROSS_SESSION_PROPAGATION` is skipped — it cannot make the guarantee.
+**Purpose:** Test that a deletion **propagates** — a fact forgotten in one session must not
+resurface through any other session or replica of the same backend instance. Where W6
+verifies single-store deletion (forget here, gone here), W9 verifies that "forget" is
+global: delete in session A, probe in session B, and the fact must be gone there too. A
+backend lacking `CROSS_SESSION_PROPAGATION` is skipped — it cannot make the guarantee.
 
-**Procedure:** TBD. (Candidate: W6's introduce/delete structure, but with each deletion issued in a different session from both the introduction and the matching deleted-probe.)
+**Procedure:** W6's introduce/delete/probe structure, but each subject's three turns land
+in **distinct** sessions (intro `j%N`, delete `(j+1)%N`, probe `(j+2)%N`), so the
+deleted-probe session ≠ the delete session — the invariant that makes propagation testable.
+Timestamps stay monotonic (intros < deletes < probes), so the canonical order is
+unchanged and validators/oracle are unaffected. Backends are one shared store with N
+per-session handles: `propagating` (delete removes globally — correct), `session_local`
+(delete tombstones in the issuing session only → resurfaces elsewhere; claims the capability
+but does not honor it — the W9 finding), `no_propagation` (honest but unclaimed → skipped).
+Because `delete(ref)` is context-free in the interface (it carries no session), `run_w9`
+owns a per-session dispatch replay rather than touching the shared harness — the same
+additive move W8's runner uses for importance.
+
+**Finding:** `propagating` is clean (zero cross-session leakage, survivors intact);
+`session_local` leaks the deleted fact when probed from another session while keeping
+survivors — a propagation violation, the cross-session sibling of W6's soft-delete leak.
 
 ---
 
