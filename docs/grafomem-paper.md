@@ -14,7 +14,7 @@ Status: §1 Introduction — first draft.
 Large language model agents increasingly depend on persistent memory, yet there is
 no shared account of what a memory system must *do*, and so no way to compare or
 certify one. We present GRAFOMEM, a deterministic, capability-typed benchmark for
-agent memory. Each of six workloads isolates a distinct capability and is scored
+agent memory. Each workload isolates a distinct capability and is scored
 against an oracle that derives ground truth — including bi-temporal validity and
 tenant partitioning — with the safety-critical capabilities, deletion and tenant
 isolation, measured *two-sided*: for both leakage and over-restriction. The corpus
@@ -100,7 +100,7 @@ specify.
 **Contributions.** Concretely, this paper contributes:
 
 1. **GRAFOMEM**, a deterministic, capability-typed benchmark for agent memory
-   spanning six workloads, with an oracle that derives ground truth (including
+   spanning nine workloads, with an oracle that derives ground truth (including
    bi-temporal validity and tenant partitioning) and independent validators that
    gate every published trace.
 2. A **reproducibility methodology** for memory benchmarks — deterministic
@@ -365,6 +365,7 @@ the appendix.
 | **M2 precision** | fraction of the retrieved set that is required |
 | **M3 token cost** | retrieved character count (budget proxy) |
 | **M7 cross-tenant leakage** | fraction of queries whose retrieved set contains a fact owned by a tenant other than the querying tenant |
+| **M8 isolation conformance** | fraction of W10 concurrency probes on which a store's *achieved* isolation honors its *declared* policy — no over-claimed level, no resurrected delete (§5.2) |
 
 Formally, write $R(q)$ for the set of facts a backend returns for query $q$ under
 the budget, $G(q) = q.\textit{requires}$ for the ground-truth targets, and
@@ -388,6 +389,15 @@ Both leakage metrics are evaluated on the negative probes whose content most
 directly tempts the forbidden fact, so a leak is a genuine failure, not an accident
 of ranking far down a list.
 
+A third safety-critical metric covers concurrency rather than retrieval. **M8
+isolation conformance** is the fraction of the W10 concurrent probes (§5.2) on
+which a store's *achieved* behavior honors its *declared* isolation policy: it must
+neither over-claim a level it does not deliver (a store that admits write-skew
+cannot claim serializability) nor revive a committed delete (the durability
+boundary). Like the leakage metrics, M8 is a property of what the store does, not
+of how a retriever ranks — the scalar companion to the categorical *achieved level*
+the W10 suite reports.
+
 All headline comparisons use a **paired bootstrap confidence interval**. For a
 claim that a candidate backend beats a baseline, we resample the per-seed
 differences (10,000 resamples) and report the point estimate and 95% interval; the
@@ -398,10 +408,12 @@ the strength of each finding explicit.
 ### 3.7 Capability-typed backends and the harness
 
 A backend is an adapter implementing a small protocol — `write`, `supersede`,
-`delete`, `retrieve`, `audit`, `flush` — and declaring a capability set drawn from
-a fixed enumeration of nine flags (the full set, with the backend-by-capability
-matrix, is Appendix A); the workloads in this paper exercise five —
-`SUPERSESSION_CHAIN`, `BI_TEMPORAL`, `HARD_DELETE`, `MULTI_TENANT`, and `AUDIT`. Any
+`delete`, `retrieve`, `audit`, `flush` (and, for concurrency-claiming backends, a
+`submit_concurrent` extension) — and declaring a capability set drawn from
+a fixed enumeration of ten flags (the full set, with the backend-by-capability
+matrix, is Appendix A); the workloads here exercise six —
+`SUPERSESSION_CHAIN`, `BI_TEMPORAL`, `HARD_DELETE`, `MULTI_TENANT`, `AUDIT`, and (in
+v0.2) `CONCURRENCY_CONTROL`. Any
 operation outside the declared set raises `CapabilityNotSupported`, so a backend's
 type is an honest statement of what it will attempt.
 
@@ -470,7 +482,9 @@ The six workloads populate the four axes. Each is generated across five seeds an
 three difficulty tiers (easy/medium/hard); unless noted, the figures below are at
 the hard tier, and the privacy results (4.4) are at a 512-character budget over
 five seeds. Full per-budget sweeps and the verbatim finding cards appear in the
-appendix; the body reports the headline of each.
+appendix; the body reports the headline of each. The v0.2 corpus adds three further
+workloads — W7 and W9, reported separately, and a concurrency/isolation workload,
+W10, whose claims-vs-behavior result we take up directly in §5.2 and §6.
 
 ### 4.1 Representational capability (W1, W2)
 
@@ -695,6 +709,21 @@ to raise an alarm. `soft_delete` actively certifies its own compliance through
 ship both. Only an external, oracle-grounded, *two-sided* check separates the
 backend that honors a capability from the one that merely claims it.
 
+The concurrency workload (W10) supplies a third instance, in a boundary the
+read-path failures above do not reach. A store that declares `CONCURRENCY_CONTROL`
+also declares an isolation *policy* — a level (read-committed, snapshot,
+serializable) it promises to honor under concurrent writes. `no_isolation`
+declares `serializable`, accepts every concurrent group, and reports each
+committed — yet admits write-skew, so its *achieved* level is read-committed: an
+over-claim that downgrades it two rungs (M8 0.25), the exact analog of
+`soft_delete` and `leaky_tenant` one boundary over. `resurrecting` is subtler: it
+holds serializable on the anomaly probes, but on the durability probe it revives a
+fact that a committed transaction had deleted — a violation not of isolation but of
+the deletion guarantee under concurrency (M8 0.75, durability fails). As before the
+type contract is impeccable — the flag is set, the policy is declared, every call
+succeeds — and only the probes, comparing achieved behavior against the declared
+policy, separate the honest store from the one that merely claims it.
+
 The consequence is the paper's bridge to Section 6. A capability flag is necessary
 but not sufficient, so a memory protocol cannot establish conformance by inspecting
 declared capabilities; it requires a **conformance suite** — an executable,
@@ -712,7 +741,7 @@ The benchmark was built to answer a design question as much as an empirical one:
 agent memory needs a protocol, what must that protocol specify? The evidence of
 Sections 4 and 5 supports a set of *requirements* — the dimensions a memory
 standard cannot leave unspecified — without yet committing to a particular
-*specification* of each, which we defer to a follow-up (Section 8). We state five,
+*specification* of each, which we defer to a follow-up (Section 8). We state six,
 each tied to its evidence.
 
 **Versioning and validity must be first-class** (W2; F3–F5). A protocol that treats
@@ -750,6 +779,17 @@ write-side call (a tombstone, a tenant tag) and ignore it on retrieval. A flag t
 store "supports deletion" or "supports tenancy" is not a guarantee; the guarantee is a
 property of what retrieval returns.
 
+**Concurrency and isolation must be declared and honored** (W10; F19–F20). A store
+that serves more than one writer makes an isolation choice, and — as with deletion
+and tenancy — declaring it is not honoring it. A protocol must let a store declare
+an isolation policy (a level, with a conflict rule) and must treat that declaration
+as falsifiable: a store that admits an anomaly its level forbids has over-claimed,
+exactly as `no_isolation` does. The same requirement carries the durability of a
+delete *across* concurrent writes — a committed deletion must not be resurrected by
+a racing writer (`resurrecting`) — which ties this boundary back to the deletion
+guarantee above. The guarantee, again, is a property of observed behavior under
+concurrency, not of the flag.
+
 **A conformance suite is part of the protocol** (§5.2). Because a capability claim
 does not certify behavior — `soft_delete` and `leaky_tenant` advertise the correct
 flag, satisfy the type contract, and leak — a protocol cannot define conformance by
@@ -772,18 +812,24 @@ deletion-and-tenancy enforcement model) are the subject of the follow-up; the
 contribution here is to establish, empirically, that these are the axes a standard
 cannot leave unspecified.
 
-**These requirements have since been realized.** A companion specification, GMP v0.1,
-gives semantics to all five — a supersession-and-validity model, a declared-retention
-contract, a two-sided read-path privacy model — and resolves the open identity question
-above in favor of tenant-scoped identity. An executable conformance suite operationalizes
-"supports $X$" as "passes the suite for $X$," and three independent implementations pass
-it: an in-memory reference, an HTTP+JSON wire binding whose client is itself a conformant
-backend (so the suite runs unchanged over a socket), and a persistent SQLite + sqlite-vec
-store that survives restart. On the full locked corpus (38,882 rows) the store's writes
-and queries are dominated by the embedder (~11ms per op), not the protocol machinery
-(deletion costs 0.02ms), and retrieve latency stays flat to roughly 25k rows — evidence
-that the protocol is implementable on commodity hardware, with cost living in exactly the
-embedding model the requirements deliberately decline to mandate.
+**These requirements have since been realized.** A companion specification, GMP v0.2,
+gives semantics to all six — a supersession-and-validity model, a declared-retention
+contract, a two-sided read-path privacy model, and a declared isolation policy that
+also carries the durability of a delete under concurrency — and resolves the open
+identity question above in favor of tenant-scoped identity. An executable conformance
+suite operationalizes "supports $X$" as "passes the suite for $X$." For the five
+read-path and representational requirements, three independent implementations pass
+it: an in-memory reference, an HTTP+JSON wire binding whose client is itself a
+conformant backend (so the suite runs unchanged over a socket), and a persistent
+SQLite + sqlite-vec store that survives restart. On the full locked corpus the
+store's writes and queries are dominated by the embedder (~11ms per op), not the
+protocol machinery (deletion costs 0.02ms), and retrieve latency stays flat to
+roughly 25k rows — evidence that the protocol is implementable on commodity
+hardware, with cost living in exactly the embedding model the requirements
+deliberately decline to mandate. The sixth requirement is specified and gated the
+same way: M8 drives a spectrum of isolation backends that exercises each honest tier
+and catches both failure modes — the over-claimer downgraded against its declaration
+and the store that resurrects a committed delete.
 
 ---
 
@@ -855,8 +901,9 @@ order of magnitude further.
 agent task success on top of the memory layer (closing the no-LLM-in-loop gap), and
 validating the synthetic findings against captured agent transcripts.
 
-**Beyond the realized core.** GMP v0.1 and its three passing implementations (§6)
-specify and enforce the five core requirements. What remains is the reserved capability
+**Beyond the realized core.** GMP v0.2 (§6) specifies the six core requirements, with
+three independent passing implementations of the five read-path and representational
+ones. What remains is the reserved capability
 set the benchmark does not yet exercise — provenance, conflict detection, cross-session
 propagation — and a pre-filtered persistent index: the brute-force store holds a flat
 retrieve regime to roughly 25k rows, and pushing the candidate filter into the index
@@ -881,11 +928,14 @@ under distractor noise, where the embedder is the only lever, while retention se
 structural cliff that no retriever can cross. And a capability claim does not
 certify behavior: backends that advertise `HARD_DELETE` and `MULTI_TENANT`, accept
 every call, and report success nonetheless leak at 1.000, with no recall footprint
-to betray them.
+to betray them — and, one boundary over, a store that declares serializable
+isolation silently delivers less while another lets a committed delete resurface
+under a concurrent write.
 
 Together these say what a memory protocol must specify — first-class versioning and
 validity, an embedding-agnostic retrieval and budget contract, a declared retention
-policy, and two-sided privacy enforced on the read path — and, decisively, that the
+policy, two-sided privacy enforced on the read path, and a declared, honored
+isolation policy — and, decisively, that the
 protocol must ship a conformance suite, because a declared capability is not a
 guarantee. The benchmark is at once the evidence for those requirements and the
 first draft of that suite. The specification they imply is the work that follows.
@@ -894,33 +944,44 @@ first draft of that suite. The specification they imply is the work that follows
 
 ## Appendix A — Backend capability matrix
 
-The interface (`interface.py`, v0.1.1) defines nine capability flags:
+The interface (`interface.py`, v0.2.0) defines ten capability flags:
 `BI_TEMPORAL`, `HARD_DELETE`, `SUPERSESSION_CHAIN`, `CROSS_SESSION_PROPAGATION`,
 `MULTI_TENANT`, `CONFLICT_DETECTION`, `PROVENANCE`, `CRYPTOGRAPHIC_PROVENANCE`,
-and `AUDIT`. The eleven reference backends and the capabilities each declares
+`AUDIT`, and `CONCURRENCY_CONTROL`. The sixteen reference backends and the
+capabilities each declares
 (columns omitted are claimed by no backend evaluated here). Capability columns are
 abbreviated — SC = `SUPERSESSION_CHAIN`, BT = `BI_TEMPORAL`, HD = `HARD_DELETE`,
-MT = `MULTI_TENANT`, AU = `AUDIT`; `·` = not declared, `✓` = declared:
+MT = `MULTI_TENANT`, AU = `AUDIT`, CC = `CONCURRENCY_CONTROL`; `·` = not declared,
+`✓` = declared:
 
-| backend | SC | BT | HD | MT | AU | tested on |
-|---|:--:|:--:|:--:|:--:|:--:|---|
-| `persistence` (floor) | · | · | · | · | · | W1–W4 |
-| `vector_only` | · | · | · | · | ✓ | W1–W6 |
-| `supersession_chain` | ✓ | · | · | · | ✓ | W2 (inert on W3) |
-| `bi_temporal` | ✓ | ✓ | · | · | ✓ | W2 (inert on W3) |
-| `bounded_vector` (K=64) | · | · | · | · | ✓ | W4 |
-| `soft_delete` | · | · | ✓ | · | ✓ | W6 |
-| `honest_delete` | · | · | ✓ | · | ✓ | W6 |
-| `coarse_delete` | · | · | ✓ | · | ✓ | W6 |
-| `leaky_tenant` | · | · | · | ✓ | ✓ | W5 |
-| `tenant_scoped` | · | · | · | ✓ | ✓ | W5 |
-| `over_isolating` | · | · | · | ✓ | ✓ | W5 |
+| backend | SC | BT | HD | MT | AU | CC | tested on |
+|---|:--:|:--:|:--:|:--:|:--:|:--:|---|
+| `persistence` (floor) | · | · | · | · | · | · | W1–W4 |
+| `vector_only` | · | · | · | · | ✓ | · | W1–W6 |
+| `supersession_chain` | ✓ | · | · | · | ✓ | · | W2 (inert on W3) |
+| `bi_temporal` | ✓ | ✓ | · | · | ✓ | · | W2 (inert on W3) |
+| `bounded_vector` (K=64) | · | · | · | · | ✓ | · | W4 |
+| `soft_delete` | · | · | ✓ | · | ✓ | · | W6 |
+| `honest_delete` | · | · | ✓ | · | ✓ | · | W6 |
+| `coarse_delete` | · | · | ✓ | · | ✓ | · | W6 |
+| `leaky_tenant` | · | · | · | ✓ | ✓ | · | W5 |
+| `tenant_scoped` | · | · | · | ✓ | ✓ | · | W5 |
+| `over_isolating` | · | · | · | ✓ | ✓ | · | W5 |
+| `serializable` | · | · | · | · | · | ✓ | W10 |
+| `snapshot` | · | · | · | · | · | ✓ | W10 |
+| `read_committed` | · | · | · | · | · | ✓ | W10 |
+| `no_isolation` | · | · | · | · | · | ✓ | W10 |
+| `resurrecting` | · | · | · | · | · | ✓ | W10 |
 
 `bi_temporal` declares `SUPERSESSION_CHAIN` in addition to `BI_TEMPORAL` (it is a
 strict superset of `supersession_chain`). Note that the three delete backends are
 capability-*identical* ({HARD_DELETE, AUDIT}), as are the three tenant backends
 ({MULTI_TENANT, AUDIT}): F10–F13 turn precisely on identical declarations yielding
-divergent behavior, separable only by the two-sided metrics. The interface
+divergent behavior, separable only by the two-sided metrics. The five isolation
+backends sharpen the point one level finer: all declare the identical capability
+set ({CONCURRENCY_CONTROL}), and `no_isolation` declares the identical isolation
+*policy* (`serializable`) as the honest `serializable` store — yet F19–F20 separate
+them by behavior alone, the over-claim and the resurrected delete, now via M8. The interface
 anticipates exactly this — it reserves a `ConformanceViolation` exception for the
 case where declared capabilities do not match observed behavior (design anchor
 B2). Four flags — `CROSS_SESSION_PROPAGATION`, `CONFLICT_DETECTION`, `PROVENANCE`,
@@ -930,29 +991,38 @@ here, and are left to future workloads.
 
 ## Appendix B — Corpus provenance
 
-Suite `grafomem-bench-v0.1.8`: 90 traces (6 workloads × 5 seeds × 3 difficulties),
-55,014 turns, 15,342 queries. Each trace is content-addressed by BLAKE2b-256 over
+Suite `grafomem-bench-v0.2.0`: 135 traces (9 workloads — W1–W7, W9, W10; W8 held
+out — × 5 seeds × 3 difficulties), 61,754 turns, 17,612 queries. Each trace is
+content-addressed by BLAKE2b-256 over
 its canonical JSON (excluding the random trace identifier and the generation
 timestamp); a per-workload rollup hashes that workload's sorted trace hashes, and
 the corpus hash aggregates all sorted trace hashes.
 
 ```
-corpus_hash:  8ea8edc8d34f93689ae8b3343b7f54fdd832a6ce101c8f6a08cabd2c88baedb1
+corpus_hash:  f049820bc24505111595b030ee9b2e6abd1812e80e96e3e770e1bbbcfb077ca6
 
 per-workload rollups (BLAKE2b-256 over each workload's sorted trace hashes):
-  W1  3028af2d728db47c18ef6353d3881302ad527dcbdb6bc7370f9df093942b9459
-  W2  5a39a2ebc18a412330b9316d38b66233ff6155c8befdb2c56ae7b16912a95af8
-  W3  2feea9abd2c86de6dd8df87acccd25a4551810bef23cc58ceef404959810be32
-  W4  cd265abad10e8d0af69427f6a3b3abf062f89777ef1758ec51d06705d4a5e481
-  W5  a791dae52e917340708da237205e005c7abaa1f5d52c0661cc20fa864dc4d010
-  W6  a758332bb77c4422a8074fdc71db309de06786b71d20699de601a86807d4acf0
+  W1   3028af2d728db47c18ef6353d3881302ad527dcbdb6bc7370f9df093942b9459
+  W2   5a39a2ebc18a412330b9316d38b66233ff6155c8befdb2c56ae7b16912a95af8
+  W3   2feea9abd2c86de6dd8df87acccd25a4551810bef23cc58ceef404959810be32
+  W4   cd265abad10e8d0af69427f6a3b3abf062f89777ef1758ec51d06705d4a5e481
+  W5   a791dae52e917340708da237205e005c7abaa1f5d52c0661cc20fa864dc4d010
+  W6   a758332bb77c4422a8074fdc71db309de06786b71d20699de601a86807d4acf0
+  W7   69c11563dc9cf97477b52964bb9c030672ea288c9dea53b30b2bd88b973fabe9
+  W9   4c58511ae32cf4515237a277e56357cfe6b6b6f69834dd29dacf7f8580f8a0e5
+  W10  217d4e15b3724ac1cb9976d3380fa0b639dcd41dad4b1e23ea5af96bf0914a94
 ```
 
-The rollups are stable under suite growth: locking W5 and W6 left the W1–W4
-rollups byte-identical. **R3:** the corpus is built and locked on x86-64 Linux and
+The rollups are stable under suite growth: locking the privacy workloads (W5, W6)
+left the W1–W4 rollups byte-identical, and locking W7, W9, and the concurrency
+workload (W10) in turn left every earlier workload's rollup unchanged — the property
+that lets a finding cite its workload's rollup without re-pinning as the suite grows.
+**R3:** the corpus is built and locked on x86-64 Linux and
 regenerated byte-identically on Apple Silicon macOS.
 
-## Appendix C — Findings F1–F13
+## Appendix C — Findings (F1–F13, F19–F20)
+
+_F14–F18 cover W7–W9, reported separately; the findings analyzed in this paper are F1–F13 and F19–F20._
 
 | # | workload | finding (headline) |
 |---|---|---|
@@ -969,14 +1039,16 @@ regenerated byte-identically on Apple Silicon macOS.
 | F11 | W6 | `coarse_delete` over-deletes: leakage 0.000 but survivor recall 0.000. |
 | F12 | W5 | `leaky_tenant` claims `MULTI_TENANT` yet leaks at 1.000 (claim ≠ behavior); leakage orthogonal to recall (1.000). |
 | F13 | W5 | `over_isolating` over-restricts: leakage 0.000 but in-tenant recall 0.000. |
+| F19 | W10 | `no_isolation` claims `serializable` yet delivers read-committed (claim ≠ behavior); over-claim downgraded against its declaration, M8 0.25. |
+| F20 | W10 | `resurrecting` holds serializable on the anomaly probes but revives a committed delete (§10.4 durability, durable = no), M8 0.75. |
 
 ## Appendix D — Reproduction
 
 Environment: Python 3.12; reference embedder `BAAI/bge-small-en-v1.5` (pinned),
 exact NumPy cosine; retrieval budget enforced in characters.
 
-Regenerate and verify the corpus — must report `corpus_hash 8ea8edc8…` and the six
-rollups of Appendix B:
+Regenerate and verify the corpus — must report the v0.2.0 `corpus_hash` and the
+nine rollups of Appendix B:
 
 ```
 python scripts/generate_corpus.py
@@ -988,7 +1060,8 @@ Per-workload experiments (real BGE for the headline numbers):
 python scripts/run_w1.py   # F1, F2        python scripts/run_w4.py   # F8, F9
 python scripts/run_w2.py   # F3, F4, F5    python scripts/run_w5.py   # F12, F13
 python scripts/run_w3.py   # F6, F7        python scripts/run_w6.py   # F10, F11
+python scripts/run_w10.py  # F19, F20
 ```
 
 **R3:** regenerating on a second machine of different architecture must reproduce
-all six rollups and the corpus hash byte-for-byte.
+all nine rollups and the corpus hash byte-for-byte.
