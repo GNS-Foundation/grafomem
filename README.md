@@ -158,12 +158,22 @@ v0.1 normative subset: `{AUDIT, SUPERSESSION_CHAIN, BI_TEMPORAL, HARD_DELETE, MU
 - **Batched embedding** on the ingest path — **done.** A `write_many` fast-path embeds a
   batch in one forward pass under one transaction: **97 → 847 items/s (8.6×)**, same
   resulting store. Optional accelerator; the single-`write` Protocol path is unchanged.
-- **Reserved capabilities** — provenance pair **done.** `PROVENANCE` (normative) and
-  `CRYPTOGRAPHIC_PROVENANCE` (optional) are implemented in both backends and certified
-  by the v0.2 conformance suite: Ed25519 over a content-store fact_id, `source`
-  persisted (signatures survive restart). `CONFLICT_DETECTION` and
-  `CROSS_SESSION_PROPAGATION` stay deferred to a design pass — each needs a semantic
-  definition before it can be benchmarked.
+- **Reserved capabilities — provenance pair done.** `PROVENANCE` (normative) and
+  `CRYPTOGRAPHIC_PROVENANCE` (optional) are implemented in both backends and certified by the
+  v0.2 conformance suite: Ed25519 over a content-store fact_id, `source` persisted (signatures
+  survive restart). Provenance has **no benchmark workload by design** — it is integrity metadata,
+  "verifiability, not ranking" (gmp-spec §7.5), so the suite tests it with constructed probes like
+  `AUDIT`, not a retrieval workload (§8.3).
+- **Workloads W7–W9 — built.** W7 (Conflict Detection), W8 (Forgetting Curve), W9 (Cross-Session
+  Deletion); generators, backend spectrums, runners, findings F14–F18. W7 and W9 are corpus-locked
+  into v0.1.9; W8 is held out pending the summarise/merge retention variant. These home the last
+  two reserved flags — `CONFLICT_DETECTION` (W7) and `CROSS_SESSION_PROPAGATION` (W9), now
+  **un-reserved** in gmp-spec §7.4.
+- **W10 — Operational Concurrency & Isolation — designed, not built.** Stage 1 ratified into the
+  spec (workload-spec §4.10, gmp-spec §10); adds `CONCURRENCY_CONTROL` as a 10th, spec-only flag.
+  A *core* bump — set-valued ground truth breaks the single-valued total order — so it lags the
+  spec until Stage 2 (trace-schema v0.2 + the first new interface method). The suite's one open
+  frontier.
 
 The arc is protocol-first: the spec and suite are the standard; the implementations are
 the proof it's real and runnable. "Postgres for agent memory" is the destination, not
