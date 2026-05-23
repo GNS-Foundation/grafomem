@@ -76,6 +76,7 @@ class Workload(StrEnum):
     W4 = "W4"  # Long-Horizon Dependencies
     W5 = "W5"  # Multi-Tenant Isolation
     W6 = "W6"  # Deletion & Leakage
+    W7 = "W7"  # Conflict Detection
 
 
 class Difficulty(StrEnum):
