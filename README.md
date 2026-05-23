@@ -34,7 +34,7 @@ Clean-room research project. [grafomem.com](https://grafomem.com)
 
 | Layer | What it is | Where |
 |---|---|---|
-| **Benchmark** | 9 workloads (W1–W9), 18 findings; locked corpus 120 traces / 60,554 turns / 17,132 queries (v0.1.9) | `src/aml/generator/`, `scripts/run_w*.py` |
+| **Benchmark** | 10 workloads (W1–W10), 20 findings; locked corpus 135 traces / 61,754 turns / 17,612 queries (v0.2.0) | `src/aml/generator/`, `scripts/run_w*.py` |
 | **Paper** | arXiv technical report | `docs/grafomem-paper.pdf` |
 | **Spec** | GMP v0.2 (draft) — protocol semantics (RFC 2119) | `docs/gmp-spec-v0.2.md` |
 | **Conformance** | executable §8: `supports X` ≝ passes the suite for X | `src/aml/eval/conformance.py` |
@@ -47,7 +47,7 @@ suite **on itself**; the wire client runs the *same* suite **over a socket**; th
 SQLite store runs it **on a file**. The contract is transport- and
 implementation-independent by construction — not by assertion.
 
-**v0.2 in progress:** W7–W9 built (findings F14–F18); W7/W9 corpus-locked, W8 held out; W10 (operational concurrency) designed — §4.10, gmp-spec §10.
+**v0.2:** W7–W10 built (findings F14–F20); W7, W9, W10 corpus-locked into v0.2.0, W8 held out; W10 (operational concurrency & isolation) gated by M8 isolation conformance — §4.10, gmp-spec §10.
 
 ---
 
@@ -73,7 +73,7 @@ load-bearing ones:
 
 ## Latency — reference store, locked corpus
 
-Full corpus (W1–W6) ingested into one growing SQLite + sqlite-vec store (N = 38,882
+The W1–W6 subset ingested into one growing SQLite + sqlite-vec store (N = 38,882
 rows), BGE-small embeddings, on an Apple-Silicon laptop. Numbers are post-v0.2 (the
 metadata-column pre-filter):
 
@@ -166,14 +166,17 @@ v0.1 normative subset: `{AUDIT, SUPERSESSION_CHAIN, BI_TEMPORAL, HARD_DELETE, MU
   `AUDIT`, not a retrieval workload (§8.3).
 - **Workloads W7–W9 — built.** W7 (Conflict Detection), W8 (Forgetting Curve), W9 (Cross-Session
   Deletion); generators, backend spectrums, runners, findings F14–F18. W7 and W9 are corpus-locked
-  into v0.1.9; W8 is held out pending the summarise/merge retention variant. These home the last
+  into v0.2.0; W8 is held out pending the summarise/merge retention variant. These home the last
   two reserved flags — `CONFLICT_DETECTION` (W7) and `CROSS_SESSION_PROPAGATION` (W9), now
   **un-reserved** in gmp-spec §7.4.
-- **W10 — Operational Concurrency & Isolation — designed, not built.** Stage 1 ratified into the
-  spec (workload-spec §4.10, gmp-spec §10); adds `CONCURRENCY_CONTROL` as a 10th, spec-only flag.
-  A *core* bump — set-valued ground truth breaks the single-valued total order — so it lags the
-  spec until Stage 2 (trace-schema v0.2 + the first new interface method). The suite's one open
-  frontier.
+- **W10 — Operational Concurrency & Isolation — built and corpus-locked.** Trace-schema v0.2
+  carries set-valued ground truth; `interface.py` adds `submit_concurrent` (gated by
+  `CONCURRENCY_CONTROL`, the 10th flag), `IsolationPolicy`, and a `declared_policy`
+  self-description on the concurrent backend. A five-store spectrum (serializable →
+  resurrecting) drives **M8 isolation conformance**, which catches both the over-claimer
+  (declares serializable, delivers read-committed — F19) and the §10.4 durability violator
+  (resurrects a committed delete — F20). Locked into v0.2.0 (135 traces). The suite's last
+  open frontier, now closed.
 
 The arc is protocol-first: the spec and suite are the standard; the implementations are
 the proof it's real and runnable. "Postgres for agent memory" is the destination, not
