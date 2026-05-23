@@ -475,7 +475,67 @@ survivors — a propagation violation, the cross-session sibling of W6's soft-de
 
 ---
 
-> **Not yet specified — true concurrency control.** None of W7–W9 covers *operational* concurrency: parallel readers and writers contending for the same fact under a declared isolation level (serializable, snapshot, read-committed). W7's "concurrency" is logical window-overlap (conflict resolution); isolation-level control is a distinct axis with no workload and no reserved capability — the genuinely net-new item for a future design pass.
+### 4.10 W10 — Operational Concurrency & Isolation *(designed, v0.2; not built)*
+
+**Status:** Designed — specified here and in gmp-spec §10 (Stage 1); **not built**. Unlike
+W7–W9 (purely additive over the v0.1 model), W10 is a **core bump**: operational
+concurrency is the absence of a total order, which the v0.1 trace model cannot express, so
+it requires a trace-schema v0.2 bump (`Turn.txn_id` + a `Transaction` happens-before DAG)
+and the first new `interface.py` method since v0.1 (`submit_concurrent`). The v0.1 path
+(W1–W9) is untouched and stays single-valued; W10 is a gated parallel lane. Home of the
+proposed tenth capability, `CONCURRENCY_CONTROL`.
+
+**Purpose:** Test what a store does when multiple writers (or a writer and a reader) contend
+for the same `(subject, predicate)` without an externally imposed order, under a declared
+isolation level. This is *operational* concurrency — distinct from W7's *logical* conflict
+(overlapping validity windows, both facts live). The question is which serializations the
+store admits, and whether that matches the level it claims.
+
+**Procedure:**
+1. Generate base facts as in W1.
+2. Per contended key, form a group of **2–3 concurrent transactions** related by an
+   explicit happens-before DAG (each transaction may carry one or more operations;
+   transactions incomparable in the DAG are concurrent — the group size is the number of
+   contending transactions, not operations per transaction).
+3. Plant the diagnostic anomalies: **lost update** (two concurrent `supersede`s on one key
+   — serializable requires one to build on the other; a skipped link is a broken
+   supersession chain), **write skew** (two concurrent `supersede`s each preserving a
+   declared cross-fact invariant alone but violating it jointly — the snapshot↔serializable
+   discriminator), and **non-repeatable read** (a reader transaction's two reads bracketing
+   a concurrent write). Phantom is optional; **dirty read is deferred** (it needs
+   abort/rollback the immediate-commit model lacks — gmp-spec §10.2).
+4. Ground truth is **set-valued**: the permissible outcomes are those of some serialization
+   admitted by the declared level.
+
+**Eval mode — claimed vs achieved isolation, not a scalar.** The runner is an **outcome
+oracle**: it presents each concurrent group, records what the store commits, and checks
+membership in the permissible set for the *claimed* level (no real threads — R1 preserved).
+The achieved level is the strongest whose permissible set contains every observed outcome
+across seeds. Reference backend spectrum:
+
+- `serializable_store` — admits only serial-equivalent outcomes (correct).
+- `snapshot_store` — first-committer-wins, snapshot reads; **exhibits write skew** (caught
+  iff it claims `serializable`).
+- `read_committed_store` — permits non-repeatable reads (the observable floor).
+- `no_isolation_store` — last-write-wins; exhibits lost update.
+- `resurrecting_store` — a `serializable`-claiming store whose concurrency path lets a
+  `supersede` racing a committed `delete` bring the fact back: the foil for the
+  durable-delete guard (gmp-spec §10.4) — caught as a privacy violation, not an ordering
+  choice.
+
+A store claiming `serializable` that exhibits write skew is **downgraded to snapshot** in
+the report — the isolation analogue of W6's "claims `HARD_DELETE` but leaks." A store not
+declaring `CONCURRENCY_CONTROL` is **skipped** (single-order; the axis does not apply).
+
+**RQs addressed:** **RQ7 — operational consistency under contention (new in v0.2).** The
+paper and spec define their research questions through RQ6; W10 introduces RQ7, so this is
+a forward reference until the RQ set is revised alongside ratification. The conformance
+obligation is gmp-spec §8.3 (per-capability obligations).
+
+**Two-stage plan:** Stage 1 (this section + gmp-spec §10) ratifies the contract — docs only,
+no code, and the point at which the v0.2 contract is fixed. Stage 2 builds the schema bump,
+the `submit_concurrent` entry point, the set-valued oracle path, and the backend spectrum.
+W10 enters the locked corpus only after Stage 2.
 
 ---
 
@@ -567,10 +627,10 @@ The generator ships with a smoke suite: 1 seed × 6 workloads × `easy` difficul
 - **Dialog-tree LLM generation** — true multi-turn naturalism, as opposed to per-utterance paraphrase.
 - **Adversarial workloads** — generation procedures tuned to break specific architectures.
 - **Internationalization** of the predicate vocabulary (Italian, Spanish; relevant for EU-AI-Act-adjacent positioning).
-- **W7 — Forgetting Curve.** Explicit test of RQ3: workload designed such that *deliberately forgetting* low-importance facts strictly improves recall on high-importance ones. Hypothesis: principled forgetting is Pareto-dominant on long-horizon tasks. Cognitive forgetting / efficiency lens.
-- **W8 — Right to Be Forgotten.** Workload that stress-tests the deletion machinery introduced in v0.1.1 — heavy use of inside-session deletion, cross-session propagation, deletion-during-supersession, and adversarial introduce-then-delete patterns. Regulatory / privacy lens. The v0.1.1 data model is the substrate; W8 is the dedicated workload.
+- **W10 — Operational Concurrency & Isolation.** Designed (§4.10; gmp-spec §10), not built — the genuinely net-new axis, requiring a trace-schema v0.2 bump and the first new interface method since v0.1. Home of the reserved `CONCURRENCY_CONTROL`.
+- **Provenance / Check-P workload** — undesigned. Would home the reserved `PROVENANCE` / `CRYPTOGRAPHIC_PROVENANCE` capabilities (currently refused-only; gmp-spec §7.5).
 
-(W7 and W8 are distinct mechanisms addressing distinct research questions and ship together in v0.2.)
+(Forgetting Curve, Right-to-be-Forgotten, and Conflict Detection — formerly listed here as deferred — are now **built** as W8, W9, and W7 respectively; see §4.7–§4.9. W7 and W9 are corpus-locked; W8 is held out pending the summarise/merge variant.)
 
 ---
 

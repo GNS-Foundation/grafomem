@@ -342,11 +342,12 @@ content-only identity.
 
 ### 7.1 The capability set
 
-Nine flags, enumerated and append-only across versions (`interface.py`):
+Ten flags, enumerated and append-only across versions (`interface.py`):
 
 ```
 BI_TEMPORAL   HARD_DELETE   SUPERSESSION_CHAIN   CROSS_SESSION_PROPAGATION
 MULTI_TENANT  CONFLICT_DETECTION   PROVENANCE   CRYPTOGRAPHIC_PROVENANCE   AUDIT
+CONCURRENCY_CONTROL
 ```
 
 ### 7.2 Declaration discipline
@@ -369,10 +370,12 @@ the suite adapts to the declaration (paper §3.7, anchor B1).
 GMP v0.1 fully specifies `SUPERSESSION_CHAIN`, `BI_TEMPORAL`, `HARD_DELETE`,
 `MULTI_TENANT`, and `AUDIT` (§3–§6). GMP v0.2 adds `PROVENANCE` to the normative
 subset and `CRYPTOGRAPHIC_PROVENANCE` as an optional extension — a store MAY decline
-to sign, but if it claims the flag it MUST honor §7.5. The remaining two —
-`CROSS_SESSION_PROPAGATION` and `CONFLICT_DETECTION` — are **reserved**: present in
-the enumeration, specified in a later version. A store MUST NOT claim a reserved
-capability under conformance.
+to sign, but if it claims the flag it MUST honor §7.5. `CONFLICT_DETECTION` and
+`CROSS_SESSION_PROPAGATION` are **no longer reserved** — v0.2 specifies and homes them
+(W7 §4.7, W9 §4.9), and a store MAY claim them under conformance. `CONCURRENCY_CONTROL`
+is the sole remaining **reserved-but-being-specified** flag: §10 defines it, and it
+enters the normative subset when §10 is ratified. Until then a store MUST NOT claim it
+under conformance.
 
 ### 7.5 Provenance — `PROVENANCE` (v0.2 normative) and `CRYPTOGRAPHIC_PROVENANCE` (v0.2 optional)
 
@@ -459,6 +462,12 @@ own probes — unsigned for `PROVENANCE`, signed with a generated Ed25519 key fo
 integrity metadata and does not change retrieval. The two-sided crypto test gates
 signature validity (`>= 1 - eps`) and tamper acceptance (`<= eps`).
 
+A store claiming `CONCURRENCY_CONTROL` MUST pass the W10 isolation suite for its
+**declared** level — every observed outcome must lie in the permissible set of that
+level, and no `forbidden_outcome` (notably a resurrected committed delete, §10.4) may
+occur. A claimed level stronger than the achieved level is a conformance failure,
+reported as a downgrade (§10.5).
+
 ### 8.4 Reporting
 
 A conformance run MUST report, per claimed capability, a pass/fail with the
@@ -483,6 +492,102 @@ deletion guarantee (§6.2) compose without a cross-boundary hazard (§6.5). The 
 no cross-tenant dedup — is the correct thing to forgo for a safety boundary. This is
 a v0.1 commitment and is revisitable should a deployment present a dedup requirement
 that outweighs it.
+
+---
+
+## 10. Operational concurrency and isolation (R6 ← W10; D7) — `CONCURRENCY_CONTROL`
+
+When more than one writer (or a writer and a reader) contend for the same
+`(subject, predicate)` without an externally imposed order, the outcome depends on the
+store's isolation level. GMP makes that level a declared, first-class property. This axis
+is **distinct from §6 conflict semantics**: W7-style conflict is *logical* (two facts with
+overlapping validity, both live, no defined current value — see §3, `CONFLICT_DETECTION`);
+isolation is *operational* (concurrent operations whose relative order is not fixed).
+`CONFLICT_DETECTION` and `CONCURRENCY_CONTROL` are independent capabilities.
+
+A store that does not declare `CONCURRENCY_CONTROL` is single-order: every operation is
+totally ordered (the v0.1 model), the axis does not apply, and the store is **skipped**
+under the W10 suite — exactly as a non-`MULTI_TENANT` store is skipped under W5. Declaring
+the capability makes ground truth **set-valued**: the permissible outcomes are those of
+*some* serialization admitted by the declared level.
+
+### 10.1 Declared policy
+
+A store claiming `CONCURRENCY_CONTROL` MUST declare an `IsolationPolicy`:
+
+```
+IsolationPolicy = {
+  level: read_committed | snapshot | serializable,
+  conflict_rule: first_committer_wins | last_committer_wins | abort_both | merge,
+  coverage_guarantee
+}
+```
+
+`conflict_rule` MUST resolve **write–write** conflicts (two concurrent `supersede`s on one
+key) **and write–delete** conflicts (a `delete` concurrent with a `supersede` of the same
+key — delete-then-supersede targets an absent fact; supersede-then-delete must name which
+version is removed). The declared rule fixes the outcome; the oracle's permissible set is
+derived from it.
+
+### 10.2 The levels
+
+The three levels are the standard lattice restricted to what GMP can express, stated as the
+anomalies each **excludes**:
+
+| level          | dirty read | non-repeatable read | phantom | lost update | write skew |
+|----------------|:----------:|:-------------------:|:-------:|:-----------:|:----------:|
+| read_committed | excluded   | allowed             | allowed | allowed     | allowed    |
+| snapshot       | excluded   | excluded            | allowed | excluded    | **allowed**|
+| serializable   | excluded   | excluded            | excluded| excluded    | excluded   |
+
+Mapped onto the fact model: **lost update** is a broken supersession chain (the final
+`superseded_by` chain skips a committed write — checkable against §3 and validator V3);
+**write skew** is two concurrent `supersede`s that each preserve a declared cross-fact
+invariant alone but violate it jointly. Write skew **under snapshot** is the diagnostic
+cell — it is what separates a genuine `serializable` store from a `snapshot` store that
+*claims* `serializable`.
+
+Under immediate-commit (§2), dirty read and dirty write require an uncommitted state the
+model does not produce, so **`read_committed` collapses to the observable floor**: its only
+proscriptions are vacuous, and it is observationally identical to no-isolation. The two
+crisply separated, testable tiers are therefore `snapshot` and `serializable`, with
+`read_committed` as the baseline beneath them. Dirty read and full abort/rollback are
+**deferred** (no semantic definition exists under immediate-commit; a capability is reserved
+only once it has one — §7.4 discipline).
+
+### 10.3 Read-your-own-writes
+
+A transaction's own writes MUST be visible to its own subsequent reads, **regardless of
+isolation level** — RYOW sits below the lattice. Under `snapshot` this is the carve-out: a
+transaction reads its begin-snapshot *except* its own writes, which override it.
+
+### 10.4 A committed delete is durable under concurrency
+
+This is the one point where the isolation axis meets the §6 privacy axis, and the contact
+is a hard constraint, not a free interaction. Visibility of a delete *to a concurrent
+reader* is order-dependent (both serial orders are admissible), but the **guarantee** is
+invariant across every level: once a delete is in a read's causal past it never resurfaces,
+and the permissible-outcome set MUST NOT contain a state in which a committed delete is
+undone. The §6.2 `HARD_DELETE` guarantee therefore holds at every isolation level by
+construction of the permissible set; a concurrency path that resurrects a committed delete
+is a privacy violation, not a permissible ordering.
+
+### 10.5 Coverage contract
+
+`coverage_guarantee` is an agent-readable predicate naming the anomalies the level excludes.
+Conformance reports **claimed vs achieved**: the achieved level is the strongest whose
+permissible set contains every observed outcome across seeds. A store that claims
+`serializable` but exhibits write skew is **downgraded to snapshot** in the report — the
+isolation analogue of a store that claims `HARD_DELETE` and leaks (§6.2). The W10 finding is
+this claimed-vs-achieved map, not a scalar.
+
+### 10.6 Determinism (R1)
+
+The W10 runner is an **outcome oracle**: it presents a concurrent transaction group, records
+what the store commits, and checks membership in the permissible set — it does **not** spawn
+real threads (which would be unreproducible). Transaction groups are kept small (2–3 txns)
+so the oracle enumerates the admissible serializations deterministically. R1 reproducibility
+is preserved.
 
 ---
 
