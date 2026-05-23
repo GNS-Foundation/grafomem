@@ -14,7 +14,7 @@
 
 This document specifies:
 
-- The seven metrics (M1–M7) used to evaluate backend performance.
+- The eight metrics (M1–M8) used to evaluate backend performance.
 - Per-workload primary metrics and deployment thresholds.
 - The always-on safety checks (Check L — deletion leakage; Check P — provenance verification).
 - The W6 capability classification procedure (the only non-scalar workload).
@@ -192,6 +192,24 @@ where `leaks(q)` is true if the retrieval for tenant A returned any fact whose u
 
 ---
 
+### 4.8 M8 — Isolation conformance (W10-specific)
+
+For W10 probes — each a concurrent group submitted under the backend's `declared_policy` (§10):
+
+$$
+M8(W10, B, s) = 1 - \frac{|\{p \in P_{W10} : \text{violates}(p)\}|}{|P_{W10}|}
+$$
+
+where `violates(p)` is true if the store **over-claims** on probe `p` — its achieved isolation level, read back from the committed outcome, is strictly below its declared level — or if `p` is a §10.4 durability probe on which a committed delete is **resurrected**.
+
+**Interpretation:** M8 = 1.0 means the store's concurrency behavior honors its declared policy on every probe: no over-claim, no revived delete. M8 < 1.0 means at least one probe where the store claims more isolation than it delivers (e.g. declares `serializable` but admits write-skew → downgraded to `snapshot`) or where it brings back a committed delete. Like Check L, a §10.4 resurrection is a durability/regulatory exposure, not a tunable parameter.
+
+**Decomposition.** M8 aggregates the two directions the conformance suite (§8) gates separately: the **over-claim** direction on the isolation-lattice probes (achieved vs declared level, §10.5), and the **§10.4 durability** direction on resurrection probes (a committed delete must stay deleted). The achieved isolation *level* — `serializable` ≻ `snapshot` ≻ `read_committed` — is the categorical companion reported beside M8: M8 is the scalar conformance rate, while the achieved level names where on the lattice the store actually sits.
+
+**Capability dependence:** `CONCURRENCY_CONTROL` required. For backends without it, W10 is skipped (per `02-backend-interface.md` §10), exactly as W5 is skipped without `MULTI_TENANT`. M8 is not computed in `metrics.py` (which scores single-valued retrieval); the W10 signal is categorical, so M8 is produced by the runner bridge (`eval/concurrency_runner.py`) and surfaced by `scripts/run_w10.py` and the conformance suite.
+
+---
+
 ## 5. Always-on safety checks
 
 These are imported from `02-backend-interface.md` §8. They produce binary pass/fail, not scalar scores, and run on every backend regardless of workload.
@@ -269,6 +287,7 @@ A backend whose `non_deterministic` rate is > 0 has a consistency bug and is fla
 | **W6** Concurrent | classification | "no consistency" baseline (typically `silent_data_loss` or `last_write_wins`) | non_deterministic rate = 0; dominant class declared explicitly |
 | **W7** Forgetting *(v0.2)* | TBD | TBD | TBD |
 | **W8** Right to Be Forgotten *(v0.2)* | Check L pass rate | "soft delete only" baseline (fails everything) | Check L: zero leaks |
+| **W10** Concurrency & Isolation *(v0.2)* | M8 (+ achieved level) | over-claimer baseline (declares `serializable`, delivers less) | M8 = 1.0 — achieved ≥ declared on every lattice probe **and** zero §10.4 resurrections; achieved level declared explicitly |
 
 **Always required for deployment, on every workload:**
 
