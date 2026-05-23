@@ -73,12 +73,13 @@ class _W10Params:
     n_lost: int
     n_skew: int
     n_nrr: int
+    n_delete: int
 
 
 _W10_PARAMS: dict[Difficulty, _W10Params] = {
-    Difficulty.EASY:   _W10Params(n_lost=1, n_skew=1, n_nrr=1),
-    Difficulty.MEDIUM: _W10Params(n_lost=3, n_skew=3, n_nrr=3),
-    Difficulty.HARD:   _W10Params(n_lost=8, n_skew=8, n_nrr=8),
+    Difficulty.EASY:   _W10Params(n_lost=1, n_skew=1, n_nrr=1, n_delete=1),
+    Difficulty.MEDIUM: _W10Params(n_lost=3, n_skew=3, n_nrr=3, n_delete=3),
+    Difficulty.HARD:   _W10Params(n_lost=8, n_skew=8, n_nrr=8, n_delete=8),
 }
 
 
@@ -125,6 +126,11 @@ def generate_w10(seed: int, difficulty: Difficulty) -> Trace:
         v0, b = objects_for(s, p, 2)
         plans.append({"kind": TxnAnomaly.NON_REPEATABLE_READ, "key": (s, p),
                       "base": v0, "new": b})
+    for _ in range(params.n_delete):
+        s, p = next(key_iter)
+        v0, new = objects_for(s, p, 2)
+        plans.append({"kind": TxnAnomaly.RESURRECTION, "key": (s, p),
+                      "base": v0, "new": new})
     rng.shuffle(plans)  # interleave anomaly types across the trace
 
     seq = 0  # strictly-monotonic fact sequence (>= 1)
@@ -244,6 +250,32 @@ def generate_w10(seed: int, difficulty: Difficulty) -> Trace:
             group = ConcurrencyGroup(subject=sa, predicate=pa,
                                      anomaly=kind, transactions=transactions)
 
+        elif kind is TxnAnomaly.RESURRECTION:
+            s, p = gp["key"]
+            f0 = base_by_key[(s, p)]
+            t_del, t_wr = _det_uuid(rng), _det_uuid(rng)
+            fb = mk_fact(s, p, gp["new"], tc)
+            write_facts.append(fb)
+            # §10.4 durable-delete probe: one transaction deletes the committed
+            # base fact while a concurrent transaction supersedes the SAME key. A
+            # correct store keeps the delete durable; ResurrectingStore lets the
+            # supersede revive it. The delete is txn-tagged, so the single-valued
+            # V5 ledger skips it; the runner rebuilds committed_deletes={key} and
+            # checks aml.eval.concurrency.resurrects() at eval time (below the
+            # lattice — permissible at no isolation level).
+            gturns.append(Turn(
+                turn_id=_det_uuid(rng), role=TurnRole.USER,
+                content=f"forget that {_statement(f0)}",
+                content_template=f"forget that {_statement(f0)}",
+                timestamp=tc, deletes=[f0.fact_id], txn_id=t_del))
+            gturns.append(Turn(
+                turn_id=_det_uuid(rng), role=TurnRole.USER,
+                content=_statement(fb), content_template=_statement(fb),
+                timestamp=tc, introduces=[fb.fact_id], txn_id=t_wr))
+            transactions = [Transaction(t_del), Transaction(t_wr)]  # concurrent
+            group = ConcurrencyGroup(subject=s, predicate=p,
+                                     anomaly=kind, transactions=transactions)
+
         else:  # NON_REPEATABLE_READ
             s, p = gp["key"]
             f0 = base_by_key[(s, p)]
@@ -315,10 +347,12 @@ if __name__ == "__main__":
     # --- Test 1: easy structure -------------------------------------------
     tr = generate_w10(seed=0, difficulty=Difficulty.EASY)
     nf, ng, by_anom, tagged = counts(tr)
-    assert ng == 3, f"expected 3 groups (1 of each), got {ng}"
-    assert by_anom == {"lost_update": 1, "write_skew": 1, "non_repeatable_read": 1}, by_anom
-    # facts: lost(1 base + 2 writes) + skew(2 base + 2 writes) + nrr(1 base + 1 write) = 9
-    assert nf == 9, f"expected 9 facts, got {nf}"
+    assert ng == 4, f"expected 4 groups (1 of each), got {ng}"
+    assert by_anom == {"lost_update": 1, "write_skew": 1,
+                       "non_repeatable_read": 1, "resurrection": 1}, by_anom
+    # facts: lost(1 base + 2 writes) + skew(2 base + 2 writes) + nrr(1 base + 1
+    # write) + resurrection(1 base + 1 write) = 11
+    assert nf == 11, f"expected 11 facts, got {nf}"
     print(f"✓ Generates W10 easy                 "
           f"({nf} facts, {ng} groups {by_anom}, {tagged} txn-tagged turns)")
 
@@ -335,7 +369,7 @@ if __name__ == "__main__":
     assert all(tid not in tagged_ids for tid in gt.recall_targets), \
         "no concurrent turn may carry a single-valued recall_target"
     # one prefix current-query probe per group, each targeting a base fact
-    assert len(gt.recall_targets) == 3, f"expected 3 prefix probes, got {len(gt.recall_targets)}"
+    assert len(gt.recall_targets) == 4, f"expected 4 prefix probes, got {len(gt.recall_targets)}"
     # DAG: contending transactions are concurrent (no depends_on)
     for g in tr.concurrency_groups:
         assert len(g.transactions) == 2
@@ -356,7 +390,7 @@ if __name__ == "__main__":
     # --- Test 5: JSON-Schema validation (v0.2 round-trip) ------------------
     d = trace_to_dict(tr)
     validate_trace_schema(d)
-    assert "concurrency_groups" in d and len(d["concurrency_groups"]) == 3
+    assert "concurrency_groups" in d and len(d["concurrency_groups"]) == 4
     assert d["schema_version"].startswith("0.2"), d["schema_version"]
     print(f"✓ JSON-Schema validation passed      (schema {d['schema_version']}, "
           f"concurrency_groups serialised)")

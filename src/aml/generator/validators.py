@@ -104,22 +104,27 @@ def validate_trace(trace: Trace) -> list[Violation]:
         for fid in turn.introduces:
             introduced_at.setdefault(fid, ts)
 
-        # delete — V2
-        for fid in turn.deletes:
-            if fid not in introduced_at:
-                v.append(Violation(
-                    "V2",
-                    f"deletes fact {fid.hex()[:12]} never introduced",
-                    loc,
-                ))
-            elif fid in re_deleted:
-                v.append(Violation(
-                    "V2",
-                    f"deletes already-deleted fact {fid.hex()[:12]}",
-                    loc,
-                ))
-            else:
-                re_deleted[fid] = ts
+        # delete — V2 + ledger. Skip txn-tagged deletes: a concurrent delete is
+        # set-valued (its durability is resolved by the eval-time concurrency
+        # oracle, §10.4, not the single-valued ledger), and gt.deleted_facts is
+        # derived from the prefix only, so it will not contain it. REF above still
+        # validates the deleted fact exists.
+        if turn.txn_id is None:
+            for fid in turn.deletes:
+                if fid not in introduced_at:
+                    v.append(Violation(
+                        "V2",
+                        f"deletes fact {fid.hex()[:12]} never introduced",
+                        loc,
+                    ))
+                elif fid in re_deleted:
+                    v.append(Violation(
+                        "V2",
+                        f"deletes already-deleted fact {fid.hex()[:12]}",
+                        loc,
+                    ))
+                else:
+                    re_deleted[fid] = ts
 
     # --- V5 — re-derived deletion ledger must match GroundTruth -----------
     if re_deleted != dict(gt.deleted_facts):
