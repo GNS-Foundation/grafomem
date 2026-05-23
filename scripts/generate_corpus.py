@@ -41,9 +41,12 @@ from aml.generator.workloads.w3 import generate_w3
 from aml.generator.workloads.w4 import generate_w4
 from aml.generator.workloads.w5 import generate_w5
 from aml.generator.workloads.w6 import generate_w6
+from aml.generator.workloads.w7 import generate_w7
+from aml.generator.workloads.w9 import generate_w9
 
 
-# Dispatch table: workload -> generator. Extended as W2-W6 land.
+# Dispatch table: workload -> generator. W1-W7 + W9 (W8 held out of the
+# locked corpus pending the retention-variant decision).
 _GENERATORS = {
     Workload.W1: generate_w1,
     Workload.W2: generate_w2,
@@ -51,6 +54,8 @@ _GENERATORS = {
     Workload.W4: generate_w4,
     Workload.W5: generate_w5,
     Workload.W6: generate_w6,
+    Workload.W7: generate_w7,
+    Workload.W9: generate_w9,
 }
 
 
