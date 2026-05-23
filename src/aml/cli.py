@@ -96,6 +96,18 @@ def main():
     pass
 
 
+def _read_corpus_hash() -> str:
+    """Read corpus hash from corpus.lock, or return 'unknown'."""
+    lock_path = Path("corpus/corpus.lock")
+    if lock_path.exists():
+        try:
+            lock = json.loads(lock_path.read_text())
+            return lock.get("corpus_hash", "unknown")
+        except Exception:
+            pass
+    return "unknown"
+
+
 # ============================================================================
 # grafomem conformance
 # ============================================================================
@@ -109,8 +121,10 @@ def main():
 @click.option("--budget", default=512, type=int, help="Token budget for retrieval (default: 512)")
 @click.option("--strict", is_flag=True, help="Raise on any conformance violation")
 @click.option("--output", "-o", type=click.Path(), default=None,
-              help="Write JSON report to file (default: stdout summary)")
-def conformance(backend, embedder, seeds, budget, strict, output):
+              help="Write report to file (default: stdout summary)")
+@click.option("--format", "fmt", default="json", type=click.Choice(["json", "markdown"]),
+              help="Report format when --output is used (default: json)")
+def conformance(backend, embedder, seeds, budget, strict, output, fmt):
     """Run the GMP conformance suite against a backend.
 
     Tests only declared capabilities — honest omission is never penalized.
@@ -118,6 +132,7 @@ def conformance(backend, embedder, seeds, budget, strict, output):
     the M8 conformance rate.
     """
     from aml.eval.conformance import run_conformance, print_profile
+    from aml.eval.report import from_profile, to_json, to_markdown
 
     factory = _make_factory(backend, embedder)
     name = backend.rsplit(":", 1)[-1]
@@ -135,9 +150,12 @@ def conformance(backend, embedder, seeds, budget, strict, output):
     click.echo(f"Elapsed: {elapsed:.1f}s")
 
     if output:
-        report = _profile_to_dict(profile)
-        Path(output).write_text(json.dumps(report, indent=2, default=str))
-        click.echo(f"\nReport written to {output}")
+        corpus_hash = _read_corpus_hash()
+        report = from_profile(profile, corpus_hash=corpus_hash)
+        content = to_markdown(report) if fmt == "markdown" else to_json(report)
+        Path(output).write_text(content)
+        click.echo(f"\nReport ({fmt}) written to {output}")
+
 
 
 def _profile_to_dict(profile) -> dict:
