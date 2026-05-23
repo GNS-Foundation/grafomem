@@ -210,10 +210,27 @@ def generate_w10(seed: int, difficulty: Difficulty) -> Trace:
         elif kind is TxnAnomaly.WRITE_SKEW:
             sa, pa = gp["key_a"]
             sb, pb = gp["key_b"]
+            base_a = base_by_key[(sa, pa)]
+            base_b = base_by_key[(sb, pb)]
             t1, t2 = _det_uuid(rng), _det_uuid(rng)
             fa = mk_fact(sa, pa, gp["new_a"], tc)
             fb = mk_fact(sb, pb, gp["new_b"], tc)
             write_facts += [fa, fb]
+            # Each writer READS the OTHER writer's key before superseding its own.
+            # That rw-antidependency cycle (T1 read key_b that T2 writes; T2 read
+            # key_a that T1 writes) is what lets a serializable (SSI) store abort
+            # one writer and avoid the skew. Without these reads, two unconditional
+            # writes to disjoint keys are anomaly-free and serializable cannot be
+            # told from snapshot. requires=[other base] names the read KEY (a
+            # set-valued read, safe via the validator's txn_id skip — not a target).
+            gturns.append(Turn(
+                turn_id=_det_uuid(rng), role=TurnRole.AGENT_QUERY,
+                content=f"{_question(base_b)} (read)", content_template=_question(base_b),
+                timestamp=tc, requires=[base_b.fact_id], as_of=None, txn_id=t1))
+            gturns.append(Turn(
+                turn_id=_det_uuid(rng), role=TurnRole.AGENT_QUERY,
+                content=f"{_question(base_a)} (read)", content_template=_question(base_a),
+                timestamp=tc, requires=[base_a.fact_id], as_of=None, txn_id=t2))
             gturns.append(Turn(
                 turn_id=_det_uuid(rng), role=TurnRole.USER,
                 content=_statement(fa), content_template=_statement(fa),
