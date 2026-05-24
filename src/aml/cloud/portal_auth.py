@@ -1,13 +1,10 @@
 """
-GRAFOMEM portal auth — email/password authentication with JWT sessions.
+GRAFOMEM portal auth — Supabase Auth integration with legacy fallback.
 
-Provides signup, login, and JWT verification for the self-service tenant
-portal.  Passwords are hashed with bcrypt; sessions are stateless JWTs
-(24 h expiry).  Backed by the existing ``tenants`` table extended with
-``email`` and ``password_hash`` columns.
+Verifies Supabase JWTs (from the frontend supabase-js client) and
+auto-provisions tenants in the ``tenants`` table on first login.
 
-The ``bcrypt`` and ``PyJWT`` packages are soft-imported so the module
-loads gracefully when they are missing (``cloud`` extra not installed).
+Also retains legacy email/password signup/login for backward compatibility.
 """
 
 from __future__ import annotations
@@ -70,6 +67,13 @@ BEGIN
     ) THEN
         ALTER TABLE tenants ADD COLUMN status TEXT DEFAULT 'active';
     END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'tenants' AND column_name = 'supabase_uid'
+    ) THEN
+        ALTER TABLE tenants ADD COLUMN supabase_uid TEXT UNIQUE;
+    END IF;
 END $$;
 """
 
@@ -84,16 +88,13 @@ def _generate_api_key() -> str:
 # ============================================================================
 
 class PortalAuth:
-    """Email/password authentication and JWT session management.
+    """Supabase Auth + legacy email/password authentication.
 
-    Parameters
-    ----------
-    db_url : str
-        PostgreSQL connection URI.
-    secret_key : str | None
-        Secret for signing JWTs.  Falls back to ``GRAFOMEM_PORTAL_SECRET``
-        env var, or generates a random key (ephemeral — tokens won't survive
-        server restarts).
+    Supports two modes:
+    1. **Supabase** (primary) — verifies JWTs issued by Supabase Auth using
+       the project's JWT secret.  Auto-provisions tenants on first login.
+    2. **Legacy** — email/password with bcrypt + self-issued JWTs (kept for
+       backward compatibility and existing sessions).
     """
 
     JWT_ALGORITHM = "HS256"
@@ -102,16 +103,27 @@ class PortalAuth:
     def __init__(self, db_url: str, secret_key: str | None = None) -> None:
         self._db_url = db_url
         self._conn: psycopg.Connection[dict[str, Any]] | None = None
+
+        # Legacy portal JWT secret
         self._secret = (
             secret_key
             or os.environ.get("GRAFOMEM_PORTAL_SECRET")
             or secrets.token_hex(32)
         )
 
+        # Supabase JWT secret — used to verify tokens from supabase-js
+        self._supabase_jwt_secret = os.environ.get("SUPABASE_JWT_SECRET", "")
+
         if _bcrypt is None:
-            logger.warning("bcrypt not installed — portal signup/login disabled")
+            logger.warning("bcrypt not installed — legacy signup/login disabled")
         if _jwt is None:
             logger.warning("PyJWT not installed — portal sessions disabled")
+        if self._supabase_jwt_secret:
+            logger.info("Supabase JWT verification enabled")
+        else:
+            logger.warning(
+                "SUPABASE_JWT_SECRET not set — Supabase auth disabled"
+            )
 
     # ------------------------------------------------------------------
     # Connection helpers
@@ -133,13 +145,144 @@ class PortalAuth:
     # ------------------------------------------------------------------
 
     def ensure_schema(self) -> None:
-        """Add auth columns (email, password_hash, etc.) to ``tenants``."""
+        """Add auth columns (email, password_hash, supabase_uid) to ``tenants``."""
         conn = self._get_conn()
         conn.execute(_AUTH_COLUMNS_SQL)
         logger.info("Portal auth columns ensured on tenants table")
 
     # ------------------------------------------------------------------
-    # Signup
+    # Supabase JWT verification
+    # ------------------------------------------------------------------
+
+    def verify_supabase_token(self, token: str) -> dict | None:
+        """Verify a Supabase access token and return user info.
+
+        Returns
+        -------
+        dict | None
+            Keys: ``sub`` (Supabase user UUID), ``email``,
+            ``user_metadata`` (dict with name, plan, etc.).
+        """
+        if _jwt is None or not self._supabase_jwt_secret:
+            return None
+
+        try:
+            payload = _jwt.decode(
+                token,
+                self._supabase_jwt_secret,
+                algorithms=[self.JWT_ALGORITHM],
+                audience="authenticated",
+            )
+        except _jwt.ExpiredSignatureError:
+            logger.debug("Supabase JWT expired")
+            return None
+        except _jwt.InvalidTokenError as exc:
+            logger.debug("Invalid Supabase JWT: %s", exc)
+            return None
+
+        sub = payload.get("sub")
+        if not sub:
+            return None
+
+        return {
+            "sub": sub,
+            "email": payload.get("email", ""),
+            "user_metadata": payload.get("user_metadata", {}),
+        }
+
+    # ------------------------------------------------------------------
+    # Tenant auto-provisioning (for Supabase users)
+    # ------------------------------------------------------------------
+
+    def ensure_tenant(
+        self,
+        supabase_uid: str,
+        email: str,
+        name: str = "",
+        plan: str = "starter",
+    ) -> dict:
+        """Find or create a tenant linked to a Supabase user.
+
+        Called after Supabase JWT verification.  If a tenant with the given
+        ``supabase_uid`` already exists, return it.  Otherwise create a new
+        tenant record.
+
+        Returns
+        -------
+        dict
+            Keys: ``tenant_id``, ``name``, ``email``, ``api_key``, ``plan``.
+        """
+        conn = self._get_conn()
+
+        # Look up by supabase_uid first
+        row = conn.execute(
+            "SELECT id, name, api_key, plan, email "
+            "FROM tenants WHERE supabase_uid = %s",
+            (supabase_uid,),
+        ).fetchone()
+
+        if row:
+            return {
+                "tenant_id": row["id"],
+                "name": row["name"],
+                "email": row["email"],
+                "api_key": row["api_key"],
+                "plan": row["plan"],
+            }
+
+        # Check if there's a tenant with this email (legacy account migration)
+        row = conn.execute(
+            "SELECT id, name, api_key, plan, email "
+            "FROM tenants WHERE email = %s",
+            (email,),
+        ).fetchone()
+
+        if row:
+            # Link existing tenant to Supabase UID
+            conn.execute(
+                "UPDATE tenants SET supabase_uid = %s WHERE id = %s",
+                (supabase_uid, row["id"]),
+            )
+            logger.info(
+                "Linked existing tenant %s to Supabase UID %s",
+                row["id"], supabase_uid,
+            )
+            return {
+                "tenant_id": row["id"],
+                "name": row["name"],
+                "email": row["email"],
+                "api_key": row["api_key"],
+                "plan": row["plan"],
+            }
+
+        # Create a new tenant
+        tenant_id = uuid.uuid4().hex
+        api_key = _generate_api_key()
+        now = datetime.now(tz=timezone.utc)
+        final_name = name or email.split("@")[0]
+
+        conn.execute(
+            "INSERT INTO tenants (id, name, api_key, plan, created_at, "
+            "  email, supabase_uid, status) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, 'active')",
+            (tenant_id, final_name, api_key, plan, now, email, supabase_uid),
+        )
+
+        logger.info(
+            "Auto-provisioned tenant %s for Supabase user %s (%s)",
+            tenant_id, supabase_uid, email,
+        )
+
+        return {
+            "tenant_id": tenant_id,
+            "name": final_name,
+            "email": email,
+            "api_key": api_key,
+            "plan": plan,
+        }
+
+    # ------------------------------------------------------------------
+    # Legacy signup
     # ------------------------------------------------------------------
 
     def signup(
@@ -149,30 +292,7 @@ class PortalAuth:
         password: str,
         plan: str = "starter",
     ) -> tuple[dict, str]:
-        """Create a new tenant with email/password credentials.
-
-        Parameters
-        ----------
-        name : str
-            Human-readable tenant / organization name.
-        email : str
-            Unique email address for login.
-        password : str
-            Plaintext password (will be bcrypt-hashed).
-        plan : str
-            Initial plan tier.
-
-        Returns
-        -------
-        tuple[dict, str]
-            ``(tenant_info_dict, jwt_token)`` — the dict contains keys:
-            ``tenant_id``, ``name``, ``email``, ``api_key``, ``plan``.
-
-        Raises
-        ------
-        ValueError
-            If the email is already registered or password is too short.
-        """
+        """Create a new tenant with email/password credentials (legacy)."""
         if _bcrypt is None:
             raise RuntimeError("bcrypt not installed — cannot signup")
 
@@ -182,19 +302,16 @@ class PortalAuth:
 
         conn = self._get_conn()
 
-        # Check email uniqueness
         existing = conn.execute(
             "SELECT id FROM tenants WHERE email = %s", (email,),
         ).fetchone()
         if existing:
             raise ValueError(f"Email {email!r} is already registered")
 
-        # Hash password
         pw_hash = _bcrypt.hashpw(
             password.encode("utf-8"), _bcrypt.gensalt(),
         ).decode("ascii")
 
-        # Create tenant record
         tenant_id = uuid.uuid4().hex
         api_key = _generate_api_key()
         now = datetime.now(tz=timezone.utc)
@@ -219,17 +336,11 @@ class PortalAuth:
         return info, token
 
     # ------------------------------------------------------------------
-    # Login
+    # Legacy login
     # ------------------------------------------------------------------
 
     def login(self, email: str, password: str) -> tuple[dict, str] | None:
-        """Authenticate with email and password.
-
-        Returns
-        -------
-        tuple[dict, str] | None
-            ``(tenant_info_dict, jwt_token)`` on success, ``None`` on failure.
-        """
+        """Authenticate with email and password (legacy)."""
         if _bcrypt is None:
             raise RuntimeError("bcrypt not installed — cannot login")
 
@@ -245,7 +356,6 @@ class PortalAuth:
         if not row or not row.get("password_hash"):
             return None
 
-        # Verify password
         if not _bcrypt.checkpw(
             password.encode("utf-8"),
             row["password_hash"].encode("ascii"),
@@ -263,17 +373,35 @@ class PortalAuth:
         return info, token
 
     # ------------------------------------------------------------------
-    # JWT
+    # JWT (legacy self-issued + Supabase verification)
     # ------------------------------------------------------------------
 
     def verify_token(self, token: str) -> dict | None:
-        """Verify a JWT and return tenant info, or ``None`` if invalid.
+        """Verify a token — tries Supabase JWT first, then legacy.
 
         Returns
         -------
         dict | None
             Keys: ``tenant_id``, ``name``, ``email``, ``api_key``, ``plan``.
         """
+        # Try Supabase JWT first
+        sb_info = self.verify_supabase_token(token)
+        if sb_info:
+            # Auto-provision / look up tenant
+            tenant = self.ensure_tenant(
+                supabase_uid=sb_info["sub"],
+                email=sb_info["email"],
+                name=sb_info["user_metadata"].get("name")
+                    or sb_info["user_metadata"].get("full_name", ""),
+                plan=sb_info["user_metadata"].get("plan", "starter"),
+            )
+            return tenant
+
+        # Fall back to legacy JWT
+        return self._verify_legacy_token(token)
+
+    def _verify_legacy_token(self, token: str) -> dict | None:
+        """Verify a legacy self-issued JWT."""
         if _jwt is None:
             return None
 
@@ -282,17 +410,16 @@ class PortalAuth:
                 token, self._secret, algorithms=[self.JWT_ALGORITHM],
             )
         except _jwt.ExpiredSignatureError:
-            logger.debug("JWT expired")
+            logger.debug("Legacy JWT expired")
             return None
         except _jwt.InvalidTokenError:
-            logger.debug("Invalid JWT")
+            logger.debug("Invalid legacy JWT")
             return None
 
         tenant_id = payload.get("sub")
         if not tenant_id:
             return None
 
-        # Fetch current tenant info from DB
         conn = self._get_conn()
         row = conn.execute(
             "SELECT id, name, api_key, plan, email "
@@ -312,7 +439,7 @@ class PortalAuth:
         }
 
     def _issue_jwt(self, tenant_id: str, email: str) -> str:
-        """Create a signed JWT with 24 h expiry."""
+        """Create a signed legacy JWT with 24 h expiry."""
         if _jwt is None:
             raise RuntimeError("PyJWT not installed — cannot issue token")
 

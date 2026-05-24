@@ -88,6 +88,12 @@ class UpgradeRequest(BaseModel):
     plan: str = "pro"
 
 
+class SyncRequest(BaseModel):
+    """Tenant sync payload — sent after first Supabase login."""
+    name: str = ""
+    plan: str = "starter"
+
+
 # ============================================================================
 # Helpers
 # ============================================================================
@@ -182,6 +188,23 @@ async def login(req: LoginRequest, request: Request):
 
     info, token = result
     return TokenResponse(token=token, **info)
+
+
+@router.post("/sync")
+async def sync_tenant(req: SyncRequest, request: Request):
+    """Auto-provision a tenant after Supabase login.
+
+    Called by the frontend after a successful Supabase auth (signup, OAuth,
+    or email confirmation).  Verifies the Supabase JWT from the Authorization
+    header, then finds-or-creates the linked tenant.
+    """
+    tenant = _require_portal_auth(request)  # verifies Supabase JWT + auto-provisions
+    return {
+        "tenant_id": tenant["tenant_id"],
+        "name": tenant["name"],
+        "email": tenant["email"],
+        "plan": tenant["plan"],
+    }
 
 
 @router.get("/me", response_model=DashboardResponse)
