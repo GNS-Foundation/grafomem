@@ -295,10 +295,11 @@ async def upgrade(req: UpgradeRequest, request: Request):
         url = sb.create_checkout_session(
             tenant_id=tenant["tenant_id"],
             plan=req.plan,
-            success_url="https://grafomem-production.up.railway.app/portal?upgraded=true",
-            cancel_url="https://grafomem-production.up.railway.app/portal",
+            success_url="https://cloud.grafomem.com/portal.html?upgraded=true",
+            cancel_url="https://cloud.grafomem.com/portal.html",
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc))
 
     return {"checkout_url": url}
+
