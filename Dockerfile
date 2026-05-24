@@ -4,6 +4,10 @@
 # Multi-stage build:
 #   Stage 1: Install dependencies + download BGE model weights
 #   Stage 2: Slim runtime image with cached model
+#
+# Supports two modes via GRAFOMEM_BACKEND env var:
+#   - sqlite (default): SQLite + sqlite-vec, file at GRAFOMEM_DB_PATH
+#   - postgres: PostgreSQL + pgvector, connection via GRAFOMEM_DB_URL
 # ============================================================================
 
 FROM python:3.12-slim AS builder
@@ -21,7 +25,7 @@ COPY src/ src/
 COPY adapter_template/ adapter_template/
 COPY corpus/ corpus/
 
-# Install the package with all production extras
+# Install the package with all production extras (now includes postgres)
 RUN pip install --no-cache-dir ".[all]"
 
 # Pre-download the BGE embedding model so it's baked into the image
@@ -47,10 +51,15 @@ COPY --from=builder /root/.cache/huggingface /root/.cache/huggingface
 
 # Railway injects PORT as an environment variable
 ENV PORT=8642
-ENV GRAFOMEM_DB_PATH=/data/grafomem.db
-ENV GRAFOMEM_AUTH_MODE=none
 
-# Persistent storage mount point (Railway volumes)
+# Backend selection: "sqlite" or "postgres"
+# When GRAFOMEM_BACKEND=postgres, the server uses PostgresGMPBackend and
+# connects to GRAFOMEM_DB_URL (provided by Railway's PostgreSQL plugin).
+ENV GRAFOMEM_BACKEND=postgres
+ENV GRAFOMEM_DB_URL=""
+ENV GRAFOMEM_AUTH_MODE=token
+
+# Persistent storage mount point (Railway volumes — for SQLite fallback)
 RUN mkdir -p /data
 
 EXPOSE ${PORT}
@@ -59,10 +68,13 @@ EXPOSE ${PORT}
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:${PORT}/health')"
 
-# Start the server — Railway sets $PORT automatically
+# Start the server — Railway sets $PORT automatically.
+# GRAFOMEM_BACKEND selects sqlite or postgres; GRAFOMEM_DB_URL is the
+# PostgreSQL connection URL (injected by Railway's Postgres plugin).
 CMD grafomem serve \
     --host 0.0.0.0 \
     --port ${PORT} \
-    --db ${GRAFOMEM_DB_PATH} \
+    -b ${GRAFOMEM_BACKEND} \
+    --db ${GRAFOMEM_DB_URL:-/data/grafomem.db} \
     --auth ${GRAFOMEM_AUTH_MODE} \
     -e bge

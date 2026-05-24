@@ -626,6 +626,7 @@ def serve(host, port, backend, db, embedder, mcp, mcp_port, auth, batch, batch_s
         auth_mode=auth,
         enable_batching=batch,
         batch_size=batch_size,
+        db_url=db if is_postgres else None,
     )
 
     db_display = db if not is_postgres else db.split("@")[-1] if "@" in db else db
@@ -638,6 +639,7 @@ def serve(host, port, backend, db, embedder, mcp, mcp_port, auth, batch, batch_s
     click.echo(f"  Embedder:  {embedder}")
     click.echo(f"  Auth:      {auth}")
     click.echo(f"  Batching:  {'ON (batch_size=' + str(batch_size) + ')' if batch else 'OFF'}")
+    click.echo(f"  Cloud:     {'ON (/v1/cloud)' if is_postgres else 'OFF'}")
     click.echo(f"  Listening: http://{host}:{port}")
     click.echo(f"  Docs:      http://{host}:{port}/docs")
     click.echo()

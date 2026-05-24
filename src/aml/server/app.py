@@ -6,6 +6,9 @@ OpenAPI auto-documentation, and optional batched ingestion. The same conformance
 suite that passes locally also passes over this HTTP layer (GMPClient IS a
 MemoryBackend, and these endpoints match the wire.py contract).
 
+Cloud mode (db_url != None): also mounts the /v1/cloud management endpoints
+for tenant provisioning, compliance tracking, and usage metering.
+
 Start via:  grafomem serve --host 0.0.0.0 --port 8642
 """
 
@@ -310,6 +313,7 @@ def create_app(
     enable_batching: bool = False,
     batch_size: int = 64,
     flush_interval_ms: int = 50,
+    db_url: str | None = None,
 ) -> FastAPI:
     """Create the FastAPI application.
 
@@ -323,6 +327,10 @@ def create_app(
         Token → tenant_id mapping (only used when auth_mode="token").
     enable_batching : bool
         If True, writes go through the IngestionQueue for batched embedding.
+    db_url : str | None
+        PostgreSQL connection URL. When provided, enables the cloud management
+        layer (tenant provisioning, compliance tracking, usage metering) and
+        mounts the /v1/cloud endpoints.
     """
 
     @asynccontextmanager
@@ -332,6 +340,11 @@ def create_app(
         # Shutdown: stop all ingestion queues
         for q in getattr(app.state, "ingestion_queues", {}).values():
             await q.stop()
+        # Shutdown: close cloud services
+        for svc_name in ("tenant_manager", "compliance_tracker", "metering_service"):
+            svc = getattr(app.state, svc_name, None)
+            if svc is not None and hasattr(svc, "close"):
+                svc.close()
         logger.info("GRAFOMEM server stopped")
 
     app = FastAPI(
@@ -367,6 +380,33 @@ def create_app(
 
     # Include the router with all GMP endpoints
     app.include_router(router)
+
+    # Cloud management layer — only when db_url is provided
+    if db_url is not None:
+        try:
+            from aml.cloud.tenant_manager import TenantManager
+            from aml.cloud.compliance import ComplianceTracker
+            from aml.cloud.metering import MeteringService
+            from aml.cloud.routes import router as cloud_router
+
+            tm = TenantManager(db_url)
+            tm.ensure_schema()
+            app.state.tenant_manager = tm
+
+            ct = ComplianceTracker(db_url)
+            ct.ensure_schema()
+            app.state.compliance_tracker = ct
+
+            ms = MeteringService(db_url)
+            ms.ensure_schema()
+            app.state.metering_service = ms
+
+            app.include_router(cloud_router)
+            logger.info("Cloud management layer enabled (/v1/cloud)")
+        except ImportError as e:
+            logger.warning("Cloud layer unavailable (missing deps): %s", e)
+        except Exception as e:
+            logger.warning("Cloud layer failed to initialize: %s", e)
 
     return app
 
