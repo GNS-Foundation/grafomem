@@ -375,12 +375,14 @@ def create_app(
         allow_origins=[
             "https://grafomem.com",
             "https://www.grafomem.com",
+            "https://cloud.grafomem.com",
             "https://docs.grafomem.com",
             "http://localhost:3000",
             "http://localhost:8642",
         ],
-        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_methods=["GET", "POST", "OPTIONS", "PUT", "DELETE"],
         allow_headers=["*"],
+        allow_credentials=True,
     )
 
     # Attach store manager to app state (no module-level globals)
