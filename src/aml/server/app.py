@@ -15,6 +15,7 @@ Start via:  grafomem serve --host 0.0.0.0 --port 8642
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any
@@ -314,6 +315,9 @@ def create_app(
     batch_size: int = 64,
     flush_interval_ms: int = 50,
     db_url: str | None = None,
+    stripe_secret_key: str | None = None,
+    stripe_webhook_secret: str | None = None,
+    portal_secret_key: str | None = None,
 ) -> FastAPI:
     """Create the FastAPI application.
 
@@ -331,6 +335,12 @@ def create_app(
         PostgreSQL connection URL. When provided, enables the cloud management
         layer (tenant provisioning, compliance tracking, usage metering) and
         mounts the /v1/cloud endpoints.
+    stripe_secret_key : str | None
+        Stripe API secret key. Enables billing integration.
+    stripe_webhook_secret : str | None
+        Stripe webhook signing secret.
+    portal_secret_key : str | None
+        Secret for signing portal JWT tokens.
     """
 
     @asynccontextmanager
@@ -341,7 +351,8 @@ def create_app(
         for q in getattr(app.state, "ingestion_queues", {}).values():
             await q.stop()
         # Shutdown: close cloud services
-        for svc_name in ("tenant_manager", "compliance_tracker", "metering_service"):
+        for svc_name in ("tenant_manager", "compliance_tracker", "metering_service",
+                         "portal_auth", "stripe_billing"):
             svc = getattr(app.state, svc_name, None)
             if svc is not None and hasattr(svc, "close"):
                 svc.close()
@@ -365,6 +376,8 @@ def create_app(
             "https://grafomem.com",
             "https://www.grafomem.com",
             "https://docs.grafomem.com",
+            "http://localhost:3000",
+            "http://localhost:8642",
         ],
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["*"],
@@ -407,6 +420,51 @@ def create_app(
             logger.warning("Cloud layer unavailable (missing deps): %s", e)
         except Exception as e:
             logger.warning("Cloud layer failed to initialize: %s", e)
+
+        # Portal auth — email/password signup + JWT sessions
+        try:
+            from aml.cloud.portal_auth import PortalAuth
+            from aml.cloud.portal_routes import router as portal_router
+
+            pa = PortalAuth(db_url, secret_key=portal_secret_key)
+            pa.ensure_schema()
+            app.state.portal_auth = pa
+            app.include_router(portal_router)
+            logger.info("Portal auth enabled (/v1/portal)")
+        except ImportError as e:
+            logger.warning("Portal auth unavailable (missing deps): %s", e)
+        except Exception as e:
+            logger.warning("Portal auth failed to initialize: %s", e)
+
+        # Stripe billing
+        try:
+            from aml.cloud.stripe_billing import StripeBillingService
+
+            sb_key = stripe_secret_key or os.environ.get("STRIPE_SECRET_KEY")
+            if sb_key:
+                sb = StripeBillingService(
+                    db_url, sb_key,
+                    webhook_secret=stripe_webhook_secret,
+                )
+                sb.ensure_schema()
+                app.state.stripe_billing = sb
+                logger.info("Stripe billing enabled")
+        except ImportError as e:
+            logger.warning("Stripe billing unavailable (missing deps): %s", e)
+        except Exception as e:
+            logger.warning("Stripe billing failed to initialize: %s", e)
+
+    # Serve static portal files
+    try:
+        import importlib.resources
+        portal_dir = str(importlib.resources.files("aml") / "static" / "portal")
+        from fastapi.staticfiles import StaticFiles
+        import os as _os
+        if _os.path.isdir(portal_dir):
+            app.mount("/portal", StaticFiles(directory=portal_dir, html=True), name="portal")
+            logger.info("Portal UI mounted at /portal")
+    except Exception as e:
+        logger.warning("Portal static files not available: %s", e)
 
     return app
 

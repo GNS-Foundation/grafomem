@@ -24,6 +24,13 @@ logger = logging.getLogger("grafomem.auth")
 # Sentinel — matches the SQLite backend's NO_TENANT
 DEFAULT_NAMESPACE = "default_namespace"
 
+# Paths that bypass auth entirely (public endpoints)
+_SKIP_AUTH_PATHS = frozenset({
+    "/health", "/docs", "/openapi.json", "/redoc",
+    "/v1/portal/signup", "/v1/portal/login",
+    "/v1/cloud/billing/webhook",
+})
+
 
 @dataclass
 class TenantContext:
@@ -62,8 +69,9 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(
         self, request: Request, call_next: RequestResponseEndpoint
     ) -> Response:
-        # Skip auth for health/docs endpoints
-        if request.url.path in ("/health", "/docs", "/openapi.json", "/redoc"):
+        # Skip auth for health/docs/portal/webhook endpoints
+        path = request.url.path
+        if path in _SKIP_AUTH_PATHS or path.startswith("/portal"):
             request.state.tenant = TenantContext(
                 tenant_id=DEFAULT_NAMESPACE, authenticated=False
             )

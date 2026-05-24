@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="GRAFOMEM Cloud Portal — manage your GMP-conformant agent memory service" />
+  <title>GRAFOMEM Cloud Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/portal/portal.css" />
+</head>
+<body>
+  <div id="app">
+
+    <!-- ============ AUTH VIEW ============ -->
+    <div id="auth-view" class="view">
+      <div class="auth-container">
+        <div class="auth-card">
+          <div class="auth-logo">
+            <span class="logo-icon">◆</span>
+            <span class="logo-text">GRAFOMEM</span>
+          </div>
+          <p class="auth-tagline">Cloud Portal</p>
+
+          <div class="auth-tabs">
+            <button class="tab active" data-tab="login" id="tab-login">Login</button>
+            <button class="tab" data-tab="signup" id="tab-signup">Sign Up</button>
+          </div>
+
+          <form id="login-form" class="auth-form">
+            <div class="form-group">
+              <label for="login-email">Email</label>
+              <input type="email" id="login-email" placeholder="you@company.com" required />
+            </div>
+            <div class="form-group">
+              <label for="login-password">Password</label>
+              <input type="password" id="login-password" placeholder="••••••••" required />
+            </div>
+            <button type="submit" class="btn btn-primary btn-full" id="login-btn">Login</button>
+          </form>
+
+          <form id="signup-form" class="auth-form" style="display:none">
+            <div class="form-group">
+              <label for="signup-name">Organization Name</label>
+              <input type="text" id="signup-name" placeholder="Acme Corp" required />
+            </div>
+            <div class="form-group">
+              <label for="signup-email">Email</label>
+              <input type="email" id="signup-email" placeholder="you@company.com" required />
+            </div>
+            <div class="form-group">
+              <label for="signup-password">Password</label>
+              <input type="password" id="signup-password" placeholder="Min 8 characters" minlength="8" required />
+            </div>
+            <div class="form-group">
+              <label for="signup-plan">Plan</label>
+              <select id="signup-plan">
+                <option value="starter">Starter — $29/mo</option>
+                <option value="pro">Pro — $199/mo</option>
+              </select>
+            </div>
+            <button type="submit" class="btn btn-primary btn-full" id="signup-btn">Create Account</button>
+          </form>
+
+          <div id="auth-error" class="error-msg"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ DASHBOARD VIEW ============ -->
+    <div id="dashboard-view" class="view" style="display:none">
+      <nav class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+          <span class="logo-icon-sm">◆</span>
+          <span class="logo-text-sm">GRAFOMEM</span>
+        </div>
+        <div class="sidebar-nav">
+          <a class="nav-item active" data-section="overview" id="nav-overview">
+            <span class="nav-icon">⊞</span> Overview
+          </a>
+          <a class="nav-item" data-section="api-key" id="nav-api-key">
+            <span class="nav-icon">⚿</span> API Key
+          </a>
+          <a class="nav-item" data-section="usage" id="nav-usage">
+            <span class="nav-icon">◈</span> Usage
+          </a>
+          <a class="nav-item" data-section="compliance" id="nav-compliance">
+            <span class="nav-icon">✓</span> Compliance
+          </a>
+          <a class="nav-item" data-section="billing" id="nav-billing">
+            <span class="nav-icon">⊡</span> Billing
+          </a>
+        </div>
+        <div class="sidebar-footer">
+          <div class="user-info" id="user-info">
+            <span class="user-name" id="sidebar-name">—</span>
+            <span class="user-plan" id="sidebar-plan">starter</span>
+          </div>
+          <a class="nav-item logout" id="logout-btn">
+            <span class="nav-icon">⏻</span> Logout
+          </a>
+        </div>
+      </nav>
+
+      <button class="mobile-menu-btn" id="mobile-menu-btn">☰</button>
+
+      <main class="content">
+        <!-- OVERVIEW -->
+        <section id="section-overview" class="section">
+          <h1 class="section-title">Dashboard</h1>
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-label">Plan</div>
+              <div class="stat-value" id="stat-plan">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Total Operations</div>
+              <div class="stat-value" id="stat-ops">—</div>
+            </div>
+            <div class="stat-card accent">
+              <div class="stat-label">Conformance</div>
+              <div class="stat-value" id="stat-m8">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Capabilities</div>
+              <div class="stat-value" id="stat-caps">—</div>
+            </div>
+          </div>
+
+          <div class="card quick-start">
+            <h2>Quick Start</h2>
+            <pre><code><span class="code-comment"># Install</span>
+pip install grafomem
+
+<span class="code-comment"># Write a memory</span>
+curl -X POST https://grafomem-production.up.railway.app/v1/stores/default/write \
+  -H "Authorization: Bearer <span id="qs-key" class="code-highlight">YOUR_API_KEY</span>" \
+  -H "Content-Type: application/json" \
+  -d '{"content": "User prefers dark mode", "options": {}}'
+
+<span class="code-comment"># Retrieve</span>
+curl -X POST https://grafomem-production.up.railway.app/v1/stores/default/retrieve \
+  -H "Authorization: Bearer <span class="code-highlight">YOUR_API_KEY</span>" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "What does the user prefer?", "options": {"top_k": 5}}'</code></pre>
+          </div>
+        </section>
+
+        <!-- API KEY -->
+        <section id="section-api-key" class="section" style="display:none">
+          <h1 class="section-title">API Key</h1>
+          <div class="card key-card">
+            <div class="key-display">
+              <code id="api-key-display" class="key-code">gfm_••••••••••••</code>
+              <div class="key-actions">
+                <button class="btn btn-sm" id="reveal-key-btn">Reveal</button>
+                <button class="btn btn-sm btn-primary" id="copy-key-btn">Copy</button>
+              </div>
+            </div>
+            <p class="key-warning">⚠ Keep your API key secret. Do not share it in client-side code.</p>
+            <button class="btn btn-danger" id="rotate-key-btn">Rotate Key</button>
+          </div>
+
+          <div class="card">
+            <h2>Endpoint</h2>
+            <code class="endpoint-url">https://grafomem-production.up.railway.app</code>
+            <h2 style="margin-top:1.5rem">Authentication</h2>
+            <code class="endpoint-url">Authorization: Bearer gfm_your_key_here</code>
+            <h2 style="margin-top:1.5rem">API Documentation</h2>
+            <a href="https://grafomem-production.up.railway.app/docs" target="_blank" class="link">
+              Swagger UI →
+            </a>
+          </div>
+        </section>
+
+        <!-- USAGE -->
+        <section id="section-usage" class="section" style="display:none">
+          <h1 class="section-title">Usage</h1>
+          <p class="section-subtitle">Current billing period</p>
+          <div class="usage-grid">
+            <div class="usage-card">
+              <span class="usage-icon">✎</span>
+              <span class="usage-value" id="usage-writes">0</span>
+              <span class="usage-label">Writes</span>
+            </div>
+            <div class="usage-card">
+              <span class="usage-icon">⊕</span>
+              <span class="usage-value" id="usage-reads">0</span>
+              <span class="usage-label">Reads</span>
+            </div>
+            <div class="usage-card">
+              <span class="usage-icon">✕</span>
+              <span class="usage-value" id="usage-deletes">0</span>
+              <span class="usage-label">Deletes</span>
+            </div>
+            <div class="usage-card">
+              <span class="usage-icon">⟳</span>
+              <span class="usage-value" id="usage-supersedes">0</span>
+              <span class="usage-label">Supersedes</span>
+            </div>
+            <div class="usage-card">
+              <span class="usage-icon">⊘</span>
+              <span class="usage-value" id="usage-bytes">0 B</span>
+              <span class="usage-label">Total Bytes</span>
+            </div>
+            <div class="usage-card">
+              <span class="usage-icon">Σ</span>
+              <span class="usage-value" id="usage-total">0</span>
+              <span class="usage-label">Total Ops</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- COMPLIANCE -->
+        <section id="section-compliance" class="section" style="display:none">
+          <h1 class="section-title">GMP Conformance</h1>
+          <div class="compliance-hero">
+            <div class="m8-badge" id="m8-badge">
+              <div class="m8-score" id="m8-score">—</div>
+              <div class="m8-label">M8 Conformance Rate</div>
+              <div class="m8-status" id="m8-status"></div>
+            </div>
+          </div>
+          <div class="card">
+            <h2>Capabilities</h2>
+            <div class="capabilities-grid" id="capabilities-grid">
+              <div class="cap-placeholder">No audit data available</div>
+            </div>
+          </div>
+          <div class="card">
+            <h2>Embeddable Badge</h2>
+            <div class="badge-preview-area">
+              <img id="badge-preview" src="" alt="GMP Badge" style="display:none" />
+              <p id="badge-placeholder" class="dim">Run a conformance audit to generate your badge</p>
+            </div>
+            <div class="badge-actions">
+              <button class="btn btn-sm" id="copy-badge-md">Copy Markdown</button>
+              <button class="btn btn-sm" id="copy-badge-html">Copy HTML</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- BILLING -->
+        <section id="section-billing" class="section" style="display:none">
+          <h1 class="section-title">Billing</h1>
+          <div class="billing-status card">
+            <div class="billing-current">
+              <span class="plan-badge" id="current-plan-badge">Starter</span>
+              <span class="billing-status-text" id="billing-status">Active</span>
+            </div>
+          </div>
+          <div class="plans-grid">
+            <div class="plan-card" data-plan="starter">
+              <h3>Starter</h3>
+              <div class="price">$29<span class="price-period">/mo</span></div>
+              <ul class="plan-features">
+                <li>100,000 memories</li>
+                <li>3 stores</li>
+                <li>60 req/min</li>
+                <li>Email support</li>
+              </ul>
+              <button class="btn btn-full plan-btn" id="btn-starter">Current Plan</button>
+            </div>
+            <div class="plan-card featured" data-plan="pro">
+              <div class="popular-tag">Most Popular</div>
+              <h3>Pro</h3>
+              <div class="price">$199<span class="price-period">/mo</span></div>
+              <ul class="plan-features">
+                <li>1,000,000 memories</li>
+                <li>50 stores</li>
+                <li>600 req/min</li>
+                <li>Priority support</li>
+              </ul>
+              <button class="btn btn-primary btn-full plan-btn" id="btn-pro">Upgrade</button>
+            </div>
+            <div class="plan-card" data-plan="enterprise">
+              <h3>Enterprise</h3>
+              <div class="price">Custom</div>
+              <ul class="plan-features">
+                <li>Unlimited everything</li>
+                <li>Private VPC</li>
+                <li>99.99% SLA</li>
+                <li>Dedicated engineer</li>
+              </ul>
+              <button class="btn btn-full plan-btn" id="btn-enterprise" onclick="window.open('mailto:hello@grafomem.com')">Contact Us</button>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <!-- Toast notification -->
+    <div id="toast" class="toast"></div>
+  </div>
+
+  <script src="/portal/portal.js"></script>
+</body>
+</html>

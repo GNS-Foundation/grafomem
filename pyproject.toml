@@ -26,11 +26,12 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/GNS-Foundation/grafomem"
-Documentation = "https://github.com/GNS-Foundation/grafomem/tree/main/docs"
+Homepage = "https://grafomem.com"
+Documentation = "https://docs.grafomem.com"
 Repository = "https://github.com/GNS-Foundation/grafomem"
 Issues = "https://github.com/GNS-Foundation/grafomem/issues"
 API = "https://grafomem-production.up.railway.app/docs"
+Portal = "https://grafomem-production.up.railway.app/portal"
 
 [project.scripts]
 grafomem = "aml.cli:main"
@@ -45,7 +46,7 @@ postgres = ["psycopg[binary]>=3.1", "pgvector>=0.3", "numpy>=1.24"]
 # Production server: FastAPI + MCP + batched ingestion.
 server = ["fastapi>=0.110", "uvicorn[standard]>=0.29", "mcp>=1.0", "pydantic>=2.0"]
 # GRAFOMEM Cloud: managed service with tenant provisioning + metering.
-cloud = ["grafomem[postgres,server,crypto]"]
+cloud = ["grafomem[postgres,server,crypto]", "stripe>=8.0", "bcrypt>=4.0", "PyJWT>=2.8"]
 all = ["grafomem[crypto,backends,store,server,postgres]"]
 dev = ["pytest>=8", "httpx>=0.27"]
 

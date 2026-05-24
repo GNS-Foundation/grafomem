@@ -254,3 +254,182 @@ async def compliance_dashboard(request: Request):
     return ComplianceDashboardResponse(
         tenants=[_audit_to_response(r) for r in records],
     )
+
+
+# ============================================================================
+# Billing endpoints
+# ============================================================================
+
+class CheckoutRequest(BaseModel):
+    """Request body for creating a Stripe Checkout session."""
+    tenant_id: str
+    plan: str = "pro"
+    success_url: str = "https://grafomem-production.up.railway.app/portal?upgraded=true"
+    cancel_url: str = "https://grafomem-production.up.railway.app/portal"
+
+
+def _stripe_billing(request: Request):
+    """Extract StripeBillingService from app state."""
+    svc = getattr(request.app.state, "stripe_billing", None)
+    if svc is None:
+        raise HTTPException(503, "Stripe billing not configured")
+    return svc
+
+
+@router.post("/billing/checkout")
+async def billing_checkout(req: CheckoutRequest, request: Request):
+    """Create a Stripe Checkout Session and return the redirect URL."""
+    svc = _stripe_billing(request)
+    try:
+        url = svc.create_checkout_session(
+            tenant_id=req.tenant_id, plan=req.plan,
+            success_url=req.success_url, cancel_url=req.cancel_url,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return {"checkout_url": url}
+
+
+@router.post("/billing/webhook")
+async def billing_webhook(request: Request):
+    """Stripe webhook receiver.
+
+    This endpoint is excluded from Bearer token auth — Stripe sends its own
+    signature in the ``Stripe-Signature`` header.
+    """
+    svc = _stripe_billing(request)
+    payload = await request.body()
+    sig = request.headers.get("Stripe-Signature", "")
+    try:
+        result = svc.handle_webhook(payload, sig)
+    except Exception as exc:
+        logger.error("Webhook processing failed: %s", exc)
+        raise HTTPException(400, f"Webhook error: {exc}")
+    return result
+
+
+class SubscriptionResponse(BaseModel):
+    """Current subscription status."""
+    tenant_id: str
+    plan: str
+    status: str
+    stripe_subscription_id: str | None = None
+    current_period_end: str | None = None
+
+
+@router.get("/billing/subscription/{tenant_id}", response_model=SubscriptionResponse)
+async def get_subscription(tenant_id: str, request: Request):
+    """Retrieve a tenant's current Stripe subscription."""
+    svc = _stripe_billing(request)
+    sub = svc.get_subscription(tenant_id)
+    if sub is None:
+        return SubscriptionResponse(tenant_id=tenant_id, plan="starter", status="none")
+    return SubscriptionResponse(
+        tenant_id=sub.tenant_id,
+        plan=sub.plan,
+        status=sub.status,
+        stripe_subscription_id=sub.stripe_subscription_id,
+        current_period_end=sub.current_period_end.isoformat() if sub.current_period_end else None,
+    )
+
+
+@router.post("/billing/cancel/{tenant_id}")
+async def cancel_subscription(tenant_id: str, request: Request):
+    """Cancel a tenant's Stripe subscription."""
+    svc = _stripe_billing(request)
+    ok = svc.cancel_subscription(tenant_id)
+    if not ok:
+        raise HTTPException(404, "No active subscription found")
+    return {"status": "canceled", "tenant_id": tenant_id}
+
+
+# ============================================================================
+# Compliance badge endpoints
+# ============================================================================
+
+_BADGE_SVG_TEMPLATE = """\
+<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="20" role="img" aria-label="{label}">
+  <linearGradient id="s" x2="0" y2="100%">
+    <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
+    <stop offset="1" stop-opacity=".1"/>
+  </linearGradient>
+  <clipPath id="r"><rect width="{width}" height="20" rx="3" fill="#fff"/></clipPath>
+  <g clip-path="url(#r)">
+    <rect width="{left_width}" height="20" fill="#555"/>
+    <rect x="{left_width}" width="{right_width}" height="20" fill="{color}"/>
+    <rect width="{width}" height="20" fill="url(#s)"/>
+  </g>
+  <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" text-rendering="geometricPrecision" font-size="11">
+    <text x="{left_center}" y="15" fill="#010101" fill-opacity=".3">{left_text}</text>
+    <text x="{left_center}" y="14">{left_text}</text>
+    <text x="{right_center}" y="15" fill="#010101" fill-opacity=".3">{right_text}</text>
+    <text x="{right_center}" y="14">{right_text}</text>
+  </g>
+</svg>"""
+
+
+from starlette.responses import Response as StarletteResponse
+
+
+@router.get("/compliance/badge/{tenant_id}.svg")
+async def compliance_badge_svg(tenant_id: str, request: Request):
+    """Return an embeddable SVG compliance badge (shields.io style)."""
+    tracker = _compliance(request)
+    latest = tracker.get_latest(tenant_id)
+
+    left_text = "GMP v0.2"
+    left_width = 62
+
+    if latest is None:
+        right_text = "not audited"
+        color = "#9e9e9e"  # gray
+    elif latest.conformance_rate >= 0.95:
+        right_text = f"M8: {latest.conformance_rate:.3f} | PASS"
+        color = "#4c1"  # green
+    else:
+        right_text = f"M8: {latest.conformance_rate:.3f} | FAIL"
+        color = "#e05d44"  # red
+
+    right_width = len(right_text) * 7 + 10
+    width = left_width + right_width
+
+    svg = _BADGE_SVG_TEMPLATE.format(
+        width=width,
+        left_width=left_width,
+        right_width=right_width,
+        left_center=left_width // 2,
+        right_center=left_width + right_width // 2,
+        left_text=left_text,
+        right_text=right_text,
+        color=color,
+        label=f"{left_text}: {right_text}",
+    )
+
+    return StarletteResponse(
+        content=svg,
+        media_type="image/svg+xml",
+        headers={"Cache-Control": "no-cache, max-age=300"},
+    )
+
+
+@router.get("/compliance/badge/{tenant_id}.json")
+async def compliance_badge_json(tenant_id: str, request: Request):
+    """Shields.io endpoint schema for dynamic badge generation."""
+    tracker = _compliance(request)
+    latest = tracker.get_latest(tenant_id)
+
+    if latest is None:
+        return {
+            "schemaVersion": 1,
+            "label": "GMP v0.2",
+            "message": "not audited",
+            "color": "lightgrey",
+        }
+
+    passed = latest.conformance_rate >= 0.95
+    return {
+        "schemaVersion": 1,
+        "label": "GMP v0.2",
+        "message": f"M8: {latest.conformance_rate:.3f} | {'PASS' if passed else 'FAIL'}",
+        "color": "brightgreen" if passed else "red",
+    }
