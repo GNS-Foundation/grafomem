@@ -117,8 +117,9 @@ class StripeBillingService:
     ) -> None:
         self._db_url = db_url
         self._conn: psycopg.Connection[dict[str, Any]] | None = None
-        self._stripe_key = stripe_secret_key or os.environ.get("STRIPE_SECRET_KEY")
-        self._webhook_secret = webhook_secret or os.environ.get("STRIPE_WEBHOOK_SECRET")
+        # Strip whitespace/newlines — env vars sometimes include trailing \n
+        self._stripe_key = (stripe_secret_key or os.environ.get("STRIPE_SECRET_KEY") or "").strip() or None
+        self._webhook_secret = (webhook_secret or os.environ.get("STRIPE_WEBHOOK_SECRET") or "").strip() or None
 
         if self._stripe_key:
             stripe = _get_stripe()
