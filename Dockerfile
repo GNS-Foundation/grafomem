@@ -25,7 +25,8 @@ COPY src/ src/
 COPY adapter_template/ adapter_template/
 COPY corpus/ corpus/
 
-# Install the package with all production extras (now includes postgres)
+# Install the package with all production extras (includes cloud: stripe, bcrypt, PyJWT)
+ARG CACHEBUST=2
 RUN pip install --no-cache-dir ".[all]"
 
 # Pre-download the BGE embedding model so it's baked into the image
