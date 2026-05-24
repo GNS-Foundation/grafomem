@@ -289,7 +289,7 @@ async def upgrade(req: UpgradeRequest, request: Request):
     sb = _stripe_billing(request)
 
     if sb is None:
-        raise HTTPException(503, "Billing not configured")
+        raise HTTPException(503, "Billing not configured — set STRIPE_SECRET_KEY")
 
     try:
         url = sb.create_checkout_session(
@@ -300,6 +300,10 @@ async def upgrade(req: UpgradeRequest, request: Request):
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc))
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(502, f"Stripe checkout failed: {exc}")
 
     return {"checkout_url": url}
 
