@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: grafomem
+      POSTGRES_USER: grafomem
+      POSTGRES_PASSWORD: grafomem_dev
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U grafomem']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  grafomem:
+    build: .
+    ports:
+      - '8642:8642'
+    environment:
+      GRAFOMEM_BACKEND: postgres
+      GRAFOMEM_DB_URL: postgresql://grafomem:grafomem_dev@postgres:5432/grafomem
+      GRAFOMEM_EMBEDDER: bge
+      GRAFOMEM_AUTH_MODE: token
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:

@@ -1,0 +1,10 @@
+version: '3.8'
+
+services:
+  grafomem:
+    build: .
+    command: grafomem serve --port 8642 -e bge --auth token --backend postgres
+    volumes:
+      - ./src:/app/src
+    environment:
+      GRAFOMEM_DB_URL: postgresql://grafomem:grafomem_dev@postgres:5432/grafomem

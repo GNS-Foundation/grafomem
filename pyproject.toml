@@ -40,9 +40,13 @@ grafomem = "aml.cli:main"
 backends = ["sentence-transformers>=2.2", "numpy>=1.24"]
 store = ["sqlite-vec", "apsw"]
 crypto = ["cryptography>=41"]
+# PostgreSQL + pgvector backend (GRAFOMEM Cloud).
+postgres = ["psycopg[binary]>=3.1", "pgvector>=0.3", "numpy>=1.24"]
 # Production server: FastAPI + MCP + batched ingestion.
 server = ["fastapi>=0.110", "uvicorn[standard]>=0.29", "mcp>=1.0", "pydantic>=2.0"]
-all = ["grafomem[crypto,backends,store,server]"]
+# GRAFOMEM Cloud: managed service with tenant provisioning + metering.
+cloud = ["grafomem[postgres,server,crypto]"]
+all = ["grafomem[crypto,backends,store,server,postgres]"]
 dev = ["pytest>=8", "httpx>=0.27"]
 
 [tool.setuptools.packages.find]

@@ -341,7 +341,21 @@ def create_app(
         lifespan=lifespan,
     )
 
+    # Auth is the inner layer; CORS is added LAST so it's the OUTERMOST
+    # middleware and can answer preflight OPTIONS before auth inspects them.
     app.add_middleware(TenantAuthMiddleware, auth_mode=auth_mode, tokens=tokens)
+
+    from fastapi.middleware.cors import CORSMiddleware
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "https://grafomem.com",
+            "https://www.grafomem.com",
+            "https://docs.grafomem.com",
+        ],
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["*"],
+    )
 
     # Attach store manager to app state (no module-level globals)
     factory = backend_factory or _default_factory

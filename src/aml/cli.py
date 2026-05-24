@@ -524,8 +524,9 @@ def verify():
 @click.option("--port", "-p", default=8642, type=int, help="Port")
 @click.option("--backend", "-b",
               default="aml.backends.sqlite_gmp:SQLiteGMPBackend",
-              help="Backend class as MODULE:CLASS")
-@click.option("--db", default="grafomem.db", help="SQLite database path")
+              help="Backend class (MODULE:CLASS) or shortcut: 'sqlite', 'postgres'")
+@click.option("--db", default=None,
+              help="Database path (SQLite) or connection URL (PostgreSQL)")
 @click.option("--embedder", "-e", type=click.Choice(["stub", "bge"]),
               default="bge", help="Embedder for vector backends")
 @click.option("--mcp", type=click.Choice(["none", "stdio", "sse"]),
@@ -542,17 +543,37 @@ def serve(host, port, backend, db, embedder, mcp, mcp_port, auth, batch, batch_s
 
     \b
     Examples:
-        grafomem serve                            # default SQLite + BGE, port 8642
-        grafomem serve --mcp stdio                # MCP over stdin/stdout for agents
-        grafomem serve --mcp sse --mcp-port 8643  # MCP over HTTP+SSE
-        grafomem serve --auth token --batch       # multi-tenant + batched ingestion
+        grafomem serve                                    # SQLite + BGE
+        grafomem serve -b postgres --db postgresql://...   # PostgreSQL + pgvector
+        grafomem serve --mcp stdio                        # MCP over stdin/stdout
+        grafomem serve --auth token --batch               # multi-tenant + batched
     """
     import inspect
+    import os
 
-    cls = _load_backend_class(backend)
+    # Resolve backend shortcuts
+    _SHORTCUTS = {
+        "sqlite": "aml.backends.sqlite_gmp:SQLiteGMPBackend",
+        "postgres": "aml.backends.postgres_gmp:PostgresGMPBackend",
+        "postgresql": "aml.backends.postgres_gmp:PostgresGMPBackend",
+        "reference": "aml.backends.gmp_reference:GMPReferenceBackend",
+    }
+    backend_spec = _SHORTCUTS.get(backend, backend)
+    is_postgres = "postgres_gmp" in backend_spec
+
+    # Default db values
+    if db is None:
+        if is_postgres:
+            db = os.environ.get(
+                "GRAFOMEM_DB_URL",
+                "postgresql://grafomem:grafomem@localhost:5432/grafomem"
+            )
+        else:
+            db = os.environ.get("GRAFOMEM_DB_PATH", "grafomem.db")
+
+    cls = _load_backend_class(backend_spec)
     sig = inspect.signature(cls.__init__)
 
-    # Build the factory depending on whether the backend needs db_path/embed_fn
     def _factory():
         kwargs = {}
         if "embed_fn" in sig.parameters:
@@ -562,15 +583,16 @@ def serve(host, port, backend, db, embedder, mcp, mcp_port, auth, batch, batch_s
             else:
                 from aml.backends.vector_only import _stub_embedder
                 _batch_fn = _stub_embedder()
-                # SQLiteGMPBackend calls embed_fn(string), stub expects list[str].
-                # Wrap to handle both calling conventions.
                 def _single_str_stub(text):
                     import numpy as np
                     if isinstance(text, str):
                         return _batch_fn([text])[0]
                     return _batch_fn(text)
                 kwargs["embed_fn"] = _single_str_stub
-        if "db_path" in sig.parameters:
+        # Wire the database connection
+        if "db_url" in sig.parameters:
+            kwargs["db_url"] = db
+        elif "db_path" in sig.parameters:
             kwargs["db_path"] = db
         return cls(**kwargs)
 
@@ -606,9 +628,13 @@ def serve(host, port, backend, db, embedder, mcp, mcp_port, auth, batch, batch_s
         batch_size=batch_size,
     )
 
+    db_display = db if not is_postgres else db.split("@")[-1] if "@" in db else db
+    engine_name = "PostgreSQL + pgvector" if is_postgres else "SQLite + sqlite-vec"
+
     click.echo(f"GRAFOMEM server v0.2.0")
-    click.echo(f"  Backend:   {backend}")
-    click.echo(f"  Database:  {db}")
+    click.echo(f"  Engine:    {engine_name}")
+    click.echo(f"  Backend:   {backend_spec}")
+    click.echo(f"  Database:  {db_display}")
     click.echo(f"  Embedder:  {embedder}")
     click.echo(f"  Auth:      {auth}")
     click.echo(f"  Batching:  {'ON (batch_size=' + str(batch_size) + ')' if batch else 'OFF'}")
