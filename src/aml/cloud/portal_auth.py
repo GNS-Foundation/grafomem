@@ -111,19 +111,20 @@ class PortalAuth:
             or secrets.token_hex(32)
         )
 
-        # Supabase JWT secret — used to verify tokens from supabase-js
-        self._supabase_jwt_secret = os.environ.get("SUPABASE_JWT_SECRET", "")
+        # Supabase config — verify tokens via API call
+        self._supabase_url = os.environ.get(
+            "SUPABASE_URL", "https://wlhmlgnqebqnkhyoamaf.supabase.co"
+        )
+        self._supabase_service_key = os.environ.get(
+            "SUPABASE_SERVICE_ROLE_KEY", ""
+        )
 
         if _bcrypt is None:
             logger.warning("bcrypt not installed — legacy signup/login disabled")
         if _jwt is None:
             logger.warning("PyJWT not installed — portal sessions disabled")
-        if self._supabase_jwt_secret:
-            logger.info("Supabase JWT verification enabled")
-        else:
-            logger.warning(
-                "SUPABASE_JWT_SECRET not set — Supabase auth disabled"
-            )
+        if self._supabase_url:
+            logger.info("Supabase Auth API verification enabled (%s)", self._supabase_url)
 
     # ------------------------------------------------------------------
     # Connection helpers
@@ -155,7 +156,11 @@ class PortalAuth:
     # ------------------------------------------------------------------
 
     def verify_supabase_token(self, token: str) -> dict | None:
-        """Verify a Supabase access token and return user info.
+        """Verify a Supabase access token via the Supabase Auth API.
+
+        Calls ``GET /auth/v1/user`` with the token to validate it
+        server-side.  No JWT secret required — Supabase handles
+        verification internally.
 
         Returns
         -------
@@ -163,31 +168,37 @@ class PortalAuth:
             Keys: ``sub`` (Supabase user UUID), ``email``,
             ``user_metadata`` (dict with name, plan, etc.).
         """
-        if _jwt is None or not self._supabase_jwt_secret:
+        if not self._supabase_url:
             return None
+
+        import urllib.request
+        import json
+
+        url = f"{self._supabase_url}/auth/v1/user"
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "apikey": self._supabase_service_key or token,
+        }
 
         try:
-            payload = _jwt.decode(
-                token,
-                self._supabase_jwt_secret,
-                algorithms=[self.JWT_ALGORITHM],
-                audience="authenticated",
-            )
-        except _jwt.ExpiredSignatureError:
-            logger.debug("Supabase JWT expired")
-            return None
-        except _jwt.InvalidTokenError as exc:
-            logger.debug("Invalid Supabase JWT: %s", exc)
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                if resp.status != 200:
+                    logger.debug("Supabase API returned %s", resp.status)
+                    return None
+                user = json.loads(resp.read())
+        except Exception as exc:
+            logger.debug("Supabase API verification failed: %s", exc)
             return None
 
-        sub = payload.get("sub")
+        sub = user.get("id")
         if not sub:
             return None
 
         return {
             "sub": sub,
-            "email": payload.get("email", ""),
-            "user_metadata": payload.get("user_metadata", {}),
+            "email": user.get("email", ""),
+            "user_metadata": user.get("user_metadata", {}),
         }
 
     # ------------------------------------------------------------------
