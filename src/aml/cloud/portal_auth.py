@@ -115,8 +115,16 @@ class PortalAuth:
         self._supabase_url = os.environ.get(
             "SUPABASE_URL", "https://wlhmlgnqebqnkhyoamaf.supabase.co"
         )
-        self._supabase_service_key = os.environ.get(
-            "SUPABASE_SERVICE_ROLE_KEY", ""
+        # The anon key is public (embedded in the frontend JS) — safe to
+        # hard-code as a fallback.  It is required as the ``apikey`` header
+        # when calling the Supabase Auth API.
+        self._supabase_anon_key = os.environ.get(
+            "SUPABASE_ANON_KEY",
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
+            "eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndsaG1sZ25xZWJxbm"
+            "toeW9hbWFmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2MjgyOD"
+            "YsImV4cCI6MjA5NTIwNDI4Nn0."
+            "RsoGO_d6yJJMCzPiX7m8c4dSt3hkoB_AP9ITHS7qMkE",
         )
 
         if _bcrypt is None:
@@ -177,7 +185,7 @@ class PortalAuth:
         url = f"{self._supabase_url}/auth/v1/user"
         headers = {
             "Authorization": f"Bearer {token}",
-            "apikey": self._supabase_service_key or token,
+            "apikey": self._supabase_anon_key,
         }
 
         try:
