@@ -69,9 +69,13 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(
         self, request: Request, call_next: RequestResponseEndpoint
     ) -> Response:
-        # Skip auth for health/docs/portal/webhook endpoints
+        # Skip auth for health/docs/portal/webhook/badge endpoints
         path = request.url.path
-        if path in _SKIP_AUTH_PATHS or path.startswith("/portal"):
+        if (path in _SKIP_AUTH_PATHS
+            or path.startswith("/portal")
+            or path.startswith("/v1/portal")
+            or path.startswith("/v1/cloud/billing/webhook")
+            or path.startswith("/v1/cloud/compliance/badge")):
             request.state.tenant = TenantContext(
                 tenant_id=DEFAULT_NAMESPACE, authenticated=False
             )
