@@ -1,5 +1,9 @@
 # GRAFOMEM
 
+[![GMP Certified](https://img.shields.io/badge/GMP-Certified-00c853?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBvbHlnb24gcG9pbnRzPSIxMiwyIDIxLDcgMjEsMTcgMTIsMjIgMywxNyAzLDciIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzAwOTljYyIgc3Ryb2tlLXdpZHRoPSIyIi8+PGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iMyIgZmlsbD0iIzAwYzg1MyIvPjwvc3ZnPg==)](https://grafomem.com/registry.html)
+[![GMP v0.2.0](https://img.shields.io/badge/GMP-v0.2.0-0099cc?style=flat-square)](https://grafomem.com/spec.html)
+[![M8 1.000](https://img.shields.io/badge/M8-1.000-00c853?style=flat-square)](https://grafomem.com/registry.html)
+
 **An agent-memory benchmark that became a memory protocol.**
 
 GRAFOMEM began as a benchmark for one question — *what should a standard for agent
