@@ -352,7 +352,8 @@ def create_app(
             await q.stop()
         # Shutdown: close cloud services
         for svc_name in ("tenant_manager", "compliance_tracker", "metering_service",
-                         "decision_trail", "erasure_proof", "portal_auth", "stripe_billing"):
+                         "decision_trail", "erasure_proof", "governance_gateway",
+                         "portal_auth", "stripe_billing"):
             svc = getattr(app.state, svc_name, None)
             if svc is not None and hasattr(svc, "close"):
                 svc.close()
@@ -448,6 +449,18 @@ def create_app(
             erasure_router = create_erasure_router(ep)
             app.include_router(erasure_router)
             logger.info("Erasure Proof enabled (/v1/erasure)")
+
+            # Governance Gateway — policy-as-code
+            from aml.cloud.governance import GovernanceGateway
+            from aml.cloud.governance_routes import create_governance_router
+
+            gg = GovernanceGateway(db_url)
+            gg.ensure_schema()
+            app.state.governance_gateway = gg
+
+            gov_router = create_governance_router(gg)
+            app.include_router(gov_router)
+            logger.info("Governance Gateway enabled (/v1/governance)")
         except ImportError as e:
             logger.warning("Cloud layer unavailable (missing deps): %s", e)
         except Exception as e:

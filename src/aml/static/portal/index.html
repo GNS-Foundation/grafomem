@@ -94,6 +94,9 @@
           <a class="nav-item" data-section="erasure" id="nav-erasure">
             <span class="nav-icon">✘</span> Erasure Proof
           </a>
+          <a class="nav-item" data-section="governance" id="nav-governance">
+            <span class="nav-icon">⊚</span> Governance
+          </a>
           <a class="nav-item" data-section="billing" id="nav-billing">
             <span class="nav-icon">⊡</span> Billing
           </a>
@@ -357,6 +360,155 @@ curl -X POST https://grafomem-production.up.railway.app/v1/stores/default/retrie
                 <h3>Replay — Facts Since Deleted</h3>
                 <div id="dt-replay-deleted" class="dt-facts-list"></div>
               </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- GOVERNANCE GATEWAY -->
+        <section id="section-governance" class="section" style="display:none">
+          <h1 class="section-title">Governance Gateway</h1>
+          <p class="section-subtitle">Policy-as-code — constrain agent behavior before execution</p>
+
+          <!-- Stats -->
+          <div class="stats-grid dt-stats-grid">
+            <div class="stat-card accent">
+              <div class="stat-label">Active Policies</div>
+              <div class="stat-value" id="gov-stat-active">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Total Evaluations</div>
+              <div class="stat-value" id="gov-stat-evals">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Denied</div>
+              <div class="stat-value" id="gov-stat-denied" style="color:var(--danger)">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Escalated (HITL)</div>
+              <div class="stat-value" id="gov-stat-escalated" style="color:var(--warning)">—</div>
+            </div>
+          </div>
+
+          <!-- Create Policy -->
+          <div class="card">
+            <h2>Create Policy</h2>
+            <div class="dt-filter-row">
+              <div class="form-group dt-filter-item">
+                <label for="gov-name">Name</label>
+                <input type="text" id="gov-name" placeholder="e.g. Block GPT-3.5" />
+              </div>
+              <div class="form-group dt-filter-item">
+                <label for="gov-type">Type</label>
+                <select id="gov-type">
+                  <option value="rate_limit">Rate Limit</option>
+                  <option value="model_allowlist">Model Allowlist</option>
+                  <option value="content_filter">Content Filter</option>
+                  <option value="data_scope">Data Scope</option>
+                  <option value="token_budget">Token Budget</option>
+                  <option value="hitl_required">HITL Required</option>
+                  <option value="pii_guard">PII Guard</option>
+                </select>
+              </div>
+              <div class="form-group dt-filter-item">
+                <label for="gov-action">Action</label>
+                <select id="gov-action">
+                  <option value="deny">Deny</option>
+                  <option value="escalate">Escalate (HITL)</option>
+                  <option value="log_only">Log Only</option>
+                  <option value="allow">Allow</option>
+                </select>
+              </div>
+            </div>
+            <div class="dt-filter-row" style="margin-top:0.8rem">
+              <div class="form-group" style="flex:1">
+                <label for="gov-config">Config (JSON)</label>
+                <input type="text" id="gov-config" placeholder='{"max_requests": 600, "window_seconds": 60}' />
+              </div>
+              <div class="dt-filter-actions">
+                <button class="btn btn-primary btn-sm" id="gov-create-btn">➕ Create Policy</button>
+                <button class="btn btn-sm" id="gov-seed-btn">🌱 Seed Defaults</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Policy List -->
+          <div class="card dt-list-card">
+            <div class="dt-list-header">
+              <h2>Policies</h2>
+              <span class="dt-count" id="gov-count">0 policies</span>
+            </div>
+            <div class="dt-table-wrap">
+              <table class="dt-table" id="gov-table">
+                <thead>
+                  <tr>
+                    <th>Priority</th>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Action</th>
+                    <th>Enabled</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="gov-table-body">
+                  <tr class="dt-empty-row">
+                    <td colspan="6">No policies defined. Create one above or seed defaults.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Test Evaluation -->
+          <div class="card">
+            <h2>Test Policy Evaluation</h2>
+            <p class="section-subtitle" style="margin-bottom:0.8rem">Simulate a request and see which policies fire.</p>
+            <div class="dt-filter-row">
+              <div class="form-group dt-filter-item">
+                <label for="gov-test-op">Operation</label>
+                <select id="gov-test-op">
+                  <option value="write">write</option>
+                  <option value="retrieve">retrieve</option>
+                  <option value="inference" selected>inference</option>
+                  <option value="delete">delete</option>
+                </select>
+              </div>
+              <div class="form-group" style="flex:2">
+                <label for="gov-test-ctx">Context (JSON)</label>
+                <input type="text" id="gov-test-ctx" placeholder='{"model_id": "gpt-4o", "query": "Hello"}' />
+              </div>
+              <div class="dt-filter-actions">
+                <button class="btn btn-primary btn-sm" id="gov-test-btn">▶ Evaluate</button>
+              </div>
+            </div>
+            <div id="gov-test-results" style="margin-top:1rem;display:none">
+              <div class="dt-detail-meta" id="gov-test-summary"></div>
+              <div class="dt-facts-list" id="gov-test-details" style="margin-top:0.8rem"></div>
+            </div>
+          </div>
+
+          <!-- Evaluation Logs -->
+          <div class="card dt-list-card">
+            <div class="dt-list-header">
+              <h2>Recent Evaluation Log</h2>
+              <button class="btn btn-sm" id="gov-refresh-logs">↻ Refresh</button>
+            </div>
+            <div class="dt-table-wrap">
+              <table class="dt-table">
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Policy</th>
+                    <th>Operation</th>
+                    <th>Result</th>
+                    <th>Detail</th>
+                  </tr>
+                </thead>
+                <tbody id="gov-log-body">
+                  <tr class="dt-empty-row">
+                    <td colspan="5">No evaluation logs yet.</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </section>

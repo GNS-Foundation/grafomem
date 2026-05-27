@@ -520,6 +520,174 @@
     window.open(`${API}/v1/decisions/export`, '_blank');
   }
 
+  // ── Governance Gateway ──────────────────────────────────────
+  async function loadGovernanceStats() {
+    try {
+      const stats = await api('/v1/governance/stats');
+      $('gov-stat-active').textContent = formatNumber(stats.policies_active || 0);
+      $('gov-stat-evals').textContent = formatNumber(stats.evaluations_total || 0);
+      $('gov-stat-denied').textContent = formatNumber(stats.evaluations_denied || 0);
+      $('gov-stat-escalated').textContent = formatNumber(stats.evaluations_escalated || 0);
+    } catch (e) { /* Governance not available */ }
+  }
+
+  async function loadGovernancePolicies() {
+    try {
+      const data = await api('/v1/governance/policies');
+      renderGovernancePolicies(data.policies, data.count);
+    } catch (e) {
+      $('gov-table-body').innerHTML = `<tr class="dt-empty-row"><td colspan="6">${e.message}</td></tr>`;
+    }
+  }
+
+  function renderGovernancePolicies(policies, count) {
+    const tbody = $('gov-table-body');
+    $('gov-count').textContent = `${count} polic${count !== 1 ? 'ies' : 'y'}`;
+
+    if (!policies.length) {
+      tbody.innerHTML = '<tr class="dt-empty-row"><td colspan="6">No policies. Create or seed defaults.</td></tr>';
+      return;
+    }
+
+    const actionColors = { deny: 'var(--danger)', escalate: 'var(--warning)', log_only: 'var(--primary)', allow: 'var(--success)' };
+
+    tbody.innerHTML = policies.map(p => `
+      <tr>
+        <td class="dt-facts-count">${p.priority}</td>
+        <td><strong>${escapeHtml(p.name)}</strong><br><span class="dim" style="font-size:0.72rem">${escapeHtml(p.description).substring(0, 60)}</span></td>
+        <td class="dt-model">${p.policy_type}</td>
+        <td><span class="dt-signed-badge" style="color:${actionColors[p.action] || 'var(--text-muted)'};background:rgba(255,255,255,0.05)">${p.action}</span></td>
+        <td><span class="dt-signed-badge ${p.enabled ? 'signed' : 'unsigned'}" style="cursor:pointer" data-toggle-id="${p.policy_id}" data-enabled="${p.enabled}">${p.enabled ? '✓ ON' : '✕ OFF'}</span></td>
+        <td><button class="btn btn-sm" style="color:var(--danger);font-size:0.72rem" data-del-id="${p.policy_id}">✕</button></td>
+      </tr>
+    `).join('');
+
+    // Toggle enable/disable
+    tbody.querySelectorAll('[data-toggle-id]').forEach(el => {
+      el.addEventListener('click', async () => {
+        const id = el.dataset.toggleId;
+        const nowEnabled = el.dataset.enabled === 'true';
+        await api(`/v1/governance/policies/${id}`, {
+          method: 'PUT', body: { enabled: !nowEnabled },
+        });
+        toast(nowEnabled ? 'Policy disabled' : 'Policy enabled', 'success');
+        loadGovernancePolicies();
+        loadGovernanceStats();
+      });
+    });
+
+    // Delete
+    tbody.querySelectorAll('[data-del-id]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('Delete this policy?')) return;
+        await api(`/v1/governance/policies/${btn.dataset.delId}`, { method: 'DELETE' });
+        toast('Policy deleted', 'success');
+        loadGovernancePolicies();
+        loadGovernanceStats();
+      });
+    });
+  }
+
+  async function createGovernancePolicy() {
+    const name = $('gov-name')?.value?.trim();
+    if (!name) { toast('Policy name required', 'error'); return; }
+
+    let config = {};
+    const cfgStr = $('gov-config')?.value?.trim();
+    if (cfgStr) {
+      try { config = JSON.parse(cfgStr); }
+      catch { toast('Invalid JSON in config', 'error'); return; }
+    }
+
+    try {
+      await api('/v1/governance/policies', {
+        method: 'POST',
+        body: {
+          name,
+          description: '',
+          policy_type: $('gov-type').value,
+          action: $('gov-action').value,
+          config,
+        },
+      });
+      toast('Policy created!', 'success');
+      $('gov-name').value = '';
+      $('gov-config').value = '';
+      loadGovernancePolicies();
+      loadGovernanceStats();
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  async function seedGovernanceDefaults() {
+    try {
+      const r = await api('/v1/governance/seed-defaults', { method: 'POST' });
+      toast(`Seeded ${r.seeded} default policies`, 'success');
+      loadGovernancePolicies();
+      loadGovernanceStats();
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  async function testGovernanceEval() {
+    let ctx = {};
+    const ctxStr = $('gov-test-ctx')?.value?.trim();
+    if (ctxStr) {
+      try { ctx = JSON.parse(ctxStr); }
+      catch { toast('Invalid JSON context', 'error'); return; }
+    }
+
+    try {
+      const result = await api('/v1/governance/evaluate', {
+        method: 'POST',
+        body: { operation: $('gov-test-op').value, context: ctx },
+      });
+
+      $('gov-test-results').style.display = '';
+      const s = result.summary;
+      $('gov-test-summary').innerHTML = [
+        `<span class="dt-meta-tag" style="background:${result.allowed ? 'var(--success-glow)' : 'var(--danger-glow)'}"><span class="label">Verdict</span> ${result.allowed ? '✅ ALLOWED' : '❌ BLOCKED'}</span>`,
+        `<span class="dt-meta-tag"><span class="label">Allowed</span> ${s.allowed}</span>`,
+        `<span class="dt-meta-tag" style="color:var(--danger)"><span class="label">Denied</span> ${s.denied}</span>`,
+        `<span class="dt-meta-tag" style="color:var(--warning)"><span class="label">Escalated</span> ${s.escalated}</span>`,
+        `<span class="dt-meta-tag"><span class="label">Logged</span> ${s.logged}</span>`,
+      ].join('');
+
+      const resultColors = { allowed: 'var(--success)', denied: 'var(--danger)', escalated: 'var(--warning)', logged: 'var(--primary)' };
+      $('gov-test-details').innerHTML = result.evaluations.map(e => `
+        <div class="dt-fact-item" style="border-left-color:${resultColors[e.result] || 'var(--border)'}">
+          <span class="dt-fact-ref" style="color:${resultColors[e.result]}">${e.result.toUpperCase()}</span>
+          <span class="dt-fact-content"><strong>${escapeHtml(e.policy_name)}</strong><br>${escapeHtml(e.detail)}</span>
+        </div>
+      `).join('');
+
+      loadGovernanceStats();
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  async function loadGovernanceLogs() {
+    try {
+      const data = await api('/v1/governance/logs?limit=20');
+      const tbody = $('gov-log-body');
+      if (!data.logs.length) {
+        tbody.innerHTML = '<tr class="dt-empty-row"><td colspan="5">No logs yet.</td></tr>';
+        return;
+      }
+
+      const resultColors = { allowed: 'var(--success)', denied: 'var(--danger)', escalated: 'var(--warning)', logged: 'var(--primary)' };
+      tbody.innerHTML = data.logs.map(l => {
+        const time = new Date(l.created_at).toLocaleString('en-GB', {
+          month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit'
+        });
+        return `<tr>
+          <td class="dt-time">${time}</td>
+          <td>${escapeHtml(l.policy_name)}</td>
+          <td class="dt-model">${l.operation}</td>
+          <td><span class="dt-signed-badge" style="color:${resultColors[l.result] || 'var(--text-muted)'};background:rgba(255,255,255,0.05)">${l.result}</span></td>
+          <td style="font-size:0.75rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(l.detail)}">${escapeHtml(l.detail)}</td>
+        </tr>`;
+      }).join('');
+    } catch (e) { /* ignore */ }
+  }
+
   // ── Erasure Proof ──────────────────────────────────────────
   let epCerts = [];
 
@@ -743,6 +911,11 @@
           loadErasureStats();
           loadErasureCerts();
         }
+        if (nav.dataset.section === 'governance') {
+          loadGovernanceStats();
+          loadGovernancePolicies();
+          loadGovernanceLogs();
+        }
       });
     });
 
@@ -784,6 +957,12 @@
     // Erasure Proof events
     $('ep-issue-btn')?.addEventListener('click', issueCertificate);
     $('ep-close-detail')?.addEventListener('click', () => { $('ep-detail-panel').style.display = 'none'; });
+
+    // Governance Gateway events
+    $('gov-create-btn')?.addEventListener('click', createGovernancePolicy);
+    $('gov-seed-btn')?.addEventListener('click', seedGovernanceDefaults);
+    $('gov-test-btn')?.addEventListener('click', testGovernanceEval);
+    $('gov-refresh-logs')?.addEventListener('click', loadGovernanceLogs);
 
     // Check for upgrade success
     if (window.location.search.includes('upgraded=true')) {
