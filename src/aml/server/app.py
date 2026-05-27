@@ -353,7 +353,8 @@ def create_app(
         # Shutdown: close cloud services
         for svc_name in ("tenant_manager", "compliance_tracker", "metering_service",
                          "decision_trail", "erasure_proof", "governance_gateway",
-                         "regulatory_reports", "portal_auth", "stripe_billing"):
+                         "regulatory_reports", "llm_registry", "tool_registry",
+                         "orchestrator", "portal_auth", "stripe_billing"):
             svc = getattr(app.state, svc_name, None)
             if svc is not None and hasattr(svc, "close"):
                 svc.close()
@@ -479,6 +480,48 @@ def create_app(
             reg_router = create_regulatory_router(rr)
             app.include_router(reg_router)
             logger.info("Regulatory Reports enabled (/v1/reports)")
+
+            # LLM Registry — Bring Your Own Model
+            from aml.cloud.llm_registry import LLMRegistry
+            from aml.cloud.tool_registry import ToolRegistry
+            from aml.cloud.llm_routes import create_llm_router
+
+            llm_reg = LLMRegistry(db_url)
+            llm_reg.ensure_schema()
+            app.state.llm_registry = llm_reg
+
+            tool_reg = ToolRegistry(
+                db_url,
+                governance=gg,
+                store_manager=app.state.store_manager,
+                erasure_proof=ep,
+            )
+            tool_reg.ensure_schema()
+            app.state.tool_registry = tool_reg
+
+            llm_router = create_llm_router(llm_reg, tool_reg)
+            app.include_router(llm_router)
+            logger.info("LLM Registry + Tool Registry enabled (/v1/llm)")
+
+            # Agent Orchestrator — governed multi-agent execution
+            from aml.cloud.orchestrator import OrchestratorService
+            from aml.cloud.orchestrator_routes import create_orchestrator_router
+
+            orch = OrchestratorService(
+                db_url,
+                governance=gg,
+                decision_trail=dt,
+                erasure_proof=ep,
+                store_manager=app.state.store_manager,
+                llm_registry=llm_reg,
+                tool_registry=tool_reg,
+            )
+            orch.ensure_schema()
+            app.state.orchestrator = orch
+
+            orch_router = create_orchestrator_router(orch)
+            app.include_router(orch_router)
+            logger.info("Agent Orchestrator enabled (/v1/orchestrator)")
         except ImportError as e:
             logger.warning("Cloud layer unavailable (missing deps): %s", e)
         except Exception as e:
