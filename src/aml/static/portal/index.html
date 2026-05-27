@@ -103,6 +103,9 @@
           <a class="nav-item" data-section="billing" id="nav-billing">
             <span class="nav-icon">⊡</span> Billing
           </a>
+          <a class="nav-item" data-section="orchestrator" id="nav-orchestrator">
+            <span class="nav-icon">⎔</span> Orchestrator
+          </a>
         </div>
         <div class="sidebar-footer">
           <div class="user-info" id="user-info">
@@ -738,6 +741,144 @@ curl -X POST https://grafomem-production.up.railway.app/v1/stores/default/retrie
                 <li>Dedicated engineer</li>
               </ul>
               <button class="btn btn-full plan-btn" id="btn-enterprise" onclick="window.open('mailto:hello@grafomem.com')">Contact Us</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ORCHESTRATOR -->
+        <section id="section-orchestrator" class="section" style="display:none">
+          <h1 class="section-title">Agent Orchestrator</h1>
+          <div class="stats-grid" id="orch-stats-grid">
+            <div class="stat-card"><div class="stat-label">Active Agents</div><div class="stat-value" id="orch-stat-agents">—</div></div>
+            <div class="stat-card"><div class="stat-label">Workflows</div><div class="stat-value" id="orch-stat-workflows">—</div></div>
+            <div class="stat-card accent"><div class="stat-label">Steps Executed</div><div class="stat-value" id="orch-stat-steps">—</div></div>
+            <div class="stat-card"><div class="stat-label">Total Tokens</div><div class="stat-value" id="orch-stat-tokens">—</div></div>
+          </div>
+
+          <!-- Sub-tabs -->
+          <div class="orch-tabs">
+            <button class="orch-tab active" data-orch-tab="agents" id="orch-tab-agents">Agents</button>
+            <button class="orch-tab" data-orch-tab="workflows" id="orch-tab-workflows">Workflows</button>
+            <button class="orch-tab" data-orch-tab="providers" id="orch-tab-providers">LLM Providers</button>
+          </div>
+
+          <!-- Agents sub-tab -->
+          <div id="orch-panel-agents" class="orch-panel">
+            <div class="card">
+              <div class="card-header">
+                <h2>Agent Definitions</h2>
+                <button class="btn btn-primary btn-sm" id="btn-create-agent">+ New Agent</button>
+              </div>
+              <div id="agents-list" class="items-list"><p class="empty-state">No agents defined yet</p></div>
+            </div>
+
+            <!-- Create agent form (hidden) -->
+            <div id="create-agent-form" class="card" style="display:none">
+              <h2>Create Agent</h2>
+              <div class="form-grid">
+                <div class="form-group"><label>Name</label><input type="text" id="agent-name" placeholder="Research Agent" /></div>
+                <div class="form-group"><label>Role</label>
+                  <select id="agent-role">
+                    <option value="researcher">Researcher</option>
+                    <option value="writer">Writer</option>
+                    <option value="reviewer">Reviewer</option>
+                    <option value="classifier">Classifier</option>
+                    <option value="executor">Executor</option>
+                    <option value="supervisor">Supervisor</option>
+                    <option value="custom">Custom</option>
+                  </select>
+                </div>
+                <div class="form-group"><label>Model</label><input type="text" id="agent-model" placeholder="gpt-4o" /></div>
+                <div class="form-group"><label>Temperature</label><input type="number" id="agent-temp" value="0.7" step="0.1" min="0" max="2" /></div>
+              </div>
+              <div class="form-group"><label>System Prompt</label><textarea id="agent-prompt" rows="4" placeholder="You are a helpful research assistant..."></textarea></div>
+              <div class="form-group"><label>Memory Stores (comma-separated IDs)</label><input type="text" id="agent-stores" placeholder="store_abc, store_def" /></div>
+              <div class="form-group"><label>Tools (comma-separated)</label><input type="text" id="agent-tools" placeholder="grafomem_retrieve, http_get" /></div>
+              <div class="btn-group">
+                <button class="btn btn-primary" id="btn-save-agent">Create Agent</button>
+                <button class="btn" id="btn-cancel-agent">Cancel</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Workflows sub-tab -->
+          <div id="orch-panel-workflows" class="orch-panel" style="display:none">
+            <div class="card">
+              <div class="card-header">
+                <h2>Workflows</h2>
+                <button class="btn btn-primary btn-sm" id="btn-create-workflow">+ New Workflow</button>
+              </div>
+              <div id="workflows-list" class="items-list"><p class="empty-state">No workflows yet</p></div>
+            </div>
+
+            <!-- Create workflow form (hidden) -->
+            <div id="create-workflow-form" class="card" style="display:none">
+              <h2>Create Workflow</h2>
+              <div class="form-grid">
+                <div class="form-group"><label>Name</label><input type="text" id="wf-name" placeholder="Customer Support Flow" /></div>
+                <div class="form-group"><label>Mode</label>
+                  <select id="wf-mode">
+                    <option value="sequential">Sequential</option>
+                    <option value="supervisor">Supervisor</option>
+                    <option value="round_robin">Round Robin</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-group"><label>Agent IDs (comma-separated)</label><input type="text" id="wf-agents" placeholder="abc123, def456" /></div>
+              <div class="form-group"><label>Description</label><textarea id="wf-desc" rows="2" placeholder="Describe this workflow..."></textarea></div>
+              <div class="btn-group">
+                <button class="btn btn-primary" id="btn-save-workflow">Create Workflow</button>
+                <button class="btn" id="btn-cancel-workflow">Cancel</button>
+              </div>
+            </div>
+
+            <!-- Workflow detail (hidden) -->
+            <div id="workflow-detail" class="card" style="display:none">
+              <div class="card-header">
+                <h2 id="wf-detail-name">—</h2>
+                <span class="status-badge" id="wf-detail-status">—</span>
+              </div>
+              <div class="form-group">
+                <label>Run Workflow</label>
+                <textarea id="wf-run-input" rows="3" placeholder="Enter initial input for the workflow..."></textarea>
+                <button class="btn btn-primary" id="btn-run-workflow" style="margin-top:8px">Execute</button>
+              </div>
+              <h3>Step Timeline</h3>
+              <div id="step-timeline" class="step-timeline"><p class="empty-state">No steps yet</p></div>
+            </div>
+          </div>
+
+          <!-- Providers sub-tab -->
+          <div id="orch-panel-providers" class="orch-panel" style="display:none">
+            <div class="card">
+              <div class="card-header">
+                <h2>LLM Providers</h2>
+                <button class="btn btn-primary btn-sm" id="btn-add-provider">+ Add Provider</button>
+              </div>
+              <div id="providers-list" class="items-list"><p class="empty-state">No providers configured</p></div>
+            </div>
+
+            <!-- Add provider form (hidden) -->
+            <div id="add-provider-form" class="card" style="display:none">
+              <h2>Register LLM Provider</h2>
+              <div class="form-grid">
+                <div class="form-group"><label>Provider</label>
+                  <select id="provider-type">
+                    <option value="openai">OpenAI</option>
+                    <option value="anthropic">Anthropic</option>
+                    <option value="gemini">Google Gemini</option>
+                    <option value="ollama">Ollama (Local)</option>
+                    <option value="custom">Custom (OpenAI-compatible)</option>
+                  </select>
+                </div>
+                <div class="form-group"><label>Model ID</label><input type="text" id="provider-model" placeholder="gpt-4o" /></div>
+              </div>
+              <div class="form-group"><label>API Key</label><input type="password" id="provider-key" placeholder="sk-..." /></div>
+              <div class="form-group"><label>Base URL (optional)</label><input type="text" id="provider-url" placeholder="https://api.openai.com/v1" /></div>
+              <div class="btn-group">
+                <button class="btn btn-primary" id="btn-save-provider">Register</button>
+                <button class="btn" id="btn-cancel-provider">Cancel</button>
+              </div>
             </div>
           </div>
         </section>

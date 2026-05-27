@@ -1158,3 +1158,354 @@
     }
   });
 })();
+
+// ==================== ORCHESTRATOR ====================
+
+(function orchestratorModule() {
+  const BASE = '';
+
+  function apiKey() {
+    return localStorage.getItem('grafomem_api_key') || '';
+  }
+
+  function authHeaders() {
+    const token = localStorage.getItem('gfm_token');
+    return {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+  }
+
+  // ---- Sub-tab switching ----
+  document.querySelectorAll('.orch-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.orch-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const tab = btn.dataset.orchTab;
+      document.querySelectorAll('.orch-panel').forEach(p => p.style.display = 'none');
+      const panel = document.getElementById(`orch-panel-${tab}`);
+      if (panel) panel.style.display = '';
+    });
+  });
+
+  // ---- Load stats ----
+  async function loadOrchStats() {
+    try {
+      const res = await fetch(`${BASE}/v1/orchestrator/stats`, { headers: authHeaders() });
+      if (!res.ok) return;
+      const d = await res.json();
+      document.getElementById('orch-stat-agents').textContent = d.agents_active || 0;
+      document.getElementById('orch-stat-workflows').textContent = d.workflows_total || 0;
+      document.getElementById('orch-stat-steps').textContent = d.steps_total || 0;
+      document.getElementById('orch-stat-tokens').textContent = (d.total_tokens || 0).toLocaleString();
+    } catch (e) { console.warn('Orch stats:', e); }
+  }
+
+  // ---- Agents ----
+  async function loadAgents() {
+    try {
+      const res = await fetch(`${BASE}/v1/orchestrator/agents`, { headers: authHeaders() });
+      if (!res.ok) return;
+      const d = await res.json();
+      const list = document.getElementById('agents-list');
+      if (!d.agents || d.agents.length === 0) {
+        list.innerHTML = '<p class="empty-state">No agents defined yet. Click "+ New Agent" to create one.</p>';
+        return;
+      }
+      list.innerHTML = d.agents.map(a => `
+        <div class="item-card">
+          <div class="item-info">
+            <div class="item-name">${a.name} <span class="provider-badge">${a.role}</span></div>
+            <div class="item-meta">Model: ${a.model_id} · Max steps: ${a.max_steps} · Temp: ${a.temperature}</div>
+          </div>
+          <div class="item-actions">
+            <button class="btn btn-sm" onclick="testAgent('${a.agent_id}')">Test</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteAgent('${a.agent_id}')">Delete</button>
+          </div>
+        </div>
+      `).join('');
+    } catch (e) { console.warn('Load agents:', e); }
+  }
+
+  // Create agent
+  const btnCreateAgent = document.getElementById('btn-create-agent');
+  const createAgentForm = document.getElementById('create-agent-form');
+  const btnCancelAgent = document.getElementById('btn-cancel-agent');
+  const btnSaveAgent = document.getElementById('btn-save-agent');
+
+  if (btnCreateAgent) btnCreateAgent.addEventListener('click', () => {
+    createAgentForm.style.display = '';
+  });
+  if (btnCancelAgent) btnCancelAgent.addEventListener('click', () => {
+    createAgentForm.style.display = 'none';
+  });
+  if (btnSaveAgent) btnSaveAgent.addEventListener('click', async () => {
+    const stores = document.getElementById('agent-stores').value.split(',').map(s => s.trim()).filter(Boolean);
+    const tools = document.getElementById('agent-tools').value.split(',').map(s => s.trim()).filter(Boolean);
+    const body = {
+      name: document.getElementById('agent-name').value,
+      role: document.getElementById('agent-role').value,
+      model_id: document.getElementById('agent-model').value,
+      system_prompt: document.getElementById('agent-prompt').value,
+      temperature: parseFloat(document.getElementById('agent-temp').value) || 0.7,
+      memory_stores: stores,
+      tools: tools,
+    };
+    try {
+      const res = await fetch(`${BASE}/v1/orchestrator/agents`, {
+        method: 'POST', headers: authHeaders(), body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        createAgentForm.style.display = 'none';
+        loadAgents();
+        loadOrchStats();
+        showToast('Agent created successfully');
+      } else {
+        const err = await res.json();
+        showToast(err.detail || 'Failed to create agent', true);
+      }
+    } catch (e) { showToast('Failed to create agent', true); }
+  });
+
+  // Delete agent
+  window.deleteAgent = async function(id) {
+    if (!confirm('Delete this agent?')) return;
+    try {
+      await fetch(`${BASE}/v1/orchestrator/agents/${id}`, { method: 'DELETE', headers: authHeaders() });
+      loadAgents();
+      loadOrchStats();
+      showToast('Agent deleted');
+    } catch (e) { showToast('Failed to delete', true); }
+  };
+
+  // Test agent (ad-hoc step)
+  window.testAgent = async function(id) {
+    const input = prompt('Enter test input for the agent:');
+    if (!input) return;
+    try {
+      const res = await fetch(`${BASE}/v1/orchestrator/step`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ agent_id: id, input_text: input }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(`Status: ${data.status}\nOutput: ${data.raw_output || '(none)'}\nTokens: ${data.tokens_used}`);
+      } else {
+        alert(`Error: ${data.detail || JSON.stringify(data)}`);
+      }
+    } catch (e) { alert('Test failed: ' + e.message); }
+  };
+
+  // ---- Workflows ----
+  async function loadWorkflows() {
+    try {
+      const res = await fetch(`${BASE}/v1/orchestrator/workflows`, { headers: authHeaders() });
+      if (!res.ok) return;
+      const d = await res.json();
+      const list = document.getElementById('workflows-list');
+      if (!d.workflows || d.workflows.length === 0) {
+        list.innerHTML = '<p class="empty-state">No workflows yet. Click "+ New Workflow" to create one.</p>';
+        return;
+      }
+      list.innerHTML = d.workflows.map(w => `
+        <div class="item-card" onclick="viewWorkflow('${w.workflow_id}')" style="cursor:pointer">
+          <div class="item-info">
+            <div class="item-name">${w.name} <span class="status-badge ${w.status}">${w.status}</span></div>
+            <div class="item-meta">Mode: ${w.mode} · Steps: ${w.current_step}/${w.max_total_steps} · Tokens: ${(w.total_tokens||0).toLocaleString()}</div>
+          </div>
+          <div class="item-actions">
+            <button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); terminateWorkflow('${w.workflow_id}')">Terminate</button>
+          </div>
+        </div>
+      `).join('');
+    } catch (e) { console.warn('Load workflows:', e); }
+  }
+
+  // Create workflow
+  const btnCreateWf = document.getElementById('btn-create-workflow');
+  const createWfForm = document.getElementById('create-workflow-form');
+  const btnCancelWf = document.getElementById('btn-cancel-workflow');
+  const btnSaveWf = document.getElementById('btn-save-workflow');
+
+  if (btnCreateWf) btnCreateWf.addEventListener('click', () => { createWfForm.style.display = ''; });
+  if (btnCancelWf) btnCancelWf.addEventListener('click', () => { createWfForm.style.display = 'none'; });
+  if (btnSaveWf) btnSaveWf.addEventListener('click', async () => {
+    const agentIds = document.getElementById('wf-agents').value.split(',').map(s => s.trim()).filter(Boolean);
+    const body = {
+      name: document.getElementById('wf-name').value,
+      mode: document.getElementById('wf-mode').value,
+      agent_ids: agentIds,
+      description: document.getElementById('wf-desc').value,
+    };
+    try {
+      const res = await fetch(`${BASE}/v1/orchestrator/workflows`, {
+        method: 'POST', headers: authHeaders(), body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        createWfForm.style.display = 'none';
+        loadWorkflows();
+        loadOrchStats();
+        showToast('Workflow created');
+      } else {
+        const err = await res.json();
+        showToast(err.detail || 'Failed', true);
+      }
+    } catch (e) { showToast('Failed to create workflow', true); }
+  });
+
+  // View workflow detail
+  window.viewWorkflow = async function(id) {
+    try {
+      const res = await fetch(`${BASE}/v1/orchestrator/workflows/${id}`, { headers: authHeaders() });
+      if (!res.ok) return;
+      const w = await res.json();
+      document.getElementById('workflow-detail').style.display = '';
+      document.getElementById('wf-detail-name').textContent = w.name;
+      const badge = document.getElementById('wf-detail-status');
+      badge.textContent = w.status;
+      badge.className = `status-badge ${w.status}`;
+
+      // Render step timeline
+      const timeline = document.getElementById('step-timeline');
+      if (!w.steps || w.steps.length === 0) {
+        timeline.innerHTML = '<p class="empty-state">No steps executed yet. Click "Execute" to run.</p>';
+      } else {
+        timeline.innerHTML = w.steps.map(s => `
+          <div class="step-card ${s.status}" data-step="${s.step_number}">
+            <div class="step-header">
+              <span class="step-agent">${s.agent_id.substring(0,8)}…</span>
+              <span class="step-meta">${s.tokens_used} tokens · ${s.latency_ms}ms</span>
+            </div>
+            <div class="step-gov">
+              ${s.governance_allowed
+                ? '<span class="gov-allowed">✓ Governance: Allowed</span>'
+                : '<span class="gov-denied">✘ Governance: ' + s.status + '</span>'
+              }
+            </div>
+            ${s.raw_output ? `<div class="step-output">${escapeHtml(s.raw_output.substring(0, 500))}</div>` : ''}
+          </div>
+        `).join('');
+      }
+
+      // Wire run button
+      document.getElementById('btn-run-workflow').onclick = async () => {
+        const input = document.getElementById('wf-run-input').value;
+        if (!input) { showToast('Enter input text', true); return; }
+        try {
+          showToast('Running workflow...');
+          const r = await fetch(`${BASE}/v1/orchestrator/workflows/${id}/run`, {
+            method: 'POST', headers: authHeaders(), body: JSON.stringify({ input_text: input }),
+          });
+          if (r.ok) {
+            showToast('Workflow completed');
+            viewWorkflow(id);
+            loadOrchStats();
+          } else {
+            const err = await r.json();
+            showToast(err.detail || 'Execution failed', true);
+          }
+        } catch (e) { showToast('Execution failed', true); }
+      };
+    } catch (e) { showToast('Failed to load workflow', true); }
+  };
+
+  window.terminateWorkflow = async function(id) {
+    if (!confirm('Terminate this workflow?')) return;
+    try {
+      await fetch(`${BASE}/v1/orchestrator/workflows/${id}/terminate`, { method: 'POST', headers: authHeaders() });
+      loadWorkflows();
+      loadOrchStats();
+      showToast('Workflow terminated');
+    } catch (e) { showToast('Failed', true); }
+  };
+
+  // ---- Providers ----
+  async function loadProviders() {
+    try {
+      const res = await fetch(`${BASE}/v1/llm/providers`, { headers: authHeaders() });
+      if (!res.ok) return;
+      const d = await res.json();
+      const list = document.getElementById('providers-list');
+      if (!d.providers || d.providers.length === 0) {
+        list.innerHTML = '<p class="empty-state">No LLM providers configured. Click "+ Add Provider" to register one.</p>';
+        return;
+      }
+      list.innerHTML = d.providers.map(p => `
+        <div class="provider-card">
+          <div class="item-info">
+            <div class="item-name">${p.model_id} <span class="provider-badge">${p.provider}</span></div>
+            <div class="item-meta">API Key: ${p.api_key_set ? '••••••' : 'Not set'} · Temp: ${p.default_temperature} · Max tokens: ${p.max_tokens}</div>
+          </div>
+          <div class="item-actions">
+            <button class="btn btn-sm btn-danger" onclick="deleteProvider('${p.model_id}')">Remove</button>
+          </div>
+        </div>
+      `).join('');
+    } catch (e) { console.warn('Load providers:', e); }
+  }
+
+  // Add provider
+  const btnAddProv = document.getElementById('btn-add-provider');
+  const addProvForm = document.getElementById('add-provider-form');
+  const btnCancelProv = document.getElementById('btn-cancel-provider');
+  const btnSaveProv = document.getElementById('btn-save-provider');
+
+  if (btnAddProv) btnAddProv.addEventListener('click', () => { addProvForm.style.display = ''; });
+  if (btnCancelProv) btnCancelProv.addEventListener('click', () => { addProvForm.style.display = 'none'; });
+  if (btnSaveProv) btnSaveProv.addEventListener('click', async () => {
+    const body = {
+      provider: document.getElementById('provider-type').value,
+      model_id: document.getElementById('provider-model').value,
+      api_key: document.getElementById('provider-key').value || null,
+      base_url: document.getElementById('provider-url').value || null,
+    };
+    try {
+      const res = await fetch(`${BASE}/v1/llm/providers`, {
+        method: 'POST', headers: authHeaders(), body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        addProvForm.style.display = 'none';
+        loadProviders();
+        showToast('Provider registered');
+      } else {
+        const err = await res.json();
+        showToast(err.detail || 'Failed', true);
+      }
+    } catch (e) { showToast('Failed to register provider', true); }
+  });
+
+  window.deleteProvider = async function(modelId) {
+    if (!confirm('Remove this provider?')) return;
+    try {
+      await fetch(`${BASE}/v1/llm/providers/${modelId}`, { method: 'DELETE', headers: authHeaders() });
+      loadProviders();
+      showToast('Provider removed');
+    } catch (e) { showToast('Failed', true); }
+  };
+
+  // ---- Toast helper (use existing if available) ----
+  function showToast(msg, isError) {
+    const t = document.getElementById('toast');
+    if (!t) return;
+    t.textContent = msg;
+    t.className = 'toast visible' + (isError ? ' error' : '');
+    setTimeout(() => { t.className = 'toast'; }, 3000);
+  }
+
+  function escapeHtml(s) {
+    if (!s) return '';
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // ---- Auto-load when orchestrator section is shown ----
+  const navOrch = document.getElementById('nav-orchestrator');
+  if (navOrch) {
+    navOrch.addEventListener('click', () => {
+      loadOrchStats();
+      loadAgents();
+      loadWorkflows();
+      loadProviders();
+    });
+  }
+})();
