@@ -175,19 +175,37 @@ CREATE INDEX IF NOT EXISTS idx_gel_policy
 # ============================================================================
 
 class GovernanceGateway:
-    """Policy-as-code engine for constraining agent behavior.
+    """Policy enforcement gateway (PEP) for constraining agent behavior.
+
+    Delegates policy evaluation to PolicyEngine (PDP) and evidence
+    logging to EvidenceCollector.  All public APIs remain unchanged.
 
     Parameters
     ----------
     db_url : str
         PostgreSQL connection URI.
+    policy_engine : PolicyEngine, optional
+        Custom engine instance.  Created automatically if not provided.
+    evidence_collector : EvidenceCollector, optional
+        Custom collector instance.  Created automatically if not provided.
     """
 
-    def __init__(self, db_url: str) -> None:
+    def __init__(
+        self,
+        db_url: str,
+        policy_engine: Any | None = None,
+        evidence_collector: Any | None = None,
+    ) -> None:
         self._db_url = db_url
         self._conn: psycopg.Connection[dict[str, Any]] | None = None
-        # In-memory rate limit counters: { (tenant_id, policy_id): [timestamps] }
+        # In-memory rate limit counters kept for backward compat
         self._rate_counters: dict[tuple[str, str], list[float]] = {}
+
+        # PDP / Evidence delegation
+        from aml.cloud.policy_engine import PolicyEngine as _PE
+        from aml.cloud.evidence_collector import EvidenceCollector as _EC
+        self._engine: _PE = policy_engine or _PE()
+        self._evidence: _EC = evidence_collector or _EC(db_url)
 
     # ------------------------------------------------------------------
     # Connection
@@ -203,6 +221,7 @@ class GovernanceGateway:
     def close(self) -> None:
         if self._conn is not None and not self._conn.closed:
             self._conn.close()
+        self._evidence.close()
 
     # ------------------------------------------------------------------
     # Schema
@@ -211,6 +230,7 @@ class GovernanceGateway:
     def ensure_schema(self) -> None:
         conn = self._get_conn()
         conn.execute(_SCHEMA_SQL)
+        self._evidence.ensure_schema()
         logger.info("Governance Gateway schema ensured")
 
     # ------------------------------------------------------------------
@@ -344,7 +364,7 @@ class GovernanceGateway:
         return result.rowcount > 0
 
     # ------------------------------------------------------------------
-    # Policy Evaluation
+    # Policy Evaluation — delegates to PolicyEngine + EvidenceCollector
     # ------------------------------------------------------------------
 
     def evaluate(
@@ -355,46 +375,14 @@ class GovernanceGateway:
     ) -> list[EvaluationLog]:
         """Evaluate all active policies against a request.
 
-        Parameters
-        ----------
-        tenant_id : str
-            The tenant performing the operation.
-        operation : str
-            The operation type (e.g. "write", "retrieve", "inference").
-        context : dict
-            Request context. Keys depend on policy type:
-            - model_id: str (for model_allowlist)
-            - store_id: str (for data_scope)
-            - query: str (for content_filter)
-            - output: str (for content_filter, pii_guard)
-            - tokens: int (for token_budget)
-
-        Returns
-        -------
-        list[EvaluationLog]
-            One log entry per evaluated policy.
+        Delegates to PolicyEngine for verdicts and EvidenceCollector
+        for persistence.  Public API unchanged.
         """
         policies = self.list_policies(tenant_id, enabled_only=True)
-        logs: list[EvaluationLog] = []
-
-        for policy in policies:
-            result, detail = self._evaluate_single(policy, operation, context)
-
-            log_entry = EvaluationLog(
-                log_id=uuid.uuid4().hex[:24],
-                tenant_id=tenant_id,
-                policy_id=policy.policy_id,
-                policy_name=policy.name,
-                result=result,
-                operation=operation,
-                detail=detail,
-                request_summary=self._summarize_request(operation, context),
-            )
-            logs.append(log_entry)
-
-            # Persist the log
-            self._persist_log(log_entry)
-
+        verdicts = self._engine.evaluate(policies, operation, context)
+        logs = self._evidence.log_verdicts(
+            tenant_id, verdicts, operation, context,
+        )
         return logs
 
     def evaluate_and_gate(
@@ -405,12 +393,14 @@ class GovernanceGateway:
     ) -> tuple[bool, list[EvaluationLog]]:
         """Evaluate and return (allowed, logs).
 
-        Returns False if any policy denied the request.
+        Returns False if any policy denied or escalated.
         """
         logs = self.evaluate(tenant_id, operation, context)
         denied = any(log.result == EvaluationResult.DENIED for log in logs)
         escalated = any(log.result == EvaluationResult.ESCALATED for log in logs)
         return (not denied and not escalated), logs
+
+    # ── Legacy bridge (kept for backward compatibility) ────────
 
     def _evaluate_single(
         self,
@@ -418,191 +408,29 @@ class GovernanceGateway:
         operation: str,
         context: dict[str, Any],
     ) -> tuple[EvaluationResult, str]:
-        """Evaluate a single policy. Returns (result, detail)."""
-        try:
-            if policy.policy_type == PolicyType.RATE_LIMIT:
-                return self._eval_rate_limit(policy, context)
-            elif policy.policy_type == PolicyType.MODEL_ALLOWLIST:
-                return self._eval_model_allowlist(policy, context)
-            elif policy.policy_type == PolicyType.CONTENT_FILTER:
-                return self._eval_content_filter(policy, context)
-            elif policy.policy_type == PolicyType.DATA_SCOPE:
-                return self._eval_data_scope(policy, context)
-            elif policy.policy_type == PolicyType.TOKEN_BUDGET:
-                return self._eval_token_budget(policy, context)
-            elif policy.policy_type == PolicyType.HITL_REQUIRED:
-                return self._eval_hitl(policy, operation, context)
-            elif policy.policy_type == PolicyType.PII_GUARD:
-                return self._eval_pii_guard(policy, context)
-            else:
-                return EvaluationResult.ALLOWED, f"Unknown policy type: {policy.policy_type}"
-        except Exception as e:
-            logger.error("Policy evaluation error: %s — %s", policy.name, e)
-            return EvaluationResult.ALLOWED, f"Evaluation error (fail-open): {e}"
-
-    # ── Evaluators ────────────────────────────────────────────
-
-    def _eval_rate_limit(
-        self, policy: Policy, context: dict,
-    ) -> tuple[EvaluationResult, str]:
-        max_req = policy.config.get("max_requests", 600)
-        window = policy.config.get("window_seconds", 60)
-        now = time.monotonic()
-
-        key = (policy.tenant_id, policy.policy_id)
-        timestamps = self._rate_counters.get(key, [])
-
-        # Prune expired entries
-        cutoff = now - window
-        timestamps = [t for t in timestamps if t > cutoff]
-        timestamps.append(now)
-        self._rate_counters[key] = timestamps
-
-        if len(timestamps) > max_req:
-            action_result = self._action_to_result(policy.action)
-            return action_result, f"Rate limit exceeded: {len(timestamps)}/{max_req} in {window}s"
-
-        return EvaluationResult.ALLOWED, f"Rate OK: {len(timestamps)}/{max_req}"
-
-    def _eval_model_allowlist(
-        self, policy: Policy, context: dict,
-    ) -> tuple[EvaluationResult, str]:
-        allowed_models = policy.config.get("models", [])
-        model_id = context.get("model_id", "")
-
-        if not model_id:
-            return EvaluationResult.ALLOWED, "No model_id in request"
-
-        if not allowed_models:
-            return EvaluationResult.ALLOWED, "No model restrictions configured"
-
-        if model_id in allowed_models:
-            return EvaluationResult.ALLOWED, f"Model '{model_id}' is allowed"
-
-        action_result = self._action_to_result(policy.action)
-        return action_result, f"Model '{model_id}' not in allowlist: {allowed_models}"
-
-    def _eval_content_filter(
-        self, policy: Policy, context: dict,
-    ) -> tuple[EvaluationResult, str]:
-        patterns = policy.config.get("patterns", [])
-        check_fields = policy.config.get("check_fields", ["query", "output"])
-
-        for field_name in check_fields:
-            text = context.get(field_name, "")
-            if not text:
-                continue
-            for pattern in patterns:
-                try:
-                    if re.search(pattern, text, re.IGNORECASE):
-                        action_result = self._action_to_result(policy.action)
-                        return action_result, f"Content filter match in '{field_name}': pattern '{pattern}'"
-                except re.error:
-                    continue
-
-        return EvaluationResult.ALLOWED, "No content filter matches"
-
-    def _eval_data_scope(
-        self, policy: Policy, context: dict,
-    ) -> tuple[EvaluationResult, str]:
-        allowed_stores = policy.config.get("allowed_stores", [])
-        store_id = context.get("store_id", "")
-
-        if not store_id or not allowed_stores:
-            return EvaluationResult.ALLOWED, "No data scope restriction"
-
-        if store_id in allowed_stores:
-            return EvaluationResult.ALLOWED, f"Store '{store_id}' is in scope"
-
-        action_result = self._action_to_result(policy.action)
-        return action_result, f"Store '{store_id}' outside allowed scope: {allowed_stores}"
-
-    def _eval_token_budget(
-        self, policy: Policy, context: dict,
-    ) -> tuple[EvaluationResult, str]:
-        max_tokens = policy.config.get("max_tokens_per_request", 10000)
-        tokens = context.get("tokens", 0)
-
-        if tokens <= max_tokens:
-            return EvaluationResult.ALLOWED, f"Token budget OK: {tokens}/{max_tokens}"
-
-        action_result = self._action_to_result(policy.action)
-        return action_result, f"Token budget exceeded: {tokens}/{max_tokens}"
-
-    def _eval_hitl(
-        self, policy: Policy, operation: str, context: dict,
-    ) -> tuple[EvaluationResult, str]:
-        operations = policy.config.get("operations", [])
-        if not operations or operation in operations:
-            return EvaluationResult.ESCALATED, (
-                f"HITL required for '{operation}' — "
-                "awaiting human approval"
-            )
-        return EvaluationResult.ALLOWED, f"Operation '{operation}' not subject to HITL"
-
-    def _eval_pii_guard(
-        self, policy: Policy, context: dict,
-    ) -> tuple[EvaluationResult, str]:
-        patterns = policy.config.get("patterns", [])
-        check_fields = policy.config.get("check_fields", ["output"])
-        findings: list[str] = []
-
-        for field_name in check_fields:
-            text = context.get(field_name, "")
-            if not text:
-                continue
-            for pattern in patterns:
-                try:
-                    matches = re.findall(pattern, text)
-                    if matches:
-                        findings.append(f"{field_name}: {len(matches)} match(es) for '{pattern}'")
-                except re.error:
-                    continue
-
-        if findings:
-            action_result = self._action_to_result(policy.action)
-            return action_result, f"PII detected: {'; '.join(findings)}"
-
-        return EvaluationResult.ALLOWED, "No PII detected"
-
-    # ── Helpers ────────────────────────────────────────────────
+        """Evaluate a single policy via PolicyEngine. Legacy bridge."""
+        verdict = self._engine.evaluate_single(policy, operation, context)
+        return verdict.result, verdict.detail
 
     def _action_to_result(self, action: PolicyAction) -> EvaluationResult:
-        mapping = {
-            PolicyAction.DENY: EvaluationResult.DENIED,
-            PolicyAction.ALLOW: EvaluationResult.ALLOWED,
-            PolicyAction.ESCALATE: EvaluationResult.ESCALATED,
-            PolicyAction.LOG_ONLY: EvaluationResult.LOGGED,
-        }
-        return mapping.get(action, EvaluationResult.DENIED)
+        return self._engine._action_to_result(action)
 
     def _summarize_request(self, operation: str, context: dict) -> str:
-        parts = [f"op={operation}"]
-        if context.get("model_id"):
-            parts.append(f"model={context['model_id']}")
-        if context.get("store_id"):
-            parts.append(f"store={context['store_id']}")
-        if context.get("query"):
-            q = context["query"]
-            parts.append(f"query=\"{q[:50]}{'…' if len(q) > 50 else ''}\"")
-        return " ".join(parts)
-
-    # ------------------------------------------------------------------
-    # Evaluation logs
-    # ------------------------------------------------------------------
+        return self._evidence._summarize_request(operation, context)
 
     def _persist_log(self, log: EvaluationLog) -> None:
-        conn = self._get_conn()
-        conn.execute(
-            "INSERT INTO governance_evaluation_log "
-            "(log_id, tenant_id, policy_id, policy_name, result, "
-            " operation, detail, request_summary, created_at) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
-            (
-                log.log_id, log.tenant_id, log.policy_id, log.policy_name,
-                log.result.value, log.operation, log.detail,
-                log.request_summary, log.created_at,
-            ),
+        """Legacy bridge — delegates to EvidenceCollector."""
+        from aml.cloud.policy_engine import Verdict
+        verdict = Verdict(
+            policy_id=log.policy_id,
+            policy_name=log.policy_name,
+            result=log.result,
+            detail=log.detail,
+            policy_type="",
+            action="",
+        )
+        self._evidence.log_evaluation(
+            log.tenant_id, verdict, log.operation, {},
         )
 
     def get_logs(
@@ -613,32 +441,16 @@ class GovernanceGateway:
         limit: int = 50,
         offset: int = 0,
     ) -> list[EvaluationLog]:
-        conn = self._get_conn()
-        conditions = ["tenant_id = %s"]
-        params: list[Any] = [tenant_id]
-
-        if policy_id:
-            conditions.append("policy_id = %s")
-            params.append(policy_id)
-        if result:
-            conditions.append("result = %s")
-            params.append(result)
-
-        where = " AND ".join(conditions)
-        params.extend([limit, offset])
-
-        rows = conn.execute(
-            f"SELECT * FROM governance_evaluation_log "
-            f"WHERE {where} ORDER BY created_at DESC LIMIT %s OFFSET %s",
-            params,
-        ).fetchall()
-
-        return [self._row_to_log(r) for r in rows]
+        """Delegates to EvidenceCollector."""
+        return self._evidence.get_logs(
+            tenant_id, policy_id=policy_id, result=result,
+            limit=limit, offset=offset,
+        )
 
     def get_stats(self, tenant_id: str) -> dict[str, Any]:
+        """Combines policy stats (local) with evaluation stats (evidence)."""
         conn = self._get_conn()
 
-        # Policy stats
         pol_row = conn.execute(
             "SELECT COUNT(*) AS total, "
             "  COUNT(CASE WHEN enabled THEN 1 END) AS active "
@@ -646,25 +458,12 @@ class GovernanceGateway:
             (tenant_id,),
         ).fetchone()
 
-        # Evaluation stats
-        eval_row = conn.execute(
-            "SELECT COUNT(*) AS total_evals, "
-            "  COUNT(CASE WHEN result = 'denied' THEN 1 END) AS denied, "
-            "  COUNT(CASE WHEN result = 'escalated' THEN 1 END) AS escalated, "
-            "  COUNT(CASE WHEN result = 'logged' THEN 1 END) AS logged, "
-            "  COUNT(CASE WHEN result = 'allowed' THEN 1 END) AS allowed "
-            "FROM governance_evaluation_log WHERE tenant_id = %s",
-            (tenant_id,),
-        ).fetchone()
+        eval_stats = self._evidence.get_stats(tenant_id)
 
         return {
             "policies_total": pol_row["total"] if pol_row else 0,
             "policies_active": pol_row["active"] if pol_row else 0,
-            "evaluations_total": eval_row["total_evals"] if eval_row else 0,
-            "evaluations_denied": eval_row["denied"] if eval_row else 0,
-            "evaluations_escalated": eval_row["escalated"] if eval_row else 0,
-            "evaluations_logged": eval_row["logged"] if eval_row else 0,
-            "evaluations_allowed": eval_row["allowed"] if eval_row else 0,
+            **eval_stats,
         }
 
     # ------------------------------------------------------------------

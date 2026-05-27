@@ -522,6 +522,38 @@ def create_app(
             orch_router = create_orchestrator_router(orch)
             app.include_router(orch_router)
             logger.info("Agent Orchestrator enabled (/v1/orchestrator)")
+
+            # Sprint 7a: Policy Engine + Evidence Collector
+            # (Automatically wired via GovernanceGateway constructor)
+            logger.info("Policy Engine + Evidence Collector active (via GovernanceGateway)")
+
+            # Sprint 7b: Execution Receipts — hash-chained attestation
+            from aml.cloud.execution_receipts import ExecutionReceiptService
+            receipt_svc = ExecutionReceiptService(db_url)
+            receipt_svc.ensure_schema()
+            app.state.execution_receipts = receipt_svc
+            orch._receipt_service = receipt_svc
+            logger.info("Execution Receipt Service enabled")
+
+            # Sprint 7c: Memory Taxonomy — workflow context
+            from aml.cloud.memory_taxonomy import WorkflowContextService
+            wf_ctx = WorkflowContextService(db_url)
+            wf_ctx.ensure_schema()
+            app.state.workflow_context = wf_ctx
+            orch._workflow_context = wf_ctx
+            logger.info("Workflow Context Service enabled")
+
+            # Sprint 7d: Deterministic Replay Engine
+            from aml.cloud.replay_engine import ReplayEngine
+            replay = ReplayEngine(
+                db_url,
+                decision_trail=dt,
+                llm_registry=llm_reg,
+                store_manager=app.state.store_manager,
+            )
+            replay.ensure_schema()
+            app.state.replay_engine = replay
+            logger.info("Replay Engine enabled")
         except ImportError as e:
             logger.warning("Cloud layer unavailable (missing deps): %s", e)
         except Exception as e:

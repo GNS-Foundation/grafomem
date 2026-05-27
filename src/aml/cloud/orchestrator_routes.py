@@ -361,4 +361,78 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
         step = orchestrator._row_to_step(row)
         return orchestrator.step_to_dict(step)
 
+    # ------------------------------------------------------------------
+    # Execution Receipts — hash-chained attestation (Sprint 7b)
+    # ------------------------------------------------------------------
+
+    @router.get("/workflows/{workflow_id}/receipts")
+    async def get_workflow_receipts(workflow_id: str, request: Request):
+        """Get all execution receipts for a workflow."""
+        tenant_id = _get_tenant_id(request)
+        receipt_svc = getattr(request.app.state, "execution_receipts", None)
+        if not receipt_svc:
+            raise HTTPException(501, "Execution Receipt Service not available")
+
+        workflow = orchestrator.get_workflow(workflow_id)
+        if workflow is None or workflow.tenant_id != tenant_id:
+            raise HTTPException(404, f"Workflow '{workflow_id}' not found")
+
+        receipts = receipt_svc.get_receipts(workflow_id)
+        return {
+            "workflow_id": workflow_id,
+            "receipts": [receipt_svc.receipt_to_dict(r) for r in receipts],
+            "count": len(receipts),
+        }
+
+    @router.get("/workflows/{workflow_id}/verify-chain")
+    async def verify_receipt_chain(workflow_id: str, request: Request):
+        """Verify the hash chain integrity of a workflow's receipts."""
+        tenant_id = _get_tenant_id(request)
+        receipt_svc = getattr(request.app.state, "execution_receipts", None)
+        if not receipt_svc:
+            raise HTTPException(501, "Execution Receipt Service not available")
+
+        workflow = orchestrator.get_workflow(workflow_id)
+        if workflow is None or workflow.tenant_id != tenant_id:
+            raise HTTPException(404, f"Workflow '{workflow_id}' not found")
+
+        verdict = receipt_svc.verify_chain(workflow_id)
+        return receipt_svc.verdict_to_dict(verdict)
+
+    @router.get("/receipts/{receipt_id}")
+    async def get_receipt(receipt_id: str, request: Request):
+        """Get a single execution receipt."""
+        tenant_id = _get_tenant_id(request)
+        receipt_svc = getattr(request.app.state, "execution_receipts", None)
+        if not receipt_svc:
+            raise HTTPException(501, "Execution Receipt Service not available")
+
+        receipt = receipt_svc.get_receipt(receipt_id)
+        if receipt is None or receipt.tenant_id != tenant_id:
+            raise HTTPException(404, f"Receipt '{receipt_id}' not found")
+
+        return receipt_svc.receipt_to_dict(receipt)
+
+    # ------------------------------------------------------------------
+    # Deterministic Replay (Sprint 7d)
+    # ------------------------------------------------------------------
+
+    @router.post("/replay/{decision_id}")
+    async def replay_decision(decision_id: str, request: Request):
+        """Re-execute a decision with frozen inputs and verify output.
+
+        WARNING: This calls the LLM provider and incurs costs.
+        """
+        tenant_id = _get_tenant_id(request)
+        replay_svc = getattr(request.app.state, "replay_engine", None)
+        if not replay_svc:
+            raise HTTPException(501, "Replay Engine not available")
+
+        try:
+            verdict = replay_svc.replay(decision_id, tenant_id)
+            return replay_svc.verdict_to_dict(verdict)
+        except Exception as e:
+            logger.error("Replay failed: %s", e)
+            raise HTTPException(500, f"Replay failed: {e}")
+
     return router
