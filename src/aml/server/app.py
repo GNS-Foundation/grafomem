@@ -352,7 +352,7 @@ def create_app(
             await q.stop()
         # Shutdown: close cloud services
         for svc_name in ("tenant_manager", "compliance_tracker", "metering_service",
-                         "decision_trail", "portal_auth", "stripe_billing"):
+                         "decision_trail", "erasure_proof", "portal_auth", "stripe_billing"):
             svc = getattr(app.state, svc_name, None)
             if svc is not None and hasattr(svc, "close"):
                 svc.close()
@@ -432,6 +432,22 @@ def create_app(
             )
             app.include_router(decision_router)
             logger.info("Decision Trail enabled (/v1/decisions)")
+
+            # Erasure Proof — GDPR Article 17 signed certificates
+            from aml.cloud.erasure_proof import ErasureProofService
+            from aml.cloud.erasure_routes import create_erasure_router
+
+            # Use ERASURE_SIGNING_KEY env var if available
+            erasure_key_hex = os.environ.get("ERASURE_SIGNING_KEY")
+            erasure_key = bytes.fromhex(erasure_key_hex) if erasure_key_hex else None
+
+            ep = ErasureProofService(db_url, decision_trail=dt, signing_key=erasure_key)
+            ep.ensure_schema()
+            app.state.erasure_proof = ep
+
+            erasure_router = create_erasure_router(ep)
+            app.include_router(erasure_router)
+            logger.info("Erasure Proof enabled (/v1/erasure)")
         except ImportError as e:
             logger.warning("Cloud layer unavailable (missing deps): %s", e)
         except Exception as e:

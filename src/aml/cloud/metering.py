@@ -28,7 +28,7 @@ logger = logging.getLogger("grafomem.cloud.metering")
 # Core data types
 # ============================================================================
 
-VALID_OP_TYPES = frozenset({"write", "read", "delete", "supersede", "decision_log"})
+VALID_OP_TYPES = frozenset({"write", "read", "delete", "supersede", "decision_log", "erasure"})
 
 
 @dataclass(slots=True)

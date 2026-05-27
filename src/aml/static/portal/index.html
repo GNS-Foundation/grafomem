@@ -91,6 +91,9 @@
           <a class="nav-item" data-section="decisions" id="nav-decisions">
             <span class="nav-icon">⊙</span> Decision Trail
           </a>
+          <a class="nav-item" data-section="erasure" id="nav-erasure">
+            <span class="nav-icon">✘</span> Erasure Proof
+          </a>
           <a class="nav-item" data-section="billing" id="nav-billing">
             <span class="nav-icon">⊡</span> Billing
           </a>
@@ -353,6 +356,101 @@ curl -X POST https://grafomem-production.up.railway.app/v1/stores/default/retrie
               <div class="dt-detail-section" id="dt-replay-section" style="display:none">
                 <h3>Replay — Facts Since Deleted</h3>
                 <div id="dt-replay-deleted" class="dt-facts-list"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ERASURE PROOF -->
+        <section id="section-erasure" class="section" style="display:none">
+          <h1 class="section-title">Erasure Proof</h1>
+          <p class="section-subtitle">GDPR Article 17 — signed certificates for every deletion</p>
+
+          <!-- Stats -->
+          <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr)">
+            <div class="stat-card accent">
+              <div class="stat-label">Certificates Issued</div>
+              <div class="stat-value" id="ep-stat-total">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Decisions Scrubbed</div>
+              <div class="stat-value" id="ep-stat-scrubbed">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Signed & Verified</div>
+              <div class="stat-value" id="ep-stat-signed">—</div>
+            </div>
+          </div>
+
+          <!-- Issue new certificate -->
+          <div class="card">
+            <h2>Issue Erasure Certificate</h2>
+            <div class="dt-filter-row">
+              <div class="form-group dt-filter-item">
+                <label for="ep-fact-ref">Fact Ref (memory ID)</label>
+                <input type="number" id="ep-fact-ref" placeholder="e.g. 42" />
+              </div>
+              <div class="form-group dt-filter-item">
+                <label for="ep-fact-content">Fact Content (for hash, NOT stored)</label>
+                <input type="text" id="ep-fact-content" placeholder="Optional — content to hash" />
+              </div>
+              <div class="form-group dt-filter-item">
+                <label for="ep-requested-by">Requested By</label>
+                <select id="ep-requested-by">
+                  <option value="data_subject">Data Subject</option>
+                  <option value="dpo">Data Protection Officer</option>
+                  <option value="automated">Automated</option>
+                </select>
+              </div>
+              <div class="dt-filter-actions">
+                <button class="btn btn-primary btn-sm" id="ep-issue-btn">📜 Issue Certificate</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Certificate List -->
+          <div class="card dt-list-card">
+            <div class="dt-list-header">
+              <h2>Erasure Certificates</h2>
+              <span class="dt-count" id="ep-count">0 certificates</span>
+            </div>
+            <div class="dt-table-wrap">
+              <table class="dt-table" id="ep-table">
+                <thead>
+                  <tr>
+                    <th>Issued</th>
+                    <th>Fact Ref</th>
+                    <th>Content Hash</th>
+                    <th>Scrubbed</th>
+                    <th>Signed</th>
+                    <th>Legal Basis</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="ep-table-body">
+                  <tr class="dt-empty-row">
+                    <td colspan="7">No erasure certificates yet.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Certificate Detail -->
+          <div class="card dt-detail-panel" id="ep-detail-panel" style="display:none">
+            <div class="dt-detail-header">
+              <h2>Certificate Detail</h2>
+              <button class="btn btn-sm" id="ep-close-detail">✕ Close</button>
+            </div>
+            <div class="dt-detail-meta" id="ep-detail-meta"></div>
+            <div class="dt-detail-sections">
+              <div class="dt-detail-section" id="ep-verify-section">
+                <h3>Verification</h3>
+                <div id="ep-verify-badge" class="dt-provenance-badge"></div>
+              </div>
+              <div class="dt-detail-section">
+                <h3>Scrubbed Decision IDs</h3>
+                <pre class="dt-detail-code" id="ep-scrubbed-ids"></pre>
               </div>
             </div>
           </div>

@@ -520,6 +520,149 @@
     window.open(`${API}/v1/decisions/export`, '_blank');
   }
 
+  // ── Erasure Proof ──────────────────────────────────────────
+  let epCerts = [];
+
+  async function loadErasureStats() {
+    try {
+      const stats = await api('/v1/erasure/stats');
+      $('ep-stat-total').textContent = formatNumber(stats.total || 0);
+      $('ep-stat-scrubbed').textContent = formatNumber(stats.total_scrubbed || 0);
+      $('ep-stat-signed').textContent = formatNumber(stats.signed_count || 0);
+    } catch (e) {
+      // Erasure Proof not available
+    }
+  }
+
+  async function loadErasureCerts() {
+    try {
+      const data = await api('/v1/erasure/');
+      epCerts = data.certificates || [];
+      renderErasureTable(epCerts, data.count);
+    } catch (e) {
+      $('ep-table-body').innerHTML = `<tr class="dt-empty-row"><td colspan="7">Unable to load certificates: ${e.message}</td></tr>`;
+    }
+  }
+
+  function renderErasureTable(certs, count) {
+    const tbody = $('ep-table-body');
+    $('ep-count').textContent = `${count} certificate${count !== 1 ? 's' : ''}`;
+
+    if (!certs.length) {
+      tbody.innerHTML = '<tr class="dt-empty-row"><td colspan="7">No erasure certificates yet.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = certs.map(c => {
+      const time = new Date(c.erasure_completed_at).toLocaleString('en-GB', {
+        month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit'
+      });
+      const hash = c.fact_content_hash ? c.fact_content_hash.substring(0, 12) + '…' : '—';
+      const signed = c.verified;
+
+      return `<tr data-cert-id="${c.certificate_id}">
+        <td class="dt-time">${time}</td>
+        <td class="dt-facts-count">#${c.fact_ref}</td>
+        <td class="dt-model" style="font-size:0.72rem">${hash}</td>
+        <td class="dt-facts-count">${c.decision_records_scrubbed}</td>
+        <td><span class="dt-signed-badge ${signed ? 'signed' : 'unsigned'}">${signed ? '🔏 Signed' : '—'}</span></td>
+        <td style="font-size:0.75rem">${escapeHtml(c.legal_basis || '').substring(0, 30)}</td>
+        <td><button class="btn btn-sm dt-view-btn" data-cert-id="${c.certificate_id}">View</button></td>
+      </tr>`;
+    }).join('');
+
+    tbody.querySelectorAll('tr[data-cert-id]').forEach(row => {
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('.dt-view-btn')) return;
+        showCertDetail(row.dataset.certId);
+      });
+    });
+    tbody.querySelectorAll('.dt-view-btn[data-cert-id]').forEach(btn => {
+      btn.addEventListener('click', () => showCertDetail(btn.dataset.certId));
+    });
+  }
+
+  async function issueCertificate() {
+    const factRef = parseInt($('ep-fact-ref')?.value, 10);
+    if (isNaN(factRef)) {
+      toast('Please enter a valid Fact Ref number.', 'error');
+      return;
+    }
+
+    const content = $('ep-fact-content')?.value?.trim() || null;
+    const requestedBy = $('ep-requested-by')?.value || 'data_subject';
+
+    try {
+      const cert = await api('/v1/erasure/issue', {
+        method: 'POST',
+        body: {
+          fact_ref: factRef,
+          fact_content: content,
+          requested_by: requestedBy,
+        },
+      });
+      toast(`Erasure certificate issued: ${cert.certificate_id.substring(0, 12)}…`, 'success');
+      $('ep-fact-ref').value = '';
+      $('ep-fact-content').value = '';
+      loadErasureStats();
+      loadErasureCerts();
+    } catch (e) {
+      toast(`Failed to issue certificate: ${e.message}`, 'error');
+    }
+  }
+
+  async function showCertDetail(certId) {
+    const panel = $('ep-detail-panel');
+    panel.style.display = '';
+
+    let c = epCerts.find(x => x.certificate_id === certId);
+    if (!c) {
+      try { c = await api(`/v1/erasure/${certId}`); } catch { toast('Certificate not found', 'error'); return; }
+    }
+
+    const meta = $('ep-detail-meta');
+    const time = new Date(c.erasure_completed_at).toLocaleString('en-GB');
+    meta.innerHTML = [
+      `<span class="dt-meta-tag"><span class="label">ID</span> ${c.certificate_id.substring(0, 16)}…</span>`,
+      `<span class="dt-meta-tag"><span class="label">Issued</span> ${time}</span>`,
+      `<span class="dt-meta-tag"><span class="label">Fact</span> #${c.fact_ref}</span>`,
+      `<span class="dt-meta-tag"><span class="label">Scrubbed</span> ${c.decision_records_scrubbed} decisions</span>`,
+      c.requested_by ? `<span class="dt-meta-tag"><span class="label">By</span> ${c.requested_by}</span>` : '',
+      c.fact_content_hash ? `<span class="dt-meta-tag"><span class="label">Hash</span> ${c.fact_content_hash}</span>` : '',
+    ].filter(Boolean).join('');
+
+    // Verify signature
+    const badge = $('ep-verify-badge');
+    try {
+      const result = await api(`/v1/erasure/${certId}/verify`);
+      if (result.valid) {
+        badge.innerHTML = `
+          <span class="prov-icon">✅</span>
+          <div class="prov-details">
+            <span class="prov-label">Signature Verified</span>
+            <span class="prov-hash">${result.detail}</span>
+          </div>`;
+        badge.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+      } else {
+        badge.innerHTML = `
+          <span class="prov-icon">❌</span>
+          <div class="prov-details">
+            <span class="prov-label" style="color:var(--danger)">Verification Failed</span>
+            <span class="prov-hash">${result.detail}</span>
+          </div>`;
+        badge.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+      }
+    } catch {
+      badge.innerHTML = '<span class="prov-hash">Verification unavailable</span>';
+    }
+
+    $('ep-scrubbed-ids').textContent = (c.scrubbed_decision_ids || []).length > 0
+      ? c.scrubbed_decision_ids.join('\n')
+      : 'No decision records were affected.';
+
+    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
   function escapeHtml(s) {
     if (!s) return '';
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -596,6 +739,10 @@
           loadDecisionStats();
           loadDecisions();
         }
+        if (nav.dataset.section === 'erasure') {
+          loadErasureStats();
+          loadErasureCerts();
+        }
       });
     });
 
@@ -633,6 +780,10 @@
     $('dt-prev-btn')?.addEventListener('click', () => { if (dtPage > 0) { dtPage--; loadDecisions(); } });
     $('dt-next-btn')?.addEventListener('click', () => { dtPage++; loadDecisions(); });
     $('dt-close-detail')?.addEventListener('click', () => { $('dt-detail-panel').style.display = 'none'; });
+
+    // Erasure Proof events
+    $('ep-issue-btn')?.addEventListener('click', issueCertificate);
+    $('ep-close-detail')?.addEventListener('click', () => { $('ep-detail-panel').style.display = 'none'; });
 
     // Check for upgrade success
     if (window.location.search.includes('upgraded=true')) {
