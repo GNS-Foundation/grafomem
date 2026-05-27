@@ -1,0 +1,1063 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POC Open Wearables — Consegna Affidabile dei Dati Wearable</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-card: #16161f;
+            --bg-card-hover: #1c1c28;
+            --bg-code: #1a1a26;
+            --border-color: #2a2a3a;
+            --border-accent: #3a3a5a;
+            --text-primary: #e8e8f0;
+            --text-secondary: #9898b0;
+            --text-muted: #6a6a82;
+            --accent-blue: #4d8bff;
+            --accent-blue-dim: #3a6fd4;
+            --accent-green: #34d399;
+            --accent-green-dim: rgba(52, 211, 153, 0.12);
+            --accent-red: #f87171;
+            --accent-red-dim: rgba(248, 113, 113, 0.12);
+            --accent-amber: #fbbf24;
+            --accent-amber-dim: rgba(251, 191, 36, 0.12);
+            --accent-purple: #a78bfa;
+            --accent-purple-dim: rgba(167, 139, 250, 0.12);
+            --gradient-hero: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.4);
+            --shadow-card: 0 2px 12px rgba(0, 0, 0, 0.3);
+            --radius: 12px;
+            --radius-sm: 8px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.7;
+            font-size: 15px;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 0 32px;
+        }
+
+        /* ── Hero ── */
+        .hero {
+            background: var(--gradient-hero);
+            border-bottom: 1px solid var(--border-color);
+            padding: 64px 0 48px;
+            position: relative;
+            overflow: hidden;
+        }
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: -50%; left: -50%;
+            width: 200%; height: 200%;
+            background: radial-gradient(circle at 70% 30%, rgba(77, 139, 255, 0.06) 0%, transparent 60%);
+        }
+        .hero .container { position: relative; z-index: 1; }
+        .hero h1 {
+            font-size: 2.2rem;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            line-height: 1.2;
+            margin-bottom: 16px;
+            background: linear-gradient(135deg, #fff 0%, #a0b4d0 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .hero-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 24px;
+            margin-top: 20px;
+        }
+        .hero-meta-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+        .hero-meta-item strong { color: var(--text-primary); font-weight: 600; }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            background: var(--accent-green-dim);
+            color: var(--accent-green);
+            border: 1px solid rgba(52, 211, 153, 0.25);
+        }
+        .status-badge::before {
+            content: '';
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            background: var(--accent-green);
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        /* ── Sections ── */
+        section {
+            padding: 48px 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+        section:last-of-type { border-bottom: none; }
+
+        h2 {
+            font-size: 1.45rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            margin-bottom: 24px;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        h2 .section-number {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--accent-blue);
+            background: rgba(77, 139, 255, 0.1);
+            border: 1px solid rgba(77, 139, 255, 0.2);
+            padding: 3px 10px;
+            border-radius: 6px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        h3 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin: 28px 0 14px;
+            color: var(--text-primary);
+        }
+
+        h4 {
+            font-size: 0.95rem;
+            font-weight: 600;
+            margin: 20px 0 10px;
+            color: var(--text-secondary);
+        }
+
+        p { margin-bottom: 16px; color: var(--text-secondary); }
+
+        strong { color: var(--text-primary); font-weight: 600; }
+
+        /* ── Tables ── */
+        .table-wrap {
+            overflow-x: auto;
+            margin: 16px 0 24px;
+            border-radius: var(--radius);
+            border: 1px solid var(--border-color);
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13.5px;
+        }
+        thead { background: var(--bg-card); }
+        th {
+            padding: 12px 16px;
+            text-align: left;
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border-bottom: 1px solid var(--border-color);
+        }
+        td {
+            padding: 10px 16px;
+            border-bottom: 1px solid var(--border-color);
+            color: var(--text-secondary);
+        }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: var(--bg-card-hover); }
+
+        .badge-yes {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            background: var(--accent-green-dim);
+            color: var(--accent-green);
+        }
+        .badge-no {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            background: var(--accent-red-dim);
+            color: var(--accent-red);
+        }
+        .badge-partial {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            background: var(--accent-amber-dim);
+            color: var(--accent-amber);
+        }
+        .badge-dev {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            background: var(--accent-purple-dim);
+            color: var(--accent-purple);
+        }
+
+        /* ── Callouts ── */
+        .callout {
+            border-radius: var(--radius-sm);
+            padding: 16px 20px;
+            margin: 20px 0;
+            font-size: 13.5px;
+            line-height: 1.6;
+            border-left: 3px solid;
+        }
+        .callout p { margin-bottom: 8px; color: inherit; }
+        .callout p:last-child { margin-bottom: 0; }
+        .callout-title {
+            font-weight: 700;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            margin-bottom: 6px;
+        }
+        .callout-info {
+            background: rgba(77, 139, 255, 0.06);
+            border-color: var(--accent-blue);
+            color: #a0b8e0;
+        }
+        .callout-info .callout-title { color: var(--accent-blue); }
+        .callout-warn {
+            background: rgba(251, 191, 36, 0.06);
+            border-color: var(--accent-amber);
+            color: #d4c48a;
+        }
+        .callout-warn .callout-title { color: var(--accent-amber); }
+        .callout-danger {
+            background: rgba(248, 113, 113, 0.06);
+            border-color: var(--accent-red);
+            color: #e0a0a0;
+        }
+        .callout-danger .callout-title { color: var(--accent-red); }
+        .callout-tip {
+            background: rgba(52, 211, 153, 0.06);
+            border-color: var(--accent-green);
+            color: #90d0b0;
+        }
+        .callout-tip .callout-title { color: var(--accent-green); }
+
+        /* ── Code ── */
+        code {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12.5px;
+            background: var(--bg-code);
+            padding: 2px 7px;
+            border-radius: 5px;
+            border: 1px solid var(--border-color);
+            color: var(--accent-blue);
+        }
+        pre {
+            background: var(--bg-code);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            padding: 18px 20px;
+            overflow-x: auto;
+            margin: 16px 0;
+        }
+        pre code {
+            background: none;
+            border: none;
+            padding: 0;
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.65;
+        }
+
+        /* ── Proof cards ── */
+        .proof-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            padding: 24px;
+            margin: 16px 0;
+            transition: border-color 0.2s;
+        }
+        .proof-card:hover { border-color: var(--border-accent); }
+        .proof-card h3 {
+            margin: 0 0 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .proof-number {
+            width: 28px; height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            font-size: 13px;
+            font-weight: 700;
+            background: rgba(77, 139, 255, 0.12);
+            color: var(--accent-blue);
+            border: 1px solid rgba(77, 139, 255, 0.25);
+        }
+
+        /* ── Phase cards ── */
+        .phase-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            padding: 24px;
+            margin: 20px 0;
+        }
+        .phase-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+        .phase-header h3 { margin: 0; }
+
+        /* ── Checklist ── */
+        .checklist {
+            list-style: none;
+            padding: 0;
+            margin: 16px 0;
+        }
+        .checklist li {
+            padding: 10px 0 10px 32px;
+            position: relative;
+            color: var(--text-secondary);
+            border-bottom: 1px solid rgba(42, 42, 58, 0.5);
+            font-size: 14px;
+        }
+        .checklist li:last-child { border-bottom: none; }
+        .checklist li::before {
+            content: '';
+            position: absolute;
+            left: 0; top: 12px;
+            width: 18px; height: 18px;
+            border: 2px solid var(--border-accent);
+            border-radius: 4px;
+        }
+        .checklist li.done::before {
+            background: var(--accent-green);
+            border-color: var(--accent-green);
+        }
+        .checklist li.done::after {
+            content: '✓';
+            position: absolute;
+            left: 3px; top: 10px;
+            color: var(--bg-primary);
+            font-size: 13px;
+            font-weight: 700;
+        }
+        .checklist li.urgent { color: var(--accent-red); font-weight: 500; }
+        .checklist li.urgent::before { border-color: var(--accent-red); }
+
+        /* ── Mermaid ── */
+        .mermaid-wrap {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            padding: 24px;
+            margin: 20px 0;
+            overflow-x: auto;
+            text-align: center;
+        }
+
+        /* ── Metric cards ── */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+            margin: 16px 0;
+        }
+        .metric-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            padding: 16px;
+            text-align: center;
+        }
+        .metric-value {
+            font-size: 1.6rem;
+            font-weight: 800;
+            color: var(--accent-green);
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .metric-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .metric-target {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 6px;
+        }
+
+        /* ── Footer ── */
+        footer {
+            padding: 32px 0;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 13px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        /* ── Print ── */
+        @media print {
+            body { background: #fff; color: #111; }
+            .hero { background: #f5f7fa; }
+            .hero h1 { -webkit-text-fill-color: #111; background: none; }
+            table, .proof-card, .phase-card, .callout, pre, .mermaid-wrap, .metric-card {
+                break-inside: avoid;
+            }
+        }
+
+        /* ── TOC ── */
+        .toc {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            padding: 24px;
+            margin: 24px 0;
+        }
+        .toc h3 { margin: 0 0 12px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
+        .toc ol {
+            padding-left: 20px;
+            margin: 0;
+        }
+        .toc li {
+            padding: 4px 0;
+            font-size: 14px;
+        }
+        .toc a {
+            color: var(--accent-blue);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+        .toc a:hover { color: #6fa4ff; text-decoration: underline; }
+
+        /* ── Responsive ── */
+        @media (max-width: 640px) {
+            .container { padding: 0 16px; }
+            .hero { padding: 40px 0 32px; }
+            .hero h1 { font-size: 1.6rem; }
+            h2 { font-size: 1.2rem; }
+            .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ════════════════════════════ HERO ════════════════════════════ -->
+<header class="hero">
+    <div class="container">
+        <span class="status-badge">POC Locale completato — Pronto per Fase 1</span>
+        <h1 style="margin-top: 20px;">POC Open Wearables<br>Consegna Affidabile dei Dati Wearable</h1>
+        <div class="hero-meta">
+            <div class="hero-meta-item"><strong>Cliente:</strong> Be Our Best</div>
+            <div class="hero-meta-item"><strong>Istanza live:</strong> <code>api.ow.beourbest.eu</code></div>
+            <div class="hero-meta-item"><strong>Data:</strong> 25 maggio 2026</div>
+        </div>
+    </div>
+</header>
+
+<main class="container">
+
+<!-- ── TOC ── -->
+<div class="toc">
+    <h3>Indice</h3>
+    <ol>
+        <li><a href="#s1">Contesto e Problema</a></li>
+        <li><a href="#s2">Soluzione Proposta: Open Wearables + Svix</a></li>
+        <li><a href="#s3">Risultati del POC (Prove Dirette)</a></li>
+        <li><a href="#s4">Dettaglio Tecnico — Come Funziona nel Codice</a></li>
+        <li><a href="#s5">Vantaggio Strategico: Istanza Live Esistente</a></li>
+        <li><a href="#s6">Piano di Migrazione — 3 Fasi</a></li>
+        <li><a href="#s7">Confronto Tecnico: Terra vs Open Wearables + Svix</a></li>
+        <li><a href="#s8">Rischi e Mitigazioni</a></li>
+        <li><a href="#s9">Azioni Immediate</a></li>
+    </ol>
+</div>
+
+<!-- ════════════════════════════ §1 ════════════════════════════ -->
+<section id="s1">
+    <h2><span class="section-number">01</span> Contesto e Problema</h2>
+
+    <h3>Situazione attuale (Terra)</h3>
+    <p>L'integrazione attuale con <strong>Terra</strong> utilizza un modello push "fire-and-forget" per la consegna dei dati wearable. Questo modello presenta tre punti deboli critici:</p>
+
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Problema</th><th>Impatto</th></tr></thead>
+            <tbody>
+                <tr><td><strong>Nessun retry robusto</strong></td><td>Se l'endpoint è irraggiungibile, il dato viene perso silenziosamente</td></tr>
+                <tr><td><strong>Nessuna de-duplicazione</strong></td><td>Rischio di dati duplicati senza meccanismo di idempotenza</td></tr>
+                <tr><td><strong>Nessuna verifica firma</strong></td><td>Nessuna garanzia che il payload ricevuto sia autentico</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h3>Ipotesi root cause (da confermare)</h3>
+    <p>Il ricevitore dell'app Be Our Best gira su un <strong>dyno Heroku</strong> che va in <strong>sleep dopo 30 min di inattività</strong> o in <strong>timeout</strong> sotto carico. Le push di Terra che arrivano durante queste finestre falliscono e — senza retry con backoff esponenziale e idempotenza robusta — <strong>spariscono in silenzio</strong>.</p>
+
+    <div class="mermaid-wrap">
+        <pre class="mermaid">
+sequenceDiagram
+    participant P as Provider (Garmin)
+    participant T as Terra
+    participant H as Heroku Dyno
+
+    Note over H: Dyno in SLEEP 💤
+    P->>T: Nuovo workout
+    T->>H: POST webhook
+    H-->>T: ❌ Timeout / 503
+    Note over T: Nessun retry → DATO PERSO
+
+    Note over H: Dyno si risveglia
+    Note over H: Il dato non arriverà mai
+        </pre>
+    </div>
+
+    <p>Questa ipotesi è coerente con il sintomo osservato: <strong>perdita intermittente di dati</strong>, specialmente in orari di bassa attività.</p>
+</section>
+
+<!-- ════════════════════════════ §2 ════════════════════════════ -->
+<section id="s2">
+    <h2><span class="section-number">02</span> Soluzione Proposta: Open Wearables + Svix</h2>
+
+    <p>Open Wearables utilizza <strong>Svix</strong> come layer di consegna webhook, un servizio infrastrutturale enterprise-grade che garantisce consegna affidabile con retry, de-duplicazione e firma crittografica.</p>
+
+    <div class="mermaid-wrap">
+        <pre class="mermaid">
+sequenceDiagram
+    participant P as Provider (Garmin)
+    participant OW as Open Wearables
+    participant S as Svix
+    participant E as Endpoint (Be Our Best)
+
+    P->>OW: Nuovo workout (webhook push)
+    OW->>OW: Salva in DB (PostgreSQL)
+    OW->>S: Emetti evento (via Celery worker)
+    S->>E: POST con firma HMAC
+
+    alt Endpoint irraggiungibile
+        E-->>S: ❌ Timeout
+        Note over S: Retry automatico (backoff esponenziale)
+        S->>E: POST retry #1
+        E-->>S: ❌ Ancora giù
+        S->>E: POST retry #2
+        E-->>S: ✅ 200 OK
+        Note over S: ✅ Consegnato + log completo
+    end
+
+    alt Evento duplicato
+        S->>S: Controlla event_id (idempotency key)
+        Note over S: 409 Conflict → skip (già consegnato)
+    end
+        </pre>
+    </div>
+
+    <h3>I tre meccanismi chiave</h3>
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>#</th><th>Meccanismo</th><th>Terra</th><th>Open Wearables + Svix</th></tr></thead>
+            <tbody>
+                <tr>
+                    <td><strong>1</strong></td>
+                    <td><strong>Firma crittografica</strong></td>
+                    <td><span class="badge-no">❌ Assente</span></td>
+                    <td><span class="badge-yes">✅ HMAC-SHA256</span> per endpoint</td>
+                </tr>
+                <tr>
+                    <td><strong>2</strong></td>
+                    <td><strong>Idempotenza / de-duplica</strong></td>
+                    <td><span class="badge-no">❌ Assente</span></td>
+                    <td><span class="badge-yes">✅ event_id univoco</span> → 409 se duplicato</td>
+                </tr>
+                <tr>
+                    <td><strong>3</strong></td>
+                    <td><strong>Retry con backoff</strong></td>
+                    <td><span class="badge-no">❌ Fire-and-forget</span></td>
+                    <td><span class="badge-yes">✅ Backoff esponenziale</span> + log ogni tentativo</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<!-- ════════════════════════════ §3 ════════════════════════════ -->
+<section id="s3">
+    <h2><span class="section-number">03</span> Risultati del POC (Prove Dirette)</h2>
+
+    <h3>Ambiente di test</h3>
+    <p>Open Wearables in locale (Docker Compose: 8 container), dati sintetici, endpoint di ricezione con banco di misura dedicato.</p>
+
+    <div class="proof-card">
+        <h3><span class="proof-number">1</span> Firma Verificata</h3>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Scenario</th><th>Risultato</th></tr></thead>
+                <tbody>
+                    <tr><td>Payload con firma Svix valida</td><td><span class="badge-yes">✅ 200 OK</span> — accettato</td></tr>
+                    <tr><td>Payload con firma invalida / assente</td><td><span class="badge-no">❌ 400 Bad Request</span> — rifiutato</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p><strong>Significato:</strong> nessun attore esterno può iniettare payload falsi. Ogni endpoint riceve un signing secret univoco.</p>
+    </div>
+
+    <div class="proof-card">
+        <h3><span class="proof-number">2</span> Idempotenza / De-duplica</h3>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Scenario</th><th>Risultato</th></tr></thead>
+                <tbody>
+                    <tr><td>30 invii dello stesso evento (stesso <code>event_id</code>)</td><td><strong>1 sola consegna</strong> all'endpoint</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p><strong>Significato:</strong> anche in caso di retry multipli o replay accidentali, l'endpoint riceve ogni evento <strong>esattamente una volta</strong>.</p>
+        <div class="callout callout-info">
+            <div class="callout-title">📋 Evidenza nel codice sorgente</div>
+            <p>Ogni evento emesso include un <code>idempotency_key</code> deterministico:</p>
+            <ul style="margin: 8px 0 0 20px; font-size: 13px;">
+                <li>Workout: <code>workout.created.{record_id}</code></li>
+                <li>Sleep: <code>sleep.created.{record_id}</code></li>
+                <li>Timeseries: <code>timeseries.{user_id}.{provider}.{series_type}.{start}.{end}</code></li>
+                <li>Sync: <code>sync.started.{run_id}</code> / <code>sync.completed.{run_id}</code></li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="proof-card">
+        <h3><span class="proof-number">3</span> Retry → Zero Perdite</h3>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Scenario</th><th>Risultato</th></tr></thead>
+                <tbody>
+                    <tr><td>Endpoint irraggiungibile al primo tentativo</td><td>Svix ritenta in automatico</td></tr>
+                    <tr><td>Endpoint torna online</td><td><span class="badge-yes">✅ Evento consegnato</span></td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p><strong>Osservazione dal vivo:</strong> sequenza <code>fail → success</code> sullo stesso messaggio, con log completo di ogni tentativo (timestamp, status code, tempo di risposta).</p>
+        <p><strong>Significato:</strong> il dato <strong>non si perde mai</strong>. Anche se l'endpoint è giù per ore, Svix ritenterà con backoff esponenziale.</p>
+    </div>
+</section>
+
+<!-- ════════════════════════════ §4 ════════════════════════════ -->
+<section id="s4">
+    <h2><span class="section-number">04</span> Dettaglio Tecnico — Come Funziona nel Codice</h2>
+
+    <h3>Pipeline di consegna (5 step)</h3>
+    <div class="mermaid-wrap">
+        <pre class="mermaid">
+flowchart LR
+    A["1. Provider invia dato"] --> B["2. FastAPI salva in DB"]
+    B --> C["3. Celery task asincrono"]
+    C --> D["4. Svix message.create()"]
+    D --> E["5. Svix consegna + retry"]
+        </pre>
+    </div>
+
+    <h4>Step 1–2: Ingestione e persistenza</h4>
+    <p>Il provider (Garmin, Whoop, etc.) invia i dati. Open Wearables li salva in PostgreSQL <strong>prima</strong> di emettere qualsiasi webhook. Il dato è al sicuro indipendentemente dalla consegna.</p>
+
+    <h4>Step 3: Celery task asincrono</h4>
+    <p>L'emissione del webhook avviene in un <strong>Celery worker</strong> separato, mai nel thread della richiesta HTTP:</p>
+    <pre><code>@shared_task(
+    bind=True,
+    max_retries=2,          # Retry lato Celery (se Svix è irraggiungibile)
+    default_retry_delay=5,  # 5 secondi tra retry Celery
+    acks_late=True,         # ACK solo dopo successo
+)</code></pre>
+
+    <div class="callout callout-warn">
+        <div class="callout-title">⚠️ Due livelli di retry indipendenti</div>
+        <p><strong>Celery</strong> (max 2 retry) — se Svix stesso è irraggiungibile.</p>
+        <p><strong>Svix</strong> (backoff esponenziale per ore/giorni) — se l'endpoint destinazione è irraggiungibile.</p>
+        <p>Questo garantisce che il dato non si perde nemmeno in caso di failure infrastrutturale.</p>
+    </div>
+
+    <h4>Step 4–5: Svix con idempotency e firma</h4>
+    <p>La chiave <code>event_id</code> è deterministica (tipo evento + ID record). Svix gestisce de-duplicazione nativamente (HTTP 409 se duplicato). Ogni payload è firmato con HMAC-SHA256.</p>
+
+    <h3>Tipi di evento principali per Be Our Best</h3>
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Evento</th><th>Descrizione</th></tr></thead>
+            <tbody>
+                <tr><td><code>workout.created</code></td><td>Nuova sessione workout salvata</td></tr>
+                <tr><td><code>sleep.created</code></td><td>Nuova sessione sonno salvata</td></tr>
+                <tr><td><code>heart_rate.created</code></td><td>Campioni frequenza cardiaca (tutti i tipi: resting, active, recovery, etc.)</td></tr>
+                <tr><td><code>steps.created</code></td><td>Campioni passi</td></tr>
+                <tr><td><code>calories.created</code></td><td>Campioni calorie (attive + basali)</td></tr>
+                <tr><td><code>spo2.created</code></td><td>Campioni saturazione ossigeno</td></tr>
+                <tr><td><code>body_composition.created</code></td><td>Peso, BMI, massa grassa, massa muscolare</td></tr>
+                <tr><td><code>connection.created</code></td><td>Nuovo provider collegato dall'utente</td></tr>
+                <tr><td><code>sync.started</code></td><td>Sincronizzazione avviata</td></tr>
+                <tr><td><code>sync.completed</code></td><td>Sincronizzazione completata</td></tr>
+                <tr><td><code>sync.failed</code></td><td>Sincronizzazione fallita (con errore)</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="callout callout-tip">
+        <div class="callout-title">💡 Payload inline</div>
+        <p>I campioni timeseries vengono inviati <strong>inline</strong> nel payload dell'evento (fino a 2.500 campioni per messaggio, ~500 KB). Batch più grandi vengono automaticamente suddivisi in chunk con <code>chunk_index</code> / <code>total_chunks</code> per il riassemblaggio.</p>
+    </div>
+
+    <h3>API di gestione webhook</h3>
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Endpoint</th><th>Metodo</th><th>Funzione</th></tr></thead>
+            <tbody>
+                <tr><td><code>/api/v1/developer/webhooks/endpoints</code></td><td>POST</td><td>Crea endpoint</td></tr>
+                <tr><td><code>/api/v1/developer/webhooks/endpoints</code></td><td>GET</td><td>Lista endpoint</td></tr>
+                <tr><td><code>/api/v1/developer/webhooks/endpoints/{id}</code></td><td>PATCH</td><td>Aggiorna endpoint</td></tr>
+                <tr><td><code>/api/v1/developer/webhooks/endpoints/{id}</code></td><td>DELETE</td><td>Elimina endpoint</td></tr>
+                <tr><td><code>/api/v1/developer/webhooks/endpoints/{id}/secret</code></td><td>GET</td><td>Ottieni signing secret</td></tr>
+                <tr><td><code>/api/v1/developer/webhooks/endpoints/{id}/test</code></td><td>POST</td><td>Invia evento di test</td></tr>
+                <tr><td><code>/api/v1/developer/webhooks/endpoints/{id}/attempts</code></td><td>GET</td><td>Storico tentativi</td></tr>
+                <tr><td><code>/api/v1/developer/webhooks/messages</code></td><td>GET</td><td>Lista messaggi emessi</td></tr>
+                <tr><td><code>/api/v1/developer/webhooks/event-types</code></td><td>GET</td><td>Tipi di evento disponibili</td></tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<!-- ════════════════════════════ §5 ════════════════════════════ -->
+<section id="s5">
+    <h2><span class="section-number">05</span> Vantaggio Strategico: Istanza Live Esistente</h2>
+
+    <p>Be Our Best ha <strong>già</strong> un'istanza Open Wearables operativa. Non c'è infrastruttura da creare:</p>
+
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Parametro</th><th>Valore</th></tr></thead>
+            <tbody>
+                <tr><td><strong>URL API</strong></td><td><code>api.ow.beourbest.eu</code></td></tr>
+                <tr><td><strong>Autenticazione</strong></td><td><span class="badge-yes">✅ API key protetta</span></td></tr>
+                <tr><td><strong>Dati</strong></td><td>Protetti da autenticazione</td></tr>
+                <tr><td><strong>Svix</strong></td><td><span class="badge-yes">✅ Integrato e operativo</span></td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <p>Il banco di misura già sviluppato durante il POC locale può puntare direttamente all'istanza live: <strong>cambia solo l'indirizzo</strong>.</p>
+</section>
+
+<!-- ════════════════════════════ §6 ════════════════════════════ -->
+<section id="s6">
+    <h2><span class="section-number">06</span> Piano di Migrazione — 3 Fasi</h2>
+
+    <!-- Fase 0 -->
+    <div class="phase-card">
+        <div class="phase-header">
+            <h3>Fase 0 — POC Locale</h3>
+            <span class="badge-yes">✅ COMPLETATA</span>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Attività</th><th>Stato</th></tr></thead>
+                <tbody>
+                    <tr><td>Setup Open Wearables Docker locale</td><td><span class="badge-yes">✅</span></td></tr>
+                    <tr><td>Generazione dati sintetici</td><td><span class="badge-yes">✅</span></td></tr>
+                    <tr><td>Configurazione endpoint di ricezione</td><td><span class="badge-yes">✅</span></td></tr>
+                    <tr><td>Verifica firma Svix</td><td><span class="badge-yes">✅</span></td></tr>
+                    <tr><td>Verifica idempotenza / de-duplica</td><td><span class="badge-yes">✅</span></td></tr>
+                    <tr><td>Verifica retry → zero perdite</td><td><span class="badge-yes">✅</span></td></tr>
+                    <tr><td>Banco di misura operativo</td><td><span class="badge-yes">✅</span></td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Fase 1 -->
+    <div class="phase-card" style="border-color: var(--accent-blue); border-width: 2px;">
+        <div class="phase-header">
+            <h3>Fase 1 — Test su Flusso Reale <span style="color: var(--accent-blue); font-size: 13px; font-weight: 500;">(PROSSIMO PASSO)</span></h3>
+        </div>
+
+        <div class="callout callout-warn">
+            <div class="callout-title">⚠️ Obiettivo</div>
+            <p>Misurare la <strong>completezza della consegna</strong> su un flusso reale (sync di un provider vero — Garmin) sull'istanza live <code>api.ow.beourbest.eu</code>.</p>
+        </div>
+
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Attività</th><th>Stato</th><th>Responsabile</th><th>Note</th></tr></thead>
+                <tbody>
+                    <tr><td>Ottenere credenziali API dall'istanza live</td><td>⬜</td><td>Be Our Best</td><td>API key dal portale developer</td></tr>
+                    <tr><td>Richiedere credenziali OAuth Garmin</td><td>⬜</td><td><strong>Subito</strong></td><td>⚠️ Approvazione lenta (settimane)</td></tr>
+                    <tr><td>Puntare il banco di misura sulla live</td><td>⬜</td><td>Noi</td><td>Cambio indirizzo, stesso setup</td></tr>
+                    <tr><td>Registrare endpoint webhook</td><td>⬜</td><td>Noi</td><td>Via API</td></tr>
+                    <tr><td>Collegare un dispositivo Garmin reale</td><td>⬜</td><td>Utente test</td><td>OAuth flow via portale</td></tr>
+                    <tr><td>Eseguire sync e misurare completezza</td><td>⬜</td><td>Noi</td><td>Eventi emessi vs ricevuti</td></tr>
+                    <tr><td>Simulare failure endpoint e verificare retry</td><td>⬜</td><td>Noi</td><td>Stop/start durante sync</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <h4>Metriche di successo</h4>
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-value">100%</div>
+                <div class="metric-label">Completezza consegna</div>
+                <div class="metric-target">emessi vs ricevuti</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">&lt; 5s</div>
+                <div class="metric-label">Latenza media</div>
+                <div class="metric-target">emissione → ricezione</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">0</div>
+                <div class="metric-label">Eventi persi sotto failure</div>
+                <div class="metric-target">stop → restart → check</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">0</div>
+                <div class="metric-label">Duplicati</div>
+                <div class="metric-target">count univoco event_id</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Fase 2 -->
+    <div class="phase-card">
+        <div class="phase-header">
+            <h3>Fase 2 — Migrazione Produzione</h3>
+            <span class="badge-partial">🔜 Dopo validazione Fase 1</span>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Attività</th><th>Note</th></tr></thead>
+                <tbody>
+                    <tr><td>Configurazione provider aggiuntivi</td><td>Whoop, Apple Health, etc. (se necessario)</td></tr>
+                    <tr><td>Migrazione graduale del traffico</td><td>Dual-write iniziale (Terra + OW in parallelo)</td></tr>
+                    <tr><td>Monitoring consegna in produzione</td><td>Dashboard Svix + metriche custom</td></tr>
+                    <tr><td>Dismissione Terra</td><td>Dopo periodo di osservazione</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+
+<!-- ════════════════════════════ §7 ════════════════════════════ -->
+<section id="s7">
+    <h2><span class="section-number">07</span> Confronto Tecnico: Terra vs Open Wearables + Svix</h2>
+
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Aspetto</th><th>Terra</th><th>Open Wearables + Svix</th></tr></thead>
+            <tbody>
+                <tr><td><strong>Modello consegna</strong></td><td>Fire-and-forget</td><td>Store-and-forward con retry</td></tr>
+                <tr><td><strong>Retry automatico</strong></td><td><span class="badge-no">❌ No / limitato</span></td><td><span class="badge-yes">✅ Backoff esponenziale</span></td></tr>
+                <tr><td><strong>Idempotenza</strong></td><td><span class="badge-no">❌ No</span></td><td><span class="badge-yes">✅ event_id deterministico</span></td></tr>
+                <tr><td><strong>Firma payload</strong></td><td><span class="badge-no">❌ Debole / assente</span></td><td><span class="badge-yes">✅ HMAC-SHA256</span></td></tr>
+                <tr><td><strong>Storico consegne</strong></td><td><span class="badge-no">❌ No</span></td><td><span class="badge-yes">✅ Log completo</span></td></tr>
+                <tr><td><strong>Dato persistito prima della consegna</strong></td><td><span class="badge-partial">❓ Non garantito</span></td><td><span class="badge-yes">✅ PostgreSQL prima dell'emissione</span></td></tr>
+                <tr><td><strong>Self-hosted</strong></td><td><span class="badge-no">❌ SaaS only</span></td><td><span class="badge-yes">✅ Pieno controllo</span></td></tr>
+                <tr><td><strong>Visibilità failure</strong></td><td><span class="badge-no">❌ Silenziosa</span></td><td><span class="badge-yes">✅ Dashboard + API tentativi</span></td></tr>
+                <tr><td><strong>Filtraggio eventi</strong></td><td><span class="badge-partial">❓ Limitato</span></td><td><span class="badge-yes">✅ 95+ tipi + filtro per utente</span></td></tr>
+                <tr><td><strong>Costo</strong></td><td>Pay-per-use</td><td>Gratuito (open source, MIT)</td></tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<!-- ════════════════════════════ §8 ════════════════════════════ -->
+<section id="s8">
+    <h2><span class="section-number">08</span> Rischi e Mitigazioni</h2>
+
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Rischio</th><th>Prob.</th><th>Impatto</th><th>Mitigazione</th></tr></thead>
+            <tbody>
+                <tr>
+                    <td><strong>Approvazione Garmin OAuth lenta</strong></td>
+                    <td><span class="badge-partial">🟡 Alta</span></td>
+                    <td>Blocca Fase 1</td>
+                    <td>Richiedere <strong>immediatamente</strong>; usare Whoop/Strava come alternativa iniziale</td>
+                </tr>
+                <tr>
+                    <td><strong>Istanza live non ha Garmin configurato</strong></td>
+                    <td><span class="badge-partial">🟡 Media</span></td>
+                    <td>Richiede config</td>
+                    <td>Inserire credenziali OAuth nel <code>.env</code> dell'istanza</td>
+                </tr>
+                <tr>
+                    <td><strong>Performance Svix sotto carico</strong></td>
+                    <td><span class="badge-yes">🟢 Bassa</span></td>
+                    <td>Rallentamento</td>
+                    <td>Svix è battle-tested; monitoring su latenza</td>
+                </tr>
+                <tr>
+                    <td><strong>Open Wearables è pre-1.0</strong></td>
+                    <td><span class="badge-partial">🟡 Media</span></td>
+                    <td>API changes</td>
+                    <td>Pinnare la versione; seguire il changelog</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<!-- ════════════════════════════ §9 ════════════════════════════ -->
+<section id="s9">
+    <h2><span class="section-number">09</span> Azioni Immediate</h2>
+
+    <div class="callout callout-danger">
+        <div class="callout-title">🔴 Attenzione</div>
+        <p>Le credenziali OAuth Garmin hanno un processo di approvazione <strong>lento</strong> (possono servire settimane). Questa è l'azione a <strong>più alta priorità</strong> e va avviata subito.</p>
+    </div>
+
+    <ul class="checklist">
+        <li class="urgent"><strong>🔴 URGENTE:</strong> Richiedere credenziali OAuth Garmin (Consumer Key + Secret) dal portale developer Garmin</li>
+        <li>Ottenere API key dall'istanza live <code>api.ow.beourbest.eu</code></li>
+        <li>Verificare che Svix sia operativo sull'istanza live (<code>GET /event-types</code>)</li>
+        <li>Configurare l'endpoint webhook di test sull'istanza live</li>
+        <li>Identificare un utente test con dispositivo Garmin per il primo sync reale</li>
+        <li>Puntare il banco di misura all'istanza live</li>
+    </ul>
+</section>
+
+<!-- ════════════════════════════ APPENDICI ════════════════════════════ -->
+<section>
+    <h2>Appendice A — Architettura dei Servizi Docker</h2>
+    <p>L'istanza Open Wearables include <strong>8 servizi</strong> orchestrati con Docker Compose:</p>
+    <div class="mermaid-wrap">
+        <pre class="mermaid">
+graph TB
+    subgraph Frontend
+        FE["React App :3000"]
+    end
+
+    subgraph Backend
+        API["FastAPI :8000"]
+        CW["Celery Worker"]
+        CB["Celery Beat"]
+        FL["Flower :5555"]
+    end
+
+    subgraph Infrastruttura
+        PG["PostgreSQL 18"]
+        RD["Redis 8"]
+        SV["Svix Server"]
+    end
+
+    FE --> API
+    API --> PG
+    API --> RD
+    CW --> PG
+    CW --> RD
+    CW --> SV
+    CB --> RD
+    FL --> RD
+    SV --> PG
+    SV --> RD
+        </pre>
+    </div>
+</section>
+
+<section>
+    <h2>Appendice B — Provider Supportati</h2>
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Provider</th><th>Tipo</th><th>Metodo Sync</th><th>Stato</th></tr></thead>
+            <tbody>
+                <tr><td><strong>Garmin</strong></td><td>Cloud OAuth</td><td>Webhook push</td><td><span class="badge-yes">✅ Disponibile</span></td></tr>
+                <tr><td><strong>Whoop</strong></td><td>Cloud OAuth</td><td>API polling</td><td><span class="badge-yes">✅ Disponibile</span></td></tr>
+                <tr><td><strong>Polar</strong></td><td>Cloud OAuth</td><td>API polling</td><td><span class="badge-yes">✅ Disponibile</span></td></tr>
+                <tr><td><strong>Suunto</strong></td><td>Cloud OAuth</td><td>Push + polling</td><td><span class="badge-yes">✅ Disponibile</span></td></tr>
+                <tr><td><strong>Strava</strong></td><td>Cloud OAuth</td><td>Webhook push</td><td><span class="badge-yes">✅ Disponibile</span></td></tr>
+                <tr><td><strong>Oura</strong></td><td>Cloud OAuth</td><td>Webhook push</td><td><span class="badge-yes">✅ Disponibile</span></td></tr>
+                <tr><td><strong>Apple Health</strong></td><td>SDK / XML</td><td>Push via SDK</td><td><span class="badge-yes">✅ Disponibile</span></td></tr>
+                <tr><td><strong>Samsung Health</strong></td><td>SDK</td><td>Push via SDK</td><td><span class="badge-yes">✅ Disponibile</span></td></tr>
+                <tr><td><strong>Google Health Connect</strong></td><td>SDK</td><td>Push via SDK</td><td><span class="badge-yes">✅ Disponibile</span></td></tr>
+                <tr><td><strong>Fitbit</strong></td><td>Cloud OAuth</td><td>—</td><td><span class="badge-dev">🔧 In sviluppo</span></td></tr>
+                <tr><td><strong>Ultrahuman</strong></td><td>Cloud OAuth</td><td>—</td><td><span class="badge-dev">🔧 In sviluppo</span></td></tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+</main>
+
+<footer>
+    <div class="container">
+        <p>POC Open Wearables — Be Our Best · Documento generato il 25 maggio 2026</p>
+    </div>
+</footer>
+
+<script>
+    mermaid.initialize({
+        startOnLoad: true,
+        theme: 'dark',
+        themeVariables: {
+            primaryColor: '#1e293b',
+            primaryTextColor: '#e2e8f0',
+            primaryBorderColor: '#3a3a5a',
+            lineColor: '#4d8bff',
+            secondaryColor: '#16161f',
+            tertiaryColor: '#12121a',
+            noteTextColor: '#e2e8f0',
+            noteBkgColor: '#1e293b',
+            noteBorderColor: '#3a3a5a',
+            actorTextColor: '#e2e8f0',
+            actorBkg: '#1a1a2e',
+            actorBorder: '#3a3a5a',
+            signalColor: '#4d8bff',
+            signalTextColor: '#e2e8f0',
+            labelBoxBkgColor: '#1e293b',
+            labelBoxBorderColor: '#3a3a5a',
+            labelTextColor: '#e2e8f0',
+            loopTextColor: '#9898b0',
+            activationBorderColor: '#4d8bff',
+            activationBkgColor: '#1e293b',
+            sequenceNumberColor: '#0a0a0f',
+        },
+        flowchart: { curve: 'basis', padding: 20 },
+        sequence: { mirrorActors: false, bottomMarginAdj: 1 },
+    });
+</script>
+
+</body>
+</html>

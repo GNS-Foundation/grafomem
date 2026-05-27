@@ -67,6 +67,44 @@ def sign_provenance(signing_key: bytes, fact_id: bytes) -> tuple[bytes, bytes]:
 
 
 # ============================================================================
+# Decision Trail provenance — inference decisions, not just memory facts.
+#
+# The same BLAKE2b-128 + Ed25519 pattern, but the commitment is over
+# canonical decision fields: (tenant, query, model, output, timestamp).
+# ============================================================================
+
+def decision_id_for_record(
+    tenant_id: str,
+    query: str,
+    model_id: str,
+    raw_output: str,
+    created_at: "datetime",
+) -> bytes:
+    """16-byte BLAKE2b commitment for a decision record.
+
+    Deterministic: the same inputs always produce the same ID.
+    Content-sensitive: any field change produces a different ID.
+
+    Parameters match the mandatory fields of a DecisionRecord — the
+    minimal set that uniquely identifies one inference decision.
+    """
+    h = hashlib.blake2b(digest_size=FACT_ID_BYTES)
+    for part in [tenant_id, query, model_id, raw_output, created_at.isoformat()]:
+        h.update(part.encode("utf-8"))
+        h.update(_SEP)
+    return h.digest()
+
+
+def sign_decision(signing_key: bytes, decision_id: bytes) -> tuple[bytes, bytes]:
+    """Ed25519-sign a decision_id. Same interface as sign_provenance.
+
+    ``signing_key`` is a 32-byte Ed25519 private seed.
+    Returns (signature, public_key) — 64 and 32 raw bytes.
+    """
+    return sign_provenance(signing_key, decision_id)
+
+
+# ============================================================================
 # Self-test — `python -m aml.provenance`
 #   Confirms: the cryptography dep is present; fact_id is deterministic and
 #   content/tenant-sensitive; sign -> verify True; tamper -> verify False.

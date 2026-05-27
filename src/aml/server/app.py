@@ -352,7 +352,7 @@ def create_app(
             await q.stop()
         # Shutdown: close cloud services
         for svc_name in ("tenant_manager", "compliance_tracker", "metering_service",
-                         "portal_auth", "stripe_billing"):
+                         "decision_trail", "portal_auth", "stripe_billing"):
             svc = getattr(app.state, svc_name, None)
             if svc is not None and hasattr(svc, "close"):
                 svc.close()
@@ -418,6 +418,20 @@ def create_app(
 
             app.include_router(cloud_router)
             logger.info("Cloud management layer enabled (/v1/cloud)")
+
+            # Decision Trail — inference audit logging
+            from aml.cloud.decision_trail import DecisionTrailService
+            from aml.cloud.decision_routes import create_decision_router
+
+            dt = DecisionTrailService(db_url)
+            dt.ensure_schema()
+            app.state.decision_trail = dt
+
+            decision_router = create_decision_router(
+                dt, app.state.store_manager,
+            )
+            app.include_router(decision_router)
+            logger.info("Decision Trail enabled (/v1/decisions)")
         except ImportError as e:
             logger.warning("Cloud layer unavailable (missing deps): %s", e)
         except Exception as e:
