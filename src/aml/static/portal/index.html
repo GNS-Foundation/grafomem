@@ -97,6 +97,9 @@
           <a class="nav-item" data-section="governance" id="nav-governance">
             <span class="nav-icon">⊚</span> Governance
           </a>
+          <a class="nav-item" data-section="reports" id="nav-reports">
+            <span class="nav-icon">☷</span> Reports
+          </a>
           <a class="nav-item" data-section="billing" id="nav-billing">
             <span class="nav-icon">⊡</span> Billing
           </a>
@@ -361,6 +364,90 @@ curl -X POST https://grafomem-production.up.railway.app/v1/stores/default/retrie
                 <div id="dt-replay-deleted" class="dt-facts-list"></div>
               </div>
             </div>
+          </div>
+        </section>
+
+        <!-- REGULATORY REPORTS -->
+        <section id="section-reports" class="section" style="display:none">
+          <h1 class="section-title">Regulatory Reports</h1>
+          <p class="section-subtitle">One-click compliance packages for EU AI Act, GDPR & DORA</p>
+
+          <!-- Stats -->
+          <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr)">
+            <div class="stat-card accent">
+              <div class="stat-label">Reports Generated</div>
+              <div class="stat-value" id="rr-stat-total">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Complete</div>
+              <div class="stat-value" id="rr-stat-complete">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Last Report</div>
+              <div class="stat-value" id="rr-stat-last" style="font-size:0.85rem">—</div>
+            </div>
+          </div>
+
+          <!-- Generate -->
+          <div class="card">
+            <h2>Generate Report</h2>
+            <div class="dt-filter-row">
+              <div class="form-group dt-filter-item">
+                <label for="rr-period">Look-back Period (days)</label>
+                <select id="rr-period">
+                  <option value="7">7 days</option>
+                  <option value="30" selected>30 days</option>
+                  <option value="90">90 days</option>
+                  <option value="365">1 year</option>
+                </select>
+              </div>
+              <div class="dt-filter-actions" style="gap:0.5rem">
+                <button class="btn btn-primary btn-sm" data-rr-gen="full_audit">📊 Full Audit</button>
+                <button class="btn btn-sm" data-rr-gen="eu_ai_act">🇪🇺 EU AI Act</button>
+                <button class="btn btn-sm" data-rr-gen="gdpr">🔒 GDPR</button>
+                <button class="btn btn-sm" data-rr-gen="dora">🏦 DORA</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Report List -->
+          <div class="card dt-list-card">
+            <div class="dt-list-header">
+              <h2>Generated Reports</h2>
+              <span class="dt-count" id="rr-count">0 reports</span>
+            </div>
+            <div class="dt-table-wrap">
+              <table class="dt-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Framework</th>
+                    <th>Finding</th>
+                    <th>Period</th>
+                    <th>Size</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="rr-table-body">
+                  <tr class="dt-empty-row">
+                    <td colspan="6">No reports yet. Generate one above.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Report Detail -->
+          <div class="card dt-detail-panel" id="rr-detail-panel" style="display:none">
+            <div class="dt-detail-header">
+              <h2 id="rr-detail-title">Report Detail</h2>
+              <div style="display:flex;gap:0.5rem">
+                <button class="btn btn-sm btn-primary" id="rr-download-btn">⬇ Download JSON</button>
+                <button class="btn btn-sm" id="rr-close-detail">✕ Close</button>
+              </div>
+            </div>
+            <div class="dt-detail-meta" id="rr-detail-meta"></div>
+            <div class="dt-detail-sections" id="rr-detail-sections"></div>
           </div>
         </section>
 

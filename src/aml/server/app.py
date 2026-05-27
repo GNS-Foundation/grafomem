@@ -353,7 +353,7 @@ def create_app(
         # Shutdown: close cloud services
         for svc_name in ("tenant_manager", "compliance_tracker", "metering_service",
                          "decision_trail", "erasure_proof", "governance_gateway",
-                         "portal_auth", "stripe_billing"):
+                         "regulatory_reports", "portal_auth", "stripe_billing"):
             svc = getattr(app.state, svc_name, None)
             if svc is not None and hasattr(svc, "close"):
                 svc.close()
@@ -461,6 +461,24 @@ def create_app(
             gov_router = create_governance_router(gg)
             app.include_router(gov_router)
             logger.info("Governance Gateway enabled (/v1/governance)")
+
+            # Regulatory Reports — one-click compliance packages
+            from aml.cloud.regulatory import RegulatoryReportService
+            from aml.cloud.regulatory_routes import create_regulatory_router
+
+            rr = RegulatoryReportService(
+                db_url,
+                decision_trail=dt,
+                erasure_proof=ep,
+                governance=gg,
+                compliance=getattr(app.state, "compliance_tracker", None),
+            )
+            rr.ensure_schema()
+            app.state.regulatory_reports = rr
+
+            reg_router = create_regulatory_router(rr)
+            app.include_router(reg_router)
+            logger.info("Regulatory Reports enabled (/v1/reports)")
         except ImportError as e:
             logger.warning("Cloud layer unavailable (missing deps): %s", e)
         except Exception as e:

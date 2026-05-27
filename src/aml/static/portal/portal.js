@@ -520,6 +520,172 @@
     window.open(`${API}/v1/decisions/export`, '_blank');
   }
 
+  // ── Regulatory Reports ──────────────────────────────────────
+  let rrReports = [];
+  let rrCurrentId = null;
+
+  async function loadReportStats() {
+    try {
+      const stats = await api('/v1/reports/stats');
+      $('rr-stat-total').textContent = formatNumber(stats.total || 0);
+      $('rr-stat-complete').textContent = formatNumber(stats.complete || 0);
+      $('rr-stat-last').textContent = stats.last_report
+        ? new Date(stats.last_report).toLocaleDateString('en-GB', { month: 'short', day: '2-digit', year: 'numeric' })
+        : '—';
+    } catch (e) { /* ignore */ }
+  }
+
+  async function generateReport(type) {
+    const days = parseInt($('rr-period')?.value || '30', 10);
+    try {
+      toast(`Generating ${type} report…`, 'info');
+      const r = await api('/v1/reports/generate', {
+        method: 'POST',
+        body: { report_type: type, period_days: days },
+      });
+      toast(`Report generated: ${r.title}`, 'success');
+      loadReportStats();
+      loadReportList();
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  async function loadReportList() {
+    try {
+      const data = await api('/v1/reports/');
+      rrReports = data.reports || [];
+      renderReportList(rrReports, data.count);
+    } catch (e) {
+      $('rr-table-body').innerHTML = `<tr class="dt-empty-row"><td colspan="6">${e.message}</td></tr>`;
+    }
+  }
+
+  function renderReportList(reports, count) {
+    const tbody = $('rr-table-body');
+    $('rr-count').textContent = `${count} report${count !== 1 ? 's' : ''}`;
+
+    if (!reports.length) {
+      tbody.innerHTML = '<tr class="dt-empty-row"><td colspan="6">No reports yet. Generate one above.</td></tr>';
+      return;
+    }
+
+    const findingColors = {
+      COMPLIANT: 'var(--success)', PARTIAL: 'var(--warning)',
+      INSUFFICIENT_DATA: 'var(--text-muted)', FAILED: 'var(--danger)',
+    };
+    const typeLabels = {
+      eu_ai_act: '🇪🇺 EU AI Act', gdpr: '🔒 GDPR',
+      dora: '🏦 DORA', full_audit: '📊 Full Audit',
+    };
+
+    tbody.innerHTML = reports.map(r => {
+      const date = new Date(r.created_at).toLocaleDateString('en-GB', { month: 'short', day: '2-digit' });
+      const finding = r.overall_finding || r.status;
+      const fc = findingColors[finding] || 'var(--text-muted)';
+      const period = `${new Date(r.period_start).toLocaleDateString('en-GB', { month: 'short', day: '2-digit' })} → ${new Date(r.period_end).toLocaleDateString('en-GB', { month: 'short', day: '2-digit' })}`;
+      const sizeKb = (r.file_size_bytes / 1024).toFixed(1);
+
+      return `<tr data-rid="${r.report_id}">
+        <td class="dt-time">${date}</td>
+        <td>${typeLabels[r.report_type] || r.report_type}</td>
+        <td><span class="dt-signed-badge" style="color:${fc};background:rgba(255,255,255,0.05)">${finding}</span></td>
+        <td style="font-size:0.72rem">${period}</td>
+        <td class="dt-facts-count">${sizeKb} KB</td>
+        <td><button class="btn btn-sm dt-view-btn" data-rid="${r.report_id}">View</button></td>
+      </tr>`;
+    }).join('');
+
+    tbody.querySelectorAll('tr[data-rid]').forEach(row => {
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('.dt-view-btn')) return;
+        showReportDetail(row.dataset.rid);
+      });
+    });
+    tbody.querySelectorAll('.dt-view-btn[data-rid]').forEach(btn => {
+      btn.addEventListener('click', () => showReportDetail(btn.dataset.rid));
+    });
+  }
+
+  async function showReportDetail(reportId) {
+    rrCurrentId = reportId;
+    const panel = $('rr-detail-panel');
+    panel.style.display = '';
+
+    let r;
+    try { r = await api(`/v1/reports/${reportId}`); } catch { toast('Report not found', 'error'); return; }
+
+    $('rr-detail-title').textContent = r.title;
+
+    const findingColors = {
+      COMPLIANT: 'var(--success)', PARTIAL: 'var(--warning)',
+      INSUFFICIENT_DATA: 'var(--text-muted)',
+    };
+    const overall = r.content.overall_finding || r.status;
+    const oc = findingColors[overall] || 'var(--text-muted)';
+
+    $('rr-detail-meta').innerHTML = [
+      `<span class="dt-meta-tag" style="color:${oc};font-weight:600"><span class="label">Finding</span> ${overall}</span>`,
+      `<span class="dt-meta-tag"><span class="label">Framework</span> ${r.content.framework || r.report_type}</span>`,
+      r.content.regulation ? `<span class="dt-meta-tag"><span class="label">Regulation</span> ${r.content.regulation}</span>` : '',
+      `<span class="dt-meta-tag"><span class="label">Hash</span> ${(r.content_hash || '').substring(0, 16)}…</span>`,
+    ].filter(Boolean).join('');
+
+    // Render sections
+    const sections = r.content.sections || {};
+    const fwSections = r.content.frameworks;
+    const container = $('rr-detail-sections');
+
+    if (Object.keys(sections).length > 0) {
+      container.innerHTML = renderReportSections(sections);
+    } else if (fwSections) {
+      // Full audit — render each framework
+      let html = '';
+      for (const [fwKey, fw] of Object.entries(fwSections)) {
+        const fwFinding = fw.overall_finding || 'UNKNOWN';
+        const ffc = findingColors[fwFinding] || 'var(--text-muted)';
+        html += `<div style="margin-bottom:1.5rem"><h3 style="color:var(--text-secondary);margin-bottom:0.5rem">${fw.framework} <span class="dt-signed-badge" style="color:${ffc};background:rgba(255,255,255,0.05);font-size:0.72rem">${fwFinding}</span></h3>`;
+        html += renderReportSections(fw.sections || {});
+        html += `</div>`;
+      }
+      container.innerHTML = html;
+    } else {
+      container.innerHTML = `<pre class="dt-detail-code">${JSON.stringify(r.content, null, 2)}</pre>`;
+    }
+
+    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function renderReportSections(sections) {
+    const findingColors = {
+      COMPLIANT: 'var(--success)', PARTIAL: 'var(--warning)',
+      INSUFFICIENT_DATA: 'var(--text-muted)',
+    };
+    const findingIcons = { COMPLIANT: '✅', PARTIAL: '⚠️', INSUFFICIENT_DATA: '❓' };
+
+    return Object.entries(sections).map(([key, sec]) => {
+      const f = sec.finding || 'UNKNOWN';
+      const fc = findingColors[f] || 'var(--text-muted)';
+      const fi = findingIcons[f] || '❓';
+      const evidence = sec.compliance_evidence || {};
+
+      const evidenceHtml = Object.entries(evidence).map(([ek, ev]) => {
+        let val = ev;
+        if (typeof ev === 'boolean') val = ev ? '✓ Yes' : '✕ No';
+        else if (Array.isArray(ev)) val = ev.join(', ') || '—';
+        else if (ev === null || ev === undefined) val = '—';
+        return `<div style="display:flex;justify-content:space-between;padding:0.3rem 0;border-bottom:1px solid rgba(255,255,255,0.04)">
+          <span style="color:var(--text-muted);font-size:0.75rem">${ek.replace(/_/g, ' ')}</span>
+          <span style="font-size:0.75rem;text-align:right;max-width:60%">${val}</span>
+        </div>`;
+      }).join('');
+
+      return `<div class="dt-detail-section" style="border-left:3px solid ${fc}">
+        <h3 style="display:flex;align-items:center;gap:0.5rem">${fi} ${sec.title || key} <span class="dt-signed-badge" style="color:${fc};background:rgba(255,255,255,0.05);font-size:0.7rem">${f}</span></h3>
+        <p style="color:var(--text-muted);font-size:0.78rem;margin:0.3rem 0 0.6rem">${sec.requirement || ''}</p>
+        ${evidenceHtml}
+      </div>`;
+    }).join('');
+  }
+
   // ── Governance Gateway ──────────────────────────────────────
   async function loadGovernanceStats() {
     try {
@@ -911,6 +1077,10 @@
           loadErasureStats();
           loadErasureCerts();
         }
+        if (nav.dataset.section === 'reports') {
+          loadReportStats();
+          loadReportList();
+        }
         if (nav.dataset.section === 'governance') {
           loadGovernanceStats();
           loadGovernancePolicies();
@@ -963,6 +1133,15 @@
     $('gov-seed-btn')?.addEventListener('click', seedGovernanceDefaults);
     $('gov-test-btn')?.addEventListener('click', testGovernanceEval);
     $('gov-refresh-logs')?.addEventListener('click', loadGovernanceLogs);
+
+    // Regulatory Reports events
+    document.querySelectorAll('[data-rr-gen]').forEach(btn => {
+      btn.addEventListener('click', () => generateReport(btn.dataset.rrGen));
+    });
+    $('rr-close-detail')?.addEventListener('click', () => { $('rr-detail-panel').style.display = 'none'; });
+    $('rr-download-btn')?.addEventListener('click', () => {
+      if (rrCurrentId) window.open(`${API}/v1/reports/${rrCurrentId}/download`, '_blank');
+    });
 
     // Check for upgrade success
     if (window.location.search.includes('upgraded=true')) {
