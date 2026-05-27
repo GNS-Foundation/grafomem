@@ -88,6 +88,9 @@
           <a class="nav-item" data-section="compliance" id="nav-compliance">
             <span class="nav-icon">✓</span> Compliance
           </a>
+          <a class="nav-item" data-section="decisions" id="nav-decisions">
+            <span class="nav-icon">⊙</span> Decision Trail
+          </a>
           <a class="nav-item" data-section="billing" id="nav-billing">
             <span class="nav-icon">⊡</span> Billing
           </a>
@@ -237,6 +240,120 @@ curl -X POST https://grafomem-production.up.railway.app/v1/stores/default/retrie
             <div class="badge-actions">
               <button class="btn btn-sm" id="copy-badge-md">Copy Markdown</button>
               <button class="btn btn-sm" id="copy-badge-html">Copy HTML</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- DECISION TRAIL / AUDIT CONSOLE -->
+        <section id="section-decisions" class="section" style="display:none">
+          <h1 class="section-title">Decision Trail</h1>
+          <p class="section-subtitle">Every AI inference decision — logged, signed, replayable</p>
+
+          <!-- Stats -->
+          <div class="stats-grid dt-stats-grid">
+            <div class="stat-card accent">
+              <div class="stat-label">Total Decisions</div>
+              <div class="stat-value" id="dt-stat-total">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Models Used</div>
+              <div class="stat-value" id="dt-stat-models">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Avg Latency</div>
+              <div class="stat-value" id="dt-stat-latency">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Total Tokens</div>
+              <div class="stat-value" id="dt-stat-tokens">—</div>
+            </div>
+          </div>
+
+          <!-- Filters -->
+          <div class="card dt-filters">
+            <div class="dt-filter-row">
+              <div class="form-group dt-filter-item">
+                <label for="dt-filter-model">Model</label>
+                <input type="text" id="dt-filter-model" placeholder="e.g. gpt-4o" />
+              </div>
+              <div class="form-group dt-filter-item">
+                <label for="dt-filter-store">Store ID</label>
+                <input type="text" id="dt-filter-store" placeholder="e.g. default" />
+              </div>
+              <div class="form-group dt-filter-item">
+                <label for="dt-filter-session">Session ID</label>
+                <input type="text" id="dt-filter-session" placeholder="Any session" />
+              </div>
+              <div class="dt-filter-actions">
+                <button class="btn btn-primary btn-sm" id="dt-filter-btn">Search</button>
+                <button class="btn btn-sm" id="dt-clear-btn">Clear</button>
+                <button class="btn btn-sm" id="dt-export-btn">⤓ Export NDJSON</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Decision List -->
+          <div class="card dt-list-card">
+            <div class="dt-list-header">
+              <h2>Decisions</h2>
+              <span class="dt-count" id="dt-count">0 results</span>
+            </div>
+            <div class="dt-table-wrap">
+              <table class="dt-table" id="dt-table">
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Model</th>
+                    <th>Query</th>
+                    <th>Facts</th>
+                    <th>Tokens</th>
+                    <th>Latency</th>
+                    <th>Signed</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="dt-table-body">
+                  <tr class="dt-empty-row">
+                    <td colspan="8">No decisions yet. Decisions will appear here after they are logged via the API.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="dt-pagination">
+              <button class="btn btn-sm" id="dt-prev-btn" disabled>← Prev</button>
+              <span class="dt-page-info" id="dt-page-info">Page 1</span>
+              <button class="btn btn-sm" id="dt-next-btn" disabled>Next →</button>
+            </div>
+          </div>
+
+          <!-- Decision Detail / Replay Panel -->
+          <div class="card dt-detail-panel" id="dt-detail-panel" style="display:none">
+            <div class="dt-detail-header">
+              <h2>Decision Detail</h2>
+              <button class="btn btn-sm" id="dt-close-detail">✕ Close</button>
+            </div>
+            <div class="dt-detail-meta" id="dt-detail-meta"></div>
+            <div class="dt-detail-sections">
+              <div class="dt-detail-section">
+                <h3>Query</h3>
+                <pre class="dt-detail-code" id="dt-detail-query"></pre>
+              </div>
+              <div class="dt-detail-section">
+                <h3>Retrieved Facts</h3>
+                <div id="dt-detail-facts" class="dt-facts-list"></div>
+              </div>
+              <div class="dt-detail-section">
+                <h3>Model Output</h3>
+                <pre class="dt-detail-code" id="dt-detail-output"></pre>
+              </div>
+              <div class="dt-detail-section" id="dt-detail-provenance-section" style="display:none">
+                <h3>Provenance</h3>
+                <div class="dt-provenance-badge" id="dt-provenance-badge"></div>
+              </div>
+              <div class="dt-detail-section" id="dt-replay-section" style="display:none">
+                <h3>Replay — Facts Since Deleted</h3>
+                <div id="dt-replay-deleted" class="dt-facts-list"></div>
+              </div>
             </div>
           </div>
         </section>

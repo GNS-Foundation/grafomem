@@ -332,6 +332,199 @@
   // ── Helpers ─────────────────────────────────────────────────
   function $(id) { return document.getElementById(id); }
 
+  // ── Decision Trail / Audit Console ──────────────────────────
+  let dtPage = 0;
+  const dtLimit = 20;
+  let dtDecisions = [];
+
+  async function loadDecisionStats() {
+    try {
+      const stats = await api('/v1/decisions/stats');
+      $('dt-stat-total').textContent = formatNumber(stats.total || 0);
+      $('dt-stat-models').textContent = stats.models_used ?? '—';
+      $('dt-stat-latency').textContent = stats.avg_latency_ms ? `${stats.avg_latency_ms}ms` : '—';
+      $('dt-stat-tokens').textContent = stats.total_tokens ? formatNumber(stats.total_tokens) : '—';
+    } catch (e) {
+      // Decision Trail not available — leave defaults
+    }
+  }
+
+  async function loadDecisions() {
+    const params = new URLSearchParams();
+    const model = $('dt-filter-model')?.value?.trim();
+    const store = $('dt-filter-store')?.value?.trim();
+    const session = $('dt-filter-session')?.value?.trim();
+
+    if (model) params.set('model_id', model);
+    if (store) params.set('store_id', store);
+    if (session) params.set('session_id', session);
+    params.set('limit', dtLimit);
+    params.set('offset', dtPage * dtLimit);
+
+    try {
+      const data = await api(`/v1/decisions/?${params.toString()}`);
+      dtDecisions = data.decisions || [];
+      renderDecisionTable(dtDecisions, data.count);
+
+      // Pagination
+      $('dt-prev-btn').disabled = dtPage === 0;
+      $('dt-next-btn').disabled = data.count < dtLimit;
+      $('dt-page-info').textContent = `Page ${dtPage + 1}`;
+    } catch (e) {
+      $('dt-table-body').innerHTML = `<tr class="dt-empty-row"><td colspan="8">Unable to load decisions: ${e.message}</td></tr>`;
+      $('dt-count').textContent = 'Error';
+    }
+  }
+
+  function renderDecisionTable(decisions, count) {
+    const tbody = $('dt-table-body');
+    $('dt-count').textContent = `${count} result${count !== 1 ? 's' : ''}`;
+
+    if (!decisions.length) {
+      tbody.innerHTML = '<tr class="dt-empty-row"><td colspan="8">No decisions match your filters.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = decisions.map(d => {
+      const time = new Date(d.created_at).toLocaleString('en-GB', {
+        month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit'
+      });
+      const factsCount = (d.retrieved_fact_refs || []).length;
+      const signed = d.signature != null;
+      const query = (d.query || '').length > 50 ? d.query.substring(0, 50) + '…' : d.query;
+      const tokens = d.output_tokens != null ? formatNumber(d.output_tokens) : '—';
+      const latency = d.latency_ms != null ? `${d.latency_ms}ms` : '—';
+
+      return `<tr data-id="${d.decision_id}">
+        <td class="dt-time">${time}</td>
+        <td class="dt-model">${d.model_id}</td>
+        <td class="dt-query" title="${escapeHtml(d.query)}">${escapeHtml(query)}</td>
+        <td class="dt-facts-count">${factsCount}</td>
+        <td class="dt-tokens">${tokens}</td>
+        <td class="dt-latency">${latency}</td>
+        <td><span class="dt-signed-badge ${signed ? 'signed' : 'unsigned'}">${signed ? '🔏 Signed' : '—'}</span></td>
+        <td><button class="btn btn-sm dt-view-btn" data-id="${d.decision_id}">View</button></td>
+      </tr>`;
+    }).join('');
+
+    // Attach click handlers
+    tbody.querySelectorAll('tr[data-id]').forEach(row => {
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('.dt-view-btn')) return;
+        showDecisionDetail(row.dataset.id);
+      });
+    });
+    tbody.querySelectorAll('.dt-view-btn').forEach(btn => {
+      btn.addEventListener('click', () => showDecisionDetail(btn.dataset.id));
+    });
+  }
+
+  async function showDecisionDetail(decisionId) {
+    const panel = $('dt-detail-panel');
+    panel.style.display = '';
+
+    // Find in local cache first
+    let d = dtDecisions.find(x => x.decision_id === decisionId);
+
+    // If not found locally, fetch from API
+    if (!d) {
+      try {
+        d = await api(`/v1/decisions/${decisionId}`);
+      } catch (e) {
+        toast(`Decision not found: ${e.message}`, 'error');
+        return;
+      }
+    }
+
+    // Meta tags
+    const meta = $('dt-detail-meta');
+    const time = new Date(d.created_at).toLocaleString('en-GB');
+    meta.innerHTML = [
+      `<span class="dt-meta-tag"><span class="label">ID</span> ${d.decision_id.substring(0, 12)}…</span>`,
+      `<span class="dt-meta-tag"><span class="label">Time</span> ${time}</span>`,
+      `<span class="dt-meta-tag"><span class="label">Model</span> ${d.model_id}</span>`,
+      `<span class="dt-meta-tag"><span class="label">Store</span> ${d.store_id}</span>`,
+      d.session_id ? `<span class="dt-meta-tag"><span class="label">Session</span> ${d.session_id.substring(0, 12)}…</span>` : '',
+      d.latency_ms != null ? `<span class="dt-meta-tag"><span class="label">Latency</span> ${d.latency_ms}ms</span>` : '',
+      d.output_tokens != null ? `<span class="dt-meta-tag"><span class="label">Tokens</span> ${formatNumber(d.output_tokens)}</span>` : '',
+    ].filter(Boolean).join('');
+
+    // Query
+    $('dt-detail-query').textContent = d.query;
+
+    // Facts
+    const factsDiv = $('dt-detail-facts');
+    const refs = d.retrieved_fact_refs || [];
+    const contents = d.retrieved_contents || [];
+    const scores = d.retrieval_scores || [];
+    if (refs.length === 0) {
+      factsDiv.innerHTML = '<div class="dim">No facts retrieved</div>';
+    } else {
+      factsDiv.innerHTML = refs.map((ref, i) => `
+        <div class="dt-fact-item">
+          <span class="dt-fact-ref">#${ref}</span>
+          <span class="dt-fact-content">${escapeHtml(contents[i] || '—')}</span>
+          ${scores[i] != null ? `<span class="dt-fact-score">${scores[i].toFixed(3)}</span>` : ''}
+        </div>
+      `).join('');
+    }
+
+    // Output
+    $('dt-detail-output').textContent = d.raw_output;
+
+    // Provenance
+    const provSection = $('dt-detail-provenance-section');
+    const provBadge = $('dt-provenance-badge');
+    if (d.signature) {
+      provSection.style.display = '';
+      provBadge.innerHTML = `
+        <span class="prov-icon">🔏</span>
+        <div class="prov-details">
+          <span class="prov-label">Ed25519 Signed</span>
+          <span class="prov-hash">sig: ${d.signature.substring(0, 32)}…</span>
+          <span class="prov-hash">pub: ${(d.public_key || '').substring(0, 32)}…</span>
+        </div>
+      `;
+    } else {
+      provSection.style.display = 'none';
+    }
+
+    // Try replay
+    const replaySection = $('dt-replay-section');
+    const replayDeleted = $('dt-replay-deleted');
+    try {
+      const replay = await api(`/v1/decisions/${decisionId}/replay`);
+      if (replay.facts_since_deleted && replay.facts_since_deleted.length > 0) {
+        replaySection.style.display = '';
+        replayDeleted.innerHTML = replay.facts_since_deleted.map(ref => {
+          const fact = (replay.facts_used || []).find(f => f.ref === ref);
+          return `
+            <div class="dt-fact-item deleted">
+              <span class="dt-fact-ref">#${ref}</span>
+              <span class="dt-fact-content">${escapeHtml(fact?.content || '[Content no longer available]')}</span>
+            </div>
+          `;
+        }).join('');
+      } else {
+        replaySection.style.display = 'none';
+      }
+    } catch {
+      replaySection.style.display = 'none';
+    }
+
+    // Scroll to panel
+    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function exportDecisions() {
+    window.open(`${API}/v1/decisions/export`, '_blank');
+  }
+
+  function escapeHtml(s) {
+    if (!s) return '';
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
   // ── Init ────────────────────────────────────────────────────
   document.addEventListener('DOMContentLoaded', () => {
     // Auth tabs
@@ -395,9 +588,15 @@
       }
     });
 
-    // Sidebar navigation
+    // Sidebar navigation — with Decision Trail loader
     document.querySelectorAll('.nav-item[data-section]').forEach(nav => {
-      nav.addEventListener('click', () => showSection(nav.dataset.section));
+      nav.addEventListener('click', () => {
+        showSection(nav.dataset.section);
+        if (nav.dataset.section === 'decisions') {
+          loadDecisionStats();
+          loadDecisions();
+        }
+      });
     });
 
     // Logout
@@ -420,6 +619,20 @@
     $('mobile-menu-btn').addEventListener('click', () => {
       $('sidebar').classList.toggle('open');
     });
+
+    // Decision Trail events
+    $('dt-filter-btn')?.addEventListener('click', () => { dtPage = 0; loadDecisions(); });
+    $('dt-clear-btn')?.addEventListener('click', () => {
+      $('dt-filter-model').value = '';
+      $('dt-filter-store').value = '';
+      $('dt-filter-session').value = '';
+      dtPage = 0;
+      loadDecisions();
+    });
+    $('dt-export-btn')?.addEventListener('click', exportDecisions);
+    $('dt-prev-btn')?.addEventListener('click', () => { if (dtPage > 0) { dtPage--; loadDecisions(); } });
+    $('dt-next-btn')?.addEventListener('click', () => { dtPage++; loadDecisions(); });
+    $('dt-close-detail')?.addEventListener('click', () => { $('dt-detail-panel').style.display = 'none'; });
 
     // Check for upgrade success
     if (window.location.search.includes('upgraded=true')) {
