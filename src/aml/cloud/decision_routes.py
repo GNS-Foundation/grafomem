@@ -144,7 +144,7 @@ def create_decision_router(decision_trail, store_manager=None, tenant_auth=None)
     # POST /v1/decisions/log — log a decision
     # ------------------------------------------------------------------
 
-    @router.post("/log")
+    @router.post("/log", response_model=DecisionResponse)
     async def log_decision(req: LogDecisionRequest, request: Request):
         """Log an AI inference decision with full provenance.
 
@@ -231,7 +231,7 @@ def create_decision_router(decision_trail, store_manager=None, tenant_auth=None)
     # GET /v1/decisions/{decision_id} — get a single decision
     # ------------------------------------------------------------------
 
-    @router.get("/{decision_id}")
+    @router.get("/{decision_id}", response_model=DecisionResponse)
     async def get_decision(decision_id: str, request: Request):
         """Retrieve a single decision record by its ID."""
         tenant_id = _get_tenant_id(request)
@@ -248,7 +248,7 @@ def create_decision_router(decision_trail, store_manager=None, tenant_auth=None)
     # GET /v1/decisions/{decision_id}/replay — replay a decision
     # ------------------------------------------------------------------
 
-    @router.get("/{decision_id}/replay")
+    @router.get("/{decision_id}/replay", response_model=ReplayResponse)
     async def replay_decision(decision_id: str, request: Request):
         """Replay a decision: show the decision, the memory state at that
         time, which facts were used, and which have been deleted since.
@@ -354,7 +354,7 @@ def create_decision_router(decision_trail, store_manager=None, tenant_auth=None)
     # DELETE /v1/decisions/scrub/{fact_ref} — GDPR scrub
     # ------------------------------------------------------------------
 
-    @router.delete("/scrub/{fact_ref}")
+    @router.delete("/scrub/{fact_ref}", response_model=ScrubResponse)
     async def scrub_fact(fact_ref: int, request: Request):
         """Scrub a deleted fact from all decision records (GDPR Article 17).
 

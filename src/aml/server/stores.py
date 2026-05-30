@@ -24,6 +24,7 @@ class StoreEntry:
     backend: Any  # MemoryBackend
     queue: Any | None = None  # IngestionQueue, if batched mode is enabled
     created_at: str = ""
+    owner_tenant_id: str | None = None  # tenant that created this store
 
 
 class StoreManager:
@@ -40,7 +41,7 @@ class StoreManager:
         self._stores: dict[str, StoreEntry] = {}
         self._lock = threading.Lock()
 
-    def create(self) -> str:
+    def create(self, tenant_id: str | None = None) -> str:
         """Create a new store and return its ID."""
         from datetime import datetime, timezone
         store_id = uuid.uuid4().hex[:12]
@@ -49,10 +50,11 @@ class StoreManager:
             store_id=store_id,
             backend=backend,
             created_at=datetime.now(timezone.utc).isoformat(),
+            owner_tenant_id=tenant_id,
         )
         with self._lock:
             self._stores[store_id] = entry
-        logger.info("Store created: %s", store_id)
+        logger.info("Store created: %s (owner=%s)", store_id, tenant_id or 'none')
         return store_id
 
     def get(self, store_id: str) -> StoreEntry | None:

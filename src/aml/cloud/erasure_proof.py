@@ -316,6 +316,12 @@ class ErasureProofService:
             certificate_id, tenant_id, fact_ref, scrubbed_count,
         )
 
+        try:
+            from aml.cloud.metrics import ERASURE_CERTIFICATES
+            ERASURE_CERTIFICATES.inc()
+        except Exception:
+            pass
+
         return ErasureCertificate(
             certificate_id=certificate_id,
             tenant_id=tenant_id,

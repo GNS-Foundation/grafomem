@@ -23,6 +23,7 @@ import difflib
 import hashlib
 import json
 import logging
+import re
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -143,12 +144,14 @@ class ReplayEngine:
         decision_trail: Any = None,
         llm_registry: Any = None,
         store_manager: Any = None,
+        orchestrator: Any = None,
     ) -> None:
         self._db_url = db_url
         self._conn: psycopg.Connection[dict[str, Any]] | None = None
         self._decision_trail = decision_trail
         self._llm_registry = llm_registry
         self._store_manager = store_manager
+        self._orchestrator = orchestrator
 
     # ------------------------------------------------------------------
     # Connection
@@ -263,24 +266,83 @@ class ReplayEngine:
                 model_available=False,
             )
 
-        # 5. Re-execute with temperature=0
+        # 5. Reconstruct original system_prompt and retrieved_facts from agent definition
+        original_system_prompt = None
+        orchestrator_facts = None  # Full facts with store_id for message reconstruction
         try:
-            # Build messages with memory context
+            conn = self._get_conn()
+            # Find the orchestrator step that produced this decision
+            row = conn.execute(
+                "SELECT agent_id, retrieved_facts FROM orchestrator_steps WHERE decision_id = %s LIMIT 1",
+                (decision_id,),
+            ).fetchone()
+            if row:
+                agent_id = row["agent_id"]
+                # Get the full retrieved_facts (includes store_id) for message reconstruction
+                if row.get("retrieved_facts"):
+                    import json
+                    raw = row["retrieved_facts"]
+                    orchestrator_facts = raw if isinstance(raw, list) else json.loads(raw)
+                agent_row = conn.execute(
+                    "SELECT system_prompt FROM orchestrator_agents WHERE agent_id = %s",
+                    (agent_id,),
+                ).fetchone()
+                if agent_row:
+                    original_system_prompt = agent_row["system_prompt"]
+                    logger.info(
+                        "Replay: reconstructed original system_prompt from agent %s",
+                        agent_id,
+                    )
+        except Exception as e:
+            logger.warning("Replay: could not reconstruct system_prompt: %s", e)
+
+        # Fall back to generic prompt only if reconstruction failed
+        system_prompt = original_system_prompt or (
+            "You are replaying a previous decision. Answer identically."
+        )
+        if original_system_prompt is None:
+            logger.warning(
+                "Replay: using fallback system_prompt (agent lookup failed)"
+            )
+
+        # 6. Re-execute with temperature=0
+        try:
+            # Build messages matching the orchestrator's _build_messages format exactly
             messages = []
-            if retrieved_contents:
-                context_str = "\n".join(
+            if orchestrator_facts:
+                # Use the full facts (with store_id) for exact format match
+                fact_text = "\n".join(
+                    f"- [{f.get('store_id', '?')}] {f.get('content', '')}"
+                    for f in orchestrator_facts
+                )
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        f"[MEMORY CONTEXT — {len(orchestrator_facts)} facts retrieved "
+                        f"from GMP stores]\n{fact_text}\n\n"
+                        f"[USER QUERY]\n{query}"
+                    ),
+                })
+            elif retrieved_contents:
+                # Fallback: use flat contents without store_id
+                fact_text = "\n".join(
                     f"- {c}" for c in retrieved_contents
                 )
                 messages.append({
-                    "role": "system",
-                    "content": f"Context from memory:\n{context_str}",
+                    "role": "user",
+                    "content": (
+                        f"[MEMORY CONTEXT — {len(retrieved_contents)} facts retrieved "
+                        f"from GMP stores]\n{fact_text}\n\n"
+                        f"[USER QUERY]\n{query}"
+                    ),
                 })
-            messages.append({"role": "user", "content": query})
+            else:
+                messages.append({"role": "user", "content": query})
 
             from aml.cloud.llm_registry import LLMRequest
             request = LLMRequest(
                 model_id=model_id,
-                system_prompt="You are replaying a previous decision. Answer identically.",
+                system_prompt=system_prompt,
                 messages=messages,
                 tools=None,
                 temperature=0.0,

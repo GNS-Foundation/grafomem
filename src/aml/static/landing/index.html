@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="GRAFOMEM Cloud — The governance layer for AI agents. Every step governed, every decision signed, every action replayable." />
+  <meta name="keywords" content="AI agent governance, EU AI Act compliance, GDPR agents, agent memory, AI orchestration, execution receipts, decision trail" />
+  <title>GRAFOMEM — Governed AI Agent Memory</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/landing/landing.css" />
+</head>
+<body>
+
+  <!-- Animated Background -->
+  <div class="bg-grid"></div>
+  <div class="bg-glow-1"></div>
+  <div class="bg-glow-2"></div>
+
+  <!-- ============ TOP NAV ============ -->
+  <nav class="top-nav" id="top-nav">
+    <div class="container">
+      <a href="/" class="nav-logo">
+        <span class="logo-diamond">◆</span>
+        <span class="logo-text">GRAFOMEM</span>
+      </a>
+      <ul class="nav-links">
+        <li><a href="#pillars">Platform</a></li>
+        <li><a href="#attestation">Attestation</a></li>
+        <li><a href="#architecture">Architecture</a></li>
+        <li><a href="#pricing">Pricing</a></li>
+        <li><a href="/docs" target="_blank">Docs</a></li>
+        <li><a href="/portal" class="nav-cta">Open Portal →</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- ============ HERO ============ -->
+  <section class="hero" id="hero">
+    <div class="container">
+      <div class="hero-badge">
+        <span class="pulse"></span>
+        18/18 E2E TESTS PASSING — LIVE WITH OPENAI
+      </div>
+      <h1>
+        Every Agent Step.<br />
+        <span class="gradient-text">Governed. Signed. Replayable.</span>
+      </h1>
+      <p class="hero-subtitle">
+        GRAFOMEM is the compliance layer your AI agents are missing.
+        Hash-chained execution receipts, signed decision trails, and
+        GDPR erasure certificates — out of the box.
+      </p>
+      <div class="hero-actions">
+        <a href="/portal" class="btn-primary" id="hero-cta-portal">
+          Start Building →
+        </a>
+        <a href="#attestation" class="btn-outline" id="hero-cta-learn">
+          See How It Works
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ LIVE VALIDATION BANNER ============ -->
+  <section class="live-banner">
+    <div class="container">
+      <div class="live-banner-inner">
+        <div class="live-stat">
+          <div class="value">18/18</div>
+          <div class="label">E2E Tests Passing</div>
+        </div>
+        <div class="live-divider"></div>
+        <div class="live-stat">
+          <div class="value">3</div>
+          <div class="label">Hash-Chained Receipts</div>
+        </div>
+        <div class="live-divider"></div>
+        <div class="live-stat">
+          <div class="value">INTACT</div>
+          <div class="label">Chain Verification</div>
+        </div>
+        <div class="live-divider"></div>
+        <div class="live-stat">
+          <div class="value">1,166</div>
+          <div class="label">Tokens Governed</div>
+        </div>
+        <div class="live-divider"></div>
+        <div class="live-stat">
+          <div class="value">12</div>
+          <div class="label">Policy Evaluations</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ THREE PILLARS ============ -->
+  <section class="pillars" id="pillars">
+    <div class="container">
+      <div class="section-header">
+        <div class="section-label">The Platform</div>
+        <h2 class="section-title">Three Pillars of Governed AI</h2>
+        <p class="section-desc">
+          Memory, Governance, and Attestation — the complete stack
+          for compliant AI agent deployment.
+        </p>
+      </div>
+
+      <div class="pillars-grid">
+        <!-- Pillar 1: Memory -->
+        <div class="pillar-card">
+          <div class="pillar-icon">🧠</div>
+          <h3 class="pillar-title">Verifiable Memory</h3>
+          <p class="pillar-desc">
+            GMP-conformant memory stores with PostgreSQL + pgvector.
+            Every write, retrieve, delete, and supersede is audit-logged
+            with full provenance.
+          </p>
+          <ul class="pillar-features">
+            <li>384-dim HNSW vector search</li>
+            <li>Ed25519 content signatures</li>
+            <li>Multi-store per tenant</li>
+            <li>Semantic + keyword retrieval</li>
+          </ul>
+        </div>
+
+        <!-- Pillar 2: Governance -->
+        <div class="pillar-card">
+          <div class="pillar-icon">🛡️</div>
+          <h3 class="pillar-title">Policy-as-Code Governance</h3>
+          <p class="pillar-desc">
+            PDP/PEP architecture with a separated Policy Engine
+            and Governance Gateway. Rate limits, PII guards,
+            and human-in-the-loop escalation — enforced before every inference.
+          </p>
+          <ul class="pillar-features">
+            <li>Stateless policy evaluation</li>
+            <li>Append-only evidence logs</li>
+            <li>PII detection + redaction</li>
+            <li>HITL escalation gates</li>
+          </ul>
+        </div>
+
+        <!-- Pillar 3: Attestation -->
+        <div class="pillar-card">
+          <div class="pillar-icon">🔗</div>
+          <h3 class="pillar-title">Cryptographic Attestation</h3>
+          <p class="pillar-desc">
+            Every agent step produces a hash-chained execution receipt.
+            Every decision is Ed25519-signed. Every deletion generates
+            a GDPR erasure certificate. Tamper-evident by construction.
+          </p>
+          <ul class="pillar-features">
+            <li>BLAKE2b-256 hash chains</li>
+            <li>Deterministic replay engine</li>
+            <li>Signed erasure certificates</li>
+            <li>One-click regulatory reports</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ ATTESTATION DEEP-DIVE ============ -->
+  <section class="attestation" id="attestation">
+    <div class="container">
+      <div class="attestation-grid">
+        <!-- Visual: Receipt Chain -->
+        <div class="attestation-visual">
+          <div class="receipt-chain">
+            <div class="receipt-node">
+              <div class="node-header">
+                <span class="step-label">STEP 1 — Researcher</span>
+                <span class="status">✓ SIGNED</span>
+              </div>
+              <div class="hash">receipt: 7b27ec01...  |  input_hash: a3f8d2...</div>
+            </div>
+            <div class="chain-link">↓ BLAKE2b(previous_receipt_id)</div>
+            <div class="receipt-node">
+              <div class="node-header">
+                <span class="step-label">STEP 2 — Writer</span>
+                <span class="status">✓ SIGNED</span>
+              </div>
+              <div class="hash">receipt: 9e41f5ab...  |  prev_chain: 7b27ec...</div>
+            </div>
+            <div class="chain-link">↓ BLAKE2b(previous_receipt_id)</div>
+            <div class="receipt-node">
+              <div class="node-header">
+                <span class="step-label">STEP 3 — Reviewer</span>
+                <span class="status">✓ SIGNED</span>
+              </div>
+              <div class="hash">receipt: c4d89a12...  |  prev_chain: 9e41f5...</div>
+            </div>
+            <div class="chain-verdict">
+              <span class="verdict-label">🔗 CHAIN INTACT</span>
+              <span class="verified-count">3/3 steps verified</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Content: Proof Types -->
+        <div class="attestation-content">
+          <div class="section-label">The Differentiator</div>
+          <h2 class="section-title">Conformance &<br />Attestation</h2>
+          <p class="section-desc">
+            GRAFOMEM doesn't just run agents — it <strong>attests</strong> every step.
+            Five cryptographic proof types, aligned with real regulations.
+          </p>
+
+          <div class="proof-types">
+            <div class="proof-type">
+              <div class="proof-icon">📋</div>
+              <div>
+                <div class="proof-name">Execution Attestation</div>
+                <div class="proof-desc">Hash-chained receipts prove this workflow ran these steps in this order.</div>
+                <span class="proof-reg">→ EU AI Act Art. 12 (Logging)</span>
+              </div>
+            </div>
+            <div class="proof-type">
+              <div class="proof-icon">🔏</div>
+              <div>
+                <div class="proof-name">Inference Provenance</div>
+                <div class="proof-desc">Ed25519-signed decision records with full input/output context.</div>
+                <span class="proof-reg">→ EU AI Act Art. 14 (Oversight)</span>
+              </div>
+            </div>
+            <div class="proof-type">
+              <div class="proof-icon">🗑️</div>
+              <div>
+                <div class="proof-name">Deletion Attestation</div>
+                <div class="proof-desc">Signed erasure certificates with content hash. Prove data was deleted.</div>
+                <span class="proof-reg">→ GDPR Art. 17 (Right to Erasure)</span>
+              </div>
+            </div>
+            <div class="proof-type">
+              <div class="proof-icon">🔄</div>
+              <div>
+                <div class="proof-name">Decision Reproducibility</div>
+                <div class="proof-desc">Replay any decision with the same inputs. Measure confidence drift.</div>
+                <span class="proof-reg">→ DORA Art. 6 (ICT Resilience)</span>
+              </div>
+            </div>
+            <div class="proof-type">
+              <div class="proof-icon">📊</div>
+              <div>
+                <div class="proof-name">Policy Enforcement</div>
+                <div class="proof-desc">Append-only governance evaluation logs. Every gate recorded.</div>
+                <span class="proof-reg">→ ISO 42001 (AI Management)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ ARCHITECTURE ============ -->
+  <section class="architecture" id="architecture">
+    <div class="container">
+      <div class="section-header">
+        <div class="section-label">Under The Hood</div>
+        <h2 class="section-title">7-Layer Governance Stack</h2>
+        <p class="section-desc">
+          Built on the open GMP specification (MIT, v0.2.0). Every layer adds
+          a governance guarantee that compounds into compliance-grade AI.
+        </p>
+      </div>
+
+      <div class="arch-diagram">
+        <div class="arch-layers">
+          <div class="arch-layer">
+            <div class="layer-name">Layer 1 — Memory</div>
+            <div class="layer-desc">GMP-conformant stores · PostgreSQL + pgvector · HNSW 384-dim · Write / Retrieve / Delete / Supersede</div>
+          </div>
+          <div class="arch-layer">
+            <div class="layer-name">Layer 2 — Decision Trail</div>
+            <div class="layer-desc">Ed25519-signed inference logs · Full context capture · Retrieved facts + prompts + outputs</div>
+          </div>
+          <div class="arch-layer">
+            <div class="layer-name">Layer 3 — Erasure Proof</div>
+            <div class="layer-desc">GDPR Article 17 certificates · Content hash attestation · Signed deletion proof</div>
+          </div>
+          <div class="arch-layer">
+            <div class="layer-name">Layer 4 — Governance</div>
+            <div class="layer-desc">PDP/PEP architecture · Policy Engine (stateless) · Evidence Collector (append-only) · HITL gates</div>
+          </div>
+          <div class="arch-layer">
+            <div class="layer-name">Layer 5 — Reports</div>
+            <div class="layer-desc">One-click EU AI Act / GDPR / DORA compliance packages · Risk assessments · Audit bundles</div>
+          </div>
+          <div class="arch-layer">
+            <div class="layer-name">Layer 6 — Orchestrator</div>
+            <div class="layer-desc">8-step governed execution loop · Sequential / Supervisor / Round-robin · BYOM LLM registry</div>
+          </div>
+          <div class="arch-layer">
+            <div class="layer-name">Layer 7 — Attestation</div>
+            <div class="layer-desc">BLAKE2b hash chains · Execution receipts · Deterministic replay · Tamper detection</div>
+          </div>
+        </div>
+        <div class="arch-footer">
+          <strong>PostgreSQL 17 + pgvector</strong> · 19 tables · 61+ API endpoints · Ed25519 cryptographic signing
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ PRICING ============ -->
+  <section class="pricing" id="pricing">
+    <div class="container">
+      <div class="section-header">
+        <div class="section-label">Pricing</div>
+        <h2 class="section-title">Start Free. Scale with Compliance.</h2>
+        <p class="section-desc">
+          Every plan includes full governance. Enterprise adds HITL, SSO,
+          and dedicated infrastructure.
+        </p>
+      </div>
+
+      <div class="pricing-grid">
+        <!-- Starter -->
+        <div class="price-card" id="price-starter">
+          <div class="price-name">Starter</div>
+          <div class="price-amount"><span class="currency">$</span>0</div>
+          <div class="price-period">Free forever · 1,000 operations/mo</div>
+          <ul class="price-features">
+            <li>1 memory store</li>
+            <li>Decision trail logging</li>
+            <li>Governance gateway</li>
+            <li>Erasure certificates</li>
+            <li>Community support</li>
+          </ul>
+          <a href="/portal" class="price-btn">Get Started Free</a>
+        </div>
+
+        <!-- Pro -->
+        <div class="price-card featured" id="price-pro">
+          <div class="price-name">Pro</div>
+          <div class="price-amount"><span class="currency">$</span>99</div>
+          <div class="price-period">per month · 50,000 operations/mo</div>
+          <ul class="price-features">
+            <li>Unlimited memory stores</li>
+            <li>Execution receipts + hash chains</li>
+            <li>Deterministic replay</li>
+            <li>EU AI Act / GDPR reports</li>
+            <li>BYOM (bring your own model)</li>
+            <li>Priority support</li>
+          </ul>
+          <a href="/portal" class="price-btn">Start Pro Trial</a>
+        </div>
+
+        <!-- Enterprise -->
+        <div class="price-card" id="price-enterprise">
+          <div class="price-name">Enterprise</div>
+          <div class="price-amount">Custom</div>
+          <div class="price-period">Contact sales · Unlimited</div>
+          <ul class="price-features">
+            <li>Everything in Pro</li>
+            <li>HITL escalation flows</li>
+            <li>SSO / SAML integration</li>
+            <li>Dedicated infrastructure</li>
+            <li>Custom compliance reports</li>
+            <li>SLA + dedicated support</li>
+          </ul>
+          <a href="mailto:hello@grafomem.com" class="price-btn">Contact Sales</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ CTA ============ -->
+  <section class="cta">
+    <div class="container">
+      <div class="cta-box">
+        <h2>Ready to Govern<br />Your AI Agents?</h2>
+        <p>
+          Deploy with confidence. Every decision logged.
+          Every step attested. Every deletion proven.
+        </p>
+        <div class="hero-actions">
+          <a href="/portal" class="btn-primary" id="cta-portal">Open Portal →</a>
+          <a href="https://github.com/GNS-Foundation/grafomem" class="btn-outline" target="_blank" id="cta-github">View on GitHub</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ FOOTER ============ -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-inner">
+        <div class="footer-brand">
+          <span class="logo-diamond">◆</span>
+          <span class="brand-name">GRAFOMEM</span>
+        </div>
+        <ul class="footer-links">
+          <li><a href="#pillars">Platform</a></li>
+          <li><a href="#attestation">Attestation</a></li>
+          <li><a href="#architecture">Architecture</a></li>
+          <li><a href="/docs">API Docs</a></li>
+          <li><a href="/portal">Portal</a></li>
+          <li><a href="https://github.com/GNS-Foundation/grafomem">GitHub</a></li>
+        </ul>
+        <div class="footer-copy">
+          © 2026 GNS Foundation. Open GMP spec: MIT License.
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Smooth scroll for nav links -->
+  <script>
+    document.querySelectorAll('a[href^="#"]').forEach(a => {
+      a.addEventListener('click', e => {
+        e.preventDefault();
+        const target = document.querySelector(a.getAttribute('href'));
+        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+
+    // Navbar scroll effect
+    let lastScroll = 0;
+    window.addEventListener('scroll', () => {
+      const nav = document.getElementById('top-nav');
+      const scrollY = window.scrollY;
+      if (scrollY > 80) {
+        nav.style.borderBottomColor = 'rgba(42,42,62,0.6)';
+        nav.style.background = 'rgba(10,10,15,0.92)';
+      } else {
+        nav.style.borderBottomColor = 'var(--border)';
+        nav.style.background = 'rgba(10,10,15,0.75)';
+      }
+      lastScroll = scrollY;
+    });
+
+    // Intersection Observer for fade-in animations
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.style.opacity = '1';
+          entry.target.style.transform = 'translateY(0)';
+        }
+      });
+    }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
+
+    document.querySelectorAll('.pillar-card, .proof-type, .arch-layer, .price-card').forEach(el => {
+      el.style.opacity = '0';
+      el.style.transform = 'translateY(20px)';
+      el.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+      observer.observe(el);
+    });
+  </script>
+</body>
+</html>

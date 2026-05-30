@@ -112,7 +112,7 @@ def create_erasure_router(erasure_service) -> APIRouter:
     # POST /v1/erasure/issue — issue an erasure certificate
     # ------------------------------------------------------------------
 
-    @router.post("/issue")
+    @router.post("/issue", response_model=CertificateResponse)
     async def issue_certificate(req: IssueErasureRequest, request: Request):
         """Issue a signed erasure certificate for a deleted fact.
 
@@ -163,7 +163,7 @@ def create_erasure_router(erasure_service) -> APIRouter:
     # GET /v1/erasure/{certificate_id} — get a certificate
     # ------------------------------------------------------------------
 
-    @router.get("/{certificate_id}")
+    @router.get("/{certificate_id}", response_model=CertificateResponse)
     async def get_certificate(certificate_id: str, request: Request):
         """Retrieve a single erasure certificate by its ID."""
         tenant_id = _get_tenant_id(request)
@@ -180,7 +180,7 @@ def create_erasure_router(erasure_service) -> APIRouter:
     # GET /v1/erasure/{certificate_id}/verify — verify signature
     # ------------------------------------------------------------------
 
-    @router.get("/{certificate_id}/verify")
+    @router.get("/{certificate_id}/verify", response_model=VerifyResponse)
     async def verify_certificate(certificate_id: str, request: Request):
         """Verify the Ed25519 signature on an erasure certificate.
 
@@ -200,7 +200,7 @@ def create_erasure_router(erasure_service) -> APIRouter:
     # GET /v1/erasure/fact/{fact_ref} — find certificate for a fact
     # ------------------------------------------------------------------
 
-    @router.get("/fact/{fact_ref}")
+    @router.get("/fact/{fact_ref}", response_model=CertificateResponse)
     async def get_by_fact(fact_ref: int, request: Request):
         """Find the erasure certificate for a specific fact ref."""
         tenant_id = _get_tenant_id(request)

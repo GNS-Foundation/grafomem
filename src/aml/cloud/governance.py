@@ -394,10 +394,42 @@ class GovernanceGateway:
         """Evaluate and return (allowed, logs).
 
         Returns False if any policy denied or escalated.
+        Dispatches webhook alerts for denials and escalations.
         """
         logs = self.evaluate(tenant_id, operation, context)
         denied = any(log.result == EvaluationResult.DENIED for log in logs)
         escalated = any(log.result == EvaluationResult.ESCALATED for log in logs)
+
+        # Dispatch webhook alerts for governance events
+        wh = getattr(self, "_webhook_service", None)
+        if wh is not None:
+            for log in logs:
+                if log.result == EvaluationResult.DENIED:
+                    wh.dispatch(tenant_id, "governance.denied", {
+                        "policy_id": log.policy_id,
+                        "policy_name": log.policy_name,
+                        "operation": log.operation,
+                        "detail": log.detail,
+                    })
+                elif log.result == EvaluationResult.ESCALATED:
+                    wh.dispatch(tenant_id, "governance.escalated", {
+                        "policy_id": log.policy_id,
+                        "policy_name": log.policy_name,
+                        "operation": log.operation,
+                        "detail": log.detail,
+                    })
+
+        try:
+            from aml.cloud.metrics import GOVERNANCE_EVALUATIONS
+            if escalated:
+                GOVERNANCE_EVALUATIONS.labels(result="escalate").inc()
+            elif denied:
+                GOVERNANCE_EVALUATIONS.labels(result="deny").inc()
+            else:
+                GOVERNANCE_EVALUATIONS.labels(result="allow").inc()
+        except Exception:
+            pass
+
         return (not denied and not escalated), logs
 
     # ── Legacy bridge (kept for backward compatibility) ────────

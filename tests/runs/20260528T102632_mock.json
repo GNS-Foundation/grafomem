@@ -1,0 +1,203 @@
+{
+  "content_hash": "b809801ae3d7ac7719a1933f5dd57dd184c41bf3f46d8cc2a22bceb2003fa37b",
+  "mode": "mock",
+  "report_type": "grafomem_conformance",
+  "results": [
+    {
+      "detail": "tenant=ecc26147a600...",
+      "live_only": false,
+      "name": "Signup (Tenant A)",
+      "state": "pass"
+    },
+    {
+      "detail": "tenant_b=8c130aa96b21...",
+      "live_only": false,
+      "name": "Signup (Tenant B)",
+      "state": "pass"
+    },
+    {
+      "detail": "store_id=c156d46a7a31",
+      "live_only": false,
+      "name": "Create Store",
+      "state": "pass"
+    },
+    {
+      "detail": "5/5 written, refs=[1, 2, 3]...",
+      "live_only": false,
+      "name": "Seed 5 Facts",
+      "state": "pass"
+    },
+    {
+      "detail": "2/2 (rate_limit + pii_guard)",
+      "live_only": false,
+      "name": "Create 2 Policies",
+      "state": "pass"
+    },
+    {
+      "detail": "9cc6ca447188...",
+      "live_only": false,
+      "name": "Register LLM (mock-model)",
+      "state": "pass"
+    },
+    {
+      "detail": "3/3 \u2014 bc074ab7, d8d276d8, e7b6b333",
+      "live_only": false,
+      "name": "Create 3 Agents",
+      "state": "pass"
+    },
+    {
+      "detail": "workflow_id=15f3cb3fa62e...",
+      "live_only": false,
+      "name": "Create Workflow",
+      "state": "pass"
+    },
+    {
+      "detail": "status=completed steps=3 tokens=238",
+      "live_only": false,
+      "name": "Run 3-Agent Workflow",
+      "state": "pass"
+    },
+    {
+      "detail": "expected=3 actual=3",
+      "live_only": false,
+      "name": "Receipt Count == Step Count",
+      "state": "pass"
+    },
+    {
+      "detail": "prev_hash=None",
+      "live_only": false,
+      "name": "Genesis Receipt Has Null Parent",
+      "state": "pass"
+    },
+    {
+      "detail": "step=1 prev_hash=set",
+      "live_only": false,
+      "name": "Receipt 1 Has Parent Hash",
+      "state": "pass"
+    },
+    {
+      "detail": "step=2 prev_hash=set",
+      "live_only": false,
+      "name": "Receipt 2 Has Parent Hash",
+      "state": "pass"
+    },
+    {
+      "detail": "status=intact steps_verified=3",
+      "live_only": false,
+      "name": "Hash Chain INTACT",
+      "state": "pass"
+    },
+    {
+      "detail": "3 decisions found",
+      "live_only": false,
+      "name": "Decision Trail Has Records",
+      "state": "pass"
+    },
+    {
+      "detail": "input_reconstructed=True",
+      "live_only": false,
+      "name": "Replay Input Reconstructed",
+      "state": "pass"
+    },
+    {
+      "detail": "model_available=True",
+      "live_only": false,
+      "name": "Replay Model Available",
+      "state": "pass"
+    },
+    {
+      "detail": "status=diverged confidence=0.28",
+      "live_only": false,
+      "name": "Replay Produces Output (Not Error/Impossible)",
+      "state": "pass"
+    },
+    {
+      "detail": "allowed=False logs=0",
+      "live_only": false,
+      "name": "P0-1a: Disallowed Model IS Denied",
+      "state": "pass"
+    },
+    {
+      "detail": "allowed=True",
+      "live_only": false,
+      "name": "P0-1b: Allowed Model IS Permitted",
+      "state": "pass"
+    },
+    {
+      "detail": "allowed=False",
+      "live_only": false,
+      "name": "P0-2a: PII IS Caught",
+      "state": "pass"
+    },
+    {
+      "detail": "allowed=True",
+      "live_only": false,
+      "name": "P0-2b: Clean Input NOT Falsely Flagged",
+      "state": "pass"
+    },
+    {
+      "detail": "status=200",
+      "live_only": false,
+      "name": "P0-3a: Cross-Tenant Access IS Blocked",
+      "state": "fail"
+    },
+    {
+      "detail": "status=200 memories=3",
+      "live_only": false,
+      "name": "P0-3b: Same-Tenant Access IS Allowed",
+      "state": "pass"
+    },
+    {
+      "detail": "ref=1",
+      "live_only": false,
+      "name": "Erasure Leg 1: Fact Deleted From Memory",
+      "state": "pass"
+    },
+    {
+      "detail": "found_deleted=False results=3",
+      "live_only": false,
+      "name": "Erasure Leg 1b: Deleted Fact Not Retrievable",
+      "state": "pass"
+    },
+    {
+      "detail": "expected=6346e282ae040062... got=6346e282ae040062...",
+      "live_only": false,
+      "name": "Erasure Leg 2: Cert Content Hash Matches",
+      "state": "pass"
+    },
+    {
+      "detail": "valid=False detail=Certificate is not signed",
+      "live_only": false,
+      "name": "Erasure Leg 3: Certificate Verifiable",
+      "state": "pass"
+    },
+    {
+      "detail": "report_id=05a6b3e407a5...",
+      "live_only": false,
+      "name": "Generate EU AI Act Report",
+      "state": "pass"
+    },
+    {
+      "detail": "24 evaluations, 3 active policies",
+      "live_only": false,
+      "name": "Governance Stats",
+      "state": "pass"
+    },
+    {
+      "detail": "agents=3 workflows=1 steps=3",
+      "live_only": false,
+      "name": "Orchestrator Stats",
+      "state": "pass"
+    }
+  ],
+  "server": "http://localhost:8080",
+  "summary": {
+    "degraded": 0,
+    "failed": 1,
+    "passed": 30,
+    "skipped": 0,
+    "total": 31
+  },
+  "timestamp": "2026-05-28T08:26:32.756597+00:00",
+  "version": "2.0"
+}

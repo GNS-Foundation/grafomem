@@ -15,6 +15,14 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
+from aml.cloud.schemas import (
+    EvaluationResultResponse,
+    GovernanceLogResponse,
+    GovernanceStatsResponse,
+    PolicyListResponse,
+    PolicyResponse,
+)
+
 logger = logging.getLogger("grafomem.cloud.governance_routes")
 
 
@@ -76,7 +84,7 @@ def create_governance_router(gateway) -> APIRouter:
     # GET /v1/governance/stats — summary stats
     # ------------------------------------------------------------------
 
-    @router.get("/stats")
+    @router.get("/stats", response_model=GovernanceStatsResponse)
     async def governance_stats(request: Request):
         """Summary statistics for governance policies and evaluations."""
         tenant_id = _get_tenant_id(request)
@@ -133,7 +141,7 @@ def create_governance_router(gateway) -> APIRouter:
     # POST /v1/governance/policies — create a policy
     # ------------------------------------------------------------------
 
-    @router.post("/policies")
+    @router.post("/policies", response_model=PolicyResponse)
     async def create_policy(req: CreatePolicyRequest, request: Request):
         """Create a new governance policy."""
         tenant_id = _get_tenant_id(request)
@@ -161,7 +169,7 @@ def create_governance_router(gateway) -> APIRouter:
     # GET /v1/governance/policies — list policies
     # ------------------------------------------------------------------
 
-    @router.get("/policies")
+    @router.get("/policies", response_model=PolicyListResponse)
     async def list_policies(
         request: Request,
         enabled_only: bool = Query(False),
@@ -178,7 +186,7 @@ def create_governance_router(gateway) -> APIRouter:
     # GET /v1/governance/policies/{policy_id} — get a policy
     # ------------------------------------------------------------------
 
-    @router.get("/policies/{policy_id}")
+    @router.get("/policies/{policy_id}", response_model=PolicyResponse)
     async def get_policy(policy_id: str, request: Request):
         """Get a single governance policy by ID."""
         tenant_id = _get_tenant_id(request)
@@ -193,7 +201,7 @@ def create_governance_router(gateway) -> APIRouter:
     # PUT /v1/governance/policies/{policy_id} — update a policy
     # ------------------------------------------------------------------
 
-    @router.put("/policies/{policy_id}")
+    @router.put("/policies/{policy_id}", response_model=PolicyResponse)
     async def update_policy(
         policy_id: str, req: UpdatePolicyRequest, request: Request,
     ):
@@ -277,7 +285,7 @@ def create_governance_router(gateway) -> APIRouter:
     # GET /v1/governance/logs — evaluation logs
     # ------------------------------------------------------------------
 
-    @router.get("/logs")
+    @router.get("/logs", response_model=GovernanceLogResponse)
     async def get_evaluation_logs(
         request: Request,
         policy_id: str | None = Query(None),

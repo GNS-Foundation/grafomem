@@ -27,7 +27,10 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Iterator
+from typing import Any, Iterator, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from aml.cloud.streaming_events import StreamEmitter
 
 import psycopg
 from psycopg.rows import dict_row
@@ -289,6 +292,7 @@ class OrchestratorService:
         store_manager: Any | None = None,
         llm_registry: Any | None = None,
         tool_registry: Any | None = None,
+        execution_receipts: Any | None = None,
     ) -> None:
         self._db_url = db_url
         self._conn: psycopg.Connection[dict[str, Any]] | None = None
@@ -298,6 +302,7 @@ class OrchestratorService:
         self._store_manager = store_manager
         self._llm_registry = llm_registry
         self._tool_registry = tool_registry
+        self._execution_receipts = execution_receipts
 
     # ------------------------------------------------------------------
     # Connection
@@ -591,6 +596,7 @@ class OrchestratorService:
         input_text: str,
         *,
         parent_step_id: str | None = None,
+        emitter: StreamEmitter | None = None,
     ) -> StepRecord:
         """Execute a single governed agent step.
 
@@ -666,6 +672,20 @@ class OrchestratorService:
                 step_status.value, agent.name, workflow_id,
                 "denied" if not escalated else "escalated",
             )
+
+            # Stream: governance deny event
+            if emitter:
+                emitter.emit(
+                    "step.governance_deny",
+                    {
+                        "reason": step_status.value,
+                        "policies_evaluated": len(gov_logs),
+                        "action": "escalate" if escalated else "deny",
+                    },
+                    step_index=step_number,
+                    agent_name=agent.name,
+                )
+
             return step
 
         # ── 2. MEMORY RETRIEVE ──────────────────────────────
@@ -699,6 +719,18 @@ class OrchestratorService:
                             store_id, e,
                         )
 
+        # Stream: memory retrieval event
+        if emitter:
+            emitter.emit(
+                "step.memory_retrieve",
+                {
+                    "facts_found": len(retrieved_facts),
+                    "store_ids": list({f.get("store_id", "") for f in retrieved_facts}),
+                },
+                step_index=step_number,
+                agent_name=agent.name,
+            )
+
         # ── 3. LLM INFERENCE ───────────────────────────────
         raw_output = ""
         tool_calls: list[dict] = []
@@ -727,6 +759,19 @@ class OrchestratorService:
                     max_tokens=agent.max_tokens_per_step,
                 )
 
+                # Stream: LLM inference start
+                if emitter:
+                    emitter.emit(
+                        "step.llm_start",
+                        {
+                            "model_id": agent.model_id,
+                            "token_budget": agent.max_tokens_per_step,
+                            "facts_in_context": len(retrieved_facts),
+                        },
+                        step_index=step_number,
+                        agent_name=agent.name,
+                    )
+
                 t0 = time.monotonic()
                 llm_response = self._llm_registry.infer(
                     agent.tenant_id, llm_request,
@@ -736,6 +781,20 @@ class OrchestratorService:
                 raw_output = llm_response.content
                 tool_calls = llm_response.tool_calls
                 tokens_used = llm_response.tokens_output
+
+                # Stream: LLM inference complete
+                if emitter:
+                    emitter.emit(
+                        "step.llm_complete",
+                        {
+                            "tokens_used": tokens_used,
+                            "latency_ms": latency_ms,
+                            "has_tool_calls": bool(tool_calls),
+                            "output_preview": raw_output[:200] if raw_output else "",
+                        },
+                        step_index=step_number,
+                        agent_name=agent.name,
+                    )
 
             except Exception as e:
                 logger.error("LLM inference failed: %s", e)
@@ -774,6 +833,20 @@ class OrchestratorService:
                         "error": str(e),
                         "governance_allowed": True,
                     })
+
+            # Stream: tool call events
+            if emitter:
+                for tr in tool_results:
+                    emitter.emit(
+                        "step.tool_call",
+                        {
+                            "tool_name": tr.get("name", "unknown"),
+                            "success": tr.get("success", False),
+                            "governance_allowed": tr.get("governance_allowed", True),
+                        },
+                        step_index=step_number,
+                        agent_name=agent.name,
+                    )
 
         # ── 5. DECISION TRAIL ──────────────────────────────
         decision_id = None
@@ -846,6 +919,33 @@ class OrchestratorService:
         # Update workflow counters
         self._increment_workflow(workflow_id, tokens_used)
 
+        try:
+            from aml.cloud.metrics import TOKENS_CONSUMED
+            TOKENS_CONSUMED.labels(model_id=agent.model_id).inc(tokens_used)
+        except Exception:
+            pass
+
+        # ── 8. EXECUTION RECEIPT ───────────────────────────
+        if self._execution_receipts:
+            try:
+                self._execution_receipts.issue_receipt(
+                    tenant_id=agent.tenant_id,
+                    step_id=step_id,
+                    workflow_id=workflow_id,
+                    step_number=step_number,
+                    input_text=input_text,
+                    retrieved_contents=[
+                        f.get("content", "") for f in retrieved_facts
+                    ],
+                    governance_logs=gov_log_dicts,
+                    model_id=agent.model_id,
+                    raw_output=raw_output,
+                    decision_id=decision_id,
+                    tool_calls=tool_calls if tool_calls else None,
+                )
+            except Exception as e:
+                logger.warning("Execution receipt issuance failed: %s", e)
+
         logger.info(
             "Step completed: agent=%s step=%d tokens=%d latency=%dms "
             "facts=%d tools=%d decision=%s",
@@ -853,6 +953,23 @@ class OrchestratorService:
             len(retrieved_facts), len(tool_calls),
             decision_id or "none",
         )
+
+        # Stream: step complete event
+        if emitter:
+            emitter.emit(
+                "step.complete",
+                {
+                    "status": "completed",
+                    "decision_id": decision_id,
+                    "tokens_used": tokens_used,
+                    "latency_ms": latency_ms,
+                    "facts_retrieved": len(retrieved_facts),
+                    "tool_calls": len(tool_calls),
+                    "output_preview": raw_output[:200] if raw_output else "",
+                },
+                step_index=step_number,
+                agent_name=agent.name,
+            )
 
         return step
 
@@ -864,6 +981,8 @@ class OrchestratorService:
         self,
         workflow_id: str,
         initial_input: str,
+        *,
+        emitter: StreamEmitter | None = None,
     ) -> Workflow:
         """Execute a workflow from start to finish.
 
@@ -880,13 +999,24 @@ class OrchestratorService:
         self._update_workflow_status(workflow_id, WorkflowStatus.RUNNING)
         self._set_workflow_started(workflow_id)
 
+        # Stream: workflow started event
+        if emitter:
+            emitter.set_workflow(workflow_id)
+            emitter.emit(
+                "workflow.started",
+                {
+                    "mode": workflow.mode.value,
+                    "agent_count": len(workflow.agent_ids),
+                },
+            )
+
         try:
             if workflow.mode == WorkflowMode.SEQUENTIAL:
-                self._run_sequential(workflow, initial_input)
+                self._run_sequential(workflow, initial_input, emitter=emitter)
             elif workflow.mode == WorkflowMode.SUPERVISOR:
-                self._run_supervisor(workflow, initial_input)
+                self._run_supervisor(workflow, initial_input, emitter=emitter)
             elif workflow.mode == WorkflowMode.ROUND_ROBIN:
-                self._run_round_robin(workflow, initial_input)
+                self._run_round_robin(workflow, initial_input, emitter=emitter)
 
             # Check final status (might be WAITING_HITL)
             final = self.get_workflow(workflow_id)
@@ -896,13 +1026,73 @@ class OrchestratorService:
                 )
                 self._set_workflow_completed(workflow_id)
 
+                try:
+                    from aml.cloud.metrics import WORKFLOWS_TOTAL
+                    WORKFLOWS_TOTAL.labels(status=WorkflowStatus.COMPLETED.value).inc()
+                except Exception:
+                    pass
+
+                # Webhook: workflow completed
+                wh = getattr(self, "_webhook_service", None)
+                if wh is not None and final:
+                    wh.dispatch(final.tenant_id, "workflow.completed", {
+                        "workflow_id": workflow_id,
+                        "total_steps": final.current_step,
+                        "total_tokens": final.total_tokens,
+                    })
+
+            # Stream: workflow complete event
+            if emitter:
+                final = final or self.get_workflow(workflow_id)
+                duration_ms = int((time.monotonic() - emitter._start_time) * 1000)
+                emitter.emit(
+                    "workflow.complete",
+                    {
+                        "status": final.status.value if final else "completed",
+                        "total_steps": final.current_step if final else 0,
+                        "total_tokens": final.total_tokens if final else 0,
+                        "duration_ms": duration_ms,
+                    },
+                )
+                emitter.close()
+
         except Exception as e:
             logger.error("Workflow %s failed: %s", workflow_id, e)
             self._update_workflow_status(workflow_id, WorkflowStatus.FAILED)
 
+            try:
+                from aml.cloud.metrics import WORKFLOWS_TOTAL
+                WORKFLOWS_TOTAL.labels(status=WorkflowStatus.FAILED.value).inc()
+            except Exception:
+                pass
+
+            # Webhook: workflow error
+            wh = getattr(self, "_webhook_service", None)
+            if wh is not None:
+                failed_wf = self.get_workflow(workflow_id)
+                if failed_wf:
+                    wh.dispatch(failed_wf.tenant_id, "workflow.error", {
+                        "workflow_id": workflow_id,
+                        "error": str(e),
+                    })
+
+            # Stream: workflow error event
+            if emitter:
+                emitter.emit(
+                    "workflow.error",
+                    {"error": str(e)},
+                )
+                emitter.close()
+
         return self.get_workflow(workflow_id)
 
-    def _run_sequential(self, workflow: Workflow, initial_input: str) -> None:
+    def _run_sequential(
+        self,
+        workflow: Workflow,
+        initial_input: str,
+        *,
+        emitter: StreamEmitter | None = None,
+    ) -> None:
         """Sequential: agents run in order, each receives previous output."""
         current_input = initial_input
 
@@ -913,15 +1103,48 @@ class OrchestratorService:
                 self._update_workflow_status(
                     workflow.workflow_id, WorkflowStatus.TERMINATED,
                 )
+
+                try:
+                    from aml.cloud.metrics import WORKFLOWS_TOTAL
+                    WORKFLOWS_TOTAL.labels(status=WorkflowStatus.TERMINATED.value).inc()
+                except Exception:
+                    pass
                 logger.warning(
                     "Workflow %s terminated: max steps reached",
                     workflow.workflow_id,
                 )
                 return
 
+            # Stream: step started event
+            if emitter:
+                agent_def = self.get_agent(agent_id)
+                emitter.emit(
+                    "step.started",
+                    {
+                        "agent_role": agent_def.role.value if agent_def else "unknown",
+                    },
+                    step_index=wf.current_step if wf else 0,
+                    agent_name=agent_def.name if agent_def else agent_id[:8],
+                )
+
+            # Stream: governance pass event (emitted inside execute_step only
+            # on deny — we emit pass here before the call for the happy path)
             step = self.execute_step(
                 workflow.workflow_id, agent_id, current_input,
+                emitter=emitter,
             )
+
+            # Emit governance pass after the fact (if step was allowed)
+            if emitter and step.governance_allowed:
+                emitter.emit(
+                    "step.governance_pass",
+                    {
+                        "policies_evaluated": len(step.governance_logs),
+                        "allowed": True,
+                    },
+                    step_index=step.step_number,
+                    agent_name=step.agent_id[:8],
+                )
 
             # If denied or escalated, stop
             if step.status in (StepStatus.DENIED, StepStatus.ESCALATED):
@@ -930,7 +1153,13 @@ class OrchestratorService:
             # Chain output to next agent
             current_input = step.raw_output
 
-    def _run_supervisor(self, workflow: Workflow, initial_input: str) -> None:
+    def _run_supervisor(
+        self,
+        workflow: Workflow,
+        initial_input: str,
+        *,
+        emitter: StreamEmitter | None = None,
+    ) -> None:
         """Supervisor: a supervisor agent routes tasks to workers."""
         if not workflow.supervisor_agent_id:
             raise ValueError("No supervisor_agent_id set")
@@ -986,7 +1215,13 @@ class OrchestratorService:
                 # No tool calls = supervisor produced final answer
                 return
 
-    def _run_round_robin(self, workflow: Workflow, initial_input: str) -> None:
+    def _run_round_robin(
+        self,
+        workflow: Workflow,
+        initial_input: str,
+        *,
+        emitter: StreamEmitter | None = None,
+    ) -> None:
         """Round-robin: agents take turns until max steps."""
         current_input = initial_input
         agent_count = len(workflow.agent_ids)
@@ -1041,6 +1276,13 @@ class OrchestratorService:
             self._update_workflow_status(
                 workflow_id, WorkflowStatus.TERMINATED,
             )
+
+            try:
+                from aml.cloud.metrics import WORKFLOWS_TOTAL
+                WORKFLOWS_TOTAL.labels(status=WorkflowStatus.TERMINATED.value).inc()
+            except Exception:
+                pass
+
             return self.get_workflow(workflow_id)
 
         # Re-run from the last step's input
@@ -1071,6 +1313,12 @@ class OrchestratorService:
             )
             self._set_workflow_completed(workflow_id)
 
+            try:
+                from aml.cloud.metrics import WORKFLOWS_TOTAL
+                WORKFLOWS_TOTAL.labels(status=WorkflowStatus.COMPLETED.value).inc()
+            except Exception:
+                pass
+
         return self.get_workflow(workflow_id)
 
     def terminate_workflow(self, workflow_id: str, tenant_id: str) -> bool:
@@ -1079,6 +1327,12 @@ class OrchestratorService:
         if workflow is None or workflow.tenant_id != tenant_id:
             return False
         self._update_workflow_status(workflow_id, WorkflowStatus.TERMINATED)
+
+        try:
+            from aml.cloud.metrics import WORKFLOWS_TOTAL
+            WORKFLOWS_TOTAL.labels(status=WorkflowStatus.TERMINATED.value).inc()
+        except Exception:
+            pass
         return True
 
     # ------------------------------------------------------------------

@@ -97,11 +97,14 @@ class EvidenceCollector:
 
     def ensure_schema(self) -> None:
         conn = self._get_conn()
-        conn.execute(_SCHEMA_SQL)
+        # First ensure migration column exists (may already exist from
+        # governance.py creating the table without decision_id)
         try:
             conn.execute(_MIGRATION_SQL)
         except Exception:
-            pass  # Column already exists
+            pass  # Column may not exist yet if table doesn't exist
+        # Now create table + indexes (all IF NOT EXISTS, safe to re-run)
+        conn.execute(_SCHEMA_SQL)
         logger.info("Evidence Collector schema ensured")
 
     # ------------------------------------------------------------------

@@ -19,6 +19,12 @@ from pydantic import BaseModel, Field
 
 logger = logging.getLogger("grafomem.cloud.regulatory_routes")
 
+from aml.cloud.schemas import (
+    ReportResponse,
+    ReportListResponse,
+    ReportStatsResponse,
+)
+
 
 # ============================================================================
 # Pydantic models
@@ -53,7 +59,7 @@ def create_regulatory_router(report_service) -> APIRouter:
     # GET /v1/reports/stats — summary stats
     # ------------------------------------------------------------------
 
-    @router.get("/stats")
+    @router.get("/stats", response_model=ReportStatsResponse)
     async def report_stats(request: Request):
         """Summary statistics for regulatory reports."""
         tenant_id = _get_tenant_id(request)
@@ -99,7 +105,7 @@ def create_regulatory_router(report_service) -> APIRouter:
     # POST /v1/reports/generate — generate a report
     # ------------------------------------------------------------------
 
-    @router.post("/generate")
+    @router.post("/generate", response_model=ReportResponse)
     async def generate_report(req: GenerateReportRequest, request: Request):
         """Generate a new regulatory compliance report."""
         tenant_id = _get_tenant_id(request)
@@ -122,7 +128,7 @@ def create_regulatory_router(report_service) -> APIRouter:
     # GET /v1/reports/ — list reports
     # ------------------------------------------------------------------
 
-    @router.get("/")
+    @router.get("/", response_model=ReportListResponse)
     async def list_reports(
         request: Request,
         limit: int = Query(20, ge=1, le=100),
@@ -140,7 +146,7 @@ def create_regulatory_router(report_service) -> APIRouter:
     # GET /v1/reports/{report_id} — get full report
     # ------------------------------------------------------------------
 
-    @router.get("/{report_id}")
+    @router.get("/{report_id}", response_model=ReportResponse)
     async def get_report(report_id: str, request: Request):
         """Retrieve a full regulatory report."""
         tenant_id = _get_tenant_id(request)
@@ -173,6 +179,42 @@ def create_regulatory_router(report_service) -> APIRouter:
         return Response(
             content=content,
             media_type="application/json",
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
+        )
+
+    # ------------------------------------------------------------------
+    # GET /v1/reports/{report_id}/download/pdf — download as PDF
+    # ------------------------------------------------------------------
+
+    @router.get("/{report_id}/download/pdf")
+    async def download_report_pdf(report_id: str, request: Request):
+        """Download the report as a styled PDF document."""
+        tenant_id = _get_tenant_id(request)
+        report = report_service.get(report_id)
+
+        if report is None or report.tenant_id != tenant_id:
+            raise HTTPException(404, f"Report '{report_id}' not found")
+
+        try:
+            from aml.cloud.pdf_renderer import render_report_pdf
+            pdf_bytes = render_report_pdf(report)
+        except ImportError:
+            raise HTTPException(
+                501,
+                "PDF export requires fpdf2. Install with: pip install fpdf2",
+            )
+        except Exception as e:
+            logger.error("PDF rendering failed: %s", e)
+            raise HTTPException(500, f"PDF rendering failed: {e}")
+
+        filename = (
+            f"grafomem_{report.report_type.value}"
+            f"_{report.created_at.strftime('%Y%m%d')}.pdf"
+        )
+
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
             headers={"Content-Disposition": f"attachment; filename={filename}"},
         )
 

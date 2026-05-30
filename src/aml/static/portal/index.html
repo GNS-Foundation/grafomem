@@ -106,6 +106,15 @@
           <a class="nav-item" data-section="orchestrator" id="nav-orchestrator">
             <span class="nav-icon">⎔</span> Orchestrator
           </a>
+          <a class="nav-item" data-section="webhooks" id="nav-webhooks">
+            <span class="nav-icon">⚡</span> Webhooks
+          </a>
+          <a class="nav-item" data-section="monitoring" id="nav-monitoring">
+            <span class="nav-icon">📊</span> Monitoring
+          </a>
+          <a class="nav-item" data-section="docs" id="nav-docs">
+            <span class="nav-icon">⊞</span> Docs
+          </a>
         </div>
         <div class="sidebar-footer">
           <div class="user-info" id="user-info">
@@ -446,6 +455,7 @@ curl -X POST https://grafomem-production.up.railway.app/v1/stores/default/retrie
               <h2 id="rr-detail-title">Report Detail</h2>
               <div style="display:flex;gap:0.5rem">
                 <button class="btn btn-sm btn-primary" id="rr-download-btn">⬇ Download JSON</button>
+                <button class="btn btn-sm" id="rr-download-pdf-btn" style="background:var(--success);color:#fff">📄 Download PDF</button>
                 <button class="btn btn-sm" id="rr-close-detail">✕ Close</button>
               </div>
             </div>
@@ -880,6 +890,328 @@ curl -X POST https://grafomem-production.up.railway.app/v1/stores/default/retrie
                 <button class="btn" id="btn-cancel-provider">Cancel</button>
               </div>
             </div>
+          </div>
+        </section>
+
+        <!-- WEBHOOKS -->
+        <section id="section-webhooks" class="section" style="display:none">
+          <h1 class="section-title">Webhook Alerts</h1>
+          <p class="section-subtitle">Push notifications for governance denials, workflow events, and erasure certificates</p>
+
+          <!-- Register Webhook -->
+          <div class="card">
+            <h2>Register Webhook</h2>
+            <div class="dt-filter-row">
+              <div class="form-group dt-filter-item">
+                <label for="wh-url">Endpoint URL</label>
+                <input type="url" id="wh-url" placeholder="https://example.com/grafomem-events" />
+              </div>
+              <div class="form-group dt-filter-item">
+                <label for="wh-desc">Description</label>
+                <input type="text" id="wh-desc" placeholder="Production alerts" />
+              </div>
+            </div>
+            <div class="dt-filter-row" style="margin-top:0.5rem">
+              <div class="form-group" style="flex:1">
+                <label>Events</label>
+                <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-top:0.3rem">
+                  <label style="font-weight:400;font-size:0.85rem"><input type="checkbox" class="wh-event" value="governance.denied" checked /> governance.denied</label>
+                  <label style="font-weight:400;font-size:0.85rem"><input type="checkbox" class="wh-event" value="governance.escalated" checked /> governance.escalated</label>
+                  <label style="font-weight:400;font-size:0.85rem"><input type="checkbox" class="wh-event" value="workflow.completed" /> workflow.completed</label>
+                  <label style="font-weight:400;font-size:0.85rem"><input type="checkbox" class="wh-event" value="workflow.error" checked /> workflow.error</label>
+                  <label style="font-weight:400;font-size:0.85rem"><input type="checkbox" class="wh-event" value="erasure.issued" /> erasure.issued</label>
+                </div>
+              </div>
+              <div class="dt-filter-actions">
+                <button class="btn btn-primary btn-sm" id="wh-register-btn">⚡ Register Webhook</button>
+              </div>
+            </div>
+            <div id="wh-secret-display" style="display:none;margin-top:1rem" class="dt-detail-section">
+              <h3>⚠ Signing Secret (shown once)</h3>
+              <code id="wh-secret-value" style="word-break:break-all;font-size:0.85rem;color:var(--warning)"></code>
+            </div>
+          </div>
+
+          <!-- Webhook List -->
+          <div class="card dt-list-card">
+            <div class="dt-list-header">
+              <h2>Registered Webhooks</h2>
+              <span class="dt-count" id="wh-count">0 webhooks</span>
+            </div>
+            <div class="dt-table-wrap">
+              <table class="dt-table">
+                <thead>
+                  <tr>
+                    <th>URL</th>
+                    <th>Events</th>
+                    <th>Status</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="wh-table-body">
+                  <tr class="dt-empty-row">
+                    <td colspan="4">No webhooks registered yet. Create one above.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Delivery Log -->
+          <div class="card dt-list-card" id="wh-delivery-panel" style="display:none">
+            <div class="dt-list-header">
+              <h2>Delivery Log</h2>
+              <button class="btn btn-sm" id="wh-close-deliveries">✕ Close</button>
+            </div>
+            <div class="dt-table-wrap">
+              <table class="dt-table">
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Event</th>
+                    <th>Status</th>
+                    <th>Code</th>
+                    <th>Attempts</th>
+                  </tr>
+                </thead>
+                <tbody id="wh-delivery-body">
+                  <tr class="dt-empty-row">
+                    <td colspan="5">No deliveries yet.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- DOCS -->
+        <!-- MONITORING (Sprint 13) -->
+        <section id="section-monitoring" class="section" style="display:none">
+          <h1 class="section-title">System Monitoring</h1>
+          <p class="section-subtitle">Real-time health, performance, and activity metrics</p>
+
+          <!-- System Status Row -->
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;margin-bottom:1.5rem">
+            <div class="card" style="text-align:center;padding:1.2rem">
+              <div style="color:var(--text-muted);font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em">Status</div>
+              <div id="mon-status" style="font-size:1.6rem;font-weight:700;color:var(--accent-emerald);margin:0.3rem 0">—</div>
+            </div>
+            <div class="card" style="text-align:center;padding:1.2rem">
+              <div style="color:var(--text-muted);font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em">Uptime</div>
+              <div id="mon-uptime" style="font-size:1.6rem;font-weight:700;color:var(--accent-cyan);margin:0.3rem 0">—</div>
+            </div>
+            <div class="card" style="text-align:center;padding:1.2rem">
+              <div style="color:var(--text-muted);font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em">Version</div>
+              <div id="mon-version" style="font-size:1.6rem;font-weight:700;color:var(--text-primary);margin:0.3rem 0">—</div>
+            </div>
+            <div class="card" style="text-align:center;padding:1.2rem">
+              <div style="color:var(--text-muted);font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em">Stores</div>
+              <div id="mon-stores" style="font-size:1.6rem;font-weight:700;color:var(--accent-violet);margin:0.3rem 0">—</div>
+            </div>
+          </div>
+
+          <!-- Connection Pool -->
+          <div class="card" style="margin-bottom:1.5rem">
+            <h2>🔗 Connection Pool</h2>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1rem;margin-top:1rem">
+              <div>
+                <div style="color:var(--text-muted);font-size:0.75rem">Pool Size</div>
+                <div id="mon-pool-size" style="font-size:1.4rem;font-weight:700;color:var(--accent-cyan)">—</div>
+              </div>
+              <div>
+                <div style="color:var(--text-muted);font-size:0.75rem">Available</div>
+                <div id="mon-pool-avail" style="font-size:1.4rem;font-weight:700;color:var(--accent-emerald)">—</div>
+              </div>
+              <div>
+                <div style="color:var(--text-muted);font-size:0.75rem">Waiting</div>
+                <div id="mon-pool-waiting" style="font-size:1.4rem;font-weight:700;color:var(--accent-amber)">—</div>
+              </div>
+              <div>
+                <div style="color:var(--text-muted);font-size:0.75rem">Min / Max</div>
+                <div id="mon-pool-range" style="font-size:1.4rem;font-weight:700;color:var(--text-secondary)">—</div>
+              </div>
+            </div>
+            <!-- Pool utilization bar -->
+            <div style="margin-top:1rem;background:var(--bg-secondary);border-radius:8px;height:24px;overflow:hidden;position:relative">
+              <div id="mon-pool-bar" style="height:100%;background:linear-gradient(90deg,var(--accent-emerald),var(--accent-cyan));border-radius:8px;transition:width 0.5s ease;width:0%"></div>
+              <div id="mon-pool-bar-label" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:0.7rem;font-weight:600;color:var(--text-primary)">—</div>
+            </div>
+          </div>
+
+          <!-- Activity Metrics -->
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1rem;margin-bottom:1.5rem">
+            <!-- Governance Activity -->
+            <div class="card">
+              <h2>🛡️ Governance Activity</h2>
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.8rem;margin-top:1rem;text-align:center">
+                <div>
+                  <div style="color:var(--accent-emerald);font-size:1.4rem;font-weight:700" id="mon-gov-allow">0</div>
+                  <div style="color:var(--text-muted);font-size:0.7rem">ALLOWED</div>
+                </div>
+                <div>
+                  <div style="color:var(--accent-rose);font-size:1.4rem;font-weight:700" id="mon-gov-deny">0</div>
+                  <div style="color:var(--text-muted);font-size:0.7rem">DENIED</div>
+                </div>
+                <div>
+                  <div style="color:var(--accent-amber);font-size:1.4rem;font-weight:700" id="mon-gov-escalate">0</div>
+                  <div style="color:var(--text-muted);font-size:0.7rem">ESCALATED</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Workflow Activity -->
+            <div class="card">
+              <h2>🔄 Workflow Activity</h2>
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.8rem;margin-top:1rem;text-align:center">
+                <div>
+                  <div style="color:var(--accent-emerald);font-size:1.4rem;font-weight:700" id="mon-wf-completed">0</div>
+                  <div style="color:var(--text-muted);font-size:0.7rem">COMPLETED</div>
+                </div>
+                <div>
+                  <div style="color:var(--accent-rose);font-size:1.4rem;font-weight:700" id="mon-wf-failed">0</div>
+                  <div style="color:var(--text-muted);font-size:0.7rem">FAILED</div>
+                </div>
+                <div>
+                  <div style="color:var(--accent-amber);font-size:1.4rem;font-weight:700" id="mon-wf-terminated">0</div>
+                  <div style="color:var(--text-muted);font-size:0.7rem">TERMINATED</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Operations Counters -->
+          <div class="card" style="margin-bottom:1.5rem">
+            <h2>📈 Operations Since Boot</h2>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:1rem;margin-top:1rem;text-align:center">
+              <div>
+                <div style="color:var(--accent-cyan);font-size:1.2rem;font-weight:700" id="mon-ops-memory">0</div>
+                <div style="color:var(--text-muted);font-size:0.7rem">Memory Ops</div>
+              </div>
+              <div>
+                <div style="color:var(--accent-violet);font-size:1.2rem;font-weight:700" id="mon-ops-decisions">0</div>
+                <div style="color:var(--text-muted);font-size:0.7rem">Decisions</div>
+              </div>
+              <div>
+                <div style="color:var(--accent-rose);font-size:1.2rem;font-weight:700" id="mon-ops-erasure">0</div>
+                <div style="color:var(--text-muted);font-size:0.7rem">Erasure Certs</div>
+              </div>
+              <div>
+                <div style="color:var(--accent-amber);font-size:1.2rem;font-weight:700" id="mon-ops-webhooks">0</div>
+                <div style="color:var(--text-muted);font-size:0.7rem">Webhooks</div>
+              </div>
+              <div>
+                <div style="color:var(--accent-emerald);font-size:1.2rem;font-weight:700" id="mon-ops-sso">0</div>
+                <div style="color:var(--text-muted);font-size:0.7rem">SSO Logins</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Endpoints -->
+          <div class="card">
+            <h2>🔍 Health Endpoints</h2>
+            <table class="data-table" style="margin-top:1rem">
+              <thead><tr><th>Endpoint</th><th>Auth</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td><code>/healthz</code></td><td>None</td><td>Liveness probe — 200 if server is running</td></tr>
+                <tr><td><code>/readyz</code></td><td>None</td><td>Readiness probe — checks DB, pool, services</td></tr>
+                <tr><td><code>/metrics</code></td><td>None</td><td>Prometheus exposition format</td></tr>
+                <tr><td><code>/v1/monitoring/stats</code></td><td>API Key</td><td>Full system stats (JSON)</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div style="text-align:center;margin-top:1rem;color:var(--text-muted);font-size:0.75rem">
+            <span id="mon-last-updated">Auto-refresh every 5s</span>
+          </div>
+        </section>
+
+        <!-- DOCS -->
+        <section id="section-docs" class="section" style="display:none">
+          <h1 class="section-title">API Documentation</h1>
+          <p class="section-subtitle">Quickstart guide and endpoint reference</p>
+
+          <!-- Quickstart -->
+          <div class="card">
+            <h2>⚡ Quickstart</h2>
+            <p style="color:var(--text-secondary);margin-bottom:1rem">Get started with GRAFOMEM Cloud in 3 steps:</p>
+            <div style="background:var(--bg-secondary);padding:1.2rem;border-radius:8px;font-family:'JetBrains Mono',monospace;font-size:0.82rem;overflow-x:auto;margin-bottom:1rem">
+              <div style="color:var(--text-muted);margin-bottom:0.5rem"># 1. Get your API key from the API Key tab above</div>
+              <div style="color:var(--accent-cyan)">export GFM_KEY="gfm_..."</div>
+              <br/>
+              <div style="color:var(--text-muted)"># 2. Create a memory store</div>
+              <div style="color:var(--accent-cyan)">curl -X POST https://cloud.grafomem.com/v1/stores \</div>
+              <div style="color:var(--accent-cyan)">&nbsp;&nbsp;-H "Authorization: Bearer $GFM_KEY" \</div>
+              <div style="color:var(--accent-cyan)">&nbsp;&nbsp;-H "Content-Type: application/json" \</div>
+              <div style="color:var(--accent-cyan)">&nbsp;&nbsp;-d '{"name": "my-agent-memory"}'</div>
+              <br/>
+              <div style="color:var(--text-muted)"># 3. Write your first fact</div>
+              <div style="color:var(--accent-cyan)">curl -X POST https://cloud.grafomem.com/v1/stores/{store_id}/write \</div>
+              <div style="color:var(--accent-cyan)">&nbsp;&nbsp;-H "Authorization: Bearer $GFM_KEY" \</div>
+              <div style="color:var(--accent-cyan)">&nbsp;&nbsp;-H "Content-Type: application/json" \</div>
+              <div style="color:var(--accent-cyan)">&nbsp;&nbsp;-d '{"content": "The user prefers dark mode", "tags": ["preference"]}'</div>
+            </div>
+          </div>
+
+          <!-- Core Endpoints -->
+          <div class="card" style="margin-top:1rem">
+            <h2>📡 Core API Endpoints</h2>
+            <table class="data-table" style="margin-top:1rem">
+              <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td><span style="color:var(--accent-emerald);font-weight:700">POST</span></td><td>/v1/stores</td><td>Create a memory store</td></tr>
+                <tr><td><span style="color:var(--accent-emerald);font-weight:700">POST</span></td><td>/v1/stores/{id}/write</td><td>Write a fact</td></tr>
+                <tr><td><span style="color:var(--accent-cyan);font-weight:700">POST</span></td><td>/v1/stores/{id}/retrieve</td><td>Semantic search</td></tr>
+                <tr><td><span style="color:var(--accent-rose);font-weight:700">POST</span></td><td>/v1/stores/{id}/delete</td><td>Delete by ref</td></tr>
+                <tr><td><span style="color:var(--accent-violet);font-weight:700">POST</span></td><td>/v1/stores/{id}/supersede</td><td>Replace a fact</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Governance Endpoints -->
+          <div class="card" style="margin-top:1rem">
+            <h2>🛡️ Governance API</h2>
+            <table class="data-table" style="margin-top:1rem">
+              <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td><span style="color:var(--accent-emerald);font-weight:700">POST</span></td><td>/v1/governance/policies</td><td>Create a policy</td></tr>
+                <tr><td><span style="color:var(--accent-cyan);font-weight:700">POST</span></td><td>/v1/governance/evaluate</td><td>Evaluate a request</td></tr>
+                <tr><td><span style="color:var(--accent-cyan);font-weight:700">GET</span></td><td>/v1/governance/stats</td><td>Platform statistics</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Orchestrator Endpoints -->
+          <div class="card" style="margin-top:1rem">
+            <h2>🤖 Orchestrator API</h2>
+            <table class="data-table" style="margin-top:1rem">
+              <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td><span style="color:var(--accent-emerald);font-weight:700">POST</span></td><td>/v1/orchestrator/agents</td><td>Register an agent</td></tr>
+                <tr><td><span style="color:var(--accent-emerald);font-weight:700">POST</span></td><td>/v1/orchestrator/workflows</td><td>Create a workflow</td></tr>
+                <tr><td><span style="color:var(--accent-emerald);font-weight:700">POST</span></td><td>/v1/orchestrator/workflows/{id}/run</td><td>Execute workflow</td></tr>
+                <tr><td><span style="color:var(--accent-cyan);font-weight:700">GET</span></td><td>/v1/orchestrator/workflows/{id}/receipts</td><td>Get execution receipts</td></tr>
+                <tr><td><span style="color:var(--accent-cyan);font-weight:700">GET</span></td><td>/v1/orchestrator/workflows/{id}/verify-chain</td><td>Verify hash chain</td></tr>
+                <tr><td><span style="color:var(--accent-emerald);font-weight:700">POST</span></td><td>/v1/orchestrator/replay/{decision_id}</td><td>Replay a decision</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Attestation Endpoints -->
+          <div class="card" style="margin-top:1rem">
+            <h2>🔗 Attestation & Compliance API</h2>
+            <table class="data-table" style="margin-top:1rem">
+              <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td><span style="color:var(--accent-cyan);font-weight:700">GET</span></td><td>/v1/decisions/</td><td>List signed decisions</td></tr>
+                <tr><td><span style="color:var(--accent-emerald);font-weight:700">POST</span></td><td>/v1/erasure/issue</td><td>Issue erasure certificate</td></tr>
+                <tr><td><span style="color:var(--accent-cyan);font-weight:700">GET</span></td><td>/v1/erasure/{cert_id}/verify</td><td>Verify erasure certificate</td></tr>
+                <tr><td><span style="color:var(--accent-emerald);font-weight:700">POST</span></td><td>/v1/reports/generate</td><td>Generate regulatory report</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="card" style="margin-top:1rem;text-align:center">
+            <p style="color:var(--text-secondary)">Full interactive API docs available at <a href="/docs" target="_blank" style="color:var(--accent-cyan)">/docs</a> (Swagger UI)</p>
           </div>
         </section>
       </main>

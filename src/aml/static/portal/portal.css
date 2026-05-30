@@ -1425,3 +1425,226 @@ select option {
   margin-left: 8px;
 }
 
+/* ============================================================
+   LIVE STREAMING TIMELINE
+   ============================================================ */
+
+.stream-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 16px;
+  font-size: 0.82rem;
+}
+
+.stream-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.stream-dot.live {
+  background: var(--success);
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+.stream-dot.error { background: var(--danger); }
+
+@keyframes pulse-dot {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5); }
+  50% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+}
+
+.stream-label {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.stream-tokens {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem;
+  color: var(--primary);
+  margin-left: auto;
+}
+
+.stream-elapsed {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+/* Live step card */
+.step-card-live {
+  position: relative;
+  padding: 16px;
+  padding-left: 44px;
+  border-bottom: 1px solid var(--border);
+  animation: slideInStep 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: background 0.2s var(--ease);
+}
+
+.step-card-live::before {
+  content: '';
+  position: absolute;
+  left: 18px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--border);
+}
+
+.step-card-live:last-child::before { bottom: 50%; }
+
+.step-card-live::after {
+  content: attr(data-step);
+  position: absolute;
+  left: 10px;
+  top: 18px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  font-size: 0.62rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+}
+
+.step-card-live.running::after {
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+.step-card-live.denied::after { background: var(--danger); }
+.step-card-live.escalated::after { background: var(--warning); }
+
+@keyframes slideInStep {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Stage progress pills */
+.step-stages {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.stage-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-muted);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  transition: all 0.25s var(--ease);
+}
+
+.stage-pill.active {
+  background: rgba(99, 102, 241, 0.15);
+  color: var(--primary);
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+.stage-pill.done {
+  background: var(--success-glow);
+  color: var(--success);
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.stage-pill.fail {
+  background: var(--danger-glow);
+  color: var(--danger);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.stage-pill .stage-icon { font-size: 0.72rem; }
+
+/* Step header live */
+.step-live-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.step-live-agent {
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: var(--text-primary);
+}
+
+.step-live-role {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--primary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.step-live-meta {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+}
+
+.step-live-output {
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 0.78rem;
+  font-family: 'JetBrains Mono', monospace;
+  white-space: pre-wrap;
+  max-height: 160px;
+  overflow-y: auto;
+  margin-top: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  color: var(--text-secondary);
+  animation: fadeIn 0.3s ease;
+}
+
+/* Workflow complete banner */
+.stream-complete-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(16, 185, 129, 0.02) 100%);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  border-radius: var(--radius-sm);
+  margin-top: 16px;
+  animation: fadeIn 0.4s ease;
+}
+
+.stream-complete-banner.error {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(239, 68, 68, 0.02) 100%);
+  border-color: rgba(239, 68, 68, 0.25);
+}
+
+.stream-complete-icon { font-size: 1.4rem; }
+
+.stream-complete-text {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.stream-complete-stats {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-left: auto;
+}

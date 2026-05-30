@@ -18,6 +18,16 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
+from aml.cloud.schemas import (
+    AgentResponse,
+    AgentListResponse,
+    WorkflowResponse,
+    WorkflowListResponse,
+    ReceiptListResponse,
+    ChainVerificationResponse,
+    OrchestratorStatsResponse,
+)
+
 logger = logging.getLogger("grafomem.cloud.orchestrator_routes")
 
 
@@ -110,7 +120,7 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
     # GET /v1/orchestrator/stats
     # ------------------------------------------------------------------
 
-    @router.get("/stats")
+    @router.get("/stats", response_model=OrchestratorStatsResponse)
     async def get_stats(request: Request):
         """Dashboard statistics for the orchestrator."""
         tenant_id = _get_tenant_id(request)
@@ -286,6 +296,81 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
             logger.error("Workflow execution failed: %s", e)
             raise HTTPException(500, f"Workflow execution failed: {e}")
 
+    @router.post("/workflows/{workflow_id}/stream")
+    async def stream_workflow(
+        workflow_id: str,
+        req: RunWorkflowRequest,
+        request: Request,
+    ):
+        """Stream a workflow execution via Server-Sent Events.
+
+        Returns a text/event-stream response with real-time events as
+        each agent step progresses through:
+        governance → memory → LLM → tools → complete.
+
+        Event types:
+            workflow.started, step.started, step.governance_pass,
+            step.governance_deny, step.memory_retrieve, step.llm_start,
+            step.llm_complete, step.tool_call, step.complete,
+            workflow.complete, workflow.error
+        """
+        import asyncio
+        from concurrent.futures import ThreadPoolExecutor
+
+        try:
+            from sse_starlette.sse import EventSourceResponse
+        except ImportError:
+            raise HTTPException(
+                501,
+                "SSE streaming requires 'sse-starlette' package. "
+                "Install with: pip install sse-starlette",
+            )
+
+        from aml.cloud.streaming_events import StreamEmitter
+
+        tenant_id = _get_tenant_id(request)
+
+        workflow = orchestrator.get_workflow(workflow_id)
+        if workflow is None or workflow.tenant_id != tenant_id:
+            raise HTTPException(404, f"Workflow '{workflow_id}' not found")
+
+        if workflow.status.value not in ("created", "completed", "terminated"):
+            raise HTTPException(
+                409,
+                f"Workflow is already {workflow.status.value}",
+            )
+
+        loop = asyncio.get_event_loop()
+        emitter = StreamEmitter(loop=loop)
+
+        # Run the synchronous orchestrator in a background thread
+        executor = ThreadPoolExecutor(max_workers=1)
+
+        def _run_in_thread():
+            try:
+                orchestrator.run_workflow(
+                    workflow_id, req.input_text, emitter=emitter,
+                )
+            except Exception as e:
+                logger.error("Streaming workflow failed: %s", e)
+                emitter.emit("workflow.error", {"error": str(e)})
+                emitter.close()
+
+        loop.run_in_executor(executor, _run_in_thread)
+
+        async def _event_generator():
+            try:
+                async for event in emitter.events():
+                    yield {
+                        "event": event.event,
+                        "data": event.to_sse(),
+                    }
+            except asyncio.CancelledError:
+                # Client disconnected
+                emitter.close()
+
+        return EventSourceResponse(_event_generator())
+
     @router.post("/workflows/{workflow_id}/resume")
     async def resume_workflow(
         workflow_id: str,
@@ -384,7 +469,7 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
             "count": len(receipts),
         }
 
-    @router.get("/workflows/{workflow_id}/verify-chain")
+    @router.get("/workflows/{workflow_id}/verify-chain", response_model=ChainVerificationResponse)
     async def verify_receipt_chain(workflow_id: str, request: Request):
         """Verify the hash chain integrity of a workflow's receipts."""
         tenant_id = _get_tenant_id(request)

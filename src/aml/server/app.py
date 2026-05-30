@@ -145,11 +145,19 @@ class MemoryResponse(BaseModel):
 # Helpers
 # ============================================================================
 
-def _get_store(request: Request, store_id: str):
+def _get_store(request: Request, store_id: str, tenant_id: str | None = None):
     mgr: StoreManager = request.app.state.store_manager
     entry = mgr.get(store_id)
     if entry is None:
         raise HTTPException(404, f"Store '{store_id}' not found")
+    # Enforce tenant isolation: if store has an owner and caller has a tenant,
+    # they must match. Stores without an owner (legacy/non-cloud) remain open.
+    if (
+        tenant_id is not None
+        and entry.owner_tenant_id is not None
+        and entry.owner_tenant_id != tenant_id
+    ):
+        raise HTTPException(403, "Access denied: store belongs to another tenant")
     return entry
 
 
@@ -181,7 +189,8 @@ async def health(request: Request):
 @router.post("/v1/stores")
 async def create_store(request: Request):
     mgr: StoreManager = request.app.state.store_manager
-    store_id = mgr.create()
+    tenant = _tenant_id(request)
+    store_id = mgr.create(tenant_id=tenant)
     return {"store_id": store_id}
 
 
@@ -193,15 +202,15 @@ async def list_stores(request: Request):
 
 @router.get("/v1/stores/{store_id}/capabilities")
 async def get_capabilities(store_id: str, request: Request):
-    entry = _get_store(request, store_id)
+    entry = _get_store(request, store_id, _tenant_id(request))
     caps = entry.backend.capabilities()
     return {"capabilities": sorted(c.value for c in caps)}
 
 
 @router.post("/v1/stores/{store_id}/write")
 async def write_memory(store_id: str, req: WriteRequest, request: Request):
-    entry = _get_store(request, store_id)
     tenant = _tenant_id(request)
+    entry = _get_store(request, store_id, tenant)
     opts = req.options.to_internal(tenant_override=tenant)
 
     try:
@@ -212,13 +221,18 @@ async def write_memory(store_id: str, req: WriteRequest, request: Request):
             "capability": e.args[0].value,
             "operation": e.args[1],
         })
+    try:
+        from aml.cloud.metrics import MEMORY_OPERATIONS
+        MEMORY_OPERATIONS.labels(operation="write").inc()
+    except Exception:
+        pass
     return {"ref": ref}
 
 
 @router.post("/v1/stores/{store_id}/write_batch")
 async def write_batch(store_id: str, req: WriteBatchRequest, request: Request):
-    entry = _get_store(request, store_id)
     tenant = _tenant_id(request)
+    entry = _get_store(request, store_id, tenant)
 
     if not hasattr(entry.backend, "write_many"):
         raise HTTPException(501, "Backend does not support batch writes")
@@ -228,13 +242,18 @@ async def write_batch(store_id: str, req: WriteBatchRequest, request: Request):
         refs = entry.backend.write_many(items)
     except Exception as e:
         raise HTTPException(500, str(e))
+    try:
+        from aml.cloud.metrics import MEMORY_OPERATIONS
+        MEMORY_OPERATIONS.labels(operation="batch_write").inc(len(refs))
+    except Exception:
+        pass
     return {"refs": refs}
 
 
 @router.post("/v1/stores/{store_id}/supersede")
 async def supersede_memory(store_id: str, req: SupersedeRequest, request: Request):
-    entry = _get_store(request, store_id)
     tenant = _tenant_id(request)
+    entry = _get_store(request, store_id, tenant)
     opts = req.options.to_internal(tenant_override=tenant)
 
     try:
@@ -245,12 +264,17 @@ async def supersede_memory(store_id: str, req: SupersedeRequest, request: Reques
             "capability": e.args[0].value,
             "operation": e.args[1],
         })
+    try:
+        from aml.cloud.metrics import MEMORY_OPERATIONS
+        MEMORY_OPERATIONS.labels(operation="supersede").inc()
+    except Exception:
+        pass
     return {"ref": ref}
 
 
 @router.post("/v1/stores/{store_id}/delete")
 async def delete_memory(store_id: str, req: DeleteRequest, request: Request):
-    entry = _get_store(request, store_id)
+    entry = _get_store(request, store_id, _tenant_id(request))
     try:
         deleted = entry.backend.delete(req.ref)
     except CapabilityNotSupported as e:
@@ -259,13 +283,18 @@ async def delete_memory(store_id: str, req: DeleteRequest, request: Request):
             "capability": e.args[0].value,
             "operation": e.args[1],
         })
+    try:
+        from aml.cloud.metrics import MEMORY_OPERATIONS
+        MEMORY_OPERATIONS.labels(operation="delete").inc()
+    except Exception:
+        pass
     return {"deleted": deleted}
 
 
 @router.post("/v1/stores/{store_id}/retrieve")
 async def retrieve_memories(store_id: str, req: RetrieveRequest, request: Request):
-    entry = _get_store(request, store_id)
     tenant = _tenant_id(request)
+    entry = _get_store(request, store_id, tenant)
     opts = req.options.to_internal(tenant_override=tenant)
 
     try:
@@ -276,19 +305,24 @@ async def retrieve_memories(store_id: str, req: RetrieveRequest, request: Reques
             "capability": e.args[0].value,
             "operation": e.args[1],
         })
+    try:
+        from aml.cloud.metrics import MEMORY_OPERATIONS
+        MEMORY_OPERATIONS.labels(operation="retrieve").inc()
+    except Exception:
+        pass
     return {"memories": [MemoryResponse.from_internal(m).model_dump() for m in mems]}
 
 
 @router.get("/v1/stores/{store_id}/audit")
 async def audit_memories(store_id: str, request: Request):
-    entry = _get_store(request, store_id)
+    entry = _get_store(request, store_id, _tenant_id(request))
     mems = list(entry.backend.audit())
     return {"memories": [MemoryResponse.from_internal(m).model_dump() for m in mems]}
 
 
 @router.post("/v1/stores/{store_id}/flush")
 async def flush_store(store_id: str, request: Request):
-    entry = _get_store(request, store_id)
+    entry = _get_store(request, store_id, _tenant_id(request))
     entry.backend.flush()
     return {}
 
@@ -346,6 +380,19 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         logger.info("GRAFOMEM server starting")
+        # Initialize connection pool if db_url is provided
+        if db_url:
+            try:
+                from aml.cloud.db_pool import DatabasePool
+                pool = DatabasePool(db_url)
+                pool.open()
+                app.state.db_pool = pool
+                logger.info("Database connection pool initialized")
+            except Exception as e:
+                logger.warning("Connection pool unavailable: %s", e)
+                app.state.db_pool = None
+        else:
+            app.state.db_pool = None
         yield
         # Shutdown: stop all ingestion queues
         for q in getattr(app.state, "ingestion_queues", {}).values():
@@ -354,22 +401,96 @@ def create_app(
         for svc_name in ("tenant_manager", "compliance_tracker", "metering_service",
                          "decision_trail", "erasure_proof", "governance_gateway",
                          "regulatory_reports", "llm_registry", "tool_registry",
-                         "orchestrator", "portal_auth", "stripe_billing"):
+                         "orchestrator", "portal_auth", "stripe_billing",
+                         "webhook_service"):
             svc = getattr(app.state, svc_name, None)
             if svc is not None and hasattr(svc, "close"):
                 svc.close()
+        # Close database pool last
+        pool = getattr(app.state, "db_pool", None)
+        if pool is not None:
+            pool.close()
         logger.info("GRAFOMEM server stopped")
 
     app = FastAPI(
-        title="GRAFOMEM",
-        description="GMP-conformant agent memory server",
-        version="0.2.0",
+        title="GRAFOMEM Cloud",
+        description=(
+            "GMP-conformant governed agent memory platform.  Provides "
+            "vector-backed memory stores, multi-agent orchestration, "
+            "decision trail audit logging, erasure proof certificates, "
+            "governance policy evaluation, regulatory reports, webhook "
+            "alerts, SSO/OIDC, and real-time SSE streaming."
+        ),
+        version="1.9.0",
+        docs_url="/docs",
+        redoc_url="/redoc",
+        openapi_url="/openapi.json",
+        openapi_tags=[
+            {"name": "Memory Stores", "description": "CRUD for vector-backed memory stores"},
+            {"name": "Orchestrator", "description": "Multi-agent workflow orchestration"},
+            {"name": "Decision Trail", "description": "Inference audit logging and replay"},
+            {"name": "Governance", "description": "Policy evaluation and enforcement"},
+            {"name": "Erasure Proof", "description": "GDPR erasure certificates"},
+            {"name": "Regulatory Reports", "description": "Compliance report generation"},
+            {"name": "LLM & Tools", "description": "LLM provider and tool management"},
+            {"name": "Webhooks", "description": "Event webhook management"},
+            {"name": "Portal", "description": "Tenant portal authentication"},
+            {"name": "SSO", "description": "OAuth2/OIDC single sign-on"},
+            {"name": "Cloud Admin", "description": "Tenant and billing management"},
+        ],
         lifespan=lifespan,
     )
 
+    # ------------------------------------------------------------------
+    # Sprint 13: Prometheus metrics middleware (innermost layer)
+    # ------------------------------------------------------------------
+    try:
+        from aml.cloud.metrics import PrometheusMiddleware, metrics_endpoint
+        app.add_middleware(PrometheusMiddleware)
+        app.add_route("/metrics", metrics_endpoint, include_in_schema=False)
+        logger.info("Prometheus metrics enabled (/metrics)")
+    except Exception as e:
+        logger.info("Prometheus metrics not available: %s", e)
+
+    # ------------------------------------------------------------------
+    # Sprint 13: Health endpoints (no auth required)
+    # ------------------------------------------------------------------
+    from aml.cloud.health import HealthChecker
+
+    health_checker = HealthChecker(app, db_url=db_url)
+    app.state.health_checker = health_checker
+
+    @app.get("/healthz", include_in_schema=False)
+    async def health_liveness():
+        """Kubernetes liveness probe — always 200 if server is running."""
+        return health_checker.liveness()
+
+    @app.get("/readyz", include_in_schema=False)
+    async def health_readiness():
+        """Kubernetes readiness probe — checks downstream dependencies."""
+        result = health_checker.readiness()
+        status_code = 200 if result["status"] == "ok" else 503
+        from fastapi.responses import JSONResponse
+        return JSONResponse(content=result, status_code=status_code)
+
+    @app.get("/v1/monitoring/stats", tags=["Cloud Admin"])
+    async def monitoring_stats(request: Request):
+        """Full system stats for monitoring dashboard. Requires auth."""
+        # Auth is enforced by the TenantAuthMiddleware
+        return health_checker.full_stats()
+
     # Auth is the inner layer; CORS is added LAST so it's the OUTERMOST
     # middleware and can answer preflight OPTIONS before auth inspects them.
-    app.add_middleware(TenantAuthMiddleware, auth_mode=auth_mode, tokens=tokens)
+    # When db_url is provided, use "cloud" auth to resolve X-API-Key from tenants table.
+    effective_auth_mode = auth_mode
+    if db_url and auth_mode == "none":
+        effective_auth_mode = "cloud"
+    app.add_middleware(
+        TenantAuthMiddleware,
+        auth_mode=effective_auth_mode,
+        tokens=tokens,
+        db_url=db_url,
+    )
 
     from fastapi.middleware.cors import CORSMiddleware
     app.add_middleware(
@@ -459,6 +580,21 @@ def create_app(
             gg.ensure_schema()
             app.state.governance_gateway = gg
 
+            from aml.cloud.landing_service import LandingService
+            from aml.cloud.landing_routes import create_landing_router
+            ls = LandingService(db_url, signing_key=erasure_key, gateway=gg, decision_trail=dt, epoch_anchor=False)
+            ls.ensure_schema()
+            app.state.landing_service = ls
+            app.include_router(create_landing_router(ls))
+
+            from aml.cloud.artifact_registry import ArtifactRegistryService
+            from aml.cloud.artifact_registry_routes import create_artifact_registry_router
+            ar = ArtifactRegistryService(db_url, signing_key=erasure_key, gateway=gg, decision_trail=dt)
+            ar.ensure_schema()
+            app.state.artifact_registry = ar
+            app.include_router(create_artifact_registry_router(ar))
+            ls.registry = ar
+
             gov_router = create_governance_router(gg)
             app.include_router(gov_router)
             logger.info("Governance Gateway enabled (/v1/governance)")
@@ -532,7 +668,7 @@ def create_app(
             receipt_svc = ExecutionReceiptService(db_url)
             receipt_svc.ensure_schema()
             app.state.execution_receipts = receipt_svc
-            orch._receipt_service = receipt_svc
+            orch._execution_receipts = receipt_svc
             logger.info("Execution Receipt Service enabled")
 
             # Sprint 7c: Memory Taxonomy — workflow context
@@ -550,10 +686,27 @@ def create_app(
                 decision_trail=dt,
                 llm_registry=llm_reg,
                 store_manager=app.state.store_manager,
+                orchestrator=orch,
             )
             replay.ensure_schema()
             app.state.replay_engine = replay
             logger.info("Replay Engine enabled")
+
+            # Sprint 11a: Webhook Alerts
+            from aml.cloud.webhook_service import WebhookService
+            from aml.cloud.webhook_routes import create_webhook_router
+
+            wh = WebhookService(db_url)
+            wh.ensure_schema()
+            app.state.webhook_service = wh
+            # Wire into governance for deny/escalate dispatch
+            gg._webhook_service = wh
+            # Wire into orchestrator for workflow complete/error dispatch
+            orch._webhook_service = wh
+
+            wh_router = create_webhook_router(wh)
+            app.include_router(wh_router)
+            logger.info("Webhook Alerts enabled (/v1/webhooks)")
         except ImportError as e:
             logger.warning("Cloud layer unavailable (missing deps): %s", e)
         except Exception as e:
@@ -569,6 +722,25 @@ def create_app(
             app.state.portal_auth = pa
             app.include_router(portal_router)
             logger.info("Portal auth enabled (/v1/portal)")
+
+            # Sprint 11c: SSO / OIDC
+            try:
+                from aml.cloud.sso_provider import SSOProvider
+                from aml.cloud.sso_routes import create_sso_router
+
+                redirect_base = os.environ.get(
+                    "GRAFOMEM_SSO_REDIRECT_BASE",
+                    "https://grafomem-production.up.railway.app",
+                )
+                sso = SSOProvider(db_url, portal_auth=pa, redirect_base=redirect_base)
+                sso.ensure_schema()
+                app.state.sso_provider = sso
+
+                sso_router = create_sso_router(sso)
+                app.include_router(sso_router)
+                logger.info("SSO/OIDC enabled (/v1/portal/sso)")
+            except Exception as e:
+                logger.warning("SSO unavailable: %s", e)
         except ImportError as e:
             logger.warning("Portal auth unavailable (missing deps): %s", e)
         except Exception as e:
@@ -596,11 +768,20 @@ def create_app(
     try:
         import importlib.resources
         portal_dir = str(importlib.resources.files("aml") / "static" / "portal")
+        landing_dir = str(importlib.resources.files("aml") / "static" / "landing")
         from fastapi.staticfiles import StaticFiles
         import os as _os
         if _os.path.isdir(portal_dir):
             app.mount("/portal", StaticFiles(directory=portal_dir, html=True), name="portal")
             logger.info("Portal UI mounted at /portal")
+        if _os.path.isdir(landing_dir):
+            app.mount("/landing", StaticFiles(directory=landing_dir, html=False), name="landing-assets")
+            # Serve index.html at root
+            from fastapi.responses import FileResponse
+            @app.get("/", include_in_schema=False)
+            async def landing_page():
+                return FileResponse(_os.path.join(landing_dir, "index.html"))
+            logger.info("Landing page mounted at /")
     except Exception as e:
         logger.warning("Portal static files not available: %s", e)
 

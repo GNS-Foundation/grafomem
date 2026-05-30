@@ -278,6 +278,12 @@ class DecisionTrailService:
             decision_id, tenant_id, model_id,
         )
 
+        try:
+            from aml.cloud.metrics import DECISIONS_LOGGED
+            DECISIONS_LOGGED.labels(model_id=model_id).inc()
+        except Exception:
+            pass
+
         return DecisionRecord(
             decision_id=decision_id,
             tenant_id=tenant_id,

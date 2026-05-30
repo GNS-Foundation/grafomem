@@ -44,6 +44,7 @@ class LLMProvider(str, Enum):
     GEMINI = "gemini"
     OLLAMA = "ollama"
     CUSTOM = "custom"  # Any OpenAI-compatible endpoint
+    MOCK = "mock"      # Deterministic mock for testing
 
 
 # ============================================================================
@@ -267,6 +268,8 @@ class LLMRegistry:
             response = self._infer_ollama(config, request)
         elif config.provider == LLMProvider.CUSTOM:
             response = self._infer_custom(config, request)
+        elif config.provider == LLMProvider.MOCK:
+            response = self._infer_mock(config, request)
         else:
             raise ValueError(f"Unknown provider: {config.provider}")
 
@@ -598,6 +601,109 @@ class LLMRegistry:
             model_id=config.model_id,
             latency_ms=0,
             raw_response={"id": response.id},
+        )
+
+    # ------------------------------------------------------------------
+    # Mock adapter (deterministic, for testing)
+    # ------------------------------------------------------------------
+
+    def _infer_mock(self, config: LLMConfig, request: LLMRequest) -> LLMResponse:
+        """Deterministic mock LLM — returns f(input), not canned-by-role.
+
+        The response is a deterministic function of (system_prompt + messages).
+        A canonical hash of the input is embedded in the output, so replay
+        correctly reports DIVERGED when input reconstruction is wrong.
+        """
+        # Build canonical input hash
+        canonical = json.dumps({
+            "system_prompt": request.system_prompt,
+            "messages": request.messages,
+        }, sort_keys=True, ensure_ascii=True)
+        input_hash = hashlib.blake2b(
+            canonical.encode(), digest_size=16,
+        ).hexdigest()
+
+        # Detect role from system prompt
+        sp_lower = request.system_prompt.lower()
+        tool_calls: list[dict] = []
+
+        # Token counting (deterministic)
+        input_chars = len(request.system_prompt) + sum(
+            len(m.get("content", "")) for m in request.messages
+        )
+        tokens_input = max(20, input_chars // 4)
+
+        if "research" in sp_lower or "analyst" in sp_lower:
+            content = (
+                f"[MockLLM|researcher|{input_hash}] "
+                f"Based on the retrieved compliance data, the key findings are: "
+                f"1) GDPR Article 17 requires right to erasure with cryptographic proof. "
+                f"2) EU AI Act Article 12 mandates logging of all AI decisions. "
+                f"3) Rate limiting prevents abuse of agent resources. "
+                f"Input fingerprint: {input_hash}. Analysis complete."
+            )
+            # Return a tool_call to exercise Step 4 of execute_step
+            if request.tools:
+                for t in request.tools:
+                    if "retrieve" in t.get("name", "").lower():
+                        tool_calls = [{
+                            "name": t["name"],
+                            "arguments": {"query": "GDPR compliance requirements"},
+                        }]
+                        break
+            tokens_output = 85
+
+        elif "writ" in sp_lower or "draft" in sp_lower:
+            content = (
+                f"[MockLLM|writer|{input_hash}] "
+                f"## Compliance Brief\n\n"
+                f"Key regulatory requirements:\n"
+                f"- **GDPR Art. 17**: Right to erasure must be implemented.\n"
+                f"- **EU AI Act Art. 12**: All inference decisions must be logged.\n"
+                f"- **Rate Limiting**: Enforced at the governance layer.\n\n"
+                f"Recommendation: Deploy GRAFOMEM governance stack. "
+                f"Input fingerprint: {input_hash}."
+            )
+            tokens_output = 92
+
+        elif "review" in sp_lower or "quality" in sp_lower or "score" in sp_lower:
+            content = (
+                f"[MockLLM|reviewer|{input_hash}] "
+                f"Score: 8/10. The brief accurately covers GDPR and EU AI Act. "
+                f"Strengths: Clear structure, regulatory citations. "
+                f"Improvement: Add DORA Art. 6 coverage for financial services. "
+                f"Input fingerprint: {input_hash}."
+            )
+            tokens_output = 68
+
+        elif "replay" in sp_lower:
+            content = (
+                f"[MockLLM|replay|{input_hash}] "
+                f"Replaying previous decision. "
+                f"Input fingerprint: {input_hash}."
+            )
+            tokens_output = 30
+
+        else:
+            content = (
+                f"[MockLLM|default|{input_hash}] "
+                f"I have processed the input and generated this response. "
+                f"Input fingerprint: {input_hash}."
+            )
+            tokens_output = 30
+
+        return LLMResponse(
+            content=content,
+            tool_calls=tool_calls,
+            tokens_input=tokens_input,
+            tokens_output=tokens_output,
+            model_id=config.model_id,
+            latency_ms=42,
+            raw_response={
+                "provider": "mock",
+                "input_hash": input_hash,
+                "deterministic": True,
+            },
         )
 
     # ------------------------------------------------------------------

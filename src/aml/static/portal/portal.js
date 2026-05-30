@@ -1143,6 +1143,110 @@
       if (rrCurrentId) window.open(`${API}/v1/reports/${rrCurrentId}/download`, '_blank');
     });
 
+    // PDF download button
+    $('rr-download-pdf-btn')?.addEventListener('click', () => {
+      if (rrCurrentId) window.open(`${API}/v1/reports/${rrCurrentId}/download/pdf`, '_blank');
+    });
+
+    // ---- Webhooks Section ----
+    async function loadWebhooks() {
+      try {
+        const data = await api('/v1/webhooks/');
+        const hooks = data.webhooks || [];
+        $('wh-count').textContent = `${hooks.length} webhook${hooks.length !== 1 ? 's' : ''}`;
+        const body = $('wh-table-body');
+        if (!hooks.length) {
+          body.innerHTML = '<tr class="dt-empty-row"><td colspan="4">No webhooks registered yet. Create one above.</td></tr>';
+          return;
+        }
+        body.innerHTML = hooks.map(h => `
+          <tr>
+            <td style="font-family:var(--font-mono);font-size:0.8rem;max-width:250px;overflow:hidden;text-overflow:ellipsis">${escapeHtml(h.url)}</td>
+            <td style="font-size:0.8rem">${(h.events||[]).map(e => `<span class="tag tag-sm">${e}</span>`).join(' ')}</td>
+            <td>${h.enabled ? '<span class="status-badge success">Active</span>' : '<span class="status-badge">Disabled</span>'}</td>
+            <td>
+              <button class="btn btn-sm" onclick="window._whDeliveries('${h.webhook_id}')">📋 Log</button>
+              <button class="btn btn-sm" onclick="window._whTest('${h.webhook_id}')">🔔 Test</button>
+              <button class="btn btn-sm btn-danger" onclick="window._whDelete('${h.webhook_id}')">✕</button>
+            </td>
+          </tr>
+        `).join('');
+      } catch (e) { console.error('loadWebhooks:', e); }
+    }
+
+    window._whDeliveries = async function(whId) {
+      try {
+        const data = await api(`/v1/webhooks/${whId}/deliveries`);
+        const deliveries = data.deliveries || [];
+        const panel = $('wh-delivery-panel');
+        panel.style.display = '';
+        const body = $('wh-delivery-body');
+        if (!deliveries.length) {
+          body.innerHTML = '<tr class="dt-empty-row"><td colspan="5">No deliveries yet.</td></tr>';
+          return;
+        }
+        body.innerHTML = deliveries.map(d => {
+          const statusColor = d.status === 'delivered' ? 'success' : d.status === 'failed' ? 'danger' : 'warning';
+          return `<tr>
+            <td>${new Date(d.created_at).toLocaleString()}</td>
+            <td><span class="tag tag-sm">${d.event_type}</span></td>
+            <td><span class="status-badge ${statusColor}">${d.status}</span></td>
+            <td>${d.response_code || '—'}</td>
+            <td>${d.attempts}</td>
+          </tr>`;
+        }).join('');
+      } catch (e) { console.error('deliveries:', e); }
+    };
+
+    window._whTest = async function(whId) {
+      try {
+        await api(`/v1/webhooks/${whId}/test`, { method: 'POST' });
+        toast('Test event sent!', 'success');
+        setTimeout(() => window._whDeliveries(whId), 1500);
+      } catch (e) { toast('Test failed: ' + e.message, 'error'); }
+    };
+
+    window._whDelete = async function(whId) {
+      if (!confirm('Delete this webhook?')) return;
+      try {
+        await api(`/v1/webhooks/${whId}`, { method: 'DELETE' });
+        toast('Webhook deleted', 'success');
+        loadWebhooks();
+      } catch (e) { toast('Delete failed: ' + e.message, 'error'); }
+    };
+
+    $('wh-register-btn')?.addEventListener('click', async () => {
+      const url = $('wh-url').value.trim();
+      const desc = $('wh-desc').value.trim();
+      const events = Array.from(document.querySelectorAll('.wh-event:checked')).map(c => c.value);
+      if (!url) { toast('URL is required', 'error'); return; }
+      if (!events.length) { toast('Select at least one event', 'error'); return; }
+      try {
+        const result = await api('/v1/webhooks/', {
+          method: 'POST',
+          body: JSON.stringify({ url, events, description: desc }),
+        });
+        if (result.secret) {
+          $('wh-secret-value').textContent = result.secret;
+          $('wh-secret-display').style.display = '';
+        }
+        toast('Webhook registered!', 'success');
+        $('wh-url').value = '';
+        $('wh-desc').value = '';
+        loadWebhooks();
+      } catch (e) { toast('Registration failed: ' + e.message, 'error'); }
+    });
+
+    $('wh-close-deliveries')?.addEventListener('click', () => {
+      $('wh-delivery-panel').style.display = 'none';
+    });
+
+    // Auto-load webhooks when section shown
+    const navWh = document.getElementById('nav-webhooks');
+    if (navWh) {
+      navWh.addEventListener('click', () => loadWebhooks());
+    }
+
     // Check for upgrade success
     if (window.location.search.includes('upgraded=true')) {
       toast('Plan upgraded successfully! 🎉', 'success');
@@ -1388,24 +1492,221 @@
         `).join('');
       }
 
-      // Wire run button
+      // Wire run button — SSE streaming
       document.getElementById('btn-run-workflow').onclick = async () => {
         const input = document.getElementById('wf-run-input').value;
         if (!input) { showToast('Enter input text', true); return; }
+
+        const timeline = document.getElementById('step-timeline');
+        let totalTokens = 0;
+        let currentStepEl = null;
+        const stepCards = {};
+
+        // Show live status bar
+        timeline.innerHTML = `
+          <div class="stream-status-bar" id="stream-bar">
+            <span class="stream-dot live"></span>
+            <span class="stream-label">Executing workflow…</span>
+            <span class="stream-tokens" id="stream-tokens">0 tokens</span>
+            <span class="stream-elapsed" id="stream-elapsed">0.0s</span>
+          </div>
+        `;
+
+        const startTime = Date.now();
+        const elapsedTimer = setInterval(() => {
+          const el = document.getElementById('stream-elapsed');
+          if (el) el.textContent = ((Date.now() - startTime) / 1000).toFixed(1) + 's';
+        }, 100);
+
         try {
-          showToast('Running workflow...');
-          const r = await fetch(`${BASE}/v1/orchestrator/workflows/${id}/run`, {
-            method: 'POST', headers: authHeaders(), body: JSON.stringify({ input_text: input }),
+          const res = await fetch(`${BASE}/v1/orchestrator/workflows/${id}/stream`, {
+            method: 'POST',
+            headers: { ...authHeaders(), 'Accept': 'text/event-stream' },
+            body: JSON.stringify({ input_text: input }),
           });
-          if (r.ok) {
-            showToast('Workflow completed');
-            viewWorkflow(id);
-            loadOrchStats();
-          } else {
-            const err = await r.json();
+
+          if (!res.ok) {
+            clearInterval(elapsedTimer);
+            const err = await res.json();
             showToast(err.detail || 'Execution failed', true);
+            return;
           }
-        } catch (e) { showToast('Execution failed', true); }
+
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            let eventType = null;
+            let eventData = null;
+
+            for (const line of lines) {
+              if (line.startsWith('event: ')) {
+                eventType = line.substring(7).trim();
+              } else if (line.startsWith('data: ')) {
+                try {
+                  eventData = JSON.parse(line.substring(6));
+                } catch (e) { continue; }
+
+                if (!eventType || !eventData) continue;
+
+                // ── Handle events ──
+                const stepIdx = eventData.step_index;
+                const agentName = eventData.agent_name || '';
+
+                if (eventType === 'step.started') {
+                  const card = document.createElement('div');
+                  card.className = 'step-card-live running';
+                  card.setAttribute('data-step', stepIdx != null ? stepIdx : '?');
+                  card.innerHTML = `
+                    <div class="step-live-header">
+                      <div>
+                        <span class="step-live-agent">${escapeHtml(agentName)}</span>
+                        <span class="step-live-role">${escapeHtml(eventData.agent_role || '')}</span>
+                      </div>
+                      <span class="step-live-meta" id="step-meta-${stepIdx}"></span>
+                    </div>
+                    <div class="step-stages" id="step-stages-${stepIdx}">
+                      <span class="stage-pill active" id="stage-gov-${stepIdx}"><span class="stage-icon">🛡️</span> Governance</span>
+                      <span class="stage-pill" id="stage-mem-${stepIdx}"><span class="stage-icon">🧠</span> Memory</span>
+                      <span class="stage-pill" id="stage-llm-${stepIdx}"><span class="stage-icon">🤖</span> LLM</span>
+                      <span class="stage-pill" id="stage-done-${stepIdx}"><span class="stage-icon">✓</span> Done</span>
+                    </div>
+                  `;
+                  timeline.appendChild(card);
+                  stepCards[stepIdx] = card;
+                  card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+
+                else if (eventType === 'step.governance_pass') {
+                  const pill = document.getElementById(`stage-gov-${stepIdx}`);
+                  if (pill) { pill.className = 'stage-pill done'; pill.querySelector('.stage-icon').textContent = '✓'; }
+                  const memPill = document.getElementById(`stage-mem-${stepIdx}`);
+                  if (memPill) memPill.className = 'stage-pill active';
+                }
+
+                else if (eventType === 'step.governance_deny') {
+                  const pill = document.getElementById(`stage-gov-${stepIdx}`);
+                  if (pill) { pill.className = 'stage-pill fail'; pill.querySelector('.stage-icon').textContent = '✘'; }
+                  if (stepCards[stepIdx]) stepCards[stepIdx].className = 'step-card-live denied';
+                }
+
+                else if (eventType === 'step.memory_retrieve') {
+                  const memPill = document.getElementById(`stage-mem-${stepIdx}`);
+                  if (memPill) {
+                    memPill.className = 'stage-pill done';
+                    memPill.querySelector('.stage-icon').textContent = '✓';
+                    memPill.textContent = '';
+                    memPill.innerHTML = `<span class="stage-icon">✓</span> ${eventData.facts_found} facts`;
+                  }
+                  const llmPill = document.getElementById(`stage-llm-${stepIdx}`);
+                  if (llmPill) llmPill.className = 'stage-pill active';
+                }
+
+                else if (eventType === 'step.llm_start') {
+                  const llmPill = document.getElementById(`stage-llm-${stepIdx}`);
+                  if (llmPill) {
+                    llmPill.className = 'stage-pill active';
+                    llmPill.innerHTML = `<span class="stage-icon">⏳</span> Inferring…`;
+                  }
+                }
+
+                else if (eventType === 'step.llm_complete') {
+                  const llmPill = document.getElementById(`stage-llm-${stepIdx}`);
+                  if (llmPill) {
+                    llmPill.className = 'stage-pill done';
+                    llmPill.innerHTML = `<span class="stage-icon">✓</span> ${eventData.tokens_used} tok · ${eventData.latency_ms}ms`;
+                  }
+                  totalTokens += (eventData.tokens_used || 0);
+                  const tokEl = document.getElementById('stream-tokens');
+                  if (tokEl) tokEl.textContent = totalTokens + ' tokens';
+
+                  // Show output preview
+                  if (eventData.output_preview && stepCards[stepIdx]) {
+                    const existing = stepCards[stepIdx].querySelector('.step-live-output');
+                    if (!existing) {
+                      const outDiv = document.createElement('div');
+                      outDiv.className = 'step-live-output';
+                      outDiv.textContent = eventData.output_preview;
+                      stepCards[stepIdx].appendChild(outDiv);
+                    }
+                  }
+                }
+
+                else if (eventType === 'step.tool_call') {
+                  // Add tool pill if not exists
+                  const stages = document.getElementById(`step-stages-${stepIdx}`);
+                  if (stages) {
+                    const toolPill = document.createElement('span');
+                    toolPill.className = 'stage-pill done';
+                    toolPill.innerHTML = `<span class="stage-icon">🔧</span> ${escapeHtml(eventData.tool_name || 'tool')}`;
+                    const donePill = document.getElementById(`stage-done-${stepIdx}`);
+                    if (donePill) stages.insertBefore(toolPill, donePill);
+                  }
+                }
+
+                else if (eventType === 'step.complete') {
+                  const donePill = document.getElementById(`stage-done-${stepIdx}`);
+                  if (donePill) { donePill.className = 'stage-pill done'; }
+                  if (stepCards[stepIdx]) stepCards[stepIdx].className = 'step-card-live completed';
+
+                  // Update meta
+                  const meta = document.getElementById(`step-meta-${stepIdx}`);
+                  if (meta) meta.textContent = `${eventData.tokens_used || 0} tokens · ${eventData.latency_ms || 0}ms`;
+                }
+
+                else if (eventType === 'workflow.complete') {
+                  clearInterval(elapsedTimer);
+                  const bar = document.getElementById('stream-bar');
+                  if (bar) {
+                    bar.querySelector('.stream-dot').className = 'stream-dot';
+                    bar.querySelector('.stream-label').textContent = 'Workflow completed';
+                  }
+
+                  const banner = document.createElement('div');
+                  banner.className = 'stream-complete-banner';
+                  banner.innerHTML = `
+                    <span class="stream-complete-icon">✅</span>
+                    <span class="stream-complete-text">Workflow ${escapeHtml(eventData.status || 'completed')}</span>
+                    <span class="stream-complete-stats">${eventData.total_steps || 0} steps · ${eventData.total_tokens || 0} tokens · ${eventData.duration_ms || 0}ms</span>
+                  `;
+                  timeline.appendChild(banner);
+                  loadOrchStats();
+                }
+
+                else if (eventType === 'workflow.error') {
+                  clearInterval(elapsedTimer);
+                  const bar = document.getElementById('stream-bar');
+                  if (bar) {
+                    bar.querySelector('.stream-dot').className = 'stream-dot error';
+                    bar.querySelector('.stream-label').textContent = 'Workflow failed';
+                  }
+
+                  const banner = document.createElement('div');
+                  banner.className = 'stream-complete-banner error';
+                  banner.innerHTML = `
+                    <span class="stream-complete-icon">❌</span>
+                    <span class="stream-complete-text">Error: ${escapeHtml(eventData.error || 'Unknown')}</span>
+                  `;
+                  timeline.appendChild(banner);
+                }
+
+                eventType = null;
+                eventData = null;
+              }
+            }
+          }
+        } catch (e) {
+          clearInterval(elapsedTimer);
+          showToast('Streaming failed: ' + e.message, true);
+        }
       };
     } catch (e) { showToast('Failed to load workflow', true); }
   };
@@ -1508,4 +1809,122 @@
       loadProviders();
     });
   }
+
+  // ---- Sprint 13: Monitoring tab auto-refresh ----
+  let monitoringInterval = null;
+
+  function formatUptime(seconds) {
+    const d = Math.floor(seconds / 86400);
+    const h = Math.floor((seconds % 86400) / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    if (d > 0) return `${d}d ${h}h`;
+    if (h > 0) return `${h}h ${m}m`;
+    return `${m}m ${Math.floor(seconds % 60)}s`;
+  }
+
+  async function refreshMonitoring() {
+    try {
+      const resp = await fetch('/v1/monitoring/stats', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('gfm_api_key') || ''}` }
+      });
+      if (!resp.ok) return;
+      const d = await resp.json();
+
+      // System status
+      const statusEl = document.getElementById('mon-status');
+      if (statusEl) {
+        statusEl.textContent = (d.status || 'ok').toUpperCase();
+        statusEl.style.color = d.status === 'ok' ? 'var(--accent-emerald)' : 'var(--accent-amber)';
+      }
+      const uptimeEl = document.getElementById('mon-uptime');
+      if (uptimeEl) uptimeEl.textContent = formatUptime(d.uptime_seconds || 0);
+      const verEl = document.getElementById('mon-version');
+      if (verEl) verEl.textContent = d.version || '—';
+      const storesEl = document.getElementById('mon-stores');
+      if (storesEl) storesEl.textContent = (d.stores && d.stores.active != null) ? d.stores.active : '—';
+
+      // Pool stats
+      const pool = d.pool || {};
+      const poolSize = document.getElementById('mon-pool-size');
+      if (poolSize) poolSize.textContent = pool.pooled ? pool.pool_size : 'N/A';
+      const poolAvail = document.getElementById('mon-pool-avail');
+      if (poolAvail) poolAvail.textContent = pool.pooled ? pool.pool_available : 'N/A';
+      const poolWait = document.getElementById('mon-pool-waiting');
+      if (poolWait) {
+        poolWait.textContent = pool.pooled ? pool.requests_waiting : 'N/A';
+        if (pool.requests_waiting > 0) poolWait.style.color = 'var(--accent-rose)';
+        else poolWait.style.color = 'var(--accent-amber)';
+      }
+      const poolRange = document.getElementById('mon-pool-range');
+      if (poolRange) poolRange.textContent = pool.pooled ? `${pool.pool_min} / ${pool.pool_max}` : 'N/A';
+
+      // Pool utilization bar
+      const bar = document.getElementById('mon-pool-bar');
+      const barLabel = document.getElementById('mon-pool-bar-label');
+      if (bar && pool.pooled && pool.pool_max > 0) {
+        const used = pool.pool_size - pool.pool_available;
+        const pct = Math.min(100, Math.round((used / pool.pool_max) * 100));
+        bar.style.width = pct + '%';
+        if (barLabel) barLabel.textContent = `${used} / ${pool.pool_max} in use (${pct}%)`;
+        if (pct > 80) bar.style.background = 'linear-gradient(90deg,var(--accent-amber),var(--accent-rose))';
+        else bar.style.background = 'linear-gradient(90deg,var(--accent-emerald),var(--accent-cyan))';
+      }
+
+      // Metrics
+      const m = d.metrics || {};
+      if (m.available) {
+        const gov = m.governance || {};
+        const govAllow = document.getElementById('mon-gov-allow');
+        if (govAllow) govAllow.textContent = Math.round(gov.allow || 0);
+        const govDeny = document.getElementById('mon-gov-deny');
+        if (govDeny) govDeny.textContent = Math.round(gov.deny || 0);
+        const govEsc = document.getElementById('mon-gov-escalate');
+        if (govEsc) govEsc.textContent = Math.round(gov.escalate || 0);
+
+        const wf = m.workflows || {};
+        const wfComp = document.getElementById('mon-wf-completed');
+        if (wfComp) wfComp.textContent = Math.round(wf.completed || 0);
+        const wfFail = document.getElementById('mon-wf-failed');
+        if (wfFail) wfFail.textContent = Math.round(wf.failed || 0);
+        const wfTerm = document.getElementById('mon-wf-terminated');
+        if (wfTerm) wfTerm.textContent = Math.round(wf.terminated || 0);
+
+        const opsMem = document.getElementById('mon-ops-memory');
+        if (opsMem) opsMem.textContent = Math.round(m.memory_operations || 0);
+        const opsDec = document.getElementById('mon-ops-decisions');
+        if (opsDec) opsDec.textContent = Math.round(m.decisions_logged || 0);
+        const opsEr = document.getElementById('mon-ops-erasure');
+        if (opsEr) opsEr.textContent = Math.round(m.erasure_certificates || 0);
+        const opsWh = document.getElementById('mon-ops-webhooks');
+        if (opsWh) opsWh.textContent = Math.round(m.webhooks_dispatched || 0);
+        const opsSso = document.getElementById('mon-ops-sso');
+        if (opsSso) opsSso.textContent = Math.round(m.sso_logins || 0);
+      }
+
+      // Last updated
+      const lastEl = document.getElementById('mon-last-updated');
+      if (lastEl) lastEl.textContent = `Last refreshed: ${new Date().toLocaleTimeString()} · Auto-refresh every 5s`;
+    } catch (e) {
+      console.warn('Monitoring refresh failed:', e);
+    }
+  }
+
+  const navMon = document.getElementById('nav-monitoring');
+  if (navMon) {
+    navMon.addEventListener('click', () => {
+      refreshMonitoring();
+      clearInterval(monitoringInterval);
+      monitoringInterval = setInterval(refreshMonitoring, 5000);
+    });
+  }
+
+  // Stop polling when switching away from monitoring
+  document.querySelectorAll('.nav-item').forEach(nav => {
+    nav.addEventListener('click', () => {
+      if (nav.dataset.section !== 'monitoring' && monitoringInterval) {
+        clearInterval(monitoringInterval);
+        monitoringInterval = null;
+      }
+    });
+  });
 })();

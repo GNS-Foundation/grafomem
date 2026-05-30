@@ -13,6 +13,12 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from aml.cloud.schemas import (
+    LLMProviderResponse,
+    LLMProviderListResponse,
+    ToolListResponse,
+)
+
 logger = logging.getLogger("grafomem.cloud.llm_routes")
 
 
@@ -73,7 +79,7 @@ def create_llm_router(llm_registry, tool_registry) -> APIRouter:
     # Provider management
     # ------------------------------------------------------------------
 
-    @router.post("/providers")
+    @router.post("/providers", response_model=LLMProviderResponse)
     async def register_provider(req: RegisterProviderRequest, request: Request):
         """Register or update an LLM provider for your tenant."""
         tenant_id = _get_tenant_id(request)
@@ -93,7 +99,7 @@ def create_llm_router(llm_registry, tool_registry) -> APIRouter:
             logger.error("Failed to register provider: %s", e)
             raise HTTPException(500, f"Failed to register provider: {e}")
 
-    @router.get("/providers")
+    @router.get("/providers", response_model=LLMProviderListResponse)
     async def list_providers(request: Request):
         """List all registered LLM providers for your tenant."""
         tenant_id = _get_tenant_id(request)
@@ -135,7 +141,7 @@ def create_llm_router(llm_registry, tool_registry) -> APIRouter:
             logger.error("Failed to register tool: %s", e)
             raise HTTPException(500, f"Failed to register tool: {e}")
 
-    @router.get("/tools")
+    @router.get("/tools", response_model=ToolListResponse)
     async def list_tools(request: Request):
         """List all tools (built-in + custom) for your tenant."""
         tenant_id = _get_tenant_id(request)
