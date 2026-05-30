@@ -104,10 +104,21 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
         return None
 
     def _resolve_jwt(self, token: str) -> str | None:
-        """Try to resolve a portal JWT (Supabase or legacy) to a tenant_id."""
+        """Try to resolve a portal JWT (Supabase or legacy) to a tenant_id.
+
+        Uses the PortalAuth instance already on app.state (which shares the
+        same JWT secret that issued the token).
+        """
         try:
-            from aml.cloud.portal_auth import PortalAuth
-            portal_auth = PortalAuth(db_url=self._db_url)
+            # Access the PortalAuth instance stored on app.state during startup
+            portal_auth = getattr(self.app, 'state', None)
+            if portal_auth:
+                portal_auth = getattr(portal_auth, 'portal_auth', None)
+            if not portal_auth:
+                # Fallback: create one (won't work for legacy JWTs unless
+                # GRAFOMEM_PORTAL_SECRET env var is set)
+                from aml.cloud.portal_auth import PortalAuth
+                portal_auth = PortalAuth(db_url=self._db_url)
             info = portal_auth.verify_token(token)
             if info and info.get("tenant_id"):
                 tenant_id = info["tenant_id"]
