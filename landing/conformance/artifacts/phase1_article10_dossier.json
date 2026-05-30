@@ -1,39 +1,63 @@
 {
   "provenance": [
     {
-      "source": "GNSCDPAddendumgcrumbsv0_2.pdf",
-      "content_hash": "8f0b18004e0ac7dce907933943974bad2e52f47a1c7c16b9055e64188f38ce8b",
-      "evidence": "63965d517dd2c91a2ce5e5e9fb398b5b"
+      "source": "01-workload-spec.md",
+      "content_hash": "e744edbab04bb39d2d357917268ea45f7210e7470b82d0fca86fb8eafa0e9c51",
+      "evidence": "010adb536d2c1a71b168d54e5650882d"
     },
     {
-      "source": "GNSCDPWhitepaperv0_2.pdf",
-      "content_hash": "a26800a6f2ee8f32dcb5a7dca673b8e5af3c7b1dfe299c250695d9fbde3c347b",
-      "evidence": "528521343cefb43db9334ecd3042a89b"
+      "source": "02-backend-interface.md",
+      "content_hash": "7d3eed7dec07b083002c3791cbac4c47cc9be68e1b5973629552bdecf5d56724",
+      "evidence": "163182d0be029d669a466d448ed2031e"
     },
     {
-      "source": "grafomem_cloud_roadmap.md",
-      "content_hash": "fa1ed0442fc779435b813a738cf7f87fbb86d8c9113834f1efca0a84acb418d0",
-      "evidence": "377c9a1e781c5e0ba7fd448fb452cbbd"
+      "source": "03-eval-metrics.md",
+      "content_hash": "0c78260df180326192fbc1c71badcedff68b2ac6ec0c63dbf23762ef140b0a0a",
+      "evidence": "a2a467459bfc55efa173adb8e7915fb1"
     },
     {
-      "source": "grafomem_cloud_whitepaper.md",
-      "content_hash": "836353b7f9c6355b635cd7adfbe8bf376e234f8cc29671c186e27cb034ce7a61",
-      "evidence": "7aecb0b62f039bf6d8ebfbadbbdee2e5"
+      "source": "adapter-guide.md",
+      "content_hash": "2905e707ff9e5f1f6f4a088f9be7c98f6b239e97cfb582276881ccdc8e2fcd5d",
+      "evidence": "b5f2543156cc41f8f70b5338485a05e3"
     },
     {
-      "source": "grafomempaper.pdf",
-      "content_hash": "e370c2cc3dd64e2ef023e11182b74addfa1ceb9bb3a9c2b628f7a4159976778e",
-      "evidence": "15e4e0a38b5fe44f0ef487314c40428d"
+      "source": "findings-registry-design.md",
+      "content_hash": "2dfa569237c3604b342e744cdae26feaf52764122cedff2b5e0e99f7cd9c6f11",
+      "evidence": "8108b899e5f38f1ccd882a090f10d266"
+    },
+    {
+      "source": "gmp-spec-v0.2.md",
+      "content_hash": "b414bc47322360c80a8ab1abf03bb0c0f2d1fa26b6ae4cb3a506d2b16f5daf7a",
+      "evidence": "eb0b61944d7fea1e2e619457c2415829"
+    },
+    {
+      "source": "grafomem-cloud-whitepaper-v1.3.md",
+      "content_hash": "46f8455f49bb1d40cf0eadb4f5ef8c5105e7b3950a14995a38d215919c8407cd",
+      "evidence": "264f38d0906128db082f826f786a60d2"
+    },
+    {
+      "source": "grafomem-paper.md",
+      "content_hash": "87a5ac7af1d62478a9c74487bc4abc8efc25e006addec03c29e27552e1430589",
+      "evidence": "260d5cd2711d7f41e0e5ad44360ea459"
+    },
+    {
+      "source": "grafomem-paper.pdf",
+      "content_hash": "9b833ce0509dc0fc21bd1bead4509ed545ba273ee6a6c2df38a3f94baf23a439",
+      "evidence": "d128bc03ba27e7b0f55de6fb988e0ea0"
     }
   ],
   "methodology": [
     "read->blake2b256->chunk(BGE-small-en-v1.5)->facts"
   ],
   "composition": [
-    "GNSCDPAddendumgcrumbsv0_2.pdf",
-    "GNSCDPWhitepaperv0_2.pdf",
-    "grafomem_cloud_roadmap.md",
-    "grafomem_cloud_whitepaper.md",
-    "grafomempaper.pdf"
+    "01-workload-spec.md",
+    "02-backend-interface.md",
+    "03-eval-metrics.md",
+    "adapter-guide.md",
+    "findings-registry-design.md",
+    "gmp-spec-v0.2.md",
+    "grafomem-cloud-whitepaper-v1.3.md",
+    "grafomem-paper.md",
+    "grafomem-paper.pdf"
   ]
 }

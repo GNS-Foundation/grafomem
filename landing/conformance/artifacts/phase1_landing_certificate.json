@@ -1,13 +1,13 @@
 {
   "version": "lc/0.1",
   "tenant_id": "gns",
-  "timestamp": 1780137815.1364639,
+  "timestamp": 1780138598.900277,
   "artifact": {
     "artifact_ref": "oci://grafomem/gns-assistant:phase1",
-    "manifest_digest": "ce08ef8681a8ae383daa61993349b5d405b73a8b2e2a9c54acee527a260b6a42",
+    "manifest_digest": "021cb3d54dd0c70c3b8c258054a06b9b746b65c07ed147f7a18aaf6b1bd8a0d6",
     "base_model_ref": "open-weights-7B",
     "layer_hashes": [
-      "e4cafb0e51104475d59d3507a3b74fe75a7b96a917a62d5cd00c6ac79149400e",
+      "819704feb1b99c2cd057adcd07cc4accd7962b917b8473d57d99b65078394f50",
       "289cca85aacaf768830b74d0b7d70db4cfd4c70dd3fcf561da8afa3975716cc4",
       "8c5dc8a7bb2d83d05e0313a967b5614bbd62158640033a8267cb2774fe861c9b"
     ],
@@ -15,35 +15,39 @@
   },
   "data_provenance": {
     "corpus_hash": "f049820bc24505111595b030ee9b2e6abd1812e80e96e3e770e1bbbcfb077ca6",
-    "epoch_id": "adfe9294278544326104d48f92380fc2",
-    "merkle_root": "15e452a4f9c577fdc564b1956077a44e8594bc043f7f3cdc326dad9c6f5a7dd5",
-    "source_leaf": "8b0cd5e20cbc31ddc61f6d470d5fe77419547a1f5d242fd6e913ce57e919ad20",
+    "epoch_id": "19a2e014a1fdc03f7e078685ca5fd48d",
+    "merkle_root": "ff41732272e3a64a016be68abbfdb3aba5fde2ba0170c11d93e96b474f8c790b",
+    "source_leaf": "d4d13bbc06bece75d8fc8c8a378fc9d2007bd6d9c95217c974d60a0ee7211159",
     "inclusion_proof": [
       {
-        "hash": "02b97549c929b1d45481f9ed5f5ea80a2660f8171954e9f968bca78b960cbc8b",
+        "hash": "5f85fda2971760a44f116a9e7a58618d931c2f9c32acf72a7b66d677ba3b82ac",
         "right": true
       },
       {
-        "hash": "682ddf0518569d1e910185bcccf86dcbd384c5a0e60d377898f62e6cc7d7a4a4",
+        "hash": "fe660472b05c48957438cc52b53f732548be12f7a62073514b4d42278403e307",
         "right": true
       },
       {
-        "hash": "ea0fe9e02bae8e849c8b1c02144bab7d0aa2e0bbfb1bf3fc15c41e66d6765e73",
+        "hash": "194395e3b1e6c35b8dea3ebbc08c07fbd747b6681f6ffab6f7ebad5e48302b7b",
         "right": true
       },
       {
-        "hash": "b344500a3e5ac51f62edc719477569eb2d63484ea798a6c8feedfcd99d92f779",
+        "hash": "ec7f58d6813c6f767c2dca839f823db44b807e98f5b64ab007b1b9b2a4e48dd1",
+        "right": true
+      },
+      {
+        "hash": "4bea3def062bd6cbfbba968eb38a73cfd930c7cbcaf80732c4b18b6b9d9376ec",
         "right": true
       }
     ],
     "composition_ref": null
   },
   "authority": {
-    "delegation_ref": "ffcbfdd796b7c01b493aad0583b867da",
+    "delegation_ref": "6689fc2595995b6298b4916e85051adb",
     "human_principal": "camilo.ayerbe@gns",
     "trust_tier": "release",
-    "delegation_sig": "97a34eb71f89e3801bca9832dfd65ab09ed290ca3f0866f5f898b156f006b89567065c444c0f62fbe883f6d0f71fa6ef8bea08090feeaa64c8054fb235559407",
-    "delegation_signed_body": "{\"agent_handle\":\"gns-assistant@grafomem\",\"deleg_id\":\"ffcbfdd796b7c01b493aad0583b867da\",\"human_principal\":\"camilo.ayerbe@gns\",\"human_pubkey\":\"ab9902caeb3e81d0674467db96855e953674d09f07211bfbd93cf15c71cbd428\",\"issued_at\":1780137815.1118023,\"tier\":\"release\"}"
+    "delegation_sig": "465ae8a2e5cae5c161cf5c7c0430ef82f53da392dce26e6390b4e59d2e063481edb331a6fa337cc818106f978fd321fe5b06fae3cba113a7bdca846405768109",
+    "delegation_signed_body": "{\"agent_handle\":\"gns-assistant@grafomem\",\"deleg_id\":\"6689fc2595995b6298b4916e85051adb\",\"human_principal\":\"camilo.ayerbe@gns\",\"human_pubkey\":\"75eb68d1708ca02b3a001a09f69777b7f623cf4a50b85e3463b6348bc337408a\",\"issued_at\":1780138598.89241,\"tier\":\"release\"}"
   },
   "conformance": {
     "harness_version": "landing/0.1",
@@ -59,11 +63,11 @@
     "grafomem_write",
     "http_get"
   ],
-  "certificate_id": "a77c08b0b164b37492fd5853dd085eeb",
-  "signer_public_key": "c70a39cfa78ed3aa252ee7d79367c0250e47731f83127860526bbe3866a0fcbd",
-  "signature": "1f8decb9697b3aa41601ccf94b24e7eee62558e0b541484df1ecd4085db3fcd3e0d2b8f90e8f87d4322f9043a16e1d7846858bfc5b04b141f4f887da69dc4b02",
+  "certificate_id": "564656f82b3a170aa6a2379fc01d2f83",
+  "signer_public_key": "874150d3e03f58bd5ced084a0261699fdb11b4ebfca741995b321c6ed7fe9ceb",
+  "signature": "622d2a4e940e045f9bdc2ce20cc116d4470a3708fa5912f8b0746f1abeaac53a855e29e4a0fe62842c43ece143b3555483c76f9ad3a5d8b391d51626603a190d",
   "anchor": {
-    "epoch_id": "0d79cade978edaf6267c2b07086647ca",
-    "merkle_root": "6266e107a0ef6331401dfb4a8a639c896bb7a6128721b31a2a2efb7f783bcc27"
+    "epoch_id": "d1962d52ac2e9da3fa959e572f895bcd",
+    "merkle_root": "a1fd1a020c66421aa7b667f57dedf06642580d2754921d83a044c6a74e028d83"
   }
 }

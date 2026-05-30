@@ -1,0 +1,1309 @@
+{
+  "records": {
+    "ee109f7a36df0319fb140df4824ebc27": {
+      "sources": [
+        "01-workload-spec.md"
+      ],
+      "policy": "docs-authoritative-for-intent"
+    },
+    "6d9eec2addd644d1bb3785c59f74df8b": {
+      "sources": [
+        "02-backend-interface.md"
+      ],
+      "policy": "docs-authoritative-for-intent"
+    },
+    "0f05a8ac05a2fad00f53cf6c764c4934": {
+      "sources": [
+        "03-eval-metrics.md"
+      ],
+      "policy": "docs-authoritative-for-intent"
+    },
+    "1d4569c738119725fb49a288939b0db5": {
+      "sources": [
+        "adapter-guide.md"
+      ],
+      "policy": "docs-authoritative-for-intent"
+    },
+    "a3efb8fac88dd920b1ecdfbb8e07ca40": {
+      "sources": [
+        "findings-registry-design.md"
+      ],
+      "policy": "docs-authoritative-for-intent"
+    },
+    "917b196a708099470f2336b15f79c3b1": {
+      "sources": [
+        "gmp-spec-v0.2.md"
+      ],
+      "policy": "docs-authoritative-for-intent"
+    },
+    "0dc4794549b1dbd882438c2b9aecde24": {
+      "sources": [
+        "grafomem-cloud-whitepaper-v1.3.md"
+      ],
+      "policy": "docs-authoritative-for-intent"
+    },
+    "8cc880775658bd915510ca89771e3c41": {
+      "sources": [
+        "grafomem-paper.md"
+      ],
+      "policy": "docs-authoritative-for-intent"
+    },
+    "a0d276482694a51e7c9a1a0afca992a7": {
+      "sources": [
+        "grafomem-paper.pdf"
+      ],
+      "policy": "docs-authoritative-for-intent"
+    },
+    "1916b8b2ea8f9649aac7c26b28c5c0eb": {
+      "sources": [
+        "__init__.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "11f65b6a306aeb31ef9324b0ec8ccce5": {
+      "sources": [
+        "adapter_check.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "7e752c64891f14d89791d825e416d6e8": {
+      "sources": [
+        "backends/__init__.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "3898d5bb2c1f8c28ca8bbbdede79c6d1": {
+      "sources": [
+        "backends/bi_temporal.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "9e3d62a410cf014b654961e05e437463": {
+      "sources": [
+        "backends/bounded_vector.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "8cc2f6a507200b13eefaf7f474703639": {
+      "sources": [
+        "backends/conflict_backends.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "d309a8b37d8a44cb7328bc265b32ac8c": {
+      "sources": [
+        "backends/cross_session_backends.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "72f6afc9212a7d864f75340dc3f5442c": {
+      "sources": [
+        "backends/delete_backends.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "f4ad985c5bd3eeaf9e398436f3ec187e": {
+      "sources": [
+        "backends/gmp_reference.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "fd7f282a0cfd344b521c9b0859b6a9f0": {
+      "sources": [
+        "backends/interface.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "a614ed10ea510ef8893ccd7031ba54a8": {
+      "sources": [
+        "backends/isolation_backends.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "da86605368f52a2fa0531e29a11cebda": {
+      "sources": [
+        "backends/persistence.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "0f6d724d1bc3c04f2248072d3a8bd109": {
+      "sources": [
+        "backends/postgres_gmp.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "b7eaa9dd479fce8244ed88914709e8c9": {
+      "sources": [
+        "backends/retention_backends.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "80776687ab6d18eed4ce2a2f5dbc4f56": {
+      "sources": [
+        "backends/sqlite_gmp.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "d9880b8301f254e8df2b8747a73d7e3b": {
+      "sources": [
+        "backends/supersession_chain.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "4d9f28777a1fe48e351074755b005a2a": {
+      "sources": [
+        "backends/tenant_backends.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "b2ee6caebbd1fd18a0f07bd560a3503d": {
+      "sources": [
+        "backends/vector_only.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "9a297fd6c675ef4fb865c0b00424eca8": {
+      "sources": [
+        "cli.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "b6d479e629090b86b0b9c79890f46c1d": {
+      "sources": [
+        "cloud/__init__.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "4c3b081b0c6438c30fbc1ae9ff5dc87c": {
+      "sources": [
+        "cloud/compliance.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "34d24d4890482cf3c271d777ed2bd057": {
+      "sources": [
+        "cloud/db_pool.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "eb3e6d5f67aca5ae4a2dedae864b900c": {
+      "sources": [
+        "cloud/decision_routes.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "dd1613d4cf41b9b2971a1635e9cbc20f": {
+      "sources": [
+        "cloud/decision_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "729a5bd46bf06ddcc4bdf0d56aeab15d": {
+      "sources": [
+        "cloud/regulatory_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "e782e7e417c0fc4e4d0f386ddad0492c": {
+      "sources": [
+        "cloud/decision_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "a8702e88453712fd9c511fe6717bd478": {
+      "sources": [
+        "cloud/decision_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "8061c4cd366cf47f956ff10ecd6b0dd4": {
+      "sources": [
+        "cloud/decision_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "29a853ea0c309db07004b5964a7f5847": {
+      "sources": [
+        "server/app.py"
+      ],
+      "policy": "code-wins"
+    },
+    "a596d3c0b80b173bf0050ea01156ff11": {
+      "sources": [
+        "cloud/decision_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "123e7335e94a08d37f8d412cd5a7f7ae": {
+      "sources": [
+        "cloud/decision_trail.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "f392e7c8b17f81a8b52f16b6b92ab045": {
+      "sources": [
+        "cloud/erasure_proof.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "8198ca1d1e8680a324813f2a7c225143": {
+      "sources": [
+        "cloud/erasure_routes.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "ee5e482c2db6e241f94f417f26b9a67a": {
+      "sources": [
+        "cloud/erasure_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "1294302c8185ad34cdd723ed604663f3": {
+      "sources": [
+        "cloud/erasure_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "34f9e0627c310605695a7f5f0079aa10": {
+      "sources": [
+        "cloud/erasure_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "47adbce086c1b64af134c608fe351405": {
+      "sources": [
+        "cloud/erasure_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "7d460da1f14dd254cdd6c6bb3a4b55a0": {
+      "sources": [
+        "cloud/evidence_collector.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "6eeb8fc5bfbc825ce68596dd4650f04c": {
+      "sources": [
+        "cloud/execution_receipts.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "b0f8ad75d22d6610ed8a9c01840bc986": {
+      "sources": [
+        "cloud/governance.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "fc10372880f68991a625d00247892ed4": {
+      "sources": [
+        "cloud/governance_routes.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "04c0c9001d6af4686486e0f1595bddca": {
+      "sources": [
+        "cloud/governance_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "64005b2e6a9568bcfd27d1238ec363cd": {
+      "sources": [
+        "cloud/governance_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "4c741c99edc8f4351ba004212638a71b": {
+      "sources": [
+        "cloud/governance_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "9c4c1b5bb9dcd5439a3c05c6e2086ff9": {
+      "sources": [
+        "cloud/governance_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "a5a1f13050e45d14abdafcffb83bb3a0": {
+      "sources": [
+        "cloud/governance_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "97308b73c43130b8faf86748811acd17": {
+      "sources": [
+        "cloud/governance_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "fdc7337f36684801383ea5d42fbf959a": {
+      "sources": [
+        "cloud/governance_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "bf25f931b12c1699313fb632990d1842": {
+      "sources": [
+        "cloud/governance_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "6f68e7efb0e2681787f2df581c60a5c6": {
+      "sources": [
+        "cloud/governance_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "74c193368cd65ddb6ccdb8770d9e24c3": {
+      "sources": [
+        "cloud/llm_registry.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "5ea5a585437f7578e502454754e49c7d": {
+      "sources": [
+        "cloud/llm_routes.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "d647731ef2ef27e0889e7b2a85c3d3cd": {
+      "sources": [
+        "cloud/llm_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "ace42d1f01c92b4b69002d2d7799082e": {
+      "sources": [
+        "cloud/sso_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "cbd750044228aba949c55398e3705e12": {
+      "sources": [
+        "cloud/llm_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "9d9641cec7403918c4465b51fd536d31": {
+      "sources": [
+        "cloud/llm_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "c9dac7b8fd7209c418376460cd3c5d97": {
+      "sources": [
+        "cloud/llm_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "f392c7e498e7274437f458fd0987d1f2": {
+      "sources": [
+        "cloud/llm_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "4b3129f8c4d9c60b8dc281f4b4f98ff2": {
+      "sources": [
+        "cloud/llm_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "9cb5d9e6db0e93af34e91efe7bded9f2": {
+      "sources": [
+        "cloud/memory_taxonomy.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "5fbf57cdc8c82ce9f5e3494497eeb1be": {
+      "sources": [
+        "cloud/metering.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "757ca2f8006e1ba93d28a9a45bbc9c13": {
+      "sources": [
+        "cloud/orchestrator.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "1747b1af8f7df26ba3c7e64720eaf0d6": {
+      "sources": [
+        "cloud/orchestrator_routes.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "aca0afaa2648ba1cb67ce012d605c3af": {
+      "sources": [
+        "cloud/orchestrator_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "78d069972192a80f7e2eab4251aa3699": {
+      "sources": [
+        "cloud/orchestrator_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "59b65bdef561b16c21308834b549367d": {
+      "sources": [
+        "cloud/orchestrator_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "67819f202b315e21b7d0dc6279ce2c71": {
+      "sources": [
+        "cloud/orchestrator_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "10e91506c360a6f63cbda7f8536c00e7": {
+      "sources": [
+        "cloud/orchestrator_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "c891e2849334bf526add3bf32137dd4d": {
+      "sources": [
+        "cloud/orchestrator_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "6f7935e45bb8291b333dd03f0e988ee7": {
+      "sources": [
+        "cloud/orchestrator_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "b9fb983e6301bcda5e15ba536949f965": {
+      "sources": [
+        "cloud/orchestrator_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "aeaccea2f6d985f0f3cd7a7e3d75e54a": {
+      "sources": [
+        "cloud/orchestrator_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "21d1f57192c7b864c58bf27e6da3c383": {
+      "sources": [
+        "cloud/orchestrator_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "8625126a57b6820c14ddb006e6fdaf58": {
+      "sources": [
+        "cloud/orchestrator_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "4cca1e386f7f5478213e29910a0c10cc": {
+      "sources": [
+        "cloud/orchestrator_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "329d9d8516b897cd376d9f61e2fda461": {
+      "sources": [
+        "cloud/orchestrator_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "640a9a0272a25f7c5674fb852d112ed2": {
+      "sources": [
+        "cloud/orchestrator_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "0b864b36635951c567fbafb8d09ec9ed": {
+      "sources": [
+        "cloud/orchestrator_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "a528990260679d92775ab5e968f2dea0": {
+      "sources": [
+        "cloud/orchestrator_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "a9b8007691a0f3ebfaadce479ec6c85e": {
+      "sources": [
+        "cloud/orchestrator_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "f52fd61a0428bde0de2f5cf5c0038551": {
+      "sources": [
+        "cloud/orchestrator_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "28fade4958fa5ed65afa7ecf7f6ac291": {
+      "sources": [
+        "cloud/orchestrator_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "3f4b42ebaeb286c22c457008f6e0834f": {
+      "sources": [
+        "cloud/pdf_renderer.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "1156e7447b36e0e6bbacf94b0797f19e": {
+      "sources": [
+        "cloud/policy_engine.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "085cdfbd07764f94999002fd3726c82d": {
+      "sources": [
+        "cloud/portal_auth.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "4937a7a5f4d1da3f433614a3fb8f4bac": {
+      "sources": [
+        "cloud/portal_routes.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "3b6a1772b0369bf4796f5736053cad88": {
+      "sources": [
+        "cloud/portal_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "cf82967770ba369d5fe79ecd5072945a": {
+      "sources": [
+        "cloud/portal_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "1e5851d726ac4e0e4da6f0e96ecdb7c5": {
+      "sources": [
+        "cloud/portal_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "a887bb80229d01a320b47fe6c8f64c10": {
+      "sources": [
+        "cloud/portal_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "0404e7aaa1f17dfc89a12545b701f87e": {
+      "sources": [
+        "cloud/portal_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "b8d7b6ddc1bc55c0eb0f942ec8b44463": {
+      "sources": [
+        "cloud/portal_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "0c16b3b54611a9f1cf2c8dac311cbcf0": {
+      "sources": [
+        "cloud/regulatory.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "b3471eefa6a70ed5eb9341b77e1164d7": {
+      "sources": [
+        "cloud/regulatory_routes.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "3a2a0e9b20449dde438b54bdc32a7708": {
+      "sources": [
+        "cloud/regulatory_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "48c36148dfdd58c27e10e06b55f76d89": {
+      "sources": [
+        "cloud/regulatory_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "32309c19f4c3f97290f35d9000181c8e": {
+      "sources": [
+        "cloud/regulatory_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "531fdbc70219316fa59ce2a6a9eaf9ca": {
+      "sources": [
+        "cloud/regulatory_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "01440ff8828a1f922265531e571b4966": {
+      "sources": [
+        "cloud/regulatory_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "49530d33624409afcef9583207d1ea6e": {
+      "sources": [
+        "cloud/regulatory_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "fad866364a0948bcbedba2cf76a897da": {
+      "sources": [
+        "cloud/replay_engine.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "3da474f017ef1d634c642ff709b1a9ea": {
+      "sources": [
+        "cloud/routes.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "721c6464e88f937b80199901ab205e84": {
+      "sources": [
+        "cloud/routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "949f2a76c8e913405bbe2cb4aae2ec72": {
+      "sources": [
+        "cloud/routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "ad8695eaec056b70db8a4990117fafbd": {
+      "sources": [
+        "cloud/routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "826f332453b3e134c83cc44bf849cd16": {
+      "sources": [
+        "cloud/routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "514958587bd352f5a6fa77a23e1483e6": {
+      "sources": [
+        "cloud/routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "cc1b6b865b5c71e90cfb0aa81d8e2661": {
+      "sources": [
+        "cloud/routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "85a207ab1f53a0473b7f4c2b79757368": {
+      "sources": [
+        "cloud/routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "9219aa71d51d5277d5c5af4e102bc831": {
+      "sources": [
+        "cloud/routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "6d2af24592871a7e3c7309ec1029fbb4": {
+      "sources": [
+        "cloud/routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "38bf7148c757a5760095c8659f6c6cf2": {
+      "sources": [
+        "cloud/routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "9ed2eb3f18889009ad6627056f371ea4": {
+      "sources": [
+        "cloud/routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "131e717cebd3203c4982df5d3e0ad1de": {
+      "sources": [
+        "cloud/routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "fcf023682011723b3bc205af2b4e82b7": {
+      "sources": [
+        "cloud/routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "654cd18c1547e0390075c7afdcfd1243": {
+      "sources": [
+        "cloud/sso_provider.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "4851c766de15c52421834d11bf4b7650": {
+      "sources": [
+        "cloud/sso_routes.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "1436b22d2e8221bff64238550f3e9b1f": {
+      "sources": [
+        "cloud/sso_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "8fdf7749003cf59a2cb9c69783189a0d": {
+      "sources": [
+        "cloud/sso_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "77cdbc5e001c333e42d5fac6d365ece1": {
+      "sources": [
+        "cloud/sso_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "28504fdb6bd01827d0fc61f2316a1415": {
+      "sources": [
+        "cloud/streaming_events.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "ac42af50e35bf0f7fb27cde6fb117232": {
+      "sources": [
+        "cloud/stripe_billing.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "781f9ef846d372066c263073fd888732": {
+      "sources": [
+        "cloud/tenant_manager.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "60f12d8bd2c3f4aa026dd103f264e1d9": {
+      "sources": [
+        "cloud/tool_registry.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "f1a390efca4b88a1b7c92c925e62a57d": {
+      "sources": [
+        "cloud/webhook_routes.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "b45728fb5d64115fd8a8c120be84eea9": {
+      "sources": [
+        "cloud/webhook_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "91309cf76880e9332793130b8823ee04": {
+      "sources": [
+        "cloud/webhook_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "7e1964975bdab24aa532086644c0f299": {
+      "sources": [
+        "cloud/webhook_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "766fa8103c147d55b3c67be004e03ef0": {
+      "sources": [
+        "cloud/webhook_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "e2c2f434d9f252de7b12e773d04c7172": {
+      "sources": [
+        "cloud/webhook_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "68cc44d821f4d2ab8a441f328865e366": {
+      "sources": [
+        "cloud/webhook_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "08aee270f98cf990af4cc5c81be85625": {
+      "sources": [
+        "cloud/webhook_routes.py"
+      ],
+      "policy": "code-wins"
+    },
+    "0433b51114f92443dfe7735569e27274": {
+      "sources": [
+        "cloud/webhook_service.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "d88dddb27099db673ab157251ec20647": {
+      "sources": [
+        "eval/__init__.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "af7667ff58ed1b3fe1f105df0c542214": {
+      "sources": [
+        "eval/concurrency.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "ddb61f5bb16274bffb23df492e45dfae": {
+      "sources": [
+        "eval/concurrency_runner.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "6e221521d10968e3148b66bc645f06a2": {
+      "sources": [
+        "eval/conformance.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "9c44d37ff34b0a7265aa33ae7d3313d2": {
+      "sources": [
+        "eval/harness.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "94e76086368b537444b9e6c9f5602137": {
+      "sources": [
+        "eval/metrics.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "928bd4adeb75a6d089eec5d0a5318940": {
+      "sources": [
+        "eval/report.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "d0344d4e07bfdad90f5a5c78ef035883": {
+      "sources": [
+        "generator/__init__.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "5d1c117b59d97dd627935da31ce52f0d": {
+      "sources": [
+        "generator/oracle.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "728d4a7e997d54f6a992d5ed4d1db470": {
+      "sources": [
+        "generator/trace.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "dee82dcf64fe47aa6dd46dc339cf8ec8": {
+      "sources": [
+        "generator/validators.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "9b206a25edf502e1b4599926e421e821": {
+      "sources": [
+        "generator/workloads/__init__.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "a88012953f5abce99d0fe6092cab9a1d": {
+      "sources": [
+        "generator/workloads/w1.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "c3f2c4122b070cb06b6b4421999f82be": {
+      "sources": [
+        "generator/workloads/w10.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "c033c7dea8ccf75930b223fd434db249": {
+      "sources": [
+        "generator/workloads/w2.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "ea831fa337f6611ed2ccbb200ff92e53": {
+      "sources": [
+        "generator/workloads/w3.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "fd7f7fdbfcf5d5d3111c89e480511644": {
+      "sources": [
+        "generator/workloads/w4.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "d79bfa4a73bcaee1d2b7d294e8946b61": {
+      "sources": [
+        "generator/workloads/w5.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "58fdd115ccf41761625633018a5d6235": {
+      "sources": [
+        "generator/workloads/w6.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "bb6b224c8222c3122ec7b9624b9fbbab": {
+      "sources": [
+        "generator/workloads/w7.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "12ec6db9df4dba706dfac01f5391b4b1": {
+      "sources": [
+        "generator/workloads/w8.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "3243cf4bfcf6d0f8115a1e8bc2e41251": {
+      "sources": [
+        "generator/workloads/w9.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "14a47f25ef31cafcda95c3f04d3ab1d2": {
+      "sources": [
+        "provenance.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "1a8cb08f994f1cf7b342cf5966ee71f4": {
+      "sources": [
+        "server/__init__.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "775de26edfa7f1af18c0f063c695dde8": {
+      "sources": [
+        "server/app.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "f9fcbf1dfed270bfb84119f74799fa23": {
+      "sources": [
+        "server/app.py"
+      ],
+      "policy": "code-wins"
+    },
+    "df2a42bd33be080f9b8c692c4accef44": {
+      "sources": [
+        "server/app.py"
+      ],
+      "policy": "code-wins"
+    },
+    "428239e70182c1ced83d102bc6bdc4e2": {
+      "sources": [
+        "server/app.py"
+      ],
+      "policy": "code-wins"
+    },
+    "e20c60ced17e650364a789f865ee04fe": {
+      "sources": [
+        "server/app.py"
+      ],
+      "policy": "code-wins"
+    },
+    "c40c9f1bcb0f3f2ad0944196f57f604f": {
+      "sources": [
+        "server/app.py"
+      ],
+      "policy": "code-wins"
+    },
+    "ee702c28bed902ea310db026eeef2e8d": {
+      "sources": [
+        "server/app.py"
+      ],
+      "policy": "code-wins"
+    },
+    "79ede7aa5ea65e46685c22b86ae175bc": {
+      "sources": [
+        "server/app.py"
+      ],
+      "policy": "code-wins"
+    },
+    "87b1e82a9c6def9d54fef6d4253546cf": {
+      "sources": [
+        "server/app.py"
+      ],
+      "policy": "code-wins"
+    },
+    "e84f4cd57a1b7d3d47287b215a9eedf8": {
+      "sources": [
+        "server/app.py"
+      ],
+      "policy": "code-wins"
+    },
+    "f53df88e635c4dd2fa1afb674e8cf371": {
+      "sources": [
+        "server/app.py"
+      ],
+      "policy": "code-wins"
+    },
+    "5a61feb0c91fd60ff354aa1c3dc22e2c": {
+      "sources": [
+        "server/app.py"
+      ],
+      "policy": "code-wins"
+    },
+    "6412ac37b4bb438ce87fae8e4345f31d": {
+      "sources": [
+        "server/app.py"
+      ],
+      "policy": "code-wins"
+    },
+    "76913451242dee993769e65c6c96470e": {
+      "sources": [
+        "server/auth.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "bfe36df5233c96d6812ad8b73c3784e1": {
+      "sources": [
+        "server/ingestion.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "64614be1772bcce4ffded7ea071caf44": {
+      "sources": [
+        "server/mcp.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "f4f70cc08984ea508301cab083256b1f": {
+      "sources": [
+        "server/stores.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "ab298370912515d91f9d28c1dda6b2f3": {
+      "sources": [
+        "wire.py"
+      ],
+      "policy": "code-authoritative-for-structure"
+    },
+    "178d91665cff659dfed9ccb30daa4c33": {
+      "sources": [
+        "(root)"
+      ],
+      "policy": "compose_sources"
+    },
+    "384132e1696f4b300bbf18eafe8da44b": {
+      "sources": [
+        "backends"
+      ],
+      "policy": "compose_sources"
+    },
+    "44646a60cde5641fd722214927cac2d2": {
+      "sources": [
+        "cloud"
+      ],
+      "policy": "compose_sources"
+    },
+    "f4237ffcfcab1d17399262281f6c7639": {
+      "sources": [
+        "eval"
+      ],
+      "policy": "compose_sources"
+    },
+    "5f2894d6e3e668c89c28773c6ade94cf": {
+      "sources": [
+        "generator"
+      ],
+      "policy": "compose_sources"
+    },
+    "b0025efc94b3f85d244b4318b38b7a10": {
+      "sources": [
+        "server"
+      ],
+      "policy": "compose_sources"
+    },
+    "6d2031e77f5b83211c844de1983bb9af": {
+      "sources": [
+        "code"
+      ],
+      "policy": "code-wins"
+    },
+    "8c22f65f5590c70e47b06271066ce2eb": {
+      "sources": [
+        "code"
+      ],
+      "policy": "code-wins"
+    },
+    "baf0f50bc44a72539c7cc90a0e32208e": {
+      "sources": [
+        "code"
+      ],
+      "policy": "code-wins"
+    },
+    "7204fe94ac7d6c0dea77c17fd2622dbd": {
+      "sources": [
+        "code"
+      ],
+      "policy": "code-wins"
+    },
+    "3397bd93a330daa85a0417578da47d6c": {
+      "sources": [
+        "code"
+      ],
+      "policy": "code-wins"
+    },
+    "2c1cf74cee725927194b55e3ad94fccc": {
+      "sources": [
+        "code"
+      ],
+      "policy": "code-wins"
+    },
+    "4441156c505d754aa30fcbe6fa981a73": {
+      "sources": [
+        "code"
+      ],
+      "policy": "code-wins"
+    },
+    "145a3306fed33424614ac66d3e36cefa": {
+      "sources": [
+        "code"
+      ],
+      "policy": "code-wins"
+    },
+    "b1f45129e22a80494ee6be9e71eaa1ca": {
+      "sources": [
+        "code"
+      ],
+      "policy": "code-wins"
+    },
+    "22478bf87d7a2e24df737f6bb2a0a3cb": {
+      "sources": [
+        "code"
+      ],
+      "policy": "code-wins"
+    },
+    "40394f91cb889f36b4d427a911385fbf": {
+      "sources": [
+        "code"
+      ],
+      "policy": "code-wins"
+    },
+    "d280268ac99ab1ba36354d0fcc9dd43a": {
+      "sources": [
+        "code"
+      ],
+      "policy": "code-wins"
+    },
+    "5d74d371f55f4ae86944d3ffc7135b57": {
+      "sources": [
+        "code"
+      ],
+      "policy": "code-wins"
+    },
+    "2ee52ca0ffd97ea2c56c12ec0a8b58b9": {
+      "sources": [
+        "code"
+      ],
+      "policy": "code-wins"
+    },
+    "dcd117ca4b64a8ed1e126ff589fb1ca0": {
+      "sources": [
+        "code"
+      ],
+      "policy": "code-wins"
+    },
+    "a385f28e49683d37b8d4332064e21d48": {
+      "sources": [
+        "code"
+      ],
+      "policy": "code-wins"
+    },
+    "39a053ee5ef317b54b56d3570fd15132": {
+      "sources": [
+        "code"
+      ],
+      "policy": "code-wins"
+    },
+    "a490a0e6fcace3dc1acd17cf7b2fa066": {
+      "sources": [
+        "code"
+      ],
+      "policy": "code-wins"
+    },
+    "6c2f0166c63fed21af2bcfb9d033023e": {
+      "sources": [
+        "code"
+      ],
+      "policy": "code-wins"
+    },
+    "9fa1a3efc143993616a3fcdea6ac5d40": {
+      "sources": [
+        "code"
+      ],
+      "policy": "code-wins"
+    },
+    "03e3e85e9a9da6356c5aecd52459f9f5": {
+      "sources": [
+        "code"
+      ],
+      "policy": "code-wins"
+    },
+    "55f5d1d45a33846d9c415acf40fae55f": {
+      "sources": [
+        "code"
+      ],
+      "policy": "code-wins"
+    },
+    "047dd1be3fc965e9bc6b9b69c8c49d55": {
+      "sources": [
+        "LICENSE"
+      ],
+      "policy": "declared"
+    }
+  },
+  "doc_claims": {
+    "tables": 20,
+    "endpoints": 61
+  },
+  "observed": {
+    "endpoints": 102,
+    "tables": 22,
+    "services": 33
+  },
+  "conflict_findings": [
+    {
+      "metric": "tables",
+      "claimed": 20,
+      "observed": 22,
+      "policy": "code-wins",
+      "resolved": 22,
+      "conflict": true
+    },
+    {
+      "metric": "endpoints",
+      "claimed": 61,
+      "observed": 102,
+      "policy": "code-wins",
+      "resolved": 102,
+      "conflict": true
+    }
+  ]
+}

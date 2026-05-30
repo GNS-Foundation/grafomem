@@ -32,8 +32,12 @@ landing/
 └── conformance/
     ├── seed_gns.py                  # the GNS starter world-model (GNS modelling itself)
     ├── gates.py                     # the 10 gates G1–G10, two-sided where safety-relevant
-    ├── run_phase1.py                # the dogfood flight
-    └── artifacts/                   # generated evidence (cert, chain, dossier, gate report)
+    ├── run_phase1.py                # the Phase-1 dogfood flight (docs)
+    ├── code_world_model.py          # Phase-2 code Object/Link/Action types + extractors
+    ├── composition.py               # Phase-2 R4 composition records + conflict detection
+    ├── gates_phase2.py              # Phase-2 gates GP1–GP5
+    ├── run_phase2.py                # Phase-2 flight (docs + codebase, composition at scale)
+    └── artifacts/                   # generated evidence (certs, chain, dossier, gate reports)
 ```
 
 ## Run the dogfood
@@ -54,6 +58,20 @@ cd landing && pip install -e . && grafomem-landing-dogfood
 It ingests the repo's documents through customs, builds the GNS world-model, registers a
 stub artifact, issues + anchors a Landing Certificate, and runs all ten gates. Exit code
 `0` = all green. Evidence lands in `conformance/artifacts/`.
+
+**Phase 2 — the harder plane (docs + codebase):**
+
+```bash
+python landing/conformance/run_phase2.py            # ingests ./docs + ./src/aml
+python landing/conformance/run_phase2.py --code src/aml --docs docs
+```
+
+Phase 2 adds code customs (with license attestation), code Object/Link/Action types,
+composition governance at scale, and **conflict detection** — it extracts quantitative
+claims from the docs ("22 tables", "75+ endpoints") and reconciles them against the
+observed code, resolving contradictions by policy (code-wins). This is the first real
+workload for the reserved `CONFLICT_DETECTION` capability. It runs G1–G10 on the combined
+corpus plus GP1–GP5, and writes `phase2_*` evidence.
 
 ## Open vs. commercial (the Red Hat split)
 

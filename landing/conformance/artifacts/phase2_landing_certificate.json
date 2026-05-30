@@ -1,0 +1,86 @@
+{
+  "version": "lc/0.1",
+  "tenant_id": "gns",
+  "timestamp": 1780139172.429098,
+  "artifact": {
+    "artifact_ref": "oci://grafomem/gns-assistant:phase2",
+    "manifest_digest": "d240e4684ca099944ebcc2feefc75d517892b590ece49974517345c7388a2c4e",
+    "base_model_ref": "open-weights-7B",
+    "layer_hashes": [
+      "20730fca2097b254c6b8c08151de34dab838440541bf551fd453d4d96c05319d",
+      "43f13aadec6c834fb9bc576aed8cb82f214db2bda2d378233ed187f56b0a1c70",
+      "8c5dc8a7bb2d83d05e0313a967b5614bbd62158640033a8267cb2774fe861c9b"
+    ],
+    "kind": "lora+rag"
+  },
+  "data_provenance": {
+    "corpus_hash": "f049820bc24505111595b030ee9b2e6abd1812e80e96e3e770e1bbbcfb077ca6",
+    "epoch_id": "9456877403275f195d9a04d8e72c0fc7",
+    "merkle_root": "3b1eb9e03ceacb7ef05c435a888247656e822f7c2deddfdbf634cc67c398ff55",
+    "source_leaf": "d4d13bbc06bece75d8fc8c8a378fc9d2007bd6d9c95217c974d60a0ee7211159",
+    "inclusion_proof": [
+      {
+        "hash": "5f85fda2971760a44f116a9e7a58618d931c2f9c32acf72a7b66d677ba3b82ac",
+        "right": true
+      },
+      {
+        "hash": "fe660472b05c48957438cc52b53f732548be12f7a62073514b4d42278403e307",
+        "right": true
+      },
+      {
+        "hash": "194395e3b1e6c35b8dea3ebbc08c07fbd747b6681f6ffab6f7ebad5e48302b7b",
+        "right": true
+      },
+      {
+        "hash": "ec7f58d6813c6f767c2dca839f823db44b807e98f5b64ab007b1b9b2a4e48dd1",
+        "right": true
+      },
+      {
+        "hash": "26aa9b5c0b038790cf825eefeac1781c04862e0462f82c69089ad94db3fe8b17",
+        "right": true
+      },
+      {
+        "hash": "63409fee00bf62fe7d5f13c797f378f1f1f495f2243de7888451496d7379e980",
+        "right": true
+      },
+      {
+        "hash": "3760188bd9fd13a45fc8354035ed4c098757e9e48724579994f327b654573d8e",
+        "right": true
+      },
+      {
+        "hash": "bf15f8d07a957ffeb3a8650034e9a28e38a15f04624ab3f36f503451cbf5fcd1",
+        "right": true
+      }
+    ],
+    "composition_ref": "composition:213-objects"
+  },
+  "authority": {
+    "delegation_ref": "6b6a8e40b3d1991196848308d7fb644c",
+    "human_principal": "camilo.ayerbe@gns",
+    "trust_tier": "release",
+    "delegation_sig": "9574edf9ebfea79e97c6bdae7ebab6ecd09f4967b978827010d14924cfb4deddaae0369785488700d5e64ebffc285a9e899e928d4f3dcff32101f90bb55e2304",
+    "delegation_signed_body": "{\"agent_handle\":\"gns-assistant@grafomem\",\"deleg_id\":\"6b6a8e40b3d1991196848308d7fb644c\",\"human_principal\":\"camilo.ayerbe@gns\",\"human_pubkey\":\"ded736dd0b736ad6b0367c2d5616ce6bfeced571bae7995d47acc9fbfc86303f\",\"issued_at\":1780139172.364841,\"tier\":\"release\"}"
+  },
+  "conformance": {
+    "harness_version": "landing/0.1",
+    "result": "pass",
+    "per_policy": {
+      "data_provenance": "pass",
+      "artifact_integrity": "pass",
+      "authority": "pass",
+      "composition": "pass"
+    }
+  },
+  "permitted_actions": [
+    "grafomem_retrieve",
+    "grafomem_write",
+    "http_get"
+  ],
+  "certificate_id": "3171aec1019403180c88146a2fdc65c2",
+  "signer_public_key": "5bdc105fdc587a159ad7d8c99aa3d0ca16674cffe750a4860970bacb80c3c3db",
+  "signature": "8f380863ac36970a7615d467a6c32cc30d811041d5a73fb64bcdaa86a3a7278b4848ef9a95b9567ed37241ef13db99e8f2a4b4e63433ce4572172d8d0a48440a",
+  "anchor": {
+    "epoch_id": "88bf9e64108327a6807715f62970e356",
+    "merkle_root": "a208511e86300dc1f44661be6a1d932090b0d8de5c53a7033fb947ef1f3f8b1a"
+  }
+}

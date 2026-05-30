@@ -1,8 +1,8 @@
 # Phase-1 Landing Self-Conformance — Gate Report
 
-Corpus flown: 5 documents from /mnt/project (real bytes).
-Breadcrumbs: 18 · Epochs: 2 · Objects: 26 · Links: 16
-Landing Certificate: a77c08b0b164b37492fd5853dd085eeb
+Corpus flown: 9 documents from /Users/camiloayerbeposada/grafomem/docs (real bytes).
+Breadcrumbs: 26 · Epochs: 2 · Objects: 30 · Links: 16
+Landing Certificate: 564656f82b3a170aa6a2379fc01d2f83
 
 | Gate | Type | Result |
 |---|---|---|
@@ -21,7 +21,7 @@ Landing Certificate: a77c08b0b164b37492fd5853dd085eeb
 
 ### Offline reconstruction (G6) — from cert + chain + keys alone:
 - **what**: lora+rag artifact oci://grafomem/gns-assistant:phase1 on base open-weights-7B
-- **from_where**: corpus f049820bc2450511… sealed in epoch adfe9294278544326104d48f92380fc2
+- **from_where**: corpus f049820bc2450511… sealed in epoch 19a2e014a1fdc03f7e078685ca5fd48d
 - **under_whom**: camilo.ayerbe@gns at tier release
 - **cleared_how**: landing conformance pass (harness landing/0.1)
 - **may_do**: ['grafomem_retrieve', 'grafomem_write', 'http_get']
