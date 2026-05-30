@@ -1,0 +1,19 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "grafomem-landing"
+version = "0.1.0"
+description = "GRAFOMEM v3.0 Governance Airport — Landing Certificate + governed world-model (open reference + conformance)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "../LICENSE" }
+authors = [{ name = "GNS Foundation Engineering" }]
+dependencies = ["cryptography>=41"]   # BLAKE2b is stdlib (hashlib); only Ed25519 needs cryptography
+
+[project.scripts]
+grafomem-landing-dogfood = "conformance.run_phase1:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/grafomem_landing"]

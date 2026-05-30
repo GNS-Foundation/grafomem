@@ -1,0 +1,85 @@
+{
+  "object_types": [
+    "Protocol",
+    "Capability",
+    "Backend",
+    "Corpus",
+    "ConformanceReport",
+    "Agent",
+    "DelegationCertificate",
+    "Adapter",
+    "Document",
+    "Epoch",
+    "LandingCertificate"
+  ],
+  "link_types": [
+    "declares",
+    "certifies",
+    "trained_on",
+    "uses",
+    "authorized_by",
+    "attested_by",
+    "clears",
+    "under"
+  ],
+  "action_types": {
+    "ingest_document": {
+      "name": "ingest_document",
+      "effect": "create",
+      "targets": [
+        "Document"
+      ],
+      "authority": {
+        "min_tier": "operate",
+        "requires_deleg": true,
+        "hitl": false
+      },
+      "gateway_policy": "default-allow",
+      "recording": "gcrumbs"
+    },
+    "register_artifact": {
+      "name": "register_artifact",
+      "effect": "create",
+      "targets": [
+        "Adapter"
+      ],
+      "authority": {
+        "min_tier": "deploy_prep",
+        "requires_deleg": true,
+        "hitl": false
+      },
+      "gateway_policy": "default-allow",
+      "recording": "gcrumbs"
+    },
+    "issue_landing_certificate": {
+      "name": "issue_landing_certificate",
+      "effect": "issue",
+      "targets": [
+        "LandingCertificate"
+      ],
+      "authority": {
+        "min_tier": "release",
+        "requires_deleg": true,
+        "hitl": true
+      },
+      "gateway_policy": "default-allow",
+      "recording": "gcrumbs"
+    },
+    "supersede_fact": {
+      "name": "supersede_fact",
+      "effect": "supersede",
+      "targets": [
+        "Document"
+      ],
+      "authority": {
+        "min_tier": "curate",
+        "requires_deleg": true,
+        "hitl": false
+      },
+      "gateway_policy": "default-allow",
+      "recording": "gcrumbs"
+    }
+  },
+  "n_objects": 26,
+  "n_links": 16
+}

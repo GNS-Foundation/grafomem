@@ -1,0 +1,39 @@
+{
+  "provenance": [
+    {
+      "source": "GNSCDPAddendumgcrumbsv0_2.pdf",
+      "content_hash": "8f0b18004e0ac7dce907933943974bad2e52f47a1c7c16b9055e64188f38ce8b",
+      "evidence": "63965d517dd2c91a2ce5e5e9fb398b5b"
+    },
+    {
+      "source": "GNSCDPWhitepaperv0_2.pdf",
+      "content_hash": "a26800a6f2ee8f32dcb5a7dca673b8e5af3c7b1dfe299c250695d9fbde3c347b",
+      "evidence": "528521343cefb43db9334ecd3042a89b"
+    },
+    {
+      "source": "grafomem_cloud_roadmap.md",
+      "content_hash": "fa1ed0442fc779435b813a738cf7f87fbb86d8c9113834f1efca0a84acb418d0",
+      "evidence": "377c9a1e781c5e0ba7fd448fb452cbbd"
+    },
+    {
+      "source": "grafomem_cloud_whitepaper.md",
+      "content_hash": "836353b7f9c6355b635cd7adfbe8bf376e234f8cc29671c186e27cb034ce7a61",
+      "evidence": "7aecb0b62f039bf6d8ebfbadbbdee2e5"
+    },
+    {
+      "source": "grafomempaper.pdf",
+      "content_hash": "e370c2cc3dd64e2ef023e11182b74addfa1ceb9bb3a9c2b628f7a4159976778e",
+      "evidence": "15e4e0a38b5fe44f0ef487314c40428d"
+    }
+  ],
+  "methodology": [
+    "read->blake2b256->chunk(BGE-small-en-v1.5)->facts"
+  ],
+  "composition": [
+    "GNSCDPAddendumgcrumbsv0_2.pdf",
+    "GNSCDPWhitepaperv0_2.pdf",
+    "grafomem_cloud_roadmap.md",
+    "grafomem_cloud_whitepaper.md",
+    "grafomempaper.pdf"
+  ]
+}

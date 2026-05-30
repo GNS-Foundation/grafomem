@@ -1,0 +1,302 @@
+{
+  "breadcrumbs": [
+    {
+      "seq": 0,
+      "event_type": "action:ingest_document:ok",
+      "payload": {
+        "args": {
+          "source": "GNSCDPAddendumgcrumbsv0_2.pdf"
+        },
+        "authorized": true,
+        "reasons": [],
+        "agent": "gns-assistant@grafomem",
+        "tier": "release"
+      },
+      "payload_hash": "b0e3c5156e7d2ec1cb3bbd8048485ceb45d50e18dd718242e1588183a243a897",
+      "prev_id": "00000000000000000000000000000000",
+      "breadcrumb_id": "362848dbf3cebf1c3e3b93e1c508e18a",
+      "signature": "cd03cf886e118ef871ebf8dc899d1629d2a868846ecdd97a6b7e99ffcd6ec766ec557d73564d0da687258f152a1b46888253e6b0cccdcd6b81aeac7f66a12104"
+    },
+    {
+      "seq": 1,
+      "event_type": "customs:ingest_document",
+      "payload": {
+        "source": "GNSCDPAddendumgcrumbsv0_2.pdf",
+        "bytes": 2780045,
+        "content_hash": "8f0b18004e0ac7dce907933943974bad2e52f47a1c7c16b9055e64188f38ce8b",
+        "transformation": "read->blake2b256->chunk(BGE-small-en-v1.5)->facts"
+      },
+      "payload_hash": "3795cb41e0201a21955b0bc84e564b551183e081bdd5c9dbb29794a806431d8e",
+      "prev_id": "362848dbf3cebf1c3e3b93e1c508e18a",
+      "breadcrumb_id": "63965d517dd2c91a2ce5e5e9fb398b5b",
+      "signature": "0068029b4ceed4d5e0854a23a9374f9296a41cb22c8ff8145dc860f51f208341a444d8b27580f93cd8b34f62b0a7c276284ae42b6d5552e7433c1a3fa71d7b03"
+    },
+    {
+      "seq": 2,
+      "event_type": "action:ingest_document:ok",
+      "payload": {
+        "args": {
+          "source": "GNSCDPWhitepaperv0_2.pdf"
+        },
+        "authorized": true,
+        "reasons": [],
+        "agent": "gns-assistant@grafomem",
+        "tier": "release"
+      },
+      "payload_hash": "4966773ee8ff2ebb04ad32095e063a7aaf1fa84cf71c686aa380817b45e5a439",
+      "prev_id": "63965d517dd2c91a2ce5e5e9fb398b5b",
+      "breadcrumb_id": "3376b918aaebd82126bd9991da45fe56",
+      "signature": "8bbc5b9bf4695be21304f2472cc6dd5a245cd7bfb158943a7248bfbaa9954630b8597061cd04e20714f992c41c67699530b12e78a164dcc225c50e304d5b4408"
+    },
+    {
+      "seq": 3,
+      "event_type": "customs:ingest_document",
+      "payload": {
+        "source": "GNSCDPWhitepaperv0_2.pdf",
+        "bytes": 3422775,
+        "content_hash": "a26800a6f2ee8f32dcb5a7dca673b8e5af3c7b1dfe299c250695d9fbde3c347b",
+        "transformation": "read->blake2b256->chunk(BGE-small-en-v1.5)->facts"
+      },
+      "payload_hash": "f113505a84827743dcc4a764a0073c79029e427c8c5f73eadb7cf7291afd5d2a",
+      "prev_id": "3376b918aaebd82126bd9991da45fe56",
+      "breadcrumb_id": "528521343cefb43db9334ecd3042a89b",
+      "signature": "a39df72aa0019a905f987ff9543ea0da3d2c343f9f869b95dcd1df818ce374796a2b7adbdb4defb63387bc4d2bcbf061ef0301409541d3e31704a1758c73a50c"
+    },
+    {
+      "seq": 4,
+      "event_type": "action:ingest_document:ok",
+      "payload": {
+        "args": {
+          "source": "grafomem_cloud_roadmap.md"
+        },
+        "authorized": true,
+        "reasons": [],
+        "agent": "gns-assistant@grafomem",
+        "tier": "release"
+      },
+      "payload_hash": "8d14c4c2eff97207511b5ce586fce3ee013b352ec2cdf412a4a2bf6dfe344a67",
+      "prev_id": "528521343cefb43db9334ecd3042a89b",
+      "breadcrumb_id": "8b989dbe74cc092c30538c660896b9e3",
+      "signature": "51ddf94ace83bca59183bfcdfc60aa98d67ce77d37afe0d0491038f691e107dd3c7dc11db6f57ad2d5ca7c75fd03e0e7d538d15a25fae1041117e0106b4b860c"
+    },
+    {
+      "seq": 5,
+      "event_type": "customs:ingest_document",
+      "payload": {
+        "source": "grafomem_cloud_roadmap.md",
+        "bytes": 14566,
+        "content_hash": "fa1ed0442fc779435b813a738cf7f87fbb86d8c9113834f1efca0a84acb418d0",
+        "transformation": "read->blake2b256->chunk(BGE-small-en-v1.5)->facts"
+      },
+      "payload_hash": "6d9aac52b7a164754ecba91e56dcfd37c7aa4b06636ff0bff5f6638d4b84fd85",
+      "prev_id": "8b989dbe74cc092c30538c660896b9e3",
+      "breadcrumb_id": "377c9a1e781c5e0ba7fd448fb452cbbd",
+      "signature": "9bafb546f6749100436651143f1bbba5655f470563bbc58673c3710e8acc09da86e77bba03c5b4f64f16d7fbaa420a8c4c1e09b2ef475ba7f258a77f07adf808"
+    },
+    {
+      "seq": 6,
+      "event_type": "action:ingest_document:ok",
+      "payload": {
+        "args": {
+          "source": "grafomem_cloud_whitepaper.md"
+        },
+        "authorized": true,
+        "reasons": [],
+        "agent": "gns-assistant@grafomem",
+        "tier": "release"
+      },
+      "payload_hash": "09d1c918a1ee16eb92582086e36e1c507e612168db0e8a14f60ad3fc861162e0",
+      "prev_id": "377c9a1e781c5e0ba7fd448fb452cbbd",
+      "breadcrumb_id": "266a99e72072a95634edf8cde20debd8",
+      "signature": "49d5cb31ffeb9dc225d53068fe71a4ef4a092bef2b7eee9490f3c3f8a9270f5777832021e2729ff02eda3cf3ba55b27d733260af9b6359cf4ec300cd4944dd0f"
+    },
+    {
+      "seq": 7,
+      "event_type": "customs:ingest_document",
+      "payload": {
+        "source": "grafomem_cloud_whitepaper.md",
+        "bytes": 70870,
+        "content_hash": "836353b7f9c6355b635cd7adfbe8bf376e234f8cc29671c186e27cb034ce7a61",
+        "transformation": "read->blake2b256->chunk(BGE-small-en-v1.5)->facts"
+      },
+      "payload_hash": "76790818b232439618db8361e6cbb4bbb405f90688d9718a55454513368981cf",
+      "prev_id": "266a99e72072a95634edf8cde20debd8",
+      "breadcrumb_id": "7aecb0b62f039bf6d8ebfbadbbdee2e5",
+      "signature": "8b1b647d8827c19e5e59aa79e38fcd1e37f1fd8b61035f3ee6c030c45a2def188ea076596a069485dfa2ce574c8f530447adb40a4d996e0ea309c6e73499d708"
+    },
+    {
+      "seq": 8,
+      "event_type": "action:ingest_document:ok",
+      "payload": {
+        "args": {
+          "source": "grafomempaper.pdf"
+        },
+        "authorized": true,
+        "reasons": [],
+        "agent": "gns-assistant@grafomem",
+        "tier": "release"
+      },
+      "payload_hash": "551ccc2a74f6b8d3206941d54dc206d81ca7c146d5e8b8c37ff7689ed57a994b",
+      "prev_id": "7aecb0b62f039bf6d8ebfbadbbdee2e5",
+      "breadcrumb_id": "8761b01c8e56dba3684eaaa30de5e4f8",
+      "signature": "4835d02043f4e738f7f69a2b4f375fd4cf61e9b2a2e3e82f1b2aae77200a404aa24c67834ccda0cffee9164d95bc26f3124e3569387df4e8330055fe9cecaf0f"
+    },
+    {
+      "seq": 9,
+      "event_type": "customs:ingest_document",
+      "payload": {
+        "source": "grafomempaper.pdf",
+        "bytes": 3851701,
+        "content_hash": "e370c2cc3dd64e2ef023e11182b74addfa1ceb9bb3a9c2b628f7a4159976778e",
+        "transformation": "read->blake2b256->chunk(BGE-small-en-v1.5)->facts"
+      },
+      "payload_hash": "56952fc25f728c30313f9bc067769301aa29c3c7d1f4ef9ea67a24db30d23f89",
+      "prev_id": "8761b01c8e56dba3684eaaa30de5e4f8",
+      "breadcrumb_id": "15e4e0a38b5fe44f0ef487314c40428d",
+      "signature": "8b11235e4eeb5be4a3c25f9b08f56439bdcdb7dad782ed005dcee1c5e8c722022b1af68d464f71439dd314a9d6e5026709a3a98cfa714370db73c1ecdafc730c"
+    },
+    {
+      "seq": 10,
+      "event_type": "customs:corpus_attest",
+      "payload": {
+        "corpus": "grafomem-bench-v0.2.0",
+        "corpus_hash": "f049820bc24505111595b030ee9b2e6abd1812e80e96e3e770e1bbbcfb077ca6",
+        "source": "corpus/corpus.lock"
+      },
+      "payload_hash": "a3eb6098371b5320227c28e0acec7ef87c072e42c76e96a3224ef4c893fb8e8f",
+      "prev_id": "15e4e0a38b5fe44f0ef487314c40428d",
+      "breadcrumb_id": "2cc436fefb31fa081a3e7e6458dc9438",
+      "signature": "c32066494749b54483066ac037ecf4e5c5cd50463859a914b26fd59ad37f629f9ea3e8171f9d4b10367b9b8e2f634011e9b3eeb79cc748756261ce535f0c460f"
+    },
+    {
+      "seq": 11,
+      "event_type": "action:register_artifact:ok",
+      "payload": {
+        "args": {
+          "artifact_ref": "oci://grafomem/gns-assistant:phase1"
+        },
+        "authorized": true,
+        "reasons": [],
+        "agent": "gns-assistant@grafomem",
+        "tier": "release"
+      },
+      "payload_hash": "f7022097301eb25e5d6317a9955e52ca329a66d51883f223cefb76d07454818d",
+      "prev_id": "2cc436fefb31fa081a3e7e6458dc9438",
+      "breadcrumb_id": "0c0e4ed4c168fb9a09cf38af3bdaa313",
+      "signature": "90feed94bf867d13b9c60424c79bc327b459ee2b767aa27fa93c58beb9126f149cafd246c523d20f4465a1cc68a0cae90e18651385f526083f3769aaaa02bf0b"
+    },
+    {
+      "seq": 12,
+      "event_type": "action:issue_landing_certificate:ok",
+      "payload": {
+        "args": {
+          "artifact": "oci://grafomem/gns-assistant:phase1"
+        },
+        "authorized": true,
+        "reasons": [],
+        "agent": "gns-assistant@grafomem",
+        "tier": "release"
+      },
+      "payload_hash": "fa2a5dbca4fe22233de37b3be42a1956821bb35ac86b9429e0313987788a9204",
+      "prev_id": "0c0e4ed4c168fb9a09cf38af3bdaa313",
+      "breadcrumb_id": "b0e7ea5dcea1a717b0742737f61914fa",
+      "signature": "f8bb0f5b4b198f84f4ffa3d3d2814f31aaeaef92985852d6c7bcc7aacbe4db811e36aae8e9e56eeb6ef808c42f87272799a63ed5b02b2c9ca09cd9174da3fc06"
+    },
+    {
+      "seq": 13,
+      "event_type": "landing_certificate",
+      "payload": {
+        "certificate_id": "a77c08b0b164b37492fd5853dd085eeb",
+        "artifact": "oci://grafomem/gns-assistant:phase1"
+      },
+      "payload_hash": "c4f8cdbf0c9d3226f8b1f7f73d571e40235ae15d9c3b648cfb58e6d599af3c9d",
+      "prev_id": "b0e7ea5dcea1a717b0742737f61914fa",
+      "breadcrumb_id": "19c38666379a4d3023e7fdd30ad9c042",
+      "signature": "fe2d1cb5d108e945d8795b3bcfed10e544f2b640ca45c79c16f5387036a751273ea6b4267244210c3f7210b9b2e45b2b81609fbc263cb69821195d577a685600"
+    },
+    {
+      "seq": 14,
+      "event_type": "action:issue_landing_certificate:ok",
+      "payload": {
+        "args": {
+          "t": "pos"
+        },
+        "authorized": true,
+        "reasons": [],
+        "agent": "gns-assistant@grafomem",
+        "tier": "release"
+      },
+      "payload_hash": "08411f66368d10688e4becc6b6bbda2ad6bb53b5e87500f9dc61b0fe8cc861fa",
+      "prev_id": "19c38666379a4d3023e7fdd30ad9c042",
+      "breadcrumb_id": "3d802de846c9b1f4fbf1c9f2552d2a8f",
+      "signature": "5ddf8d2b25dee2ddc8d84786cf671c416a7c09d0cee673a4597bc7eb075f5904921a4134a3c0a5db00a004178fa726b9d2e0ed0679fd39a0b2755e8c000ac709"
+    },
+    {
+      "seq": 15,
+      "event_type": "action:issue_landing_certificate:deny",
+      "payload": {
+        "args": {
+          "t": "neg-tier"
+        },
+        "authorized": false,
+        "reasons": [
+          "tier read < required release"
+        ],
+        "agent": "gns-assistant@grafomem",
+        "tier": "read"
+      },
+      "payload_hash": "c46603c8969c19af3055d5b9a428bedbefaf2ef44d98b76167c61ec30511bf04",
+      "prev_id": "3d802de846c9b1f4fbf1c9f2552d2a8f",
+      "breadcrumb_id": "fe43d65f65e3ccff59f1706c0287fa90",
+      "signature": "656f534372a30b610634da16873c70c21d617d8664c7e88d2f42fb29aac78e905a2efc79ca38e0be758880902756dbf4b9bc1504b1ea9ca52f2cab734b959a07"
+    },
+    {
+      "seq": 16,
+      "event_type": "action:issue_landing_certificate:deny",
+      "payload": {
+        "args": {
+          "t": "neg-deleg"
+        },
+        "authorized": false,
+        "reasons": [
+          "no/invalid GEIANT delegation"
+        ],
+        "agent": null,
+        "tier": "release"
+      },
+      "payload_hash": "5324641df80738c354c237f42debfe62150a26660391f407c458f384efa50734",
+      "prev_id": "fe43d65f65e3ccff59f1706c0287fa90",
+      "breadcrumb_id": "23f9da5fcd1a64a4bd5b8c6258ed805b",
+      "signature": "342bc7202d4ec7c8ac2841d12fd3f0d867f495d5d802b591a893da86690db790c8929a5d443b740c07f2a2b2a2e462db8f25da0538687da900c12531bfa3d701"
+    },
+    {
+      "seq": 17,
+      "event_type": "erasure:hard_delete",
+      "payload": {
+        "obj": "8e9381c1418c13e8643e8f242185feab"
+      },
+      "payload_hash": "72b4f053110cd56cac82cb7f2af44dcde4de677ecd4b2009a9b834226c192330",
+      "prev_id": "23f9da5fcd1a64a4bd5b8c6258ed805b",
+      "breadcrumb_id": "c53485fa22fc59cd295171f3f3602cdc",
+      "signature": "5c88df6650c76f8335288b443572b7f7df50e92c640a7e51cfea5fff2be1e9f9f7bb873b85f1dfbdd405ca2cdb1afba1240f6a439344f0107e2e8a5fa020bb0b"
+    }
+  ],
+  "epoch1": {
+    "epoch_id": "adfe9294278544326104d48f92380fc2",
+    "merkle_root": "15e452a4f9c577fdc564b1956077a44e8594bc043f7f3cdc326dad9c6f5a7dd5",
+    "n_leaves": 12,
+    "sealed_at": 1780137815.1362422,
+    "sealer_pubkey": "c70a39cfa78ed3aa252ee7d79367c0250e47731f83127860526bbe3866a0fcbd",
+    "anchor_type": "self-sealed (RFC3161/countersignature/ledger optional)",
+    "signature": "4cc0a83118ec6e0c3e680832f0cec1a00ac34afcc7530dfbbcceb0a4d9f6b6f507b8859bb33802fa7e22da1986760dd2b44c1bfb90c72d81b3e42c463c0a720c"
+  },
+  "epoch2": {
+    "epoch_id": "0d79cade978edaf6267c2b07086647ca",
+    "merkle_root": "6266e107a0ef6331401dfb4a8a639c896bb7a6128721b31a2a2efb7f783bcc27",
+    "n_leaves": 14,
+    "sealed_at": 1780137815.1366959,
+    "sealer_pubkey": "c70a39cfa78ed3aa252ee7d79367c0250e47731f83127860526bbe3866a0fcbd",
+    "anchor_type": "self-sealed (RFC3161/countersignature/ledger optional)",
+    "signature": "cf15fb865f7078f62b1e80c4d20e0c5d706e4aa29f572887613f03d71fdc9afe0b202b2b5d68d0021f228e2859d9a3f4c1f6eb75aac6540d45a3118847958202"
+  }
+}

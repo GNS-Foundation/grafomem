@@ -1,0 +1,69 @@
+{
+  "version": "lc/0.1",
+  "tenant_id": "gns",
+  "timestamp": 1780137815.1364639,
+  "artifact": {
+    "artifact_ref": "oci://grafomem/gns-assistant:phase1",
+    "manifest_digest": "ce08ef8681a8ae383daa61993349b5d405b73a8b2e2a9c54acee527a260b6a42",
+    "base_model_ref": "open-weights-7B",
+    "layer_hashes": [
+      "e4cafb0e51104475d59d3507a3b74fe75a7b96a917a62d5cd00c6ac79149400e",
+      "289cca85aacaf768830b74d0b7d70db4cfd4c70dd3fcf561da8afa3975716cc4",
+      "8c5dc8a7bb2d83d05e0313a967b5614bbd62158640033a8267cb2774fe861c9b"
+    ],
+    "kind": "lora+rag"
+  },
+  "data_provenance": {
+    "corpus_hash": "f049820bc24505111595b030ee9b2e6abd1812e80e96e3e770e1bbbcfb077ca6",
+    "epoch_id": "adfe9294278544326104d48f92380fc2",
+    "merkle_root": "15e452a4f9c577fdc564b1956077a44e8594bc043f7f3cdc326dad9c6f5a7dd5",
+    "source_leaf": "8b0cd5e20cbc31ddc61f6d470d5fe77419547a1f5d242fd6e913ce57e919ad20",
+    "inclusion_proof": [
+      {
+        "hash": "02b97549c929b1d45481f9ed5f5ea80a2660f8171954e9f968bca78b960cbc8b",
+        "right": true
+      },
+      {
+        "hash": "682ddf0518569d1e910185bcccf86dcbd384c5a0e60d377898f62e6cc7d7a4a4",
+        "right": true
+      },
+      {
+        "hash": "ea0fe9e02bae8e849c8b1c02144bab7d0aa2e0bbfb1bf3fc15c41e66d6765e73",
+        "right": true
+      },
+      {
+        "hash": "b344500a3e5ac51f62edc719477569eb2d63484ea798a6c8feedfcd99d92f779",
+        "right": true
+      }
+    ],
+    "composition_ref": null
+  },
+  "authority": {
+    "delegation_ref": "ffcbfdd796b7c01b493aad0583b867da",
+    "human_principal": "camilo.ayerbe@gns",
+    "trust_tier": "release",
+    "delegation_sig": "97a34eb71f89e3801bca9832dfd65ab09ed290ca3f0866f5f898b156f006b89567065c444c0f62fbe883f6d0f71fa6ef8bea08090feeaa64c8054fb235559407",
+    "delegation_signed_body": "{\"agent_handle\":\"gns-assistant@grafomem\",\"deleg_id\":\"ffcbfdd796b7c01b493aad0583b867da\",\"human_principal\":\"camilo.ayerbe@gns\",\"human_pubkey\":\"ab9902caeb3e81d0674467db96855e953674d09f07211bfbd93cf15c71cbd428\",\"issued_at\":1780137815.1118023,\"tier\":\"release\"}"
+  },
+  "conformance": {
+    "harness_version": "landing/0.1",
+    "result": "pass",
+    "per_policy": {
+      "data_provenance": "pass",
+      "artifact_integrity": "pass",
+      "authority": "pass"
+    }
+  },
+  "permitted_actions": [
+    "grafomem_retrieve",
+    "grafomem_write",
+    "http_get"
+  ],
+  "certificate_id": "a77c08b0b164b37492fd5853dd085eeb",
+  "signer_public_key": "c70a39cfa78ed3aa252ee7d79367c0250e47731f83127860526bbe3866a0fcbd",
+  "signature": "1f8decb9697b3aa41601ccf94b24e7eee62558e0b541484df1ecd4085db3fcd3e0d2b8f90e8f87d4322f9043a16e1d7846858bfc5b04b141f4f887da69dc4b02",
+  "anchor": {
+    "epoch_id": "0d79cade978edaf6267c2b07086647ca",
+    "merkle_root": "6266e107a0ef6331401dfb4a8a639c896bb7a6128721b31a2a2efb7f783bcc27"
+  }
+}
