@@ -39,6 +39,8 @@ from grafomem.services.reports import ReportsService
 from grafomem.services.llm import LLMService
 from grafomem.services.portal import PortalService
 from grafomem.services.webhooks import WebhooksService
+from grafomem.services.provenance import ProvenanceService
+from grafomem.services.compositions import CompositionsService
 
 _DEFAULT_BASE_URL = "https://cloud.grafomem.com"
 
@@ -88,6 +90,8 @@ class GrafomemClient:
         self._llm = LLMService(self._http)
         self._portal = PortalService(self._http)
         self._webhooks = WebhooksService(self._http)
+        self._provenance = ProvenanceService(self._http)
+        self._compositions = CompositionsService(self._http)
 
     # ── Service Properties ────────────────────────────────────────────
 
@@ -150,6 +154,16 @@ class GrafomemClient:
     def webhooks(self) -> WebhooksService:
         """Webhook management (register, list, deliveries)."""
         return self._webhooks
+
+    @property
+    def provenance(self) -> ProvenanceService:
+        """Data provenance customs service."""
+        return self._provenance
+
+    @property
+    def compositions(self) -> CompositionsService:
+        """Composition governance service."""
+        return self._compositions
 
     # ── Lifecycle ─────────────────────────────────────────────────────
 

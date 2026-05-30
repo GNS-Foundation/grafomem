@@ -602,6 +602,22 @@ def create_app(
             app.state.world_model = wm
             app.include_router(create_world_model_router(wm))
 
+            # R2 — Data-Provenance Customs
+            from aml.cloud.provenance_customs import ProvenanceCustomsService
+            from aml.cloud.provenance_customs_routes import create_provenance_customs_router
+            pc = ProvenanceCustomsService(db_url, signing_key=erasure_key, gateway=gg, decision_trail=dt)
+            pc.ensure_schema()
+            app.state.provenance_customs = pc
+            app.include_router(create_provenance_customs_router(pc))
+
+            # R4 — Composition Governance
+            from aml.cloud.composition_governance import CompositionGovernanceService
+            from aml.cloud.composition_governance_routes import create_composition_governance_router
+            cg = CompositionGovernanceService(db_url, signing_key=erasure_key, gateway=gg, decision_trail=dt)
+            cg.ensure_schema()
+            app.state.composition_governance = cg
+            app.include_router(create_composition_governance_router(cg))
+
             gov_router = create_governance_router(gg)
             app.include_router(gov_router)
             logger.info("Governance Gateway enabled (/v1/governance)")
