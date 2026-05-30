@@ -205,9 +205,11 @@ class ProvenanceCustomsService:
         doc = row.get("document")
         if not doc:
             return {"passed": False, "checks": {"signature": False, "merkle_consistent": False}}
-        recomputed = merkle_root([_leaf(s) for s in doc["sources"]]).hex()
+        recomputed_root = merkle_root([_leaf(s) for s in doc["sources"]]).hex()
+        recomputed_sdg = b2_256(canon(doc["sources"]))
         checks = {"signature": self._verify_sig(doc),
-                  "merkle_consistent": recomputed == doc["merkle_root"],
+                  "merkle_consistent": recomputed_root == doc["merkle_root"],
+                  "sources_consistent": recomputed_sdg == doc.get("sources_digest"),
                   "cleared": doc.get("clearance") == "cleared"}
         return {"passed": all(checks.values()), "checks": checks,
                 "merkle_root": doc["merkle_root"], "corpus_hash": doc["corpus_hash"]}

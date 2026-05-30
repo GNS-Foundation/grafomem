@@ -85,14 +85,24 @@ def main() -> int:
     gate("P3  customs receipt signed + verifies", p3)
 
     def p4():
-        row = svc.get_corpus(TENANT, st["cid"]); doc = row["document"]
-        doc["sources"][0]["license"] = "TAMPERED"                 # mutate a sealed source
+        # dedicated corpus so this gate is order-independent and doesn't disturb st['cid']
+        cid = svc.register_corpus(TENANT, good_corpus("tamper-test"))["corpus_id"]
+        # (a) tamper a sealed SOURCE -> caught by the merkle/sources binding
+        #     (NOT the signature: the signature binds the commitments, which verify re-derives)
+        doc = svc.get_corpus(TENANT, cid)["document"]
+        doc["sources"][0]["license"] = "TAMPERED"
         with svc._get_conn() as c, c.cursor() as cur:
-            cur.execute("UPDATE provenance_corpora SET document=%s WHERE corpus_id=%s", (Jsonb(doc), st["cid"]))
-        v = svc.verify_corpus(TENANT, st["cid"])
-        assert not v["checks"]["signature"], "tampered receipt still verified — signature vacuous!"
-        assert not v["checks"]["merkle_consistent"], "tampered source still matched the merkle root!"
-        assert not v["passed"]
+            cur.execute("UPDATE provenance_corpora SET document=%s WHERE corpus_id=%s", (Jsonb(doc), cid))
+        v = svc.verify_corpus(TENANT, cid)
+        assert not v["checks"]["merkle_consistent"], "source tamper not caught by merkle root"
+        assert not v["checks"]["sources_consistent"], "source tamper not caught by sources digest"
+        assert not v["passed"], "tampered corpus still passed"
+        # (b) tamper a SIGNED field (a commitment) -> caught by the signature
+        doc["corpus_hash"] = "ff" * 32
+        with svc._get_conn() as c, c.cursor() as cur:
+            cur.execute("UPDATE provenance_corpora SET document=%s WHERE corpus_id=%s", (Jsonb(doc), cid))
+        v2 = svc.verify_corpus(TENANT, cid)
+        assert not v2["checks"]["signature"], "signed-field tamper not caught by signature"
     gate("P4  tamper-evidence: signature + merkle (non-vacuous)", p4)
 
     def p5():

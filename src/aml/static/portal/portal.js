@@ -39,6 +39,7 @@
     });
     token = data.token;
     localStorage.setItem('gfm_token', token);
+    if (data.api_key) localStorage.setItem('gfm_api_key', data.api_key);
     tenantData = data;
     showDashboard();
     loadDashboard();
@@ -53,6 +54,7 @@
     });
     token = data.token;
     localStorage.setItem('gfm_token', token);
+    if (data.api_key) localStorage.setItem('gfm_api_key', data.api_key);
     tenantData = data;
     showDashboard();
     loadDashboard();
@@ -64,6 +66,7 @@
     tenantData = null;
     keyRevealed = false;
     localStorage.removeItem('gfm_token');
+    localStorage.removeItem('gfm_api_key');
     showAuth();
     toast('Logged out.');
   }
