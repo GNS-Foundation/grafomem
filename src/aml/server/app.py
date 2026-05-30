@@ -595,6 +595,13 @@ def create_app(
             app.include_router(create_artifact_registry_router(ar))
             ls.registry = ar
 
+            from aml.cloud.world_model import WorldModelService
+            from aml.cloud.world_model_routes import create_world_model_router
+            wm = WorldModelService(db_url, signing_key=erasure_key, gateway=gg, decision_trail=dt)
+            wm.ensure_schema()
+            app.state.world_model = wm
+            app.include_router(create_world_model_router(wm))
+
             gov_router = create_governance_router(gg)
             app.include_router(gov_router)
             logger.info("Governance Gateway enabled (/v1/governance)")

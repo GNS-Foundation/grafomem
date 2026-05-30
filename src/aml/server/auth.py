@@ -103,6 +103,21 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
             logger.warning("API key lookup failed: %s", e)
         return None
 
+    def _resolve_jwt(self, token: str) -> str | None:
+        """Try to resolve a portal JWT (Supabase or legacy) to a tenant_id."""
+        try:
+            from aml.cloud.portal_auth import PortalAuth
+            portal_auth = PortalAuth(db_url=self._db_url)
+            info = portal_auth.verify_token(token)
+            if info and info.get("tenant_id"):
+                tenant_id = info["tenant_id"]
+                # Cache so subsequent calls with the same JWT are fast
+                self._api_key_cache[token] = tenant_id
+                return tenant_id
+        except Exception as e:
+            logger.debug("JWT resolution failed: %s", e)
+        return None
+
     async def dispatch(
         self, request: Request, call_next: RequestResponseEndpoint
     ) -> Response:
@@ -134,6 +149,11 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
                 )
 
             tenant_id = self._resolve_api_key(api_key)
+
+            # Fallback: try decoding as a portal JWT token
+            if tenant_id is None:
+                tenant_id = self._resolve_jwt(api_key)
+
             if tenant_id is None:
                 return JSONResponse(
                     status_code=403,
