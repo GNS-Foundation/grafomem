@@ -186,16 +186,30 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
         # which doesn't propagate correctly from BaseHTTPMiddleware).
         auth_header = request.headers.get("Authorization", "")
         if not auth_header.startswith("Bearer "):
-            return JSONResponse(
-                status_code=401,
-                content={
-                    "detail": "Missing or malformed Authorization header. "
-                              "Expected: Bearer <token>",
-                },
-            )
+            # Also check X-API-Key header (portal uses this)
+            api_key = request.headers.get("X-API-Key", "")
+            if not api_key:
+                return JSONResponse(
+                    status_code=401,
+                    content={
+                        "detail": "Missing or malformed Authorization header. "
+                                  "Expected: Bearer <token>",
+                    },
+                )
+            token = api_key
+        else:
+            token = auth_header[7:].strip()
 
-        token = auth_header[7:].strip()
         tenant_id = self.tokens.get(token)
+
+        # Fallback: try resolving as a DB API key (portal-issued keys)
+        if tenant_id is None and self._db_url:
+            tenant_id = self._resolve_api_key(token)
+
+        # Fallback: try resolving as a portal JWT
+        if tenant_id is None and self._db_url:
+            tenant_id = self._resolve_jwt(token)
+
         if tenant_id is None:
             return JSONResponse(
                 status_code=403,
