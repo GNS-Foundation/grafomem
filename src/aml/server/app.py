@@ -352,6 +352,7 @@ def create_app(
     stripe_secret_key: str | None = None,
     stripe_webhook_secret: str | None = None,
     portal_secret_key: str | None = None,
+    spec_only: bool = False,
 ) -> FastAPI:
     """Create the FastAPI application.
 
@@ -375,19 +376,26 @@ def create_app(
         Stripe webhook signing secret.
     portal_secret_key : str | None
         Secret for signing portal JWT tokens.
+    spec_only : bool
+        If True, register all routes but skip ``ensure_schema()`` calls and
+        connection pool creation.  Useful for generating the complete OpenAPI
+        spec without requiring a live database.
     """
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         logger.info("GRAFOMEM server starting")
         # Initialize connection pool if db_url is provided
-        if db_url:
+        if db_url and not spec_only:
             try:
-                from aml.cloud.db_pool import DatabasePool
-                pool = DatabasePool(db_url)
+                from aml.cloud.db_pool import RoutingPool
+                pool = RoutingPool(db_url)
                 pool.open()
                 app.state.db_pool = pool
-                logger.info("Database connection pool initialized")
+                logger.info(
+                    "Database pool initialized (replica=%s)",
+                    pool.has_replica,
+                )
             except Exception as e:
                 logger.warning("Connection pool unavailable: %s", e)
                 app.state.db_pool = None
@@ -402,7 +410,7 @@ def create_app(
                          "decision_trail", "erasure_proof", "governance_gateway",
                          "regulatory_reports", "llm_registry", "tool_registry",
                          "orchestrator", "portal_auth", "stripe_billing",
-                         "webhook_service"):
+                         "webhook_service", "assurance_service"):
             svc = getattr(app.state, svc_name, None)
             if svc is not None and hasattr(svc, "close"):
                 svc.close()
@@ -521,22 +529,29 @@ def create_app(
 
     # Cloud management layer — only when db_url is provided
     if db_url is not None:
+        pool = getattr(app.state, "db_pool", None)
         try:
+            # In spec_only mode we skip ensure_schema() — routes still mount
+            def _init(svc):
+                if not spec_only:
+                    svc.ensure_schema()
+                return svc
+
             from aml.cloud.tenant_manager import TenantManager
             from aml.cloud.compliance import ComplianceTracker
             from aml.cloud.metering import MeteringService
             from aml.cloud.routes import router as cloud_router
 
-            tm = TenantManager(db_url)
-            tm.ensure_schema()
+            tm = TenantManager(db_url, pool=pool)
+            _init(tm)
             app.state.tenant_manager = tm
 
-            ct = ComplianceTracker(db_url)
-            ct.ensure_schema()
+            ct = ComplianceTracker(db_url, pool=pool)
+            _init(ct)
             app.state.compliance_tracker = ct
 
-            ms = MeteringService(db_url)
-            ms.ensure_schema()
+            ms = MeteringService(db_url, pool=pool)
+            _init(ms)
             app.state.metering_service = ms
 
             app.include_router(cloud_router)
@@ -546,8 +561,8 @@ def create_app(
             from aml.cloud.decision_trail import DecisionTrailService
             from aml.cloud.decision_routes import create_decision_router
 
-            dt = DecisionTrailService(db_url)
-            dt.ensure_schema()
+            dt = DecisionTrailService(db_url, pool=pool)
+            _init(dt)
             app.state.decision_trail = dt
 
             decision_router = create_decision_router(
@@ -564,8 +579,8 @@ def create_app(
             erasure_key_hex = os.environ.get("ERASURE_SIGNING_KEY")
             erasure_key = bytes.fromhex(erasure_key_hex) if erasure_key_hex else None
 
-            ep = ErasureProofService(db_url, decision_trail=dt, signing_key=erasure_key)
-            ep.ensure_schema()
+            ep = ErasureProofService(db_url, decision_trail=dt, signing_key=erasure_key, pool=pool)
+            _init(ep)
             app.state.erasure_proof = ep
 
             erasure_router = create_erasure_router(ep)
@@ -576,47 +591,61 @@ def create_app(
             from aml.cloud.governance import GovernanceGateway
             from aml.cloud.governance_routes import create_governance_router
 
-            gg = GovernanceGateway(db_url)
-            gg.ensure_schema()
+            gg = GovernanceGateway(db_url, pool=pool)
+            _init(gg)
             app.state.governance_gateway = gg
+
+            # gcrumbs — breadcrumb chain + Merkle epoch anchor (Sprint 15)
+            from aml.cloud.gcrumbs import GcrumbsService
+            from aml.cloud.gcrumbs_routes import create_gcrumbs_router
+
+            gc = GcrumbsService(db_url, signing_key=erasure_key, pool=pool)
+            _init(gc)
+            app.state.gcrumbs = gc
+            app.include_router(create_gcrumbs_router(gc))
+            logger.info("gcrumbs enabled (/v1/gcrumbs)")
 
             from aml.cloud.landing_service import LandingService
             from aml.cloud.landing_routes import create_landing_router
-            ls = LandingService(db_url, signing_key=erasure_key, gateway=gg, decision_trail=dt, epoch_anchor=False)
-            ls.ensure_schema()
+            ls = LandingService(db_url, signing_key=erasure_key, gateway=gg, decision_trail=dt,
+                                epoch_anchor=False, gcrumbs=gc, pool=pool)
+            _init(ls)
             app.state.landing_service = ls
             app.include_router(create_landing_router(ls))
 
             from aml.cloud.artifact_registry import ArtifactRegistryService
             from aml.cloud.artifact_registry_routes import create_artifact_registry_router
-            ar = ArtifactRegistryService(db_url, signing_key=erasure_key, gateway=gg, decision_trail=dt)
-            ar.ensure_schema()
+            ar = ArtifactRegistryService(db_url, signing_key=erasure_key, gateway=gg, decision_trail=dt, pool=pool)
+            _init(ar)
             app.state.artifact_registry = ar
             app.include_router(create_artifact_registry_router(ar))
             ls.registry = ar
 
             from aml.cloud.world_model import WorldModelService
             from aml.cloud.world_model_routes import create_world_model_router
-            wm = WorldModelService(db_url, signing_key=erasure_key, gateway=gg, decision_trail=dt)
-            wm.ensure_schema()
+            wm = WorldModelService(db_url, signing_key=erasure_key, gateway=gg, decision_trail=dt, gcrumbs=gc, pool=pool)
+            _init(wm)
             app.state.world_model = wm
             app.include_router(create_world_model_router(wm))
 
             # R2 — Data-Provenance Customs
             from aml.cloud.provenance_customs import ProvenanceCustomsService
             from aml.cloud.provenance_customs_routes import create_provenance_customs_router
-            pc = ProvenanceCustomsService(db_url, signing_key=erasure_key, gateway=gg, decision_trail=dt)
-            pc.ensure_schema()
+            pc = ProvenanceCustomsService(db_url, signing_key=erasure_key, gateway=gg, decision_trail=dt, gcrumbs=gc, pool=pool)
+            _init(pc)
             app.state.provenance_customs = pc
             app.include_router(create_provenance_customs_router(pc))
 
             # R4 — Composition Governance
             from aml.cloud.composition_governance import CompositionGovernanceService
             from aml.cloud.composition_governance_routes import create_composition_governance_router
-            cg = CompositionGovernanceService(db_url, signing_key=erasure_key, gateway=gg, decision_trail=dt)
-            cg.ensure_schema()
+            cg = CompositionGovernanceService(db_url, signing_key=erasure_key, gateway=gg, decision_trail=dt, gcrumbs=gc, pool=pool)
+            _init(cg)
             app.state.composition_governance = cg
             app.include_router(create_composition_governance_router(cg))
+
+            # Wire gcrumbs into erasure (constructed before gateway, so set post-hoc)
+            ep._gcrumbs = gc
 
             gov_router = create_governance_router(gg)
             app.include_router(gov_router)
@@ -632,8 +661,9 @@ def create_app(
                 erasure_proof=ep,
                 governance=gg,
                 compliance=getattr(app.state, "compliance_tracker", None),
+                pool=pool,
             )
-            rr.ensure_schema()
+            _init(rr)
             app.state.regulatory_reports = rr
 
             reg_router = create_regulatory_router(rr)
@@ -645,8 +675,8 @@ def create_app(
             from aml.cloud.tool_registry import ToolRegistry
             from aml.cloud.llm_routes import create_llm_router
 
-            llm_reg = LLMRegistry(db_url)
-            llm_reg.ensure_schema()
+            llm_reg = LLMRegistry(db_url, pool=pool)
+            _init(llm_reg)
             app.state.llm_registry = llm_reg
 
             tool_reg = ToolRegistry(
@@ -654,8 +684,9 @@ def create_app(
                 governance=gg,
                 store_manager=app.state.store_manager,
                 erasure_proof=ep,
+                pool=pool,
             )
-            tool_reg.ensure_schema()
+            _init(tool_reg)
             app.state.tool_registry = tool_reg
 
             llm_router = create_llm_router(llm_reg, tool_reg)
@@ -674,8 +705,9 @@ def create_app(
                 store_manager=app.state.store_manager,
                 llm_registry=llm_reg,
                 tool_registry=tool_reg,
+                pool=pool,
             )
-            orch.ensure_schema()
+            _init(orch)
             app.state.orchestrator = orch
 
             orch_router = create_orchestrator_router(orch)
@@ -688,16 +720,16 @@ def create_app(
 
             # Sprint 7b: Execution Receipts — hash-chained attestation
             from aml.cloud.execution_receipts import ExecutionReceiptService
-            receipt_svc = ExecutionReceiptService(db_url)
-            receipt_svc.ensure_schema()
+            receipt_svc = ExecutionReceiptService(db_url, pool=pool)
+            _init(receipt_svc)
             app.state.execution_receipts = receipt_svc
             orch._execution_receipts = receipt_svc
             logger.info("Execution Receipt Service enabled")
 
             # Sprint 7c: Memory Taxonomy — workflow context
             from aml.cloud.memory_taxonomy import WorkflowContextService
-            wf_ctx = WorkflowContextService(db_url)
-            wf_ctx.ensure_schema()
+            wf_ctx = WorkflowContextService(db_url, pool=pool)
+            _init(wf_ctx)
             app.state.workflow_context = wf_ctx
             orch._workflow_context = wf_ctx
             logger.info("Workflow Context Service enabled")
@@ -710,8 +742,9 @@ def create_app(
                 llm_registry=llm_reg,
                 store_manager=app.state.store_manager,
                 orchestrator=orch,
+                pool=pool,
             )
-            replay.ensure_schema()
+            _init(replay)
             app.state.replay_engine = replay
             logger.info("Replay Engine enabled")
 
@@ -719,8 +752,8 @@ def create_app(
             from aml.cloud.webhook_service import WebhookService
             from aml.cloud.webhook_routes import create_webhook_router
 
-            wh = WebhookService(db_url)
-            wh.ensure_schema()
+            wh = WebhookService(db_url, pool=pool)
+            _init(wh)
             app.state.webhook_service = wh
             # Wire into governance for deny/escalate dispatch
             gg._webhook_service = wh
@@ -730,6 +763,19 @@ def create_app(
             wh_router = create_webhook_router(wh)
             app.include_router(wh_router)
             logger.info("Webhook Alerts enabled (/v1/webhooks)")
+
+            # Sprint 19: Continuous Assurance
+            from aml.cloud.assurance import AssuranceService
+            from aml.cloud.assurance_routes import router as assurance_router
+
+            assurance_svc = AssuranceService(
+                db_url, pool=pool,
+                health_checker=health_checker,
+            )
+            _init(assurance_svc)
+            app.state.assurance_service = assurance_svc
+            app.include_router(assurance_router)
+            logger.info("Continuous Assurance enabled (/v1/assurance)")
         except ImportError as e:
             logger.warning("Cloud layer unavailable (missing deps): %s", e)
         except Exception as e:
@@ -740,8 +786,8 @@ def create_app(
             from aml.cloud.portal_auth import PortalAuth
             from aml.cloud.portal_routes import router as portal_router
 
-            pa = PortalAuth(db_url, secret_key=portal_secret_key)
-            pa.ensure_schema()
+            pa = PortalAuth(db_url, secret_key=portal_secret_key, pool=pool)
+            _init(pa)
             app.state.portal_auth = pa
             app.include_router(portal_router)
             logger.info("Portal auth enabled (/v1/portal)")
@@ -755,8 +801,8 @@ def create_app(
                     "GRAFOMEM_SSO_REDIRECT_BASE",
                     "https://grafomem-production.up.railway.app",
                 )
-                sso = SSOProvider(db_url, portal_auth=pa, redirect_base=redirect_base)
-                sso.ensure_schema()
+                sso = SSOProvider(db_url, portal_auth=pa, redirect_base=redirect_base, pool=pool)
+                _init(sso)
                 app.state.sso_provider = sso
 
                 sso_router = create_sso_router(sso)
@@ -779,7 +825,7 @@ def create_app(
                     db_url, sb_key,
                     webhook_secret=stripe_webhook_secret,
                 )
-                sb.ensure_schema()
+                _init(sb)
                 app.state.stripe_billing = sb
                 logger.info("Stripe billing enabled")
         except ImportError as e:

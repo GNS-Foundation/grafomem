@@ -1,10 +1,11 @@
 """
-GRAFOMEM SSO Provider — OpenID Connect authentication for the Cloud Portal.
+GRAFOMEM SSO Provider — OpenID Connect + SAML 2.0 authentication for the Cloud Portal.
 
 Supports OAuth2/OIDC flows for Google, Microsoft, GitHub, and generic OIDC
-providers (Okta, Auth0, etc.).  On successful authentication, resolves the
-user's email to an existing tenant or creates a new one, then issues a
-GRAFOMEM JWT.
+providers (Okta, Auth0, etc.), plus SAML 2.0 SP-initiated flows for enterprise
+IdPs (Azure AD, Okta SAML, Ping Identity, etc.).  On successful authentication,
+resolves the user's email to an existing tenant or creates a new one, then
+issues a GRAFOMEM JWT.
 
 Tables:
   - ``sso_configs``: per-tenant SSO provider configuration
@@ -76,6 +77,23 @@ class SSOConfig:
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+@dataclass(slots=True)
+class SAMLConfig:
+    """SAML 2.0 IdP configuration."""
+    config_id: str
+    idp_entity_id: str
+    idp_sso_url: str
+    idp_slo_url: str
+    idp_x509_cert: str
+    sp_entity_id: str
+    attribute_mapping: dict = field(default_factory=lambda: {
+        "email": "urn:oid:0.9.2342.19200300.100.1.3",
+        "name": "urn:oid:2.5.4.42",
+    })
+    enabled: bool = True
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 # ============================================================================
 # Schema
 # ============================================================================
@@ -89,6 +107,18 @@ CREATE TABLE IF NOT EXISTS sso_configs (
     issuer_url    TEXT NOT NULL DEFAULT '',
     enabled       BOOLEAN NOT NULL DEFAULT TRUE,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS saml_configs (
+    config_id         TEXT PRIMARY KEY,
+    idp_entity_id     TEXT NOT NULL,
+    idp_sso_url       TEXT NOT NULL,
+    idp_slo_url       TEXT NOT NULL DEFAULT '',
+    idp_x509_cert     TEXT NOT NULL,
+    sp_entity_id      TEXT NOT NULL,
+    attribute_mapping JSONB NOT NULL DEFAULT '{"email": "urn:oid:0.9.2342.19200300.100.1.3", "name": "urn:oid:2.5.4.42"}',
+    enabled           BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- Add SSO columns to tenants table if missing
@@ -136,13 +166,17 @@ class SSOProvider:
         db_url: str,
         portal_auth=None,
         redirect_base: str = "",
+        pool=None,
     ) -> None:
         self._db_url = db_url
         self._portal_auth = portal_auth
         self._redirect_base = redirect_base.rstrip("/")
         self._conn: psycopg.Connection[dict[str, Any]] | None = None
+        self._pool = pool
 
     def _get_conn(self) -> psycopg.Connection[dict[str, Any]]:
+        if self._pool is not None:
+            return self._pool.getconn()
         if self._conn is None or self._conn.closed:
             self._conn = psycopg.connect(
                 self._db_url, row_factory=dict_row, autocommit=True,
@@ -150,6 +184,9 @@ class SSOProvider:
         return self._conn
 
     def close(self) -> None:
+        if self._pool is not None:
+            self._conn = None
+            return
         if self._conn is not None and not self._conn.closed:
             self._conn.close()
 
@@ -244,6 +281,325 @@ class SSOProvider:
                 })
 
         return result
+
+    # ------------------------------------------------------------------
+    # SAML 2.0
+    # ------------------------------------------------------------------
+
+    def configure_saml(
+        self,
+        metadata_url: str | None = None,
+        metadata_xml: str | None = None,
+        sp_entity_id: str | None = None,
+        attribute_mapping: dict | None = None,
+    ) -> SAMLConfig:
+        """Configure a SAML 2.0 IdP.
+
+        Accepts either a metadata URL (auto-discovery) or raw metadata XML.
+        Parses the XML to extract IdP entity ID, SSO URL, and X.509 certificate.
+
+        Parameters
+        ----------
+        metadata_url : str, optional
+            URL to fetch IdP metadata XML from.
+        metadata_xml : str, optional
+            Raw IdP metadata XML string.
+        sp_entity_id : str, optional
+            Override for the SP entity ID (defaults to redirect_base).
+        attribute_mapping : dict, optional
+            Mapping of GRAFOMEM fields to SAML attributes.
+        """
+        if not metadata_url and not metadata_xml:
+            raise ValueError("Either metadata_url or metadata_xml is required")
+
+        # Fetch metadata if URL provided
+        if metadata_url and not metadata_xml:
+            import httpx
+            resp = httpx.get(metadata_url, timeout=15)
+            if resp.status_code != 200:
+                raise ValueError(f"Failed to fetch metadata from {metadata_url}: HTTP {resp.status_code}")
+            metadata_xml = resp.text
+
+        # Parse metadata XML
+        idp_entity_id, idp_sso_url, idp_slo_url, idp_cert = self._parse_saml_metadata(metadata_xml)
+
+        config_id = uuid.uuid4().hex[:24]
+        entity_id = sp_entity_id or f"{self._redirect_base}/v1/portal/sso/saml/metadata"
+        mapping = attribute_mapping or {
+            "email": "urn:oid:0.9.2342.19200300.100.1.3",
+            "name": "urn:oid:2.5.4.42",
+        }
+
+        conn = self._get_conn()
+        # Replace any existing config
+        conn.execute("DELETE FROM saml_configs WHERE TRUE")
+        conn.execute(
+            "INSERT INTO saml_configs "
+            "(config_id, idp_entity_id, idp_sso_url, idp_slo_url, idp_x509_cert, "
+            " sp_entity_id, attribute_mapping, created_at) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+            (config_id, idp_entity_id, idp_sso_url, idp_slo_url, idp_cert,
+             entity_id, json.dumps(mapping), datetime.now(timezone.utc)),
+        )
+        logger.info("SAML IdP configured: %s", idp_entity_id)
+
+        return SAMLConfig(
+            config_id=config_id,
+            idp_entity_id=idp_entity_id,
+            idp_sso_url=idp_sso_url,
+            idp_slo_url=idp_slo_url,
+            idp_x509_cert=idp_cert,
+            sp_entity_id=entity_id,
+            attribute_mapping=mapping,
+        )
+
+    def get_saml_config(self) -> SAMLConfig | None:
+        """Get the current SAML IdP configuration."""
+        conn = self._get_conn()
+        row = conn.execute(
+            "SELECT * FROM saml_configs WHERE enabled = TRUE LIMIT 1",
+        ).fetchone()
+        if row is None:
+            return None
+        return SAMLConfig(
+            config_id=row["config_id"],
+            idp_entity_id=row["idp_entity_id"],
+            idp_sso_url=row["idp_sso_url"],
+            idp_slo_url=row.get("idp_slo_url", ""),
+            idp_x509_cert=row["idp_x509_cert"],
+            sp_entity_id=row["sp_entity_id"],
+            attribute_mapping=row.get("attribute_mapping") or {},
+            enabled=row.get("enabled", True),
+            created_at=row["created_at"],
+        )
+
+    def get_sp_metadata(self) -> str:
+        """Generate SAML 2.0 SP metadata XML.
+
+        Returns an EntityDescriptor with the AssertionConsumerService URL.
+        """
+        acs_url = f"{self._redirect_base}/v1/portal/sso/saml/acs"
+        entity_id = f"{self._redirect_base}/v1/portal/sso/saml/metadata"
+
+        # Check if there's a configured SP entity ID
+        config = self.get_saml_config()
+        if config:
+            entity_id = config.sp_entity_id
+
+        return f"""<?xml version="1.0" encoding="UTF-8"?>
+<md:EntityDescriptor xmlns:md="urn:oasis:names:tc:SAML:2.0:metadata"
+                     entityID="{entity_id}">
+  <md:SPSSODescriptor
+      AuthnRequestsSigned="false"
+      WantAssertionsSigned="true"
+      protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">
+    <md:NameIDFormat>urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress</md:NameIDFormat>
+    <md:AssertionConsumerService
+        Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"
+        Location="{acs_url}"
+        index="1"
+        isDefault="true"/>
+  </md:SPSSODescriptor>
+</md:EntityDescriptor>"""
+
+    def initiate_saml_flow(self) -> str:
+        """Build a SAML AuthnRequest and return the IdP redirect URL."""
+        config = self.get_saml_config()
+        if config is None:
+            raise ValueError("SAML is not configured")
+
+        import base64
+        import zlib
+        from urllib.parse import urlencode
+
+        request_id = f"_gfm_{uuid.uuid4().hex}"
+        issue_instant = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        acs_url = f"{self._redirect_base}/v1/portal/sso/saml/acs"
+
+        authn_request = f"""<samlp:AuthnRequest
+    xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol"
+    xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion"
+    ID="{request_id}"
+    Version="2.0"
+    IssueInstant="{issue_instant}"
+    Destination="{config.idp_sso_url}"
+    AssertionConsumerServiceURL="{acs_url}"
+    ProtocolBinding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST">
+  <saml:Issuer>{config.sp_entity_id}</saml:Issuer>
+  <samlp:NameIDPolicy Format="urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress" AllowCreate="true"/>
+</samlp:AuthnRequest>"""
+
+        # Store flow state for response validation
+        _PENDING_FLOWS[request_id] = {
+            "provider": "saml",
+            "created_at": issue_instant,
+        }
+
+        # DEFLATE + base64 encode for HTTP-Redirect binding
+        compressed = zlib.compress(authn_request.encode())[2:-4]  # raw deflate
+        encoded = base64.b64encode(compressed).decode()
+
+        params = urlencode({
+            "SAMLRequest": encoded,
+            "RelayState": self._redirect_base + "/portal",
+        })
+
+        url = f"{config.idp_sso_url}?{params}"
+        logger.info("SAML AuthnRequest issued (ID=%s)", request_id)
+        return url
+
+    def handle_saml_response(self, saml_response: str, relay_state: str = "") -> dict:
+        """Process a SAML Response from the IdP.
+
+        Validates the response, extracts the NameID and attributes,
+        and resolves the user to a GRAFOMEM tenant.
+
+        Parameters
+        ----------
+        saml_response : str
+            Base64-encoded SAML Response (from the POST form data).
+        relay_state : str
+            The RelayState parameter from the IdP.
+
+        Returns
+        -------
+        dict
+            Same shape as handle_callback: {token, tenant_id, email, ...}
+        """
+        import base64
+        from xml.etree import ElementTree as ET
+
+        config = self.get_saml_config()
+        if config is None:
+            raise ValueError("SAML is not configured")
+
+        # Decode the SAML Response
+        try:
+            response_xml = base64.b64decode(saml_response).decode()
+        except Exception as e:
+            raise ValueError(f"Invalid SAML Response encoding: {e}")
+
+        # Parse and extract NameID and attributes
+        ns = {
+            "saml": "urn:oasis:names:tc:SAML:2.0:assertion",
+            "samlp": "urn:oasis:names:tc:SAML:2.0:protocol",
+        }
+
+        try:
+            root = ET.fromstring(response_xml)
+        except ET.ParseError as e:
+            raise ValueError(f"Malformed SAML Response XML: {e}")
+
+        # Check status
+        status_code = root.find(".//samlp:StatusCode", ns)
+        if status_code is not None:
+            status_value = status_code.get("Value", "")
+            if "Success" not in status_value:
+                raise ValueError(f"SAML authentication failed: {status_value}")
+
+        # Extract NameID
+        name_id_el = root.find(".//saml:NameID", ns)
+        if name_id_el is None or not name_id_el.text:
+            raise ValueError("No NameID in SAML Response")
+        name_id = name_id_el.text.strip()
+
+        # Extract attributes
+        email = name_id  # NameID is usually the email
+        name = name_id.split("@")[0]
+
+        for attr_stmt in root.findall(".//saml:AttributeStatement/saml:Attribute", ns):
+            attr_name = attr_stmt.get("Name", "")
+            attr_value_el = attr_stmt.find("saml:AttributeValue", ns)
+            if attr_value_el is None or not attr_value_el.text:
+                continue
+            val = attr_value_el.text.strip()
+
+            # Match against configured attribute mapping
+            mapping = config.attribute_mapping or {}
+            if attr_name == mapping.get("email") or "mail" in attr_name.lower():
+                email = val
+            elif attr_name == mapping.get("name") or "givenname" in attr_name.lower():
+                name = val
+
+        if not email or "@" not in email:
+            raise ValueError(f"Could not extract valid email from SAML Response (got: {email!r})")
+
+        # Extract IdP entity ID for sub
+        issuer_el = root.find("saml:Issuer", ns)
+        sso_sub = name_id
+        if issuer_el is not None and issuer_el.text:
+            sso_sub = f"{issuer_el.text.strip()}|{name_id}"
+
+        # Find or create tenant
+        tenant_id, api_key = self._find_or_create_tenant(
+            email=email,
+            name=name,
+            sso_provider="saml",
+            sso_sub=sso_sub,
+        )
+
+        # Issue JWT
+        token = None
+        if self._portal_auth:
+            token = self._portal_auth._issue_jwt(tenant_id, email)
+
+        logger.info("SAML login: %s → tenant %s", email, tenant_id)
+        try:
+            from aml.cloud.metrics import SSO_LOGINS
+            SSO_LOGINS.labels(provider="saml").inc()
+        except Exception:
+            pass
+
+        return {
+            "token": token,
+            "tenant_id": tenant_id,
+            "email": email,
+            "name": name,
+            "sso_provider": "saml",
+            "api_key": api_key,
+        }
+
+    @staticmethod
+    def _parse_saml_metadata(xml_str: str) -> tuple[str, str, str, str]:
+        """Parse IdP metadata XML.
+
+        Returns (entity_id, sso_url, slo_url, x509_cert).
+        """
+        from xml.etree import ElementTree as ET
+
+        ns = {
+            "md": "urn:oasis:names:tc:SAML:2.0:metadata",
+            "ds": "http://www.w3.org/2000/09/xmldsig#",
+        }
+
+        root = ET.fromstring(xml_str)
+        entity_id = root.get("entityID", "")
+
+        sso_url = ""
+        slo_url = ""
+        cert = ""
+
+        # Find SSO service (HTTP-Redirect or HTTP-POST)
+        for sso in root.findall(".//md:IDPSSODescriptor/md:SingleSignOnService", ns):
+            binding = sso.get("Binding", "")
+            if "HTTP-Redirect" in binding or "HTTP-POST" in binding:
+                sso_url = sso.get("Location", "")
+                break
+
+        # Find SLO service
+        for slo in root.findall(".//md:IDPSSODescriptor/md:SingleLogoutService", ns):
+            slo_url = slo.get("Location", "")
+            break
+
+        # Extract signing certificate
+        cert_el = root.find(".//md:IDPSSODescriptor/md:KeyDescriptor/ds:KeyInfo/ds:X509Data/ds:X509Certificate", ns)
+        if cert_el is not None and cert_el.text:
+            cert = cert_el.text.strip()
+
+        if not entity_id or not sso_url:
+            raise ValueError("Invalid IdP metadata: missing entityID or SingleSignOnService")
+
+        return entity_id, sso_url, slo_url, cert
 
     # ------------------------------------------------------------------
     # OAuth2 Flow

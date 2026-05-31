@@ -195,8 +195,10 @@ class GovernanceGateway:
         db_url: str,
         policy_engine: Any | None = None,
         evidence_collector: Any | None = None,
+        pool=None,
     ) -> None:
         self._db_url = db_url
+        self._pool = pool
         self._conn: psycopg.Connection[dict[str, Any]] | None = None
         # In-memory rate limit counters kept for backward compat
         self._rate_counters: dict[tuple[str, str], list[float]] = {}
@@ -212,6 +214,8 @@ class GovernanceGateway:
     # ------------------------------------------------------------------
 
     def _get_conn(self) -> psycopg.Connection[dict[str, Any]]:
+        if self._pool is not None:
+            return self._pool.getconn()
         if self._conn is None or self._conn.closed:
             self._conn = psycopg.connect(
                 self._db_url, row_factory=dict_row, autocommit=True,
@@ -219,7 +223,9 @@ class GovernanceGateway:
         return self._conn
 
     def close(self) -> None:
-        if self._conn is not None and not self._conn.closed:
+        if self._pool is not None:
+            self._conn = None
+        elif self._conn is not None and not self._conn.closed:
             self._conn.close()
         self._evidence.close()
 

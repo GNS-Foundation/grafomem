@@ -160,3 +160,135 @@ class DatabasePool:
     def is_active(self) -> bool:
         """Whether the pool is open and active."""
         return self._pool is not None
+
+
+class RoutingPool:
+    """Connection pool with optional read-replica routing.
+
+    Wraps a primary DatabasePool and an optional read-replica pool.
+    When ``GRAFOMEM_DB_READ_URL`` is set, read-only queries are routed
+    to the replica.  Falls back to primary if replica is unavailable.
+
+    The routing is transparent to services — they call ``getconn()``
+    as before and get routed automatically.  Services that need
+    explicit read routing can call ``getconn(readonly=True)``.
+
+    Environment Variables
+    ---------------------
+    GRAFOMEM_DB_READ_URL : str
+        PostgreSQL connection URI for the read replica.
+        If not set, all connections go to the primary.
+    GRAFOMEM_DB_READ_POOL_MIN : int
+        Minimum read replica connections (default 3).
+    GRAFOMEM_DB_READ_POOL_MAX : int
+        Maximum read replica connections (default 10).
+
+    Usage::
+
+        pool = RoutingPool(primary_url)
+        pool.open()
+        conn = pool.getconn()                # primary
+        conn = pool.getconn(readonly=True)    # replica if available
+        pool.close()
+    """
+
+    def __init__(
+        self,
+        primary_url: str,
+        *,
+        read_url: str | None = None,
+        min_size: int | None = None,
+        max_size: int | None = None,
+        read_min_size: int | None = None,
+        read_max_size: int | None = None,
+    ) -> None:
+        self._primary = DatabasePool(
+            primary_url,
+            min_size=min_size,
+            max_size=max_size,
+        )
+
+        read_url = read_url or os.environ.get("GRAFOMEM_DB_READ_URL")
+        self._replica: DatabasePool | None = None
+        if read_url:
+            self._replica = DatabasePool(
+                read_url,
+                min_size=read_min_size or int(os.environ.get("GRAFOMEM_DB_READ_POOL_MIN", "3")),
+                max_size=read_max_size or int(os.environ.get("GRAFOMEM_DB_READ_POOL_MAX", "10")),
+            )
+            logger.info("Read replica pool configured")
+
+    def open(self) -> None:
+        """Open primary and replica pools."""
+        self._primary.open()
+        if self._replica:
+            try:
+                self._replica.open()
+                logger.info("Read replica pool opened")
+            except Exception as e:
+                logger.warning(
+                    "Read replica pool failed to open: %s (falling back to primary)", e,
+                )
+                self._replica = None
+
+    def close(self) -> None:
+        """Close all pools."""
+        self._primary.close()
+        if self._replica:
+            self._replica.close()
+
+    def getconn(self, *, readonly: bool = False) -> psycopg.Connection[dict[str, Any]]:
+        """Get a connection, optionally from the read replica.
+
+        Parameters
+        ----------
+        readonly : bool
+            If True and a read replica is available, returns a
+            connection from the replica pool.  Falls back to primary
+            if replica is unavailable.
+        """
+        if readonly and self._replica and self._replica.is_active:
+            try:
+                return self._replica.getconn()
+            except Exception as e:
+                logger.warning("Read replica getconn failed, falling back: %s", e)
+        return self._primary.getconn()
+
+    def putconn(self, conn: psycopg.Connection) -> None:
+        """Return a connection to the appropriate pool."""
+        if self._replica and self._replica.is_active:
+            try:
+                self._replica.putconn(conn)
+                return
+            except Exception:
+                pass
+        self._primary.putconn(conn)
+
+    @contextmanager
+    def connection(self, *, readonly: bool = False):
+        """Context manager for connection checkout/return."""
+        conn = self.getconn(readonly=readonly)
+        try:
+            yield conn
+        finally:
+            self.putconn(conn)
+
+    @property
+    def stats(self) -> dict[str, Any]:
+        """Pool statistics for primary and replica."""
+        result: dict[str, Any] = {"primary": self._primary.stats}
+        if self._replica:
+            result["replica"] = self._replica.stats
+        else:
+            result["replica"] = {"configured": False}
+        return result
+
+    @property
+    def is_active(self) -> bool:
+        """Whether the primary pool is active."""
+        return self._primary.is_active
+
+    @property
+    def has_replica(self) -> bool:
+        """Whether a read replica is configured and active."""
+        return self._replica is not None and self._replica.is_active

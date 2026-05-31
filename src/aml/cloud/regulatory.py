@@ -114,15 +114,19 @@ class RegulatoryReportService:
         erasure_proof=None,
         governance=None,
         compliance=None,
+        pool=None,
     ) -> None:
         self._db_url = db_url
         self._dt = decision_trail
         self._ep = erasure_proof
         self._gov = governance
         self._comp = compliance
+        self._pool = pool
         self._conn: psycopg.Connection[dict[str, Any]] | None = None
 
     def _get_conn(self) -> psycopg.Connection[dict[str, Any]]:
+        if self._pool is not None:
+            return self._pool.getconn()
         if self._conn is None or self._conn.closed:
             self._conn = psycopg.connect(
                 self._db_url, row_factory=dict_row, autocommit=True,
@@ -130,6 +134,9 @@ class RegulatoryReportService:
         return self._conn
 
     def close(self) -> None:
+        if self._pool is not None:
+            self._conn = None
+            return
         if self._conn is not None and not self._conn.closed:
             self._conn.close()
 

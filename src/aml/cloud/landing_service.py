@@ -70,43 +70,56 @@ class LandingService:
     """Mirrors ErasureProofService(db_url, ..., signing_key=...)."""
 
     def __init__(self, db_url: str, *, signing_key: Optional[bytes] = None,
-                 gateway=None, decision_trail=None, epoch_anchor: bool = False, registry=None):
+                 gateway=None, decision_trail=None, epoch_anchor: bool = False, registry=None,
+                 gcrumbs=None, pool=None):
         self.db_url = db_url
         self.signing_key = signing_key          # 32-byte Ed25519 seed (same family as erasure_key)
         self.gateway = gateway                  # GovernanceGateway
         self.decision_trail = decision_trail
         self.epoch_anchor = epoch_anchor        # future: gcrumbs Merkle-epoch inclusion proof
         self.registry = registry                # optional ArtifactRegistryService -> auto-certify on issue
+        self.gcrumbs = gcrumbs                  # GcrumbsService — breadcrumb chain + epoch anchor
+        self._pool = pool
 
     # ---- db (mirrors erasure_proof._get_conn) ----
     def _get_conn(self) -> psycopg.Connection[dict[str, Any]]:
+        if self._pool is not None:
+            return self._pool.getconn()
         return psycopg.connect(self.db_url, row_factory=dict_row, autocommit=True)
 
+    def _put_conn(self, conn):
+        if self._pool is not None:
+            self._pool.putconn(conn)
+
     def ensure_schema(self) -> None:
-        with self._get_conn() as conn, conn.cursor() as cur:
-            cur.execute("""
-            CREATE TABLE IF NOT EXISTS landing_certificates (
-              certificate_id    TEXT PRIMARY KEY,
-              tenant_id         TEXT NOT NULL,
-              artifact_ref      TEXT NOT NULL,
-              base_model_ref    TEXT NOT NULL,
-              layer_hashes      JSONB NOT NULL,
-              data_provenance   JSONB NOT NULL,
-              authority         JSONB NOT NULL,
-              conformance       JSONB NOT NULL,
-              permitted_actions JSONB NOT NULL,
-              document          JSONB,          -- the exact signed certificate (source of truth for verify)
-              anchor            JSONB,
-              status            TEXT NOT NULL DEFAULT 'issued',
-              signature         TEXT,
-              signer_public_key TEXT,
-              created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
-            );
-            -- self-healing migration for tables created before the `document` column existed
-            ALTER TABLE landing_certificates ADD COLUMN IF NOT EXISTS document JSONB;
-            CREATE INDEX IF NOT EXISTS ix_landing_certs_tenant   ON landing_certificates(tenant_id);
-            CREATE INDEX IF NOT EXISTS ix_landing_certs_artifact ON landing_certificates(tenant_id, artifact_ref);
-            """)
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                CREATE TABLE IF NOT EXISTS landing_certificates (
+                  certificate_id    TEXT PRIMARY KEY,
+                  tenant_id         TEXT NOT NULL,
+                  artifact_ref      TEXT NOT NULL,
+                  base_model_ref    TEXT NOT NULL,
+                  layer_hashes      JSONB NOT NULL,
+                  data_provenance   JSONB NOT NULL,
+                  authority         JSONB NOT NULL,
+                  conformance       JSONB NOT NULL,
+                  permitted_actions JSONB NOT NULL,
+                  document          JSONB,          -- the exact signed certificate (source of truth for verify)
+                  anchor            JSONB,
+                  status            TEXT NOT NULL DEFAULT 'issued',
+                  signature         TEXT,
+                  signer_public_key TEXT,
+                  created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+                );
+                -- self-healing migration for tables created before the `document` column existed
+                ALTER TABLE landing_certificates ADD COLUMN IF NOT EXISTS document JSONB;
+                CREATE INDEX IF NOT EXISTS ix_landing_certs_tenant   ON landing_certificates(tenant_id);
+                CREATE INDEX IF NOT EXISTS ix_landing_certs_artifact ON landing_certificates(tenant_id, artifact_ref);
+                """)
+        finally:
+            self._put_conn(conn)
 
     # ---- R3 surface ----
     def run_conformance(self, tenant_id: str, artifact_ref: str, layer_bytes: list, data_provenance: dict) -> dict:
@@ -162,19 +175,27 @@ class LandingService:
         return cert
 
     def get_certificate(self, tenant_id, certificate_id):
-        with self._get_conn() as conn, conn.cursor() as cur:
-            cur.execute("SELECT * FROM landing_certificates WHERE tenant_id=%s AND certificate_id=%s",
-                        (tenant_id, certificate_id))
-            row = cur.fetchone()
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT * FROM landing_certificates WHERE tenant_id=%s AND certificate_id=%s",
+                            (tenant_id, certificate_id))
+                row = cur.fetchone()
+        finally:
+            self._put_conn(conn)
         if not row:
             raise LandingError("certificate not found")
         return row
 
     def list_certificates(self, tenant_id, limit=50, offset=0):
-        with self._get_conn() as conn, conn.cursor() as cur:
-            cur.execute("SELECT * FROM landing_certificates WHERE tenant_id=%s "
-                        "ORDER BY created_at DESC LIMIT %s OFFSET %s", (tenant_id, limit, offset))
-            return cur.fetchall()
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT * FROM landing_certificates WHERE tenant_id=%s "
+                            "ORDER BY created_at DESC LIMIT %s OFFSET %s", (tenant_id, limit, offset))
+                return cur.fetchall()
+        finally:
+            self._put_conn(conn)
 
     def verify_certificate(self, tenant_id, certificate_id) -> dict:
         """Ed25519 signature verification + data checks, against the exact signed document."""
@@ -198,9 +219,13 @@ class LandingService:
                 "status": row.get("status")}
 
     def get_stats(self, tenant_id) -> dict:
-        with self._get_conn() as conn, conn.cursor() as cur:
-            cur.execute("SELECT status, count(*) AS n FROM landing_certificates WHERE tenant_id=%s GROUP BY status", (tenant_id,))
-            return {r["status"]: r["n"] for r in cur.fetchall()}
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT status, count(*) AS n FROM landing_certificates WHERE tenant_id=%s GROUP BY status", (tenant_id,))
+                return {r["status"]: r["n"] for r in cur.fetchall()}
+        finally:
+            self._put_conn(conn)
 
     # ---- internals ----
     def _build(self, tenant_id, req: LandingIssueRequest) -> dict:
@@ -236,8 +261,22 @@ class LandingService:
             return False
 
     def _anchor(self, tenant_id, cert) -> Optional[dict]:
-        # FUTURE (epoch_anchor=True): emit a gcrumbs breadcrumb for cert['certificate_id'],
-        # roll_epoch(agent_id=tenant), get_proof((epoch_id, leaf_index)) -> inclusion proof.
+        if self.gcrumbs:
+            try:
+                art = cert.get("artifact") or {}
+                auth = cert.get("authority") or {}
+                return self.gcrumbs.append_breadcrumb(
+                    tenant_id, "landing_certificate",
+                    {"args": {"certificate_id": cert.get("certificate_id"),
+                              "artifact": art.get("artifact_ref")},
+                     "authorized": True, "reasons": [],
+                     "agent": auth.get("human_principal"),
+                     "tier": auth.get("trust_tier")},
+                    source_type="landing", source_ref=cert.get("certificate_id"))
+            except Exception:
+                import logging
+                logging.getLogger("grafomem.cloud.landing").warning(
+                    "gcrumbs anchor failed for cert %s", cert.get("certificate_id"), exc_info=True)
         return None
 
     def _link_registry(self, tenant_id, req, certificate_id) -> None:
@@ -258,40 +297,52 @@ class LandingService:
         return all(b2_256(b) == h for b, h in zip(layer_bytes, layer_hashes))
 
     def _persist(self, tenant_id, cert, status):
-        with self._get_conn() as conn, conn.cursor() as cur:
-            cur.execute("""INSERT INTO landing_certificates
-                (certificate_id, tenant_id, artifact_ref, base_model_ref, layer_hashes,
-                 data_provenance, authority, conformance, permitted_actions, document, anchor, status,
-                 signature, signer_public_key)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                ON CONFLICT (certificate_id) DO UPDATE SET status=EXCLUDED.status,
-                  document=EXCLUDED.document, anchor=EXCLUDED.anchor, signature=EXCLUDED.signature,
-                  signer_public_key=EXCLUDED.signer_public_key""",
-                (cert["certificate_id"], tenant_id, cert["artifact"]["artifact_ref"],
-                 cert["artifact"]["base_model_ref"], Jsonb(cert["artifact"]["layer_hashes"]),
-                 Jsonb(cert["data_provenance"]), Jsonb(cert["authority"]),
-                 Jsonb(cert["conformance"]), Jsonb(cert["permitted_actions"]),
-                 Jsonb(cert), Jsonb(cert.get("anchor")), status,
-                 cert.get("signature"), cert.get("signer_public_key")))
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""INSERT INTO landing_certificates
+                    (certificate_id, tenant_id, artifact_ref, base_model_ref, layer_hashes,
+                     data_provenance, authority, conformance, permitted_actions, document, anchor, status,
+                     signature, signer_public_key)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT (certificate_id) DO UPDATE SET status=EXCLUDED.status,
+                      document=EXCLUDED.document, anchor=EXCLUDED.anchor, signature=EXCLUDED.signature,
+                      signer_public_key=EXCLUDED.signer_public_key""",
+                    (cert["certificate_id"], tenant_id, cert["artifact"]["artifact_ref"],
+                     cert["artifact"]["base_model_ref"], Jsonb(cert["artifact"]["layer_hashes"]),
+                     Jsonb(cert["data_provenance"]), Jsonb(cert["authority"]),
+                     Jsonb(cert["conformance"]), Jsonb(cert["permitted_actions"]),
+                     Jsonb(cert), Jsonb(cert.get("anchor")), status,
+                     cert.get("signature"), cert.get("signer_public_key")))
+        finally:
+            self._put_conn(conn)
 
     def _persist_pending(self, tenant_id, req: LandingIssueRequest, status) -> str:
         cid = compute_certificate_id(tenant_id, req.artifact_ref,
                                      req.data_provenance.get("merkle_root", ""),
                                      req.authority.get("delegation_ref", ""), status, time.time())
-        with self._get_conn() as conn, conn.cursor() as cur:
-            cur.execute("""INSERT INTO landing_certificates
-                (certificate_id, tenant_id, artifact_ref, base_model_ref, layer_hashes,
-                 data_provenance, authority, conformance, permitted_actions, status)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (certificate_id) DO NOTHING""",
-                (cid, tenant_id, req.artifact_ref, req.base_model_ref, Jsonb(req.layer_hashes),
-                 Jsonb(req.data_provenance), Jsonb(req.authority), Jsonb(req.conformance),
-                 Jsonb(req.permitted_actions), status))
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""INSERT INTO landing_certificates
+                    (certificate_id, tenant_id, artifact_ref, base_model_ref, layer_hashes,
+                     data_provenance, authority, conformance, permitted_actions, status)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (certificate_id) DO NOTHING""",
+                    (cid, tenant_id, req.artifact_ref, req.base_model_ref, Jsonb(req.layer_hashes),
+                     Jsonb(req.data_provenance), Jsonb(req.authority), Jsonb(req.conformance),
+                     Jsonb(req.permitted_actions), status))
+        finally:
+            self._put_conn(conn)
         return cid
 
     def _set_status(self, tenant_id, certificate_id, status):
-        with self._get_conn() as conn, conn.cursor() as cur:
-            cur.execute("UPDATE landing_certificates SET status=%s WHERE tenant_id=%s AND certificate_id=%s",
-                        (status, tenant_id, certificate_id))
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("UPDATE landing_certificates SET status=%s WHERE tenant_id=%s AND certificate_id=%s",
+                            (status, tenant_id, certificate_id))
+        finally:
+            self._put_conn(conn)
 
     def _req_from_row(self, row) -> LandingIssueRequest:
         return LandingIssueRequest(

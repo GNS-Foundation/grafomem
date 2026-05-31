@@ -290,9 +290,11 @@ class ToolRegistry:
         governance: Any,
         store_manager: Any | None = None,
         erasure_proof: Any | None = None,
+        pool=None,
     ) -> None:
         self._db_url = db_url
         self._conn: psycopg.Connection[dict[str, Any]] | None = None
+        self._pool = pool
         self._governance = governance
         self._store_manager = store_manager
         self._erasure_proof = erasure_proof
@@ -302,6 +304,8 @@ class ToolRegistry:
     # ------------------------------------------------------------------
 
     def _get_conn(self) -> psycopg.Connection[dict[str, Any]]:
+        if self._pool is not None:
+            return self._pool.getconn()
         if self._conn is None or self._conn.closed:
             self._conn = psycopg.connect(
                 self._db_url, row_factory=dict_row, autocommit=True,
@@ -309,6 +313,9 @@ class ToolRegistry:
         return self._conn
 
     def close(self) -> None:
+        if self._pool is not None:
+            self._conn = None
+            return
         if self._conn is not None and not self._conn.closed:
             self._conn.close()
 

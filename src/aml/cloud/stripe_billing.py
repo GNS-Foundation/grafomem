@@ -114,9 +114,11 @@ class StripeBillingService:
         db_url: str,
         stripe_secret_key: str | None = None,
         webhook_secret: str | None = None,
+        pool=None,
     ) -> None:
         self._db_url = db_url
         self._conn: psycopg.Connection[dict[str, Any]] | None = None
+        self._pool = pool
         # Strip whitespace/newlines — env vars sometimes include trailing \n
         self._stripe_key = (stripe_secret_key or os.environ.get("STRIPE_SECRET_KEY") or "").strip() or None
         self._webhook_secret = (webhook_secret or os.environ.get("STRIPE_WEBHOOK_SECRET") or "").strip() or None
@@ -133,6 +135,8 @@ class StripeBillingService:
     # ------------------------------------------------------------------
 
     def _get_conn(self) -> psycopg.Connection[dict[str, Any]]:
+        if self._pool is not None:
+            return self._pool.getconn()
         if self._conn is None or self._conn.closed:
             self._conn = psycopg.connect(
                 self._db_url, row_factory=dict_row, autocommit=True,
@@ -140,6 +144,9 @@ class StripeBillingService:
         return self._conn
 
     def close(self) -> None:
+        if self._pool is not None:
+            self._conn = None
+            return
         if self._conn is not None and not self._conn.closed:
             self._conn.close()
 

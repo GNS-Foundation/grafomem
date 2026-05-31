@@ -91,48 +91,60 @@ class ActionInvocation:
 
 class WorldModelService:
     def __init__(self, db_url: str, *, signing_key: Optional[bytes] = None,
-                 gateway=None, decision_trail=None):
+                 gateway=None, decision_trail=None, gcrumbs=None, pool=None):
         self.db_url = db_url
         self.signing_key = signing_key
         self.gateway = gateway
         self.decision_trail = decision_trail
+        self.gcrumbs = gcrumbs
+        self._pool = pool
 
     # ---- db ----
     def _get_conn(self) -> psycopg.Connection[dict[str, Any]]:
+        if self._pool is not None:
+            return self._pool.getconn()
         return psycopg.connect(self.db_url, row_factory=dict_row, autocommit=True)
 
+    def _put_conn(self, conn):
+        if self._pool is not None:
+            self._pool.putconn(conn)
+
     def ensure_schema(self) -> None:
-        with self._get_conn() as conn, conn.cursor() as cur:
-            cur.execute("""
-            CREATE TABLE IF NOT EXISTS world_model_types (
-              type_id        TEXT PRIMARY KEY,
-              tenant_id      TEXT NOT NULL,
-              kind           TEXT NOT NULL,        -- object | link | action
-              name           TEXT NOT NULL,
-              spec           JSONB NOT NULL,
-              schema_digest  TEXT NOT NULL,
-              document       JSONB,                -- signed type receipt
-              signature      TEXT,
-              signer_public_key TEXT,
-              created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-              UNIQUE (tenant_id, kind, name)
-            );
-            CREATE TABLE IF NOT EXISTS world_model_actions (
-              action_id      TEXT PRIMARY KEY,
-              tenant_id      TEXT NOT NULL,
-              action_name    TEXT NOT NULL,
-              subject_refs   JSONB NOT NULL,
-              document       JSONB,                -- signed invocation receipt
-              status         TEXT NOT NULL DEFAULT 'invoked',
-              signature      TEXT,
-              signer_public_key TEXT,
-              created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
-            );
-            ALTER TABLE world_model_types   ADD COLUMN IF NOT EXISTS document JSONB;
-            ALTER TABLE world_model_actions ADD COLUMN IF NOT EXISTS document JSONB;
-            CREATE INDEX IF NOT EXISTS ix_wm_types_tenant   ON world_model_types(tenant_id);
-            CREATE INDEX IF NOT EXISTS ix_wm_actions_tenant ON world_model_actions(tenant_id);
-            """)
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                CREATE TABLE IF NOT EXISTS world_model_types (
+                  type_id        TEXT PRIMARY KEY,
+                  tenant_id      TEXT NOT NULL,
+                  kind           TEXT NOT NULL,        -- object | link | action
+                  name           TEXT NOT NULL,
+                  spec           JSONB NOT NULL,
+                  schema_digest  TEXT NOT NULL,
+                  document       JSONB,                -- signed type receipt
+                  signature      TEXT,
+                  signer_public_key TEXT,
+                  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+                  UNIQUE (tenant_id, kind, name)
+                );
+                CREATE TABLE IF NOT EXISTS world_model_actions (
+                  action_id      TEXT PRIMARY KEY,
+                  tenant_id      TEXT NOT NULL,
+                  action_name    TEXT NOT NULL,
+                  subject_refs   JSONB NOT NULL,
+                  document       JSONB,                -- signed invocation receipt
+                  status         TEXT NOT NULL DEFAULT 'invoked',
+                  signature      TEXT,
+                  signer_public_key TEXT,
+                  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+                );
+                ALTER TABLE world_model_types   ADD COLUMN IF NOT EXISTS document JSONB;
+                ALTER TABLE world_model_actions ADD COLUMN IF NOT EXISTS document JSONB;
+                CREATE INDEX IF NOT EXISTS ix_wm_types_tenant   ON world_model_types(tenant_id);
+                CREATE INDEX IF NOT EXISTS ix_wm_actions_tenant ON world_model_actions(tenant_id);
+                """)
+        finally:
+            self._put_conn(conn)
 
     # ---- type registry ----
     def register_type(self, tenant_id: str, kind: str, name: str, spec: dict) -> dict:
@@ -151,14 +163,18 @@ class WorldModelService:
         doc = {"schema_version": "wm/0.1", "tenant_id": tenant_id, "timestamp": f"{time.time():.6f}",
                "kind": kind, "name": name, "spec": spec, "schema_digest": schema_digest, "type_id": type_id}
         self._sign_inplace(doc, _SIGNED_TYPE)
-        with self._get_conn() as conn, conn.cursor() as cur:
-            cur.execute("""INSERT INTO world_model_types
-                (type_id, tenant_id, kind, name, spec, schema_digest, document, signature, signer_public_key)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                ON CONFLICT (type_id) DO UPDATE SET spec=EXCLUDED.spec, schema_digest=EXCLUDED.schema_digest,
-                  document=EXCLUDED.document, signature=EXCLUDED.signature, signer_public_key=EXCLUDED.signer_public_key""",
-                (type_id, tenant_id, kind, name, Jsonb(spec), schema_digest, Jsonb(doc),
-                 doc.get("signature"), doc.get("signer_public_key")))
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""INSERT INTO world_model_types
+                    (type_id, tenant_id, kind, name, spec, schema_digest, document, signature, signer_public_key)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT (type_id) DO UPDATE SET spec=EXCLUDED.spec, schema_digest=EXCLUDED.schema_digest,
+                      document=EXCLUDED.document, signature=EXCLUDED.signature, signer_public_key=EXCLUDED.signer_public_key""",
+                    (type_id, tenant_id, kind, name, Jsonb(spec), schema_digest, Jsonb(doc),
+                     doc.get("signature"), doc.get("signer_public_key")))
+        finally:
+            self._put_conn(conn)
         return self.get_type(tenant_id, type_id)
 
     def get_type(self, tenant_id, type_id) -> dict:
@@ -171,12 +187,16 @@ class WorldModelService:
         return self._get_type(tenant_id, kind=kind, name=name)
 
     def list_types(self, tenant_id, kind: Optional[str] = None) -> list:
-        with self._get_conn() as conn, conn.cursor() as cur:
-            if kind:
-                cur.execute("SELECT * FROM world_model_types WHERE tenant_id=%s AND kind=%s ORDER BY name", (tenant_id, kind))
-            else:
-                cur.execute("SELECT * FROM world_model_types WHERE tenant_id=%s ORDER BY kind, name", (tenant_id,))
-            return cur.fetchall()
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                if kind:
+                    cur.execute("SELECT * FROM world_model_types WHERE tenant_id=%s AND kind=%s ORDER BY name", (tenant_id, kind))
+                else:
+                    cur.execute("SELECT * FROM world_model_types WHERE tenant_id=%s ORDER BY kind, name", (tenant_id,))
+                return cur.fetchall()
+        finally:
+            self._put_conn(conn)
 
     def verify_type(self, tenant_id, type_id) -> dict:
         row = self.get_type(tenant_id, type_id)
@@ -264,9 +284,13 @@ class WorldModelService:
         return self._emit_receipt(tenant_id, inv, operation)
 
     def get_action(self, tenant_id, action_id) -> dict:
-        with self._get_conn() as conn, conn.cursor() as cur:
-            cur.execute("SELECT * FROM world_model_actions WHERE tenant_id=%s AND action_id=%s", (tenant_id, action_id))
-            row = cur.fetchone()
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT * FROM world_model_actions WHERE tenant_id=%s AND action_id=%s", (tenant_id, action_id))
+                row = cur.fetchone()
+        finally:
+            self._put_conn(conn)
         if not row:
             raise WorldModelError("action not found")
         return row
@@ -284,11 +308,15 @@ class WorldModelService:
         return {"passed": all(checks.values()), "checks": checks, "attribution": recon, "status": row.get("status")}
 
     def get_stats(self, tenant_id) -> dict:
-        with self._get_conn() as conn, conn.cursor() as cur:
-            cur.execute("SELECT kind, count(*) AS n FROM world_model_types WHERE tenant_id=%s GROUP BY kind", (tenant_id,))
-            types = {r["kind"]: r["n"] for r in cur.fetchall()}
-            cur.execute("SELECT status, count(*) AS n FROM world_model_actions WHERE tenant_id=%s GROUP BY status", (tenant_id,))
-            actions = {r["status"]: r["n"] for r in cur.fetchall()}
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT kind, count(*) AS n FROM world_model_types WHERE tenant_id=%s GROUP BY kind", (tenant_id,))
+                types = {r["kind"]: r["n"] for r in cur.fetchall()}
+                cur.execute("SELECT status, count(*) AS n FROM world_model_actions WHERE tenant_id=%s GROUP BY status", (tenant_id,))
+                actions = {r["status"]: r["n"] for r in cur.fetchall()}
+        finally:
+            self._put_conn(conn)
         return {"types": types, "actions": actions}
 
     # ---- internals ----
@@ -301,14 +329,33 @@ class WorldModelService:
                "gate": "allowed", "action_id": aid}
         self._sign_inplace(doc, _SIGNED_ACTION)
         # FUTURE: chain via execution_receipts.issue_receipt(...) — action invocation is step-shaped.
-        with self._get_conn() as conn, conn.cursor() as cur:
-            cur.execute("""INSERT INTO world_model_actions
-                (action_id, tenant_id, action_name, subject_refs, document, status, signature, signer_public_key)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
-                ON CONFLICT (action_id) DO UPDATE SET document=EXCLUDED.document, status=EXCLUDED.status,
-                  signature=EXCLUDED.signature, signer_public_key=EXCLUDED.signer_public_key""",
-                (aid, tenant_id, inv.action_name, Jsonb(inv.subject_refs), Jsonb(doc), "invoked",
-                 doc.get("signature"), doc.get("signer_public_key")))
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""INSERT INTO world_model_actions
+                    (action_id, tenant_id, action_name, subject_refs, document, status, signature, signer_public_key)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT (action_id) DO UPDATE SET document=EXCLUDED.document, status=EXCLUDED.status,
+                      signature=EXCLUDED.signature, signer_public_key=EXCLUDED.signer_public_key""",
+                    (aid, tenant_id, inv.action_name, Jsonb(inv.subject_refs), Jsonb(doc), "invoked",
+                     doc.get("signature"), doc.get("signer_public_key")))
+        finally:
+            self._put_conn(conn)
+        # gcrumbs breadcrumb — governance decision for this action
+        if self.gcrumbs:
+            try:
+                a = inv.authority or {}
+                self.gcrumbs.append_breadcrumb(
+                    tenant_id, f"action:{inv.action_name}:ok",
+                    {"args": {"subject_refs": inv.subject_refs},
+                     "authorized": True, "reasons": [],
+                     "agent": a.get("human_principal"),
+                     "tier": a.get("trust_tier")},
+                    source_type="action", source_ref=aid)
+            except Exception:
+                import logging
+                logging.getLogger("grafomem.cloud.world_model").warning(
+                    "gcrumbs breadcrumb failed for action %s", aid, exc_info=True)
         return self.get_action(tenant_id, aid)
 
     def _validate_spec(self, tenant_id, kind, spec) -> None:
@@ -360,21 +407,33 @@ class WorldModelService:
             return False
 
     def _get_type(self, tenant_id, *, type_id=None, kind=None, name=None) -> Optional[dict]:
-        with self._get_conn() as conn, conn.cursor() as cur:
-            if type_id is not None:
-                cur.execute("SELECT * FROM world_model_types WHERE tenant_id=%s AND type_id=%s", (tenant_id, type_id))
-            else:
-                cur.execute("SELECT * FROM world_model_types WHERE tenant_id=%s AND kind=%s AND name=%s",
-                            (tenant_id, kind, name))
-            return cur.fetchone()
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                if type_id is not None:
+                    cur.execute("SELECT * FROM world_model_types WHERE tenant_id=%s AND type_id=%s", (tenant_id, type_id))
+                else:
+                    cur.execute("SELECT * FROM world_model_types WHERE tenant_id=%s AND kind=%s AND name=%s",
+                                (tenant_id, kind, name))
+                return cur.fetchone()
+        finally:
+            self._put_conn(conn)
 
     def _persist_action_pending(self, tenant_id, inv, action_id, status):
-        with self._get_conn() as conn, conn.cursor() as cur:
-            cur.execute("""INSERT INTO world_model_actions (action_id, tenant_id, action_name, subject_refs, status)
-                VALUES (%s,%s,%s,%s,%s) ON CONFLICT (action_id) DO NOTHING""",
-                (action_id, tenant_id, inv.action_name, Jsonb(inv.subject_refs), status))
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""INSERT INTO world_model_actions (action_id, tenant_id, action_name, subject_refs, status)
+                    VALUES (%s,%s,%s,%s,%s) ON CONFLICT (action_id) DO NOTHING""",
+                    (action_id, tenant_id, inv.action_name, Jsonb(inv.subject_refs), status))
+        finally:
+            self._put_conn(conn)
 
     def _set_action_status(self, tenant_id, action_id, status):
-        with self._get_conn() as conn, conn.cursor() as cur:
-            cur.execute("UPDATE world_model_actions SET status=%s WHERE tenant_id=%s AND action_id=%s",
-                        (status, tenant_id, action_id))
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("UPDATE world_model_actions SET status=%s WHERE tenant_id=%s AND action_id=%s",
+                            (status, tenant_id, action_id))
+        finally:
+            self._put_conn(conn)

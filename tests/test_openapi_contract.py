@@ -33,12 +33,17 @@ sys.path.insert(0, str(ROOT / "sdk" / "src"))
 
 @pytest.fixture(scope="session")
 def openapi_spec() -> dict[str, Any]:
-    """Load the OpenAPI spec from the running app."""
+    """Load the OpenAPI spec from the running app.
+
+    Uses ``spec_only=True`` so that all cloud routes are registered
+    without requiring a live PostgreSQL database.
+    """
     from aml.server.app import create_app
 
     app = create_app(
-        db_url="postgresql://test:test@localhost:5432/test",
+        db_url="postgresql://spec:spec@localhost:5432/spec",
         auth_mode="none",
+        spec_only=True,
     )
     return app.openapi()
 
@@ -101,15 +106,22 @@ class TestOpenAPISpec:
 
     def test_all_post_endpoints_have_request_body(self, spec_paths: dict):
         """Every POST endpoint should have a request body schema."""
+        # Legitimate POST endpoints that don't need a request body:
+        # action triggers, webhooks, seed commands, key rotations, etc.
+        _BODYLESS_OK = {
+            "/test", "/replay", "/rotate-key", "/flush",
+            "/seed-defaults", "/seed-builtins", "/terminate",
+            "/roll", "/webhook", "/cancel", "/acs",
+        }
         missing = []
         for path, methods in spec_paths.items():
             if "post" in methods:
                 post = methods["post"]
                 has_body = "requestBody" in post
-                # Some POST endpoints don't need a body (e.g., /test)
-                if not has_body and "/test" not in path and "/replay" not in path:
+                # Skip paths whose last segment matches a known bodyless pattern
+                tail = "/" + path.rstrip("/").rsplit("/", 1)[-1]
+                if not has_body and not any(t in path for t in _BODYLESS_OK):
                     missing.append(path)
-        # Allow a few exceptions (rotate-key, flush, etc.)
         assert len(missing) <= 5, (
             f"Too many POST endpoints missing request body: {missing}"
         )

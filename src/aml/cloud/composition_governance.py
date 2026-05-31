@@ -88,34 +88,46 @@ class ComposePendingHITL(CompositionError):
 
 class CompositionGovernanceService:
     def __init__(self, db_url: str, *, signing_key: Optional[bytes] = None,
-                 gateway=None, decision_trail=None):
+                 gateway=None, decision_trail=None, gcrumbs=None, pool=None):
         self.db_url = db_url
         self.signing_key = signing_key
         self.gateway = gateway
         self.decision_trail = decision_trail
+        self.gcrumbs = gcrumbs
+        self._pool = pool
 
     # ---- db ----
     def _get_conn(self) -> psycopg.Connection[dict[str, Any]]:
+        if self._pool is not None:
+            return self._pool.getconn()
         return psycopg.connect(self.db_url, row_factory=dict_row, autocommit=True)
 
+    def _put_conn(self, conn):
+        if self._pool is not None:
+            self._pool.putconn(conn)
+
     def ensure_schema(self) -> None:
-        with self._get_conn() as conn, conn.cursor() as cur:
-            cur.execute("""
-            CREATE TABLE IF NOT EXISTS compositions (
-              composition_id    TEXT PRIMARY KEY,
-              tenant_id         TEXT NOT NULL,
-              composition_kind  TEXT NOT NULL,
-              target_ref        TEXT NOT NULL,
-              member_count      INT  NOT NULL,
-              document          JSONB,
-              status            TEXT NOT NULL DEFAULT 'governed',
-              signature         TEXT,
-              signer_public_key TEXT,
-              created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
-            );
-            ALTER TABLE compositions ADD COLUMN IF NOT EXISTS document JSONB;
-            CREATE INDEX IF NOT EXISTS ix_compositions_tenant ON compositions(tenant_id);
-            """)
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                CREATE TABLE IF NOT EXISTS compositions (
+                  composition_id    TEXT PRIMARY KEY,
+                  tenant_id         TEXT NOT NULL,
+                  composition_kind  TEXT NOT NULL,
+                  target_ref        TEXT NOT NULL,
+                  member_count      INT  NOT NULL,
+                  document          JSONB,
+                  status            TEXT NOT NULL DEFAULT 'governed',
+                  signature         TEXT,
+                  signer_public_key TEXT,
+                  created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+                );
+                ALTER TABLE compositions ADD COLUMN IF NOT EXISTS document JSONB;
+                CREATE INDEX IF NOT EXISTS ix_compositions_tenant ON compositions(tenant_id);
+                """)
+        finally:
+            self._put_conn(conn)
 
     # ---- surface ----
     def compose(self, tenant_id: str, req: ComposeRequest) -> dict:
@@ -169,18 +181,26 @@ class CompositionGovernanceService:
         return self._emit(tenant_id, req, member_ids, composition_id, {"compatible": ok, "detail": detail})
 
     def get(self, tenant_id, composition_id) -> dict:
-        with self._get_conn() as conn, conn.cursor() as cur:
-            cur.execute("SELECT * FROM compositions WHERE tenant_id=%s AND composition_id=%s", (tenant_id, composition_id))
-            row = cur.fetchone()
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT * FROM compositions WHERE tenant_id=%s AND composition_id=%s", (tenant_id, composition_id))
+                row = cur.fetchone()
+        finally:
+            self._put_conn(conn)
         if not row:
             raise CompositionError("composition not found")
         return row
 
     def list_compositions(self, tenant_id, limit=50, offset=0) -> list:
-        with self._get_conn() as conn, conn.cursor() as cur:
-            cur.execute("SELECT * FROM compositions WHERE tenant_id=%s ORDER BY created_at DESC LIMIT %s OFFSET %s",
-                        (tenant_id, limit, offset))
-            return cur.fetchall()
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT * FROM compositions WHERE tenant_id=%s ORDER BY created_at DESC LIMIT %s OFFSET %s",
+                            (tenant_id, limit, offset))
+                return cur.fetchall()
+        finally:
+            self._put_conn(conn)
 
     def verify(self, tenant_id, composition_id) -> dict:
         row = self.get(tenant_id, composition_id)
@@ -204,9 +224,13 @@ class CompositionGovernanceService:
                 "members": doc.get("member_ids"), "kind": doc.get("composition_kind")}
 
     def get_stats(self, tenant_id) -> dict:
-        with self._get_conn() as conn, conn.cursor() as cur:
-            cur.execute("SELECT status, count(*) AS n FROM compositions WHERE tenant_id=%s GROUP BY status", (tenant_id,))
-            return {r["status"]: r["n"] for r in cur.fetchall()}
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT status, count(*) AS n FROM compositions WHERE tenant_id=%s GROUP BY status", (tenant_id,))
+                return {r["status"]: r["n"] for r in cur.fetchall()}
+        finally:
+            self._put_conn(conn)
 
     # ---- internals ----
     def _emit(self, tenant_id, req: ComposeRequest, member_ids, composition_id, verdict) -> dict:
@@ -215,15 +239,35 @@ class CompositionGovernanceService:
                "members_digest": b2_256(canon(req.members)), "license_verdict": verdict,
                "target_ref": req.target_ref, "authority": req.authority or {}, "composition_id": composition_id}
         self._sign_inplace(doc)
-        with self._get_conn() as conn, conn.cursor() as cur:
-            cur.execute("""INSERT INTO compositions
-                (composition_id, tenant_id, composition_kind, target_ref, member_count, document, status,
-                 signature, signer_public_key)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                ON CONFLICT (composition_id) DO UPDATE SET document=EXCLUDED.document, status=EXCLUDED.status,
-                  signature=EXCLUDED.signature, signer_public_key=EXCLUDED.signer_public_key""",
-                (composition_id, tenant_id, req.composition_kind, req.target_ref, len(req.members),
-                 Jsonb(doc), "governed", doc.get("signature"), doc.get("signer_public_key")))
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""INSERT INTO compositions
+                    (composition_id, tenant_id, composition_kind, target_ref, member_count, document, status,
+                     signature, signer_public_key)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT (composition_id) DO UPDATE SET document=EXCLUDED.document, status=EXCLUDED.status,
+                      signature=EXCLUDED.signature, signer_public_key=EXCLUDED.signer_public_key""",
+                    (composition_id, tenant_id, req.composition_kind, req.target_ref, len(req.members),
+                      Jsonb(doc), "governed", doc.get("signature"), doc.get("signer_public_key")))
+        finally:
+            self._put_conn(conn)
+        # gcrumbs breadcrumb — governance decision for this composition
+        if self.gcrumbs:
+            try:
+                a = req.authority or {}
+                self.gcrumbs.append_breadcrumb(
+                    tenant_id, "composition",
+                    {"args": {"kind": req.composition_kind, "target": req.target_ref,
+                              "members": member_ids},
+                     "authorized": True, "reasons": [],
+                     "agent": a.get("human_principal"),
+                     "tier": a.get("trust_tier")},
+                    source_type="composition", source_ref=composition_id)
+            except Exception:
+                import logging
+                logging.getLogger("grafomem.cloud.composition").warning(
+                    "gcrumbs breadcrumb failed for composition %s", composition_id, exc_info=True)
         return self.get(tenant_id, composition_id)
 
     def _sign_inplace(self, doc: dict) -> None:
@@ -247,14 +291,22 @@ class CompositionGovernanceService:
 
     def _persist_pending(self, tenant_id, req, composition_id, status):
         doc = {"members": req.members, "authority": req.authority or {}}
-        with self._get_conn() as conn, conn.cursor() as cur:
-            cur.execute("""INSERT INTO compositions
-                (composition_id, tenant_id, composition_kind, target_ref, member_count, document, status)
-                VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (composition_id) DO NOTHING""",
-                (composition_id, tenant_id, req.composition_kind, req.target_ref, len(req.members),
-                 Jsonb(doc), status))
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""INSERT INTO compositions
+                    (composition_id, tenant_id, composition_kind, target_ref, member_count, document, status)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (composition_id) DO NOTHING""",
+                    (composition_id, tenant_id, req.composition_kind, req.target_ref, len(req.members),
+                     Jsonb(doc), status))
+        finally:
+            self._put_conn(conn)
 
     def _set_status(self, tenant_id, composition_id, status):
-        with self._get_conn() as conn, conn.cursor() as cur:
-            cur.execute("UPDATE compositions SET status=%s WHERE tenant_id=%s AND composition_id=%s",
-                        (status, tenant_id, composition_id))
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("UPDATE compositions SET status=%s WHERE tenant_id=%s AND composition_id=%s",
+                            (status, tenant_id, composition_id))
+        finally:
+            self._put_conn(conn)

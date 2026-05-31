@@ -112,37 +112,49 @@ class CustomsRejected(CustomsError):
 
 class ProvenanceCustomsService:
     def __init__(self, db_url: str, *, signing_key: Optional[bytes] = None,
-                 gateway=None, decision_trail=None):
+                 gateway=None, decision_trail=None, gcrumbs=None, pool=None):
         self.db_url = db_url
         self.signing_key = signing_key
         self.gateway = gateway
         self.decision_trail = decision_trail
+        self.gcrumbs = gcrumbs
+        self._pool = pool
 
     # ---- db ----
     def _get_conn(self) -> psycopg.Connection[dict[str, Any]]:
+        if self._pool is not None:
+            return self._pool.getconn()
         return psycopg.connect(self.db_url, row_factory=dict_row, autocommit=True)
 
+    def _put_conn(self, conn):
+        if self._pool is not None:
+            self._pool.putconn(conn)
+
     def ensure_schema(self) -> None:
-        with self._get_conn() as conn, conn.cursor() as cur:
-            cur.execute("""
-            CREATE TABLE IF NOT EXISTS provenance_corpora (
-              corpus_id      TEXT PRIMARY KEY,
-              tenant_id      TEXT NOT NULL,
-              name           TEXT NOT NULL,
-              merkle_root    TEXT NOT NULL,
-              corpus_hash    TEXT NOT NULL,
-              source_count   INT  NOT NULL,
-              clearance      TEXT NOT NULL,
-              document       JSONB,
-              status         TEXT NOT NULL DEFAULT 'sealed',
-              signature      TEXT,
-              signer_public_key TEXT,
-              created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-              UNIQUE (tenant_id, name, merkle_root)
-            );
-            ALTER TABLE provenance_corpora ADD COLUMN IF NOT EXISTS document JSONB;
-            CREATE INDEX IF NOT EXISTS ix_corpora_tenant ON provenance_corpora(tenant_id);
-            """)
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                CREATE TABLE IF NOT EXISTS provenance_corpora (
+                  corpus_id      TEXT PRIMARY KEY,
+                  tenant_id      TEXT NOT NULL,
+                  name           TEXT NOT NULL,
+                  merkle_root    TEXT NOT NULL,
+                  corpus_hash    TEXT NOT NULL,
+                  source_count   INT  NOT NULL,
+                  clearance      TEXT NOT NULL,
+                  document       JSONB,
+                  status         TEXT NOT NULL DEFAULT 'sealed',
+                  signature      TEXT,
+                  signer_public_key TEXT,
+                  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+                  UNIQUE (tenant_id, name, merkle_root)
+                );
+                ALTER TABLE provenance_corpora ADD COLUMN IF NOT EXISTS document JSONB;
+                CREATE INDEX IF NOT EXISTS ix_corpora_tenant ON provenance_corpora(tenant_id);
+                """)
+        finally:
+            self._put_conn(conn)
 
     # ---- customs surface ----
     def register_corpus(self, tenant_id: str, req: CorpusRegisterRequest) -> dict:
@@ -174,30 +186,56 @@ class ProvenanceCustomsService:
         doc["corpus_hash"] = b2_256(canon({k: doc[k] for k in
                               ("name", "sources", "processing", "attestations", "merkle_root")}))
         self._sign_inplace(doc)
-        with self._get_conn() as conn, conn.cursor() as cur:
-            cur.execute("""INSERT INTO provenance_corpora
-                (corpus_id, tenant_id, name, merkle_root, corpus_hash, source_count, clearance,
-                 document, status, signature, signer_public_key)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                ON CONFLICT (corpus_id) DO UPDATE SET document=EXCLUDED.document,
-                  signature=EXCLUDED.signature, signer_public_key=EXCLUDED.signer_public_key""",
-                (corpus_id, tenant_id, req.name, root_hex, doc["corpus_hash"], len(req.sources),
-                 "cleared", Jsonb(doc), "sealed", doc.get("signature"), doc.get("signer_public_key")))
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""INSERT INTO provenance_corpora
+                    (corpus_id, tenant_id, name, merkle_root, corpus_hash, source_count, clearance,
+                     document, status, signature, signer_public_key)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT (corpus_id) DO UPDATE SET document=EXCLUDED.document,
+                      signature=EXCLUDED.signature, signer_public_key=EXCLUDED.signer_public_key""",
+                    (corpus_id, tenant_id, req.name, root_hex, doc["corpus_hash"], len(req.sources),
+                      "cleared", Jsonb(doc), "sealed", doc.get("signature"), doc.get("signer_public_key")))
+        finally:
+            self._put_conn(conn)
+        # gcrumbs breadcrumb — governance decision for customs seal
+        if self.gcrumbs:
+            try:
+                self.gcrumbs.append_breadcrumb(
+                    tenant_id, "customs:seal",
+                    {"args": {"name": req.name, "corpus_id": corpus_id,
+                              "source_count": len(req.sources)},
+                     "authorized": True, "reasons": [],
+                     "agent": None, "tier": None},
+                    source_type="customs", source_ref=corpus_id)
+            except Exception:
+                import logging
+                logging.getLogger("grafomem.cloud.provenance_customs").warning(
+                    "gcrumbs breadcrumb failed for corpus %s", corpus_id, exc_info=True)
         return self.get_corpus(tenant_id, corpus_id)
 
     def get_corpus(self, tenant_id, corpus_id) -> dict:
-        with self._get_conn() as conn, conn.cursor() as cur:
-            cur.execute("SELECT * FROM provenance_corpora WHERE tenant_id=%s AND corpus_id=%s", (tenant_id, corpus_id))
-            row = cur.fetchone()
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT * FROM provenance_corpora WHERE tenant_id=%s AND corpus_id=%s", (tenant_id, corpus_id))
+                row = cur.fetchone()
+        finally:
+            self._put_conn(conn)
         if not row:
             raise CustomsError("corpus not found")
         return row
 
     def list_corpora(self, tenant_id, limit=50, offset=0) -> list:
-        with self._get_conn() as conn, conn.cursor() as cur:
-            cur.execute("SELECT * FROM provenance_corpora WHERE tenant_id=%s "
-                        "ORDER BY created_at DESC LIMIT %s OFFSET %s", (tenant_id, limit, offset))
-            return cur.fetchall()
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT * FROM provenance_corpora WHERE tenant_id=%s "
+                            "ORDER BY created_at DESC LIMIT %s OFFSET %s", (tenant_id, limit, offset))
+                return cur.fetchall()
+        finally:
+            self._put_conn(conn)
 
     def verify_corpus(self, tenant_id, corpus_id) -> dict:
         """Signature + Merkle-root recomputation consistency."""
@@ -234,9 +272,13 @@ class ProvenanceCustomsService:
                 "sources": [s.get("id") for s in doc.get("sources", [])], "corpus_id": corpus_id}
 
     def get_stats(self, tenant_id) -> dict:
-        with self._get_conn() as conn, conn.cursor() as cur:
-            cur.execute("SELECT clearance, count(*) AS n FROM provenance_corpora WHERE tenant_id=%s GROUP BY clearance", (tenant_id,))
-            return {r["clearance"]: r["n"] for r in cur.fetchall()}
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT clearance, count(*) AS n FROM provenance_corpora WHERE tenant_id=%s GROUP BY clearance", (tenant_id,))
+                return {r["clearance"]: r["n"] for r in cur.fetchall()}
+        finally:
+            self._put_conn(conn)
 
     # ---- internals ----
     def _sign_inplace(self, doc: dict) -> None:

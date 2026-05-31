@@ -212,6 +212,82 @@ select option {
 
 .error-msg.visible { display: block; }
 
+/* SSO Social Login */
+.sso-divider {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.sso-divider::before,
+.sso-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.sso-divider span {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+}
+
+.sso-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-bottom: 1.5rem;
+}
+
+.sso-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.7rem;
+  width: 100%;
+  padding: 0.7rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.25s var(--ease);
+}
+
+.sso-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.sso-btn svg {
+  flex-shrink: 0;
+}
+
+.sso-google:hover {
+  border-color: rgba(66, 133, 244, 0.5);
+  background: rgba(66, 133, 244, 0.08);
+  box-shadow: 0 4px 16px rgba(66, 133, 244, 0.15);
+}
+
+.sso-microsoft:hover {
+  border-color: rgba(0, 164, 239, 0.5);
+  background: rgba(0, 164, 239, 0.08);
+  box-shadow: 0 4px 16px rgba(0, 164, 239, 0.15);
+}
+
+.sso-github:hover {
+  border-color: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 16px rgba(255, 255, 255, 0.08);
+}
+
 /* ============================================================
    Buttons
    ============================================================ */

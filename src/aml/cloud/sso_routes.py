@@ -83,7 +83,8 @@ def create_sso_router(sso_provider) -> APIRouter:
         """Handle the OAuth2 callback from the identity provider.
 
         Exchanges the authorization code for tokens, resolves the user,
-        and returns a GRAFOMEM JWT.
+        and returns a GRAFOMEM JWT.  For browser flows, redirects to the
+        portal with the token in query parameters.
         """
         try:
             result = sso_provider.handle_callback(code, state)
@@ -93,8 +94,18 @@ def create_sso_router(sso_provider) -> APIRouter:
             logger.error("SSO callback failed: %s", e)
             raise HTTPException(500, f"SSO authentication failed: {e}")
 
-        # For browser flows, redirect to portal with token
-        # For API flows, return JSON
+        # Browser flow: redirect to portal with token
+        if isinstance(result, dict) and result.get("token"):
+            from urllib.parse import urlencode
+            params = urlencode({
+                "token": result["token"],
+                "email": result.get("email", ""),
+            })
+            return RedirectResponse(
+                url=f"/portal?{params}", status_code=302,
+            )
+
+        # API flow: return JSON
         return result
 
     # ------------------------------------------------------------------
@@ -132,5 +143,122 @@ def create_sso_router(sso_provider) -> APIRouter:
             "enabled": config.enabled,
             "created_at": config.created_at.isoformat(),
         }
+
+    # ------------------------------------------------------------------
+    # SAML 2.0 endpoints
+    # ------------------------------------------------------------------
+
+    @router.get("/saml/metadata")
+    async def saml_metadata():
+        """Download SP metadata XML for SAML 2.0 configuration.
+
+        This endpoint returns the GRAFOMEM Service Provider metadata
+        that the enterprise IdP admin needs to import.
+        """
+        from fastapi.responses import Response
+        xml = sso_provider.get_sp_metadata()
+        return Response(
+            content=xml,
+            media_type="application/xml",
+            headers={"Content-Disposition": "inline; filename=grafomem-sp-metadata.xml"},
+        )
+
+    @router.post("/saml/configure", status_code=201)
+    async def configure_saml(
+        request: Request,
+        metadata_url: str = "",
+        metadata_xml: str = "",
+        sp_entity_id: str = "",
+    ):
+        """Configure a SAML 2.0 Identity Provider (admin operation).
+
+        Accepts either ``metadata_url`` (auto-discovery) or
+        ``metadata_xml`` (raw XML paste).  Requires authentication.
+        """
+        ctx = getattr(request.state, "tenant", None)
+        if ctx is None or not ctx.authenticated:
+            raise HTTPException(401, "Authentication required")
+
+        # Accept form data or JSON body
+        body = {}
+        try:
+            body = await request.json()
+        except Exception:
+            pass
+
+        m_url = body.get("metadata_url") or metadata_url
+        m_xml = body.get("metadata_xml") or metadata_xml
+        s_entity = body.get("sp_entity_id") or sp_entity_id
+        attr_map = body.get("attribute_mapping")
+
+        try:
+            config = sso_provider.configure_saml(
+                metadata_url=m_url or None,
+                metadata_xml=m_xml or None,
+                sp_entity_id=s_entity or None,
+                attribute_mapping=attr_map,
+            )
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except Exception as e:
+            logger.error("SAML configure failed: %s", e)
+            raise HTTPException(500, f"SAML configuration failed: {e}")
+
+        return {
+            "config_id": config.config_id,
+            "idp_entity_id": config.idp_entity_id,
+            "sp_entity_id": config.sp_entity_id,
+            "enabled": config.enabled,
+        }
+
+    @router.get("/saml/login")
+    async def saml_login():
+        """Initiate a SAML 2.0 SP-initiated SSO flow.
+
+        Redirects the user to the configured IdP login page.
+        """
+        try:
+            redirect_url = sso_provider.initiate_saml_flow()
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        return RedirectResponse(url=redirect_url, status_code=302)
+
+    @router.post("/saml/acs")
+    async def saml_acs(request: Request):
+        """SAML 2.0 Assertion Consumer Service (ACS).
+
+        Receives the SAML Response via HTTP-POST binding from the IdP.
+        Extracts the user identity and issues a GRAFOMEM JWT.
+        """
+        form = await request.form()
+        saml_response = form.get("SAMLResponse", "")
+        relay_state = form.get("RelayState", "")
+
+        if not saml_response:
+            raise HTTPException(400, "Missing SAMLResponse parameter")
+
+        try:
+            result = sso_provider.handle_saml_response(
+                saml_response=saml_response,
+                relay_state=relay_state,
+            )
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except Exception as e:
+            logger.error("SAML ACS failed: %s", e)
+            raise HTTPException(500, f"SAML authentication failed: {e}")
+
+        # Redirect to portal with token
+        if isinstance(result, dict) and result.get("token"):
+            from urllib.parse import urlencode
+            params = urlencode({
+                "token": result["token"],
+                "email": result.get("email", ""),
+            })
+            return RedirectResponse(
+                url=f"/portal?{params}", status_code=302,
+            )
+
+        return result
 
     return router

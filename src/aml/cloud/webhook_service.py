@@ -147,12 +147,15 @@ class WebhookService:
         PostgreSQL connection URI.
     """
 
-    def __init__(self, db_url: str) -> None:
+    def __init__(self, db_url: str, pool=None) -> None:
         self._db_url = db_url
         self._conn: psycopg.Connection[dict[str, Any]] | None = None
+        self._pool = pool
         self._executor = ThreadPoolExecutor(max_workers=3, thread_name_prefix="webhook")
 
     def _get_conn(self) -> psycopg.Connection[dict[str, Any]]:
+        if self._pool is not None:
+            return self._pool.getconn()
         if self._conn is None or self._conn.closed:
             self._conn = psycopg.connect(
                 self._db_url, row_factory=dict_row, autocommit=True,
@@ -161,6 +164,9 @@ class WebhookService:
 
     def close(self) -> None:
         self._executor.shutdown(wait=False)
+        if self._pool is not None:
+            self._conn = None
+            return
         if self._conn is not None and not self._conn.closed:
             self._conn.close()
 

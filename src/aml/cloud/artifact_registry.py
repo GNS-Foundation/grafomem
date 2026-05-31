@@ -72,39 +72,50 @@ class ArtifactRegistryService:
     """Mirrors LandingService(db_url, ..., signing_key=...)."""
 
     def __init__(self, db_url: str, *, signing_key: Optional[bytes] = None,
-                 gateway=None, decision_trail=None):
+                 gateway=None, decision_trail=None, pool=None):
         self.db_url = db_url
         self.signing_key = signing_key
         self.gateway = gateway
         self.decision_trail = decision_trail
+        self._pool = pool
 
     # ---- db ----
     def _get_conn(self) -> psycopg.Connection[dict[str, Any]]:
+        if self._pool is not None:
+            return self._pool.getconn()
         return psycopg.connect(self.db_url, row_factory=dict_row, autocommit=True)
 
+    def _put_conn(self, conn):
+        if self._pool is not None:
+            self._pool.putconn(conn)
+
     def ensure_schema(self) -> None:
-        with self._get_conn() as conn, conn.cursor() as cur:
-            cur.execute("""
-            CREATE TABLE IF NOT EXISTS artifact_registry (
-              artifact_id       TEXT PRIMARY KEY,
-              tenant_id         TEXT NOT NULL,
-              artifact_ref      TEXT NOT NULL,
-              base_model_ref    TEXT NOT NULL,
-              kind              TEXT NOT NULL,
-              manifest_digest   TEXT NOT NULL,
-              layer_hashes      JSONB NOT NULL,
-              metadata          JSONB,
-              document          JSONB,          -- the exact signed registration receipt
-              status            TEXT NOT NULL DEFAULT 'registered',
-              certificate_id    TEXT,           -- set when R3 certifies this artifact
-              signature         TEXT,
-              signer_public_key TEXT,
-              created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
-            );
-            ALTER TABLE artifact_registry ADD COLUMN IF NOT EXISTS document JSONB;
-            CREATE INDEX IF NOT EXISTS ix_artifacts_tenant ON artifact_registry(tenant_id);
-            CREATE INDEX IF NOT EXISTS ix_artifacts_ref    ON artifact_registry(tenant_id, artifact_ref);
-            """)
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                CREATE TABLE IF NOT EXISTS artifact_registry (
+                  artifact_id       TEXT PRIMARY KEY,
+                  tenant_id         TEXT NOT NULL,
+                  artifact_ref      TEXT NOT NULL,
+                  base_model_ref    TEXT NOT NULL,
+                  kind              TEXT NOT NULL,
+                  manifest_digest   TEXT NOT NULL,
+                  layer_hashes      JSONB NOT NULL,
+                  metadata          JSONB,
+                  document          JSONB,          -- the exact signed registration receipt
+                  status            TEXT NOT NULL DEFAULT 'registered',
+                  certificate_id    TEXT,           -- set when R3 certifies this artifact
+                  signature         TEXT,
+                  signer_public_key TEXT,
+                  created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+                );
+                ALTER TABLE artifact_registry ADD COLUMN IF NOT EXISTS document JSONB;
+                CREATE INDEX IF NOT EXISTS ix_artifacts_tenant ON artifact_registry(tenant_id);
+                CREATE INDEX IF NOT EXISTS ix_artifacts_ref    ON artifact_registry(tenant_id, artifact_ref);
+                """)
+        finally:
+            self._put_conn(conn)
 
     # ---- R1 surface ----
     def register(self, tenant_id: str, req: ArtifactRegisterRequest) -> dict:
@@ -161,16 +172,24 @@ class ArtifactRegistryService:
         return row
 
     def get_by_ref(self, tenant_id, artifact_ref) -> list:
-        with self._get_conn() as conn, conn.cursor() as cur:
-            cur.execute("SELECT * FROM artifact_registry WHERE tenant_id=%s AND artifact_ref=%s "
-                        "ORDER BY created_at DESC", (tenant_id, artifact_ref))
-            return cur.fetchall()
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT * FROM artifact_registry WHERE tenant_id=%s AND artifact_ref=%s "
+                            "ORDER BY created_at DESC", (tenant_id, artifact_ref))
+                return cur.fetchall()
+        finally:
+            self._put_conn(conn)
 
     def list_artifacts(self, tenant_id, limit=50, offset=0) -> list:
-        with self._get_conn() as conn, conn.cursor() as cur:
-            cur.execute("SELECT * FROM artifact_registry WHERE tenant_id=%s "
-                        "ORDER BY created_at DESC LIMIT %s OFFSET %s", (tenant_id, limit, offset))
-            return cur.fetchall()
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT * FROM artifact_registry WHERE tenant_id=%s "
+                            "ORDER BY created_at DESC LIMIT %s OFFSET %s", (tenant_id, limit, offset))
+                return cur.fetchall()
+        finally:
+            self._put_conn(conn)
 
     def verify(self, tenant_id, artifact_id) -> dict:
         """Verify the registration receipt: Ed25519 signature + manifest digest self-consistency."""
@@ -193,16 +212,24 @@ class ArtifactRegistryService:
 
     def certify(self, tenant_id, artifact_id, certificate_id: str) -> dict:
         """Link a Landing Certificate (R3) to this artifact and flip status -> certified."""
-        with self._get_conn() as conn, conn.cursor() as cur:
-            cur.execute("UPDATE artifact_registry SET status='certified', certificate_id=%s "
-                        "WHERE tenant_id=%s AND artifact_id=%s",
-                        (certificate_id, tenant_id, artifact_id))
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("UPDATE artifact_registry SET status='certified', certificate_id=%s "
+                            "WHERE tenant_id=%s AND artifact_id=%s",
+                            (certificate_id, tenant_id, artifact_id))
+        finally:
+            self._put_conn(conn)
         return self.get(tenant_id, artifact_id)
 
     def get_stats(self, tenant_id) -> dict:
-        with self._get_conn() as conn, conn.cursor() as cur:
-            cur.execute("SELECT status, count(*) AS n FROM artifact_registry WHERE tenant_id=%s GROUP BY status", (tenant_id,))
-            return {r["status"]: r["n"] for r in cur.fetchall()}
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT status, count(*) AS n FROM artifact_registry WHERE tenant_id=%s GROUP BY status", (tenant_id,))
+                return {r["status"]: r["n"] for r in cur.fetchall()}
+        finally:
+            self._put_conn(conn)
 
     # ---- internals ----
     def _build(self, tenant_id, req: ArtifactRegisterRequest, layer_hashes, manifest_digest, artifact_id) -> dict:
@@ -236,37 +263,53 @@ class ArtifactRegistryService:
         return all(b2_256(b) == h for b, h in zip(layer_bytes, layer_hashes))
 
     def _get(self, tenant_id, artifact_id) -> Optional[dict]:
-        with self._get_conn() as conn, conn.cursor() as cur:
-            cur.execute("SELECT * FROM artifact_registry WHERE tenant_id=%s AND artifact_id=%s",
-                        (tenant_id, artifact_id))
-            return cur.fetchone()
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT * FROM artifact_registry WHERE tenant_id=%s AND artifact_id=%s",
+                            (tenant_id, artifact_id))
+                return cur.fetchone()
+        finally:
+            self._put_conn(conn)
 
     def _persist(self, tenant_id, doc, status):
-        with self._get_conn() as conn, conn.cursor() as cur:
-            cur.execute("""INSERT INTO artifact_registry
-                (artifact_id, tenant_id, artifact_ref, base_model_ref, kind, manifest_digest,
-                 layer_hashes, metadata, document, status, signature, signer_public_key)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                ON CONFLICT (artifact_id) DO UPDATE SET status=EXCLUDED.status,
-                  document=EXCLUDED.document, signature=EXCLUDED.signature,
-                  signer_public_key=EXCLUDED.signer_public_key""",
-                (doc["artifact_id"], tenant_id, doc["artifact_ref"], doc["base_model_ref"], doc["kind"],
-                 doc["manifest_digest"], Jsonb(doc["layer_hashes"]), Jsonb(doc["metadata"]),
-                 Jsonb(doc), status, doc.get("signature"), doc.get("signer_public_key")))
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""INSERT INTO artifact_registry
+                    (artifact_id, tenant_id, artifact_ref, base_model_ref, kind, manifest_digest,
+                     layer_hashes, metadata, document, status, signature, signer_public_key)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT (artifact_id) DO UPDATE SET status=EXCLUDED.status,
+                      document=EXCLUDED.document, signature=EXCLUDED.signature,
+                      signer_public_key=EXCLUDED.signer_public_key""",
+                    (doc["artifact_id"], tenant_id, doc["artifact_ref"], doc["base_model_ref"], doc["kind"],
+                     doc["manifest_digest"], Jsonb(doc["layer_hashes"]), Jsonb(doc["metadata"]),
+                     Jsonb(doc), status, doc.get("signature"), doc.get("signer_public_key")))
+        finally:
+            self._put_conn(conn)
 
     def _persist_pending(self, tenant_id, req, layer_hashes, manifest_digest, artifact_id, status):
-        with self._get_conn() as conn, conn.cursor() as cur:
-            cur.execute("""INSERT INTO artifact_registry
-                (artifact_id, tenant_id, artifact_ref, base_model_ref, kind, manifest_digest,
-                 layer_hashes, metadata, status)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (artifact_id) DO NOTHING""",
-                (artifact_id, tenant_id, req.artifact_ref, req.base_model_ref, req.kind,
-                 manifest_digest, Jsonb(layer_hashes), Jsonb(req.metadata or {}), status))
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""INSERT INTO artifact_registry
+                    (artifact_id, tenant_id, artifact_ref, base_model_ref, kind, manifest_digest,
+                     layer_hashes, metadata, status)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (artifact_id) DO NOTHING""",
+                    (artifact_id, tenant_id, req.artifact_ref, req.base_model_ref, req.kind,
+                     manifest_digest, Jsonb(layer_hashes), Jsonb(req.metadata or {}), status))
+        finally:
+            self._put_conn(conn)
 
     def _set_status(self, tenant_id, artifact_id, status):
-        with self._get_conn() as conn, conn.cursor() as cur:
-            cur.execute("UPDATE artifact_registry SET status=%s WHERE tenant_id=%s AND artifact_id=%s",
-                        (status, tenant_id, artifact_id))
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("UPDATE artifact_registry SET status=%s WHERE tenant_id=%s AND artifact_id=%s",
+                            (status, tenant_id, artifact_id))
+        finally:
+            self._put_conn(conn)
 
     def _req_from_row(self, row) -> ArtifactRegisterRequest:
         doc = row.get("document") or {}

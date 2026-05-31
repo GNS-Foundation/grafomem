@@ -166,10 +166,14 @@ class ErasureProofService:
         db_url: str,
         decision_trail=None,
         signing_key: bytes | None = None,
+        gcrumbs=None,
+        pool=None,
     ) -> None:
         self._db_url = db_url
         self._decision_trail = decision_trail
         self._signing_key = signing_key
+        self._gcrumbs = gcrumbs
+        self._pool = pool
         self._conn: psycopg.Connection[dict[str, Any]] | None = None
 
     # ------------------------------------------------------------------
@@ -178,6 +182,8 @@ class ErasureProofService:
 
     def _get_conn(self) -> psycopg.Connection[dict[str, Any]]:
         """Return an open connection, creating one lazily."""
+        if self._pool is not None:
+            return self._pool.getconn()
         if self._conn is None or self._conn.closed:
             self._conn = psycopg.connect(
                 self._db_url, row_factory=dict_row, autocommit=True,
@@ -186,6 +192,9 @@ class ErasureProofService:
 
     def close(self) -> None:
         """Close the underlying database connection."""
+        if self._pool is not None:
+            self._conn = None
+            return
         if self._conn is not None and not self._conn.closed:
             self._conn.close()
 
@@ -321,6 +330,21 @@ class ErasureProofService:
             ERASURE_CERTIFICATES.inc()
         except Exception:
             pass
+
+        # gcrumbs breadcrumb — governance decision for erasure
+        if self._gcrumbs:
+            try:
+                self._gcrumbs.append_breadcrumb(
+                    tenant_id, "erasure:issued",
+                    {"args": {"fact_ref": fact_ref,
+                              "certificate_id": certificate_id},
+                     "authorized": True, "reasons": [],
+                     "agent": requested_by, "tier": None},
+                    source_type="erasure", source_ref=certificate_id)
+            except Exception:
+                logger.warning(
+                    "gcrumbs breadcrumb failed for erasure %s",
+                    certificate_id, exc_info=True)
 
         return ErasureCertificate(
             certificate_id=certificate_id,

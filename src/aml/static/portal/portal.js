@@ -1068,6 +1068,66 @@
       }
     });
 
+    // SSO — fetch available providers and show buttons
+    (async function initSSO() {
+      try {
+        const res = await fetch('/v1/portal/sso/providers');
+        if (!res.ok) return;
+        const data = await res.json();
+        const providers = data.providers || [];
+        const configured = providers.filter(p => p.enabled);
+        if (configured.length === 0) return;
+
+        // Show the divider and container
+        const divider = $('sso-divider');
+        const container = $('sso-buttons');
+        if (divider) divider.style.display = '';
+        if (container) container.style.display = '';
+
+        // Show only configured provider buttons
+        configured.forEach(p => {
+          const btn = $(`sso-${p.provider}-btn`);
+          if (btn) btn.style.display = '';
+        });
+
+        // Hide unconfigured buttons
+        ['google', 'microsoft', 'github'].forEach(name => {
+          if (!configured.find(p => p.provider === name)) {
+            const btn = $(`sso-${name}-btn`);
+            if (btn) btn.style.display = 'none';
+          }
+        });
+      } catch {
+        // SSO not available — buttons stay hidden
+      }
+    })();
+
+    // SSO button click → redirect to authorize endpoint
+    document.querySelectorAll('.sso-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const provider = btn.dataset.provider;
+        if (provider) {
+          window.location.href = `/v1/portal/sso/authorize?provider=${provider}`;
+        }
+      });
+    });
+
+    // Handle SSO callback — check URL for token param
+    (function handleSSOCallback() {
+      const params = new URLSearchParams(window.location.search);
+      const ssoToken = params.get('token');
+      const ssoEmail = params.get('email');
+      if (ssoToken) {
+        token = ssoToken;
+        localStorage.setItem('gfm_token', token);
+        // Clean URL
+        window.history.replaceState({}, '', window.location.pathname);
+        showDashboard();
+        loadDashboard();
+        toast(`Signed in via SSO${ssoEmail ? ` as ${ssoEmail}` : ''}`, 'success');
+      }
+    })();
+
     // Sidebar navigation — with Decision Trail loader
     document.querySelectorAll('.nav-item[data-section]').forEach(nav => {
       nav.addEventListener('click', () => {

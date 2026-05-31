@@ -23,8 +23,14 @@ Usage:
     # MOCK mode (deterministic MockLLM — exercises full pipeline):
     python3 tests/sandbox_e2e_v2.py
 
-    # LIVE mode (real OpenAI — costs money, results non-deterministic):
+    # LIVE mode — OpenAI (costs money, results non-deterministic):
     OPENAI_API_KEY=sk-... python3 tests/sandbox_e2e_v2.py --live
+
+    # LIVE mode — Anthropic:
+    ANTHROPIC_API_KEY=sk-ant-... python3 tests/sandbox_e2e_v2.py --anthropic
+
+    # LIVE mode — Gemini:
+    GOOGLE_API_KEY=AIza... python3 tests/sandbox_e2e_v2.py --gemini
 
     # Emit signed JSON conformance report:
     python3 tests/sandbox_e2e_v2.py --report
@@ -53,6 +59,8 @@ BASE_URL = os.environ.get("GRAFOMEM_URL", "http://localhost:8080")
 TEST_EMAIL = "conformance@grafomem.test"
 TEST_PASSWORD = "ConformanceTest2026!"
 OPENAI_KEY = os.environ.get("OPENAI_API_KEY", "")
+ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+GOOGLE_KEY = os.environ.get("GOOGLE_API_KEY", "")
 
 
 # ============================================================================
@@ -101,9 +109,11 @@ class TestResult:
 class ConformanceSuite:
     """Two-sided conformance test suite for GRAFOMEM Cloud."""
 
-    def __init__(self, base_url: str, live_mode: bool = False) -> None:
+    def __init__(self, base_url: str, live_mode: bool = False,
+                 provider: str = "mock") -> None:
         self.base = base_url
         self.live = live_mode
+        self.provider = provider  # "mock" | "openai" | "anthropic" | "gemini"
         self.client = httpx.Client(base_url=base_url, timeout=120.0)
         self.api_key: str = ""
         self.tenant_id: str = ""
@@ -116,6 +126,8 @@ class ConformanceSuite:
         self.results: list[TestResult] = []
         self.report_id: str = ""  # From Phase 17, reused in Phase 20 (PDF)
         self.webhook_id: str = ""  # From Phase 19
+        # Dynamic model_id set during Phase 4 (LLM registration)
+        self.model_id: str = ""
 
         # Secondary tenant for isolation tests
         self.tenant_b_key: str = ""
@@ -281,15 +293,37 @@ class ConformanceSuite:
     # ==================================================================
 
     def test_register_llm(self) -> None:
+        # Determine provider-specific config
+        if self.provider == "openai":
+            self.model_id = "gpt-4o-mini"
+            llm_api_key = OPENAI_KEY
+            llm_provider = "openai"
+            key_env_name = "OPENAI_API_KEY"
+        elif self.provider == "anthropic":
+            self.model_id = "claude-opus-4-20250514"
+            llm_api_key = ANTHROPIC_KEY
+            llm_provider = "anthropic"
+            key_env_name = "ANTHROPIC_API_KEY"
+        elif self.provider == "gemini":
+            self.model_id = "gemini-2.5-pro"
+            llm_api_key = GOOGLE_KEY
+            llm_provider = "gemini"
+            key_env_name = "GOOGLE_API_KEY"
+        else:  # mock
+            self.model_id = "mock-model"
+            llm_api_key = None
+            llm_provider = "mock"
+            key_env_name = ""
+
         if self.live:
-            if not OPENAI_KEY:
+            if not llm_api_key:
                 self._record("Register LLM", TestState.FAIL,
-                              "LIVE mode but no OPENAI_API_KEY")
+                              f"LIVE mode but no {key_env_name}")
                 return
             r = self.client.post("/v1/llm/providers", json={
-                "provider": "openai",
-                "model_id": "gpt-4o-mini",
-                "api_key": OPENAI_KEY,
+                "provider": llm_provider,
+                "model_id": self.model_id,
+                "api_key": llm_api_key,
             }, headers=self._h())
         else:
             # MOCK mode: register the deterministic MockLLM provider
@@ -299,8 +333,7 @@ class ConformanceSuite:
             }, headers=self._h())
 
         ok = r.status_code == 200
-        model = "gpt-4o-mini" if self.live else "mock-model"
-        self._assert(f"Register LLM ({model})", ok,
+        self._assert(f"Register LLM ({self.model_id})", ok,
                       r.json().get("config_id", "")[:12] + "..." if ok else f"status={r.status_code}: {r.text[:100]}")
 
     # ==================================================================
@@ -308,7 +341,7 @@ class ConformanceSuite:
     # ==================================================================
 
     def test_create_agents(self) -> None:
-        model_id = "gpt-4o-mini" if self.live else "mock-model"
+        model_id = self.model_id or ("mock-model" if not self.live else "gpt-4o-mini")
         agents = [
             {
                 "name": "Compliance Researcher",
@@ -654,7 +687,7 @@ class ConformanceSuite:
     def test_p0_governance_deny(self) -> None:
         """Two-sided: (a) disallowed model IS denied, (b) allowed model IS permitted."""
         # Create a model_allowlist policy
-        model_id_for_test = "mock-model" if not self.live else "gpt-4o-mini"
+        model_id_for_test = self.model_id or ("mock-model" if not self.live else "gpt-4o-mini")
 
         r = self.client.post("/v1/governance/policies", json={
             "name": "Model Allowlist (conformance test)",
@@ -821,7 +854,7 @@ class ConformanceSuite:
         # (b) NEGATIVE: inference operation → NOT escalated
         # Use the correct model_id for the current mode, otherwise the
         # model_allowlist policy (from P0-1) will falsely deny the request
-        allowed_model = "gpt-4o-mini" if self.live else "mock-model"
+        allowed_model = self.model_id or ("mock-model" if not self.live else "gpt-4o-mini")
         r_ok = self.client.post("/v1/governance/evaluate", json={
             "operation": "inference",
             "context": {"model_id": allowed_model},
@@ -1208,7 +1241,7 @@ class ConformanceSuite:
                           "No agents available")
             return
 
-        model_id = "gpt-4o-mini" if self.live else "mock-model"
+        model_id = self.model_id or ("mock-model" if not self.live else "gpt-4o-mini")
 
         # Create a dedicated workflow for the streaming test
         r_wf = self.client.post("/v1/orchestrator/workflows", json={
@@ -1499,13 +1532,20 @@ class ConformanceSuite:
     # ==================================================================
 
     def run_all(self) -> bool:
-        mode_label = "🟢 LIVE (OpenAI)" if self.live else "🔷 MOCK (Deterministic)"
+        provider_labels = {
+            "mock": "🔷 MOCK (Deterministic)",
+            "openai": "🟢 LIVE (OpenAI)",
+            "anthropic": "🟣 LIVE (Anthropic)",
+            "gemini": "🔵 LIVE (Gemini)",
+        }
+        mode_label = provider_labels.get(self.provider, f"🟢 LIVE ({self.provider})")
         print()
         print("=" * 70)
         print("  GRAFOMEM Cloud — Conformance Test Suite v2.1")
-        print(f"  Server: {self.base}")
-        print(f"  Mode:   {mode_label}")
-        print(f"  Time:   {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"  Server:   {self.base}")
+        print(f"  Mode:     {mode_label}")
+        print(f"  Provider: {self.provider}")
+        print(f"  Time:     {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print("=" * 70)
 
         print("\n📦 Phase 1: Account Setup")
@@ -1658,6 +1698,7 @@ class ConformanceSuite:
             "report_type": "grafomem_conformance",
             "version": "2.0",
             "mode": "live" if self.live else "mock",
+            "provider": self.provider,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "server": self.base,
             "results": [r.to_dict() for r in self.results],
@@ -1693,24 +1734,46 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="GRAFOMEM Conformance Suite v2")
     parser.add_argument("--live", action="store_true",
                         help="Use real LLM (OpenAI). Default: deterministic MockLLM.")
+    parser.add_argument("--anthropic", action="store_true",
+                        help="Use real LLM (Anthropic Claude). Requires ANTHROPIC_API_KEY.")
+    parser.add_argument("--gemini", action="store_true",
+                        help="Use real LLM (Google Gemini). Requires GOOGLE_API_KEY.")
     parser.add_argument("--url", default=BASE_URL,
                         help=f"Server URL (default: {BASE_URL})")
     parser.add_argument("--report", action="store_true",
                         help="Emit signed JSON conformance report")
     args = parser.parse_args()
 
-    live = args.live
-    if live and not OPENAI_KEY:
-        print("❌ --live mode requires OPENAI_API_KEY environment variable.")
-        sys.exit(1)
+    # Determine provider and live mode
+    if args.anthropic:
+        live = True
+        provider = "anthropic"
+        if not ANTHROPIC_KEY:
+            print("❌ --anthropic mode requires ANTHROPIC_API_KEY environment variable.")
+            sys.exit(1)
+    elif args.gemini:
+        live = True
+        provider = "gemini"
+        if not GOOGLE_KEY:
+            print("❌ --gemini mode requires GOOGLE_API_KEY environment variable.")
+            sys.exit(1)
+    elif args.live:
+        live = True
+        provider = "openai"
+        if not OPENAI_KEY:
+            print("❌ --live mode requires OPENAI_API_KEY environment variable.")
+            sys.exit(1)
+    else:
+        live = False
+        provider = "mock"
 
-    suite = ConformanceSuite(args.url, live_mode=live)
+    suite = ConformanceSuite(args.url, live_mode=live, provider=provider)
     success = suite.run_all()
 
     if args.report:
         ts = datetime.now().strftime("%Y%m%dT%H%M%S")
         mode = "live" if live else "mock"
-        filepath = f"tests/runs/{ts}_{mode}.json"
+        filepath = f"tests/runs/{ts}_{mode}_{provider}.json"
         suite.emit_report(filepath)
 
     sys.exit(0 if success else 1)
