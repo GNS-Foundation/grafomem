@@ -119,13 +119,20 @@ def create_sso_router(sso_provider) -> APIRouter:
     ):
         """Configure an SSO provider (admin operation).
 
-        Requires authentication. Stores the OAuth client credentials
-        for the specified provider.
+        Requires authentication via Bearer JWT token. Stores the OAuth
+        client credentials for the specified provider.
         """
-        # Simple admin check — requires authenticated request
-        ctx = getattr(request.state, "tenant", None)
-        if ctx is None or not ctx.authenticated:
-            raise HTTPException(401, "Authentication required")
+        # /v1/portal/* paths bypass auth middleware → verify JWT directly
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            raise HTTPException(401, "Authentication required — provide Authorization: Bearer <token>")
+        token = auth_header[7:].strip()
+        portal_auth = getattr(request.app.state, "portal_auth", None)
+        if portal_auth is None:
+            raise HTTPException(500, "Portal auth not available")
+        info = portal_auth.verify_token(token)
+        if not info or not info.get("tenant_id"):
+            raise HTTPException(401, "Invalid or expired token")
 
         try:
             config = sso_provider.configure_provider(
