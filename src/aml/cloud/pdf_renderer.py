@@ -164,7 +164,7 @@ def _render_framework(pdf, fw_data: dict) -> None:
     # Framework header
     pdf.set_font("Helvetica", "B", 16)
     pdf.set_text_color(*_BRAND)
-    pdf.cell(0, 10, framework, new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 10, _sanitize(framework), new_x="LMARGIN", new_y="NEXT")
 
     if regulation:
         pdf.set_font("Helvetica", "I", 10)
@@ -299,12 +299,12 @@ def _render_footer_page(pdf, report) -> None:
         pdf.set_text_color(*_GRAY)
         pdf.cell(50, 7, label, new_x="RIGHT")
         pdf.set_text_color(*_DARK_BG)
-        pdf.cell(0, 7, str(value), new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 7, _sanitize(str(value)), new_x="LMARGIN", new_y="NEXT")
 
     pdf.ln(20)
     pdf.set_font("Helvetica", "I", 9)
     pdf.set_text_color(*_GRAY)
-    pdf.cell(0, 6, "Produced by GRAFOMEM Cloud — grafomem.com",
+    pdf.cell(0, 6, "Produced by GRAFOMEM Cloud -- grafomem.com",
              new_x="LMARGIN", new_y="NEXT", align="C")
     pdf.cell(0, 6, "This report is generated from live system data and is verifiable",
              new_x="LMARGIN", new_y="NEXT", align="C")
