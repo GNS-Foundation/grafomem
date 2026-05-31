@@ -138,6 +138,42 @@ class ConformanceSuite:
         key = self.api_key if tenant == "a" else self.tenant_b_key
         return {"X-API-Key": key}
 
+    def _cleanup_stale_policies(self) -> None:
+        """Delete leftover governance policies from prior test runs.
+
+        Prior runs may have left model_allowlist and hitl_required policies
+        that block inference for models not in the old allowlist.  Also
+        deduplicates rate_limit and pii_guard (keeps 1 of each).
+        """
+        try:
+            r = self.client.get("/v1/governance/policies", headers=self._h())
+            if r.status_code != 200:
+                return
+            policies = r.json().get("policies", [])
+            if not policies:
+                return
+
+            # Delete ALL model_allowlist and hitl_required conformance policies
+            deleted = 0
+            keep_types: set[str] = set()
+            for p in policies:
+                ptype = p.get("policy_type", "")
+                pid = p.get("policy_id", "")
+                if ptype in ("model_allowlist", "hitl_required"):
+                    self.client.delete(f"/v1/governance/policies/{pid}", headers=self._h())
+                    deleted += 1
+                elif ptype in keep_types:
+                    # Duplicate base policy — delete it
+                    self.client.delete(f"/v1/governance/policies/{pid}", headers=self._h())
+                    deleted += 1
+                else:
+                    keep_types.add(ptype)
+
+            if deleted:
+                print(f"  🧹 Cleaned {deleted} stale policies from prior runs")
+        except Exception:
+            pass  # Non-fatal
+
     def _record(
         self,
         name: str,
@@ -1574,6 +1610,9 @@ class ConformanceSuite:
             print("\n❌ Cannot continue without API key. Aborting.")
             return False
         self.test_signup_tenant_b()
+
+        # Cleanup stale policies from prior runs
+        self._cleanup_stale_policies()
 
         print("\n💾 Phase 2: Memory Store")
         self.test_create_store()

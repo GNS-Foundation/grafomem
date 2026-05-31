@@ -248,8 +248,8 @@ def _render_evidence_table(pdf, evidence: dict) -> None:
         display_val = _format_value(value)
 
         # Calculate row height based on content
-        pdf.cell(col_key_w, 6, display_key[:40], border=1, new_x="RIGHT")
-        pdf.cell(col_val_w, 6, display_val[:55], border=1, new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(col_key_w, 6, _sanitize(display_key[:40]), border=1, new_x="RIGHT")
+        pdf.cell(col_val_w, 6, _sanitize(display_val[:55]), border=1, new_x="LMARGIN", new_y="NEXT")
 
 
 def _render_finding_badge(pdf, finding: str, center: bool = False, large: bool = False) -> None:
