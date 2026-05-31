@@ -213,7 +213,7 @@ def create_regulatory_router(report_service) -> APIRouter:
         )
 
         return Response(
-            content=pdf_bytes,
+            content=bytes(pdf_bytes),
             media_type="application/pdf",
             headers={"Content-Disposition": f"attachment; filename={filename}"},
         )
