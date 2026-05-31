@@ -1,0 +1,306 @@
+{
+  "content_hash": "256d92c94a90afa424ad4f92a7c11d6d689c0e16703605c93c2c8a6d945d2162",
+  "mode": "live",
+  "provider": "gemini",
+  "report_type": "grafomem_conformance",
+  "results": [
+    {
+      "detail": "re-used existing account",
+      "live_only": false,
+      "name": "Signup (Tenant A)",
+      "state": "pass"
+    },
+    {
+      "detail": "re-used existing account",
+      "live_only": false,
+      "name": "Signup (Tenant B)",
+      "state": "pass"
+    },
+    {
+      "detail": "store_id=8a4ace8baeb2",
+      "live_only": false,
+      "name": "Create Store",
+      "state": "pass"
+    },
+    {
+      "detail": "5/5 written, refs=[1124, 1125, 1126]...",
+      "live_only": false,
+      "name": "Seed 5 Facts",
+      "state": "pass"
+    },
+    {
+      "detail": "2/2 (rate_limit + pii_guard)",
+      "live_only": false,
+      "name": "Create 2 Policies",
+      "state": "pass"
+    },
+    {
+      "detail": "9f21a4dc609a...",
+      "live_only": false,
+      "name": "Register LLM (gemini-2.5-pro)",
+      "state": "pass"
+    },
+    {
+      "detail": "3/3 \u2014 2d8def1c, c154f6ed, 6d87c94c",
+      "live_only": false,
+      "name": "Create 3 Agents",
+      "state": "pass"
+    },
+    {
+      "detail": "workflow_id=e9ce7118bfdb...",
+      "live_only": false,
+      "name": "Create Workflow",
+      "state": "pass"
+    },
+    {
+      "detail": "status=completed steps=1 tokens=0",
+      "live_only": false,
+      "name": "Run 3-Agent Workflow",
+      "state": "fail"
+    },
+    {
+      "detail": "expected=3 actual=0",
+      "live_only": false,
+      "name": "Receipt Count == Step Count",
+      "state": "fail"
+    },
+    {
+      "detail": "status=empty steps_verified=0",
+      "live_only": false,
+      "name": "Hash Chain INTACT",
+      "state": "fail"
+    },
+    {
+      "detail": "3 decisions found",
+      "live_only": false,
+      "name": "Decision Trail Has Records",
+      "state": "pass"
+    },
+    {
+      "detail": "input_reconstructed=True",
+      "live_only": false,
+      "name": "Replay Input Reconstructed",
+      "state": "pass"
+    },
+    {
+      "detail": "model_available=True",
+      "live_only": false,
+      "name": "Replay Model Available",
+      "state": "pass"
+    },
+    {
+      "detail": "status=diverged confidence=0.43",
+      "live_only": false,
+      "name": "Replay Executes",
+      "state": "pass"
+    },
+    {
+      "detail": "allowed=False logs=0",
+      "live_only": false,
+      "name": "P0-1a: Disallowed Model IS Denied",
+      "state": "pass"
+    },
+    {
+      "detail": "allowed=False",
+      "live_only": false,
+      "name": "P0-1b: Allowed Model IS Permitted",
+      "state": "fail"
+    },
+    {
+      "detail": "allowed=False",
+      "live_only": false,
+      "name": "P0-2a: PII IS Caught",
+      "state": "pass"
+    },
+    {
+      "detail": "allowed=True",
+      "live_only": false,
+      "name": "P0-2b: Clean Input NOT Falsely Flagged",
+      "state": "pass"
+    },
+    {
+      "detail": "status=403",
+      "live_only": false,
+      "name": "P0-3a: Cross-Tenant Access IS Blocked",
+      "state": "pass"
+    },
+    {
+      "detail": "status=200 memories=3",
+      "live_only": false,
+      "name": "P0-3b: Same-Tenant Access IS Allowed",
+      "state": "pass"
+    },
+    {
+      "detail": "ref=1124",
+      "live_only": false,
+      "name": "Erasure Leg 1: Fact Deleted From Memory",
+      "state": "pass"
+    },
+    {
+      "detail": "found_deleted=False results=3",
+      "live_only": false,
+      "name": "Erasure Leg 1b: Deleted Fact Not Retrievable",
+      "state": "pass"
+    },
+    {
+      "detail": "expected=6346e282ae040062... got=6346e282ae040062...",
+      "live_only": false,
+      "name": "Erasure Leg 2: Cert Content Hash Matches",
+      "state": "pass"
+    },
+    {
+      "detail": "valid=False detail=Certificate is not signed",
+      "live_only": false,
+      "name": "Erasure Leg 3: Certificate Ed25519 Signed",
+      "state": "fail"
+    },
+    {
+      "detail": "allowed=False escalated=True",
+      "live_only": false,
+      "name": "P0-4a: Deploy Operation IS Escalated",
+      "state": "pass"
+    },
+    {
+      "detail": "allowed=False",
+      "live_only": false,
+      "name": "P0-4b: Inference Operation NOT Escalated",
+      "state": "fail"
+    },
+    {
+      "detail": "valid=False detail=Certificate is not signed",
+      "live_only": false,
+      "name": "P0-6a: Valid Signature Verifies",
+      "state": "fail"
+    },
+    {
+      "detail": "No signature found \u2014 signing key not configured?",
+      "live_only": false,
+      "name": "P0-6b: Tampered Signature IS Rejected",
+      "state": "fail"
+    },
+    {
+      "detail": "No receipts found",
+      "live_only": false,
+      "name": "Chain Tamper: Detect Mutation",
+      "state": "fail"
+    },
+    {
+      "detail": "status=waiting_hitl",
+      "live_only": false,
+      "name": "HITL Resume (a): Workflow Enters WAITING_HITL",
+      "state": "pass"
+    },
+    {
+      "detail": "status=completed",
+      "live_only": false,
+      "name": "HITL Resume (a): Approved \u2192 Workflow Completes",
+      "state": "pass"
+    },
+    {
+      "detail": "status=terminated",
+      "live_only": false,
+      "name": "HITL Resume (b): Rejected \u2192 Workflow Terminated",
+      "state": "pass"
+    },
+    {
+      "detail": "report_id=eace8d20848d...",
+      "live_only": false,
+      "name": "Generate EU AI Act Report",
+      "state": "pass"
+    },
+    {
+      "detail": "150 evaluations, 8 active policies",
+      "live_only": false,
+      "name": "Governance Stats",
+      "state": "pass"
+    },
+    {
+      "detail": "agents=6 workflows=7 steps=11",
+      "live_only": false,
+      "name": "Orchestrator Stats",
+      "state": "pass"
+    },
+    {
+      "detail": "events=4 types=['workflow.started', 'step.started', 'step.governance_deny', 'workflow.complete']",
+      "live_only": false,
+      "name": "Stream Workflow Receives Events",
+      "state": "pass"
+    },
+    {
+      "detail": "status=404",
+      "live_only": false,
+      "name": "Stream Non-Existent Workflow 404",
+      "state": "pass"
+    },
+    {
+      "detail": "webhook_id=3d0b1e4a0c6c... secret=present",
+      "live_only": false,
+      "name": "Register Webhook",
+      "state": "pass"
+    },
+    {
+      "detail": "count=1",
+      "live_only": false,
+      "name": "List Webhooks",
+      "state": "pass"
+    },
+    {
+      "detail": "types=['erasure.issued', 'governance.denied', 'governance.escalated', 'workflow.completed', 'workflow.error']",
+      "live_only": false,
+      "name": "Webhook Event Types",
+      "state": "pass"
+    },
+    {
+      "detail": "status=404",
+      "live_only": false,
+      "name": "Cross-Tenant Webhook Blocked",
+      "state": "pass"
+    },
+    {
+      "detail": "webhook_id=3d0b1e4a0c6c...",
+      "live_only": false,
+      "name": "Delete Webhook",
+      "state": "pass"
+    },
+    {
+      "detail": "status=500: {\"detail\":\"PDF rendering failed: Character \\\"\u2014\\\" at index 20 in text is outside the range of characters supported by the font used: \\\"helvetica\\\". Please consider using a Unicode font.\"}",
+      "live_only": false,
+      "name": "PDF Download Succeeds",
+      "state": "fail"
+    },
+    {
+      "detail": "status=404",
+      "live_only": false,
+      "name": "PDF Download Missing Report 404",
+      "state": "pass"
+    },
+    {
+      "detail": "providers=3 items",
+      "live_only": false,
+      "name": "SSO Provider List",
+      "state": "pass"
+    },
+    {
+      "detail": "status=ok, uptime=1891.1s",
+      "live_only": false,
+      "name": "Health Liveness",
+      "state": "pass"
+    },
+    {
+      "detail": "status=ok, checks=['database', 'pool', 'store_manager', 'decision_trail', 'governance_gateway', 'orchestrator', 'erasure_proof', 'regulatory_reports']",
+      "live_only": false,
+      "name": "Health Readiness",
+      "state": "pass"
+    }
+  ],
+  "server": "https://grafomem-production.up.railway.app",
+  "summary": {
+    "degraded": 0,
+    "failed": 10,
+    "passed": 38,
+    "skipped": 0,
+    "total": 48
+  },
+  "timestamp": "2026-05-31T10:41:14.841957+00:00",
+  "version": "2.0"
+}

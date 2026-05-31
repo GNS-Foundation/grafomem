@@ -698,41 +698,51 @@ class ConformanceSuite:
             "priority": 5,
         }, headers=self._h())
         policy_created = r.status_code == 200
+        allowlist_policy_id = r.json().get("policy_id", "") if policy_created else ""
 
         if not policy_created:
             self._record("P0-1: Create Allowlist Policy", TestState.FAIL,
                           f"status={r.status_code}")
             return
 
-        # (a) POSITIVE: disallowed model → DENIED
-        r_deny = self.client.post("/v1/governance/evaluate", json={
-            "operation": "inference",
-            "context": {"model_id": "gpt-3.5-turbo-DISALLOWED"},
-        }, headers=self._h())
-        if r_deny.status_code == 200:
-            data = r_deny.json()
-            was_denied = not data.get("allowed", True)
-            self._assert("P0-1a: Disallowed Model IS Denied",
-                          was_denied,
-                          f"allowed={data.get('allowed')} logs={len(data.get('logs', []))}")
-        else:
-            self._record("P0-1a: Evaluate Deny", TestState.FAIL,
-                          f"status={r_deny.status_code}")
+        try:
+            # (a) POSITIVE: disallowed model → DENIED
+            r_deny = self.client.post("/v1/governance/evaluate", json={
+                "operation": "inference",
+                "context": {"model_id": "gpt-3.5-turbo-DISALLOWED"},
+            }, headers=self._h())
+            if r_deny.status_code == 200:
+                data = r_deny.json()
+                was_denied = not data.get("allowed", True)
+                self._assert("P0-1a: Disallowed Model IS Denied",
+                              was_denied,
+                              f"allowed={data.get('allowed')} logs={len(data.get('logs', []))}")
+            else:
+                self._record("P0-1a: Evaluate Deny", TestState.FAIL,
+                              f"status={r_deny.status_code}")
 
-        # (b) NEGATIVE: allowed model → PERMITTED
-        r_allow = self.client.post("/v1/governance/evaluate", json={
-            "operation": "inference",
-            "context": {"model_id": model_id_for_test},
-        }, headers=self._h())
-        if r_allow.status_code == 200:
-            data = r_allow.json()
-            was_allowed = data.get("allowed", False)
-            self._assert("P0-1b: Allowed Model IS Permitted",
-                          was_allowed,
-                          f"allowed={data.get('allowed')}")
-        else:
-            self._record("P0-1b: Evaluate Allow", TestState.FAIL,
-                          f"status={r_allow.status_code}")
+            # (b) NEGATIVE: allowed model → PERMITTED
+            r_allow = self.client.post("/v1/governance/evaluate", json={
+                "operation": "inference",
+                "context": {"model_id": model_id_for_test},
+            }, headers=self._h())
+            if r_allow.status_code == 200:
+                data = r_allow.json()
+                was_allowed = data.get("allowed", False)
+                self._assert("P0-1b: Allowed Model IS Permitted",
+                              was_allowed,
+                              f"allowed={data.get('allowed')}")
+            else:
+                self._record("P0-1b: Evaluate Allow", TestState.FAIL,
+                              f"status={r_allow.status_code}")
+        finally:
+            # Cleanup: delete the allowlist policy so it doesn't poison
+            # subsequent runs (e.g. Gemini after Anthropic)
+            if allowlist_policy_id:
+                self.client.delete(
+                    f"/v1/governance/policies/{allowlist_policy_id}",
+                    headers=self._h(),
+                )
 
     # ==================================================================
     # P0-2: PII Guard (two-sided)
@@ -831,43 +841,53 @@ class ConformanceSuite:
             self._record("P0-4: Create HITL Policy", TestState.FAIL,
                           f"status={r.status_code}")
             return
+        hitl_deploy_policy_id = r.json().get("policy_id", "")
 
-        # (a) POSITIVE: deploy operation → ESCALATED (allowed=False)
-        r_escalate = self.client.post("/v1/governance/evaluate", json={
-            "operation": "deploy",
-            "context": {"model_id": "mock-model", "target": "production"},
-        }, headers=self._h())
-        if r_escalate.status_code == 200:
-            data = r_escalate.json()
-            was_denied = not data.get("allowed", True)
-            logs = data.get("evaluations", [])
-            has_escalated = any(
-                log.get("result") == "escalated" for log in logs
-            )
-            self._assert("P0-4a: Deploy Operation IS Escalated",
-                          was_denied and has_escalated,
-                          f"allowed={data.get('allowed')} escalated={has_escalated}")
-        else:
-            self._record("P0-4a: HITL Evaluate", TestState.FAIL,
-                          f"status={r_escalate.status_code}")
+        try:
+            # (a) POSITIVE: deploy operation → ESCALATED (allowed=False)
+            r_escalate = self.client.post("/v1/governance/evaluate", json={
+                "operation": "deploy",
+                "context": {"model_id": "mock-model", "target": "production"},
+            }, headers=self._h())
+            if r_escalate.status_code == 200:
+                data = r_escalate.json()
+                was_denied = not data.get("allowed", True)
+                logs = data.get("evaluations", [])
+                has_escalated = any(
+                    log.get("result") == "escalated" for log in logs
+                )
+                self._assert("P0-4a: Deploy Operation IS Escalated",
+                              was_denied and has_escalated,
+                              f"allowed={data.get('allowed')} escalated={has_escalated}")
+            else:
+                self._record("P0-4a: HITL Evaluate", TestState.FAIL,
+                              f"status={r_escalate.status_code}")
 
-        # (b) NEGATIVE: inference operation → NOT escalated
-        # Use the correct model_id for the current mode, otherwise the
-        # model_allowlist policy (from P0-1) will falsely deny the request
-        allowed_model = self.model_id or ("mock-model" if not self.live else "gpt-4o-mini")
-        r_ok = self.client.post("/v1/governance/evaluate", json={
-            "operation": "inference",
-            "context": {"model_id": allowed_model},
-        }, headers=self._h())
-        if r_ok.status_code == 200:
-            data = r_ok.json()
-            was_allowed = data.get("allowed", False)
-            self._assert("P0-4b: Inference Operation NOT Escalated",
-                          was_allowed,
-                          f"allowed={data.get('allowed')}")
-        else:
-            self._record("P0-4b: Non-HITL Evaluate", TestState.FAIL,
-                          f"status={r_ok.status_code}")
+            # (b) NEGATIVE: inference operation → NOT escalated
+            # Use the correct model_id for the current mode, otherwise the
+            # model_allowlist policy (from P0-1) will falsely deny the request
+            allowed_model = self.model_id or ("mock-model" if not self.live else "gpt-4o-mini")
+            r_ok = self.client.post("/v1/governance/evaluate", json={
+                "operation": "inference",
+                "context": {"model_id": allowed_model},
+            }, headers=self._h())
+            if r_ok.status_code == 200:
+                data = r_ok.json()
+                was_allowed = data.get("allowed", False)
+                self._assert("P0-4b: Inference Operation NOT Escalated",
+                              was_allowed,
+                              f"allowed={data.get('allowed')}")
+            else:
+                self._record("P0-4b: Non-HITL Evaluate", TestState.FAIL,
+                              f"status={r_ok.status_code}")
+        finally:
+            # Cleanup: delete the HITL deploy policy so it doesn't poison
+            # subsequent runs
+            if hitl_deploy_policy_id:
+                self.client.delete(
+                    f"/v1/governance/policies/{hitl_deploy_policy_id}",
+                    headers=self._h(),
+                )
 
     # ==================================================================
     # P0-6: Ed25519 Signing (two-sided: valid verifies, tamper fails)

@@ -1,0 +1,324 @@
+{
+  "content_hash": "f32afaa3443badab73a83d74a57b2ad02f2225fecbdc2209abbc1211caf7c058",
+  "mode": "live",
+  "provider": "anthropic",
+  "report_type": "grafomem_conformance",
+  "results": [
+    {
+      "detail": "tenant=b781bd510d8b...",
+      "live_only": false,
+      "name": "Signup (Tenant A)",
+      "state": "pass"
+    },
+    {
+      "detail": "tenant_b=021867d65c32...",
+      "live_only": false,
+      "name": "Signup (Tenant B)",
+      "state": "pass"
+    },
+    {
+      "detail": "store_id=2b11e75936be",
+      "live_only": false,
+      "name": "Create Store",
+      "state": "pass"
+    },
+    {
+      "detail": "5/5 written, refs=[1119, 1120, 1121]...",
+      "live_only": false,
+      "name": "Seed 5 Facts",
+      "state": "pass"
+    },
+    {
+      "detail": "2/2 (rate_limit + pii_guard)",
+      "live_only": false,
+      "name": "Create 2 Policies",
+      "state": "pass"
+    },
+    {
+      "detail": "00e6fb6e2d8d...",
+      "live_only": false,
+      "name": "Register LLM (claude-opus-4-20250514)",
+      "state": "pass"
+    },
+    {
+      "detail": "3/3 \u2014 404eb109, 963c29e1, a424ff04",
+      "live_only": false,
+      "name": "Create 3 Agents",
+      "state": "pass"
+    },
+    {
+      "detail": "workflow_id=ae86168861ad...",
+      "live_only": false,
+      "name": "Create Workflow",
+      "state": "pass"
+    },
+    {
+      "detail": "status=completed steps=3 tokens=1612",
+      "live_only": false,
+      "name": "Run 3-Agent Workflow",
+      "state": "pass"
+    },
+    {
+      "detail": "expected=3 actual=3",
+      "live_only": false,
+      "name": "Receipt Count == Step Count",
+      "state": "pass"
+    },
+    {
+      "detail": "prev_hash=None",
+      "live_only": false,
+      "name": "Genesis Receipt Has Null Parent",
+      "state": "pass"
+    },
+    {
+      "detail": "step=1 prev_hash=set",
+      "live_only": false,
+      "name": "Receipt 1 Has Parent Hash",
+      "state": "pass"
+    },
+    {
+      "detail": "step=2 prev_hash=set",
+      "live_only": false,
+      "name": "Receipt 2 Has Parent Hash",
+      "state": "pass"
+    },
+    {
+      "detail": "status=intact steps_verified=3",
+      "live_only": false,
+      "name": "Hash Chain INTACT",
+      "state": "pass"
+    },
+    {
+      "detail": "3 decisions found",
+      "live_only": false,
+      "name": "Decision Trail Has Records",
+      "state": "pass"
+    },
+    {
+      "detail": "input_reconstructed=True",
+      "live_only": false,
+      "name": "Replay Input Reconstructed",
+      "state": "pass"
+    },
+    {
+      "detail": "model_available=True",
+      "live_only": false,
+      "name": "Replay Model Available",
+      "state": "pass"
+    },
+    {
+      "detail": "status=diverged confidence=0.47",
+      "live_only": false,
+      "name": "Replay Executes",
+      "state": "pass"
+    },
+    {
+      "detail": "allowed=False logs=0",
+      "live_only": false,
+      "name": "P0-1a: Disallowed Model IS Denied",
+      "state": "pass"
+    },
+    {
+      "detail": "allowed=True",
+      "live_only": false,
+      "name": "P0-1b: Allowed Model IS Permitted",
+      "state": "pass"
+    },
+    {
+      "detail": "allowed=False",
+      "live_only": false,
+      "name": "P0-2a: PII IS Caught",
+      "state": "pass"
+    },
+    {
+      "detail": "allowed=True",
+      "live_only": false,
+      "name": "P0-2b: Clean Input NOT Falsely Flagged",
+      "state": "pass"
+    },
+    {
+      "detail": "status=403",
+      "live_only": false,
+      "name": "P0-3a: Cross-Tenant Access IS Blocked",
+      "state": "pass"
+    },
+    {
+      "detail": "status=200 memories=3",
+      "live_only": false,
+      "name": "P0-3b: Same-Tenant Access IS Allowed",
+      "state": "pass"
+    },
+    {
+      "detail": "ref=1119",
+      "live_only": false,
+      "name": "Erasure Leg 1: Fact Deleted From Memory",
+      "state": "pass"
+    },
+    {
+      "detail": "found_deleted=False results=3",
+      "live_only": false,
+      "name": "Erasure Leg 1b: Deleted Fact Not Retrievable",
+      "state": "pass"
+    },
+    {
+      "detail": "expected=6346e282ae040062... got=6346e282ae040062...",
+      "live_only": false,
+      "name": "Erasure Leg 2: Cert Content Hash Matches",
+      "state": "pass"
+    },
+    {
+      "detail": "valid=False detail=Certificate is not signed",
+      "live_only": false,
+      "name": "Erasure Leg 3: Certificate Ed25519 Signed",
+      "state": "fail"
+    },
+    {
+      "detail": "allowed=False escalated=True",
+      "live_only": false,
+      "name": "P0-4a: Deploy Operation IS Escalated",
+      "state": "pass"
+    },
+    {
+      "detail": "allowed=True",
+      "live_only": false,
+      "name": "P0-4b: Inference Operation NOT Escalated",
+      "state": "pass"
+    },
+    {
+      "detail": "valid=False detail=Certificate is not signed",
+      "live_only": false,
+      "name": "P0-6a: Valid Signature Verifies",
+      "state": "fail"
+    },
+    {
+      "detail": "No signature found \u2014 signing key not configured?",
+      "live_only": false,
+      "name": "P0-6b: Tampered Signature IS Rejected",
+      "state": "fail"
+    },
+    {
+      "detail": "No receipts found",
+      "live_only": false,
+      "name": "Chain Tamper: Detect Mutation",
+      "state": "fail"
+    },
+    {
+      "detail": "status=waiting_hitl",
+      "live_only": false,
+      "name": "HITL Resume (a): Workflow Enters WAITING_HITL",
+      "state": "pass"
+    },
+    {
+      "detail": "status=completed",
+      "live_only": false,
+      "name": "HITL Resume (a): Approved \u2192 Workflow Completes",
+      "state": "pass"
+    },
+    {
+      "detail": "status=terminated",
+      "live_only": false,
+      "name": "HITL Resume (b): Rejected \u2192 Workflow Terminated",
+      "state": "pass"
+    },
+    {
+      "detail": "report_id=946e1e0efeb0...",
+      "live_only": false,
+      "name": "Generate EU AI Act Report",
+      "state": "pass"
+    },
+    {
+      "detail": "101 evaluations, 7 active policies",
+      "live_only": false,
+      "name": "Governance Stats",
+      "state": "pass"
+    },
+    {
+      "detail": "agents=6 workflows=4 steps=7",
+      "live_only": false,
+      "name": "Orchestrator Stats",
+      "state": "pass"
+    },
+    {
+      "detail": "events=4 types=['workflow.started', 'step.started', 'step.governance_deny', 'workflow.complete']",
+      "live_only": false,
+      "name": "Stream Workflow Receives Events",
+      "state": "pass"
+    },
+    {
+      "detail": "status=404",
+      "live_only": false,
+      "name": "Stream Non-Existent Workflow 404",
+      "state": "pass"
+    },
+    {
+      "detail": "webhook_id=cfa3bf3391a8... secret=present",
+      "live_only": false,
+      "name": "Register Webhook",
+      "state": "pass"
+    },
+    {
+      "detail": "count=1",
+      "live_only": false,
+      "name": "List Webhooks",
+      "state": "pass"
+    },
+    {
+      "detail": "types=['erasure.issued', 'governance.denied', 'governance.escalated', 'workflow.completed', 'workflow.error']",
+      "live_only": false,
+      "name": "Webhook Event Types",
+      "state": "pass"
+    },
+    {
+      "detail": "status=404",
+      "live_only": false,
+      "name": "Cross-Tenant Webhook Blocked",
+      "state": "pass"
+    },
+    {
+      "detail": "webhook_id=cfa3bf3391a8...",
+      "live_only": false,
+      "name": "Delete Webhook",
+      "state": "pass"
+    },
+    {
+      "detail": "status=500: {\"detail\":\"PDF rendering failed: Character \\\"\u2014\\\" at index 20 in text is outside the range of characters supported by the font used: \\\"helvetica\\\". Please consider using a Unicode font.\"}",
+      "live_only": false,
+      "name": "PDF Download Succeeds",
+      "state": "fail"
+    },
+    {
+      "detail": "status=404",
+      "live_only": false,
+      "name": "PDF Download Missing Report 404",
+      "state": "pass"
+    },
+    {
+      "detail": "providers=3 items",
+      "live_only": false,
+      "name": "SSO Provider List",
+      "state": "pass"
+    },
+    {
+      "detail": "status=ok, uptime=1887.7s",
+      "live_only": false,
+      "name": "Health Liveness",
+      "state": "pass"
+    },
+    {
+      "detail": "status=ok, checks=['database', 'pool', 'store_manager', 'decision_trail', 'governance_gateway', 'orchestrator', 'erasure_proof', 'regulatory_reports']",
+      "live_only": false,
+      "name": "Health Readiness",
+      "state": "pass"
+    }
+  ],
+  "server": "https://grafomem-production.up.railway.app",
+  "summary": {
+    "degraded": 0,
+    "failed": 5,
+    "passed": 46,
+    "skipped": 0,
+    "total": 51
+  },
+  "timestamp": "2026-05-31T10:41:11.697325+00:00",
+  "version": "2.0"
+}

@@ -37,6 +37,22 @@ _FINDING_COLORS = {
 }
 
 
+def _sanitize(text: str) -> str:
+    """Replace Unicode characters unsupported by Helvetica (latin-1 only)."""
+    return (
+        text
+        .replace("\u2014", "--")   # em-dash
+        .replace("\u2013", "-")    # en-dash
+        .replace("\u2192", "->")   # right arrow
+        .replace("\u25cf", "*")    # black circle
+        .replace("\u2022", "*")    # bullet
+        .replace("\u2018", "'")    # left single quote
+        .replace("\u2019", "'")    # right single quote
+        .replace("\u201c", '"')    # left double quote
+        .replace("\u201d", '"')    # right double quote
+    )
+
+
 def render_report_pdf(report) -> bytes:
     """Render a regulatory Report object to styled PDF bytes.
 
@@ -103,7 +119,7 @@ def _render_title_page(pdf, report) -> None:
     # Report title
     pdf.set_font("Helvetica", "B", 18)
     pdf.set_text_color(*_DARK_BG)
-    pdf.multi_cell(0, 10, report.title, align="C")
+    pdf.multi_cell(0, 10, _sanitize(report.title), align="C")
     pdf.ln(8)
 
     # Framework badge
@@ -112,7 +128,7 @@ def _render_title_page(pdf, report) -> None:
     pdf.set_font("Helvetica", "", 12)
     pdf.set_text_color(*_GRAY)
     if regulation:
-        pdf.cell(0, 7, regulation, new_x="LMARGIN", new_y="NEXT", align="C")
+        pdf.cell(0, 7, _sanitize(regulation), new_x="LMARGIN", new_y="NEXT", align="C")
     pdf.ln(10)
 
     # Period
@@ -120,7 +136,7 @@ def _render_title_page(pdf, report) -> None:
     pdf.set_text_color(*_DARK_BG)
     period_start = report.period_start.strftime("%d %B %Y")
     period_end = report.period_end.strftime("%d %B %Y")
-    pdf.cell(0, 7, f"Period: {period_start} — {period_end}", new_x="LMARGIN", new_y="NEXT", align="C")
+    pdf.cell(0, 7, f"Period: {period_start} -- {period_end}", new_x="LMARGIN", new_y="NEXT", align="C")
     pdf.ln(5)
 
     # Overall finding badge
@@ -153,7 +169,7 @@ def _render_framework(pdf, fw_data: dict) -> None:
     if regulation:
         pdf.set_font("Helvetica", "I", 10)
         pdf.set_text_color(*_GRAY)
-        pdf.cell(0, 6, regulation, new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 6, _sanitize(regulation), new_x="LMARGIN", new_y="NEXT")
     pdf.ln(5)
 
     # Overall finding for this framework
@@ -186,7 +202,7 @@ def _render_section(pdf, key: str, section: dict) -> None:
     # Section title
     pdf.set_font("Helvetica", "B", 13)
     pdf.set_text_color(*_DARK_BG)
-    pdf.multi_cell(0, 7, title)
+    pdf.multi_cell(0, 7, _sanitize(title))
     pdf.ln(2)
 
     # Finding badge
@@ -197,7 +213,7 @@ def _render_section(pdf, key: str, section: dict) -> None:
     if requirement:
         pdf.set_font("Helvetica", "I", 9)
         pdf.set_text_color(*_GRAY)
-        pdf.multi_cell(0, 5, f"Requirement: {requirement}")
+        pdf.multi_cell(0, 5, _sanitize(f"Requirement: {requirement}"))
         pdf.ln(3)
 
     # Evidence table
@@ -244,7 +260,7 @@ def _render_finding_badge(pdf, finding: str, center: bool = False, large: bool =
     pdf.set_font("Helvetica", "B", size)
     pdf.set_text_color(*color)
 
-    symbol = "●"
+    symbol = "*"
     label = f" {finding}"
 
     if center:
@@ -274,7 +290,7 @@ def _render_footer_page(pdf, report) -> None:
         ("Hash Algorithm", "BLAKE2b-256"),
         ("Generated At", report.created_at.strftime("%Y-%m-%d %H:%M:%S UTC")),
         ("File Size", f"{report.file_size_bytes:,} bytes"),
-        ("Period", f"{report.period_start.strftime('%Y-%m-%d')} → "
+        ("Period", f"{report.period_start.strftime('%Y-%m-%d')} to "
                   f"{report.period_end.strftime('%Y-%m-%d')}"),
     ]
 
