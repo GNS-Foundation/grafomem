@@ -9,6 +9,7 @@ is active.
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -16,6 +17,13 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 logger = logging.getLogger("grafomem.cloud.sso_routes")
+
+# Frontend URL for post-auth redirects.  Distinct from redirect_base
+# which is the *backend* URL used for the OAuth2 callback URI.
+_FRONTEND_URL = os.environ.get(
+    "GRAFOMEM_FRONTEND_URL",
+    "https://cloud.grafomem.com",
+).rstrip("/")
 
 from aml.cloud.schemas import (
     SSOProviderListResponse,
@@ -94,15 +102,22 @@ def create_sso_router(sso_provider) -> APIRouter:
             logger.error("SSO callback failed: %s", e)
             raise HTTPException(500, f"SSO authentication failed: {e}")
 
-        # Browser flow: redirect to portal with token
+        # Browser flow: redirect to frontend with auth params
         if isinstance(result, dict) and result.get("token"):
             from urllib.parse import urlencode
+            # Redirect to the frontend /login page with params the Next.js
+            # AuthProvider expects: api_key, tenant_id, name, email, plan.
+            # _FRONTEND_URL is the frontend (cloud.grafomem.com), NOT the
+            # backend redirect_base used for OAuth callback URIs.
             params = urlencode({
-                "token": result["token"],
+                "api_key": result.get("api_key", ""),
+                "tenant_id": result.get("tenant_id", ""),
+                "name": result.get("name", ""),
                 "email": result.get("email", ""),
+                "plan": result.get("plan", "starter"),
             })
             return RedirectResponse(
-                url=f"/portal?{params}", status_code=302,
+                url=f"{_FRONTEND_URL}/login?{params}", status_code=302,
             )
 
         # API flow: return JSON
@@ -255,15 +270,18 @@ def create_sso_router(sso_provider) -> APIRouter:
             logger.error("SAML ACS failed: %s", e)
             raise HTTPException(500, f"SAML authentication failed: {e}")
 
-        # Redirect to portal with token
+        # Redirect to frontend with auth params
         if isinstance(result, dict) and result.get("token"):
             from urllib.parse import urlencode
             params = urlencode({
-                "token": result["token"],
+                "api_key": result.get("api_key", ""),
+                "tenant_id": result.get("tenant_id", ""),
+                "name": result.get("name", ""),
                 "email": result.get("email", ""),
+                "plan": result.get("plan", "starter"),
             })
             return RedirectResponse(
-                url=f"/portal?{params}", status_code=302,
+                url=f"{_FRONTEND_URL}/login?{params}", status_code=302,
             )
 
         return result
