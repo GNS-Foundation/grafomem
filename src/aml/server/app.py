@@ -776,6 +776,27 @@ def create_app(
             app.state.assurance_service = assurance_svc
             app.include_router(assurance_router)
             logger.info("Continuous Assurance enabled (/v1/assurance)")
+
+            # Sprint 22: Tenant Admin — member management + RBAC
+            from aml.cloud.admin_routes import router as admin_router
+            if not spec_only:
+                tm.ensure_members_schema()
+            app.include_router(admin_router, prefix="/v1/admin")
+            logger.info("Tenant Admin enabled (/v1/admin)")
+
+            # Sprint 23: Audit Export — compliance-ready bulk exports
+            from aml.cloud.audit_export import AuditExportService
+            from aml.cloud.audit_export_routes import router as audit_export_router
+
+            audit_export = AuditExportService(
+                decision_trail=dt,
+                governance=gg,
+                gcrumbs=gc,
+                signing_key=erasure_key,
+            )
+            app.state.audit_export_service = audit_export
+            app.include_router(audit_export_router, prefix="/v1/audit/export")
+            logger.info("Audit Export enabled (/v1/audit/export)")
         except ImportError as e:
             logger.warning("Cloud layer unavailable (missing deps): %s", e)
         except Exception as e:

@@ -293,3 +293,119 @@ class TenantManager:
             created_at=row["created_at"],
             limits=PLAN_LIMITS.get(plan, PLAN_LIMITS["starter"]),
         )
+
+    # ------------------------------------------------------------------
+    # Member management (Sprint 22)
+    # ------------------------------------------------------------------
+
+    def ensure_members_schema(self) -> None:
+        """Create the ``tenant_members`` table if it does not exist."""
+        conn = self._get_conn()
+        conn.execute(_MEMBERS_SCHEMA_SQL)
+        logger.info("Tenant members schema ensured")
+
+    def invite_member(
+        self,
+        tenant_id: str,
+        email: str,
+        role: str = "member",
+        invited_by: str = "",
+    ) -> dict[str, Any]:
+        """Invite a team member to a tenant.
+
+        Returns the created member record.
+        """
+        if role not in VALID_ROLES:
+            raise ValueError(
+                f"Unknown role {role!r}. Valid roles: {sorted(VALID_ROLES)}"
+            )
+
+        member_id = uuid.uuid4().hex[:24]
+        now = datetime.now(tz=timezone.utc)
+
+        conn = self._get_conn()
+        conn.execute(
+            "INSERT INTO tenant_members "
+            "(member_id, tenant_id, email, role, invited_by, joined_at) "
+            "VALUES (%s, %s, %s, %s, %s, %s) "
+            "ON CONFLICT (tenant_id, email) DO UPDATE SET role = %s",
+            (member_id, tenant_id, email, role, invited_by, now, role),
+        )
+        logger.info(
+            "Member invited: %s → tenant %s (role=%s)",
+            email, tenant_id, role,
+        )
+        return {
+            "member_id": member_id,
+            "tenant_id": tenant_id,
+            "email": email,
+            "role": role,
+            "invited_by": invited_by,
+            "joined_at": now.isoformat(),
+        }
+
+    def list_members(self, tenant_id: str) -> list[dict[str, Any]]:
+        """List all members of a tenant."""
+        conn = self._get_conn()
+        rows = conn.execute(
+            "SELECT member_id, tenant_id, email, role, invited_by, joined_at "
+            "FROM tenant_members WHERE tenant_id = %s ORDER BY joined_at",
+            (tenant_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def update_member_role(
+        self,
+        tenant_id: str,
+        member_id: str,
+        role: str,
+    ) -> bool:
+        """Change a member's role. Returns True if updated."""
+        if role not in VALID_ROLES:
+            raise ValueError(f"Unknown role {role!r}")
+        conn = self._get_conn()
+        result = conn.execute(
+            "UPDATE tenant_members SET role = %s "
+            "WHERE member_id = %s AND tenant_id = %s",
+            (role, member_id, tenant_id),
+        )
+        return result.rowcount > 0
+
+    def remove_member(self, tenant_id: str, member_id: str) -> bool:
+        """Remove a member from a tenant. Returns True if removed."""
+        conn = self._get_conn()
+        result = conn.execute(
+            "DELETE FROM tenant_members "
+            "WHERE member_id = %s AND tenant_id = %s",
+            (member_id, tenant_id),
+        )
+        return result.rowcount > 0
+
+    def get_member_count(self, tenant_id: str) -> int:
+        """Count members in a tenant."""
+        conn = self._get_conn()
+        row = conn.execute(
+            "SELECT COUNT(*) AS cnt FROM tenant_members WHERE tenant_id = %s",
+            (tenant_id,),
+        ).fetchone()
+        return row["cnt"] if row else 0
+
+
+# ============================================================================
+# Member roles and schema
+# ============================================================================
+
+VALID_ROLES = frozenset({"owner", "admin", "member", "viewer"})
+
+_MEMBERS_SCHEMA_SQL = """\
+CREATE TABLE IF NOT EXISTS tenant_members (
+    member_id   TEXT        PRIMARY KEY,
+    tenant_id   TEXT        NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    email       TEXT        NOT NULL,
+    role        TEXT        NOT NULL DEFAULT 'member',
+    invited_by  TEXT        NOT NULL DEFAULT '',
+    joined_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(tenant_id, email)
+);
+CREATE INDEX IF NOT EXISTS idx_tm_tenant ON tenant_members(tenant_id);
+"""

@@ -364,12 +364,15 @@ class LLMRegistry:
 
         client = anthropic.Anthropic(api_key=config.api_key)
 
+        # Floor max_tokens at 1024 — Anthropic can truncate short budgets
+        effective_max = max(request.max_tokens, 1024)
+
         kwargs: dict[str, Any] = {
             "model": config.model_id,
             "system": request.system_prompt,
             "messages": request.messages,
             "temperature": request.temperature,
-            "max_tokens": request.max_tokens,
+            "max_tokens": effective_max,
         }
 
         if request.tools:
@@ -393,8 +396,13 @@ class LLMRegistry:
             elif block.type == "tool_use":
                 tool_calls.append({
                     "name": block.name,
-                    "arguments": block.input,
+                    "arguments": dict(block.input) if block.input else {},
                 })
+
+        # Anthropic may return only tool_use blocks with no text content.
+        # Ensure content is non-empty so decision trail logging works.
+        if not content and tool_calls:
+            content = f"[tool_use: {', '.join(tc['name'] for tc in tool_calls)}]"
 
         return LLMResponse(
             content=content,
@@ -418,6 +426,9 @@ class LLMRegistry:
             )
 
         client = genai.Client(api_key=config.api_key)
+
+        # Floor max_tokens at 1024 — Gemini can truncate short budgets
+        effective_max = max(request.max_tokens, 1024)
 
         # Build contents from messages
         contents = []
@@ -447,7 +458,7 @@ class LLMRegistry:
         config_obj = types.GenerateContentConfig(
             system_instruction=request.system_prompt,
             temperature=request.temperature,
-            max_output_tokens=request.max_tokens,
+            max_output_tokens=effective_max,
             tools=tools,
         )
 
@@ -461,14 +472,32 @@ class LLMRegistry:
         tool_calls = []
 
         if response.candidates:
-            for part in response.candidates[0].content.parts:
-                if part.text:
-                    content += part.text
-                elif part.function_call:
-                    tool_calls.append({
-                        "name": part.function_call.name,
-                        "arguments": dict(part.function_call.args) if part.function_call.args else {},
-                    })
+            candidate = response.candidates[0]
+            if candidate.content and candidate.content.parts:
+                for part in candidate.content.parts:
+                    if part.text:
+                        content += part.text
+                    elif part.function_call:
+                        # Defensive: convert proto-like args to plain dict
+                        raw_args = part.function_call.args
+                        if raw_args is None:
+                            args_dict = {}
+                        elif isinstance(raw_args, dict):
+                            args_dict = raw_args
+                        else:
+                            try:
+                                args_dict = dict(raw_args)
+                            except (TypeError, ValueError):
+                                args_dict = {}
+                        tool_calls.append({
+                            "name": part.function_call.name,
+                            "arguments": args_dict,
+                        })
+
+        # Gemini may return only function_call parts with no text.
+        # Ensure content is non-empty so decision trail logging works.
+        if not content and tool_calls:
+            content = f"[tool_use: {', '.join(tc['name'] for tc in tool_calls)}]"
 
         tokens_in = getattr(response.usage_metadata, "prompt_token_count", 0) or 0
         tokens_out = getattr(response.usage_metadata, "candidates_token_count", 0) or 0

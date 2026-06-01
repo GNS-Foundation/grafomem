@@ -860,7 +860,7 @@ class OrchestratorService:
         signature = None
         public_key = None
 
-        if self._decision_trail and raw_output:
+        if self._decision_trail and (raw_output or tool_calls):
             try:
                 record = self._decision_trail.log(
                     tenant_id=agent.tenant_id,
