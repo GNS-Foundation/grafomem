@@ -132,6 +132,10 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(
         self, request: Request, call_next: RequestResponseEndpoint
     ) -> Response:
+        # CORS preflight: let OPTIONS pass through so CORSMiddleware handles it
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
         # Skip auth for health/docs/portal/webhook/badge endpoints
         path = request.url.path
         if (path in _SKIP_AUTH_PATHS

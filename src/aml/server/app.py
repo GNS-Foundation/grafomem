@@ -509,9 +509,12 @@ def create_app(
             "https://cloud.grafomem.com",
             "https://docs.grafomem.com",
             "http://localhost:3000",
+            "http://localhost:3001",
+            "http://localhost:3002",
+            "http://localhost:3003",
             "http://localhost:8642",
         ],
-        allow_methods=["GET", "POST", "OPTIONS", "PUT", "DELETE"],
+        allow_methods=["GET", "POST", "OPTIONS", "PUT", "PATCH", "DELETE"],
         allow_headers=["*"],
         allow_credentials=True,
     )
