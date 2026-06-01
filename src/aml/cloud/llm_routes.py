@@ -129,11 +129,16 @@ def create_llm_router(llm_registry, tool_registry) -> APIRouter:
             raise HTTPException(404, f"Provider '{model_id}' not found")
 
         try:
+            # Strip whitespace/newlines from API keys (prevents httpx header errors)
+            new_key = body.get("api_key")
+            if isinstance(new_key, str):
+                new_key = new_key.strip()
+
             config = llm_registry.register_provider(
                 tenant_id=tenant_id,
                 provider=existing.provider.value,
                 model_id=model_id,
-                api_key=body.get("api_key", existing.api_key),
+                api_key=new_key or existing.api_key,
                 base_url=body.get("base_url", existing.base_url),
                 default_temperature=body.get("default_temperature", existing.default_temperature),
                 max_tokens=body.get("max_tokens", existing.max_tokens),
