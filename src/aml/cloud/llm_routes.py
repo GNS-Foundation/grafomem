@@ -117,6 +117,33 @@ def create_llm_router(llm_registry, tool_registry) -> APIRouter:
             raise HTTPException(404, f"Provider '{model_id}' not found")
         return {"deleted": True, "model_id": model_id}
 
+    @router.patch("/providers/{model_id}", response_model=LLMProviderResponse)
+    async def update_provider(model_id: str, request: Request):
+        """Update an existing LLM provider (API key, base URL, temperature, max tokens)."""
+        tenant_id = _get_tenant_id(request)
+        body = await request.json()
+
+        # Find existing provider
+        existing = llm_registry.get_provider(tenant_id, model_id)
+        if existing is None:
+            raise HTTPException(404, f"Provider '{model_id}' not found")
+
+        try:
+            config = llm_registry.register_provider(
+                tenant_id=tenant_id,
+                provider=existing.provider.value,
+                model_id=model_id,
+                api_key=body.get("api_key", existing.api_key),
+                base_url=body.get("base_url", existing.base_url),
+                default_temperature=body.get("default_temperature", existing.default_temperature),
+                max_tokens=body.get("max_tokens", existing.max_tokens),
+                enabled=body.get("enabled", existing.enabled),
+            )
+            return llm_registry.config_to_dict(config)
+        except Exception as e:
+            logger.error("Failed to update provider: %s", e)
+            raise HTTPException(500, f"Failed to update provider: {e}")
+
     # ------------------------------------------------------------------
     # Tool management
     # ------------------------------------------------------------------
