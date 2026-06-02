@@ -541,7 +541,10 @@ def create_app(
             # In spec_only mode we skip ensure_schema() — routes still mount
             def _init(svc):
                 if not spec_only:
-                    svc.ensure_schema()
+                    try:
+                        svc.ensure_schema()
+                    except Exception as e:
+                        logger.warning(f"Schema initialization failed for {svc.__class__.__name__}: {e}")
                 return svc
 
             from aml.cloud.tenant_manager import TenantManager
@@ -804,7 +807,10 @@ def create_app(
             # Sprint 22: Tenant Admin — member management + RBAC
             from aml.cloud.admin_routes import router as admin_router
             if not spec_only:
-                tm.ensure_members_schema()
+                try:
+                    tm.ensure_members_schema()
+                except Exception as e:
+                    logger.warning(f"Schema initialization failed for TenantManager members: {e}")
             app.include_router(admin_router, prefix="/v1/admin")
             logger.info("Tenant Admin enabled (/v1/admin)")
 
