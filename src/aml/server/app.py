@@ -635,7 +635,6 @@ def create_app(
             from aml.cloud.template_routes import get_template_routes
             app.include_router(get_template_routes(wm), prefix="/v1/templates")
             logger.info("Ontological Templates enabled (/v1/templates)")
-
             # R2 — Data-Provenance Customs
             from aml.cloud.provenance_customs import ProvenanceCustomsService
             from aml.cloud.provenance_customs_routes import create_provenance_customs_router
@@ -806,6 +805,11 @@ def create_app(
             app.state.audit_export_service = audit_export
             app.include_router(audit_export_router, prefix="/v1/audit/export")
             logger.info("Audit Export enabled (/v1/audit/export)")
+
+            # Sprint 29: Memory Sync & Export
+            from aml.cloud.memory_routes import get_memory_sync_routes
+            app.include_router(get_memory_sync_routes(wm, app.state.store_manager, audit_export), prefix="/v1/memory")
+            logger.info("Memory Sync & Export enabled (/v1/memory)")
         except ImportError as e:
             logger.warning("Cloud layer unavailable (missing deps): %s", e)
         except Exception as e:
