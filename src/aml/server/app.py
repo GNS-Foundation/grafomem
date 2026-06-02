@@ -414,6 +414,10 @@ def create_app(
             svc = getattr(app.state, svc_name, None)
             if svc is not None and hasattr(svc, "close"):
                 svc.close()
+        
+        manifold_svc = getattr(app.state, "manifold_service", None)
+        if manifold_svc is not None and hasattr(manifold_svc, "stop_background_worker"):
+            manifold_svc.stop_background_worker()
         # Close database pool last
         pool = getattr(app.state, "db_pool", None)
         if pool is not None:
@@ -640,6 +644,7 @@ def create_app(
             from aml.cloud.manifold import ManifoldService
             from aml.cloud.manifold_routes import create_manifold_router
             manifold_svc = ManifoldService(db_url, pool=pool)
+            manifold_svc.start_background_worker(interval_seconds=300)
             app.state.manifold_service = manifold_svc
             app.include_router(create_manifold_router(manifold_svc), prefix="/v1/manifold")
             logger.info("Semantic Manifold enabled (/v1/manifold)")

@@ -175,7 +175,10 @@ def serialize_manifold(df: pd.DataFrame, bmu: np.ndarray, side: int, source: str
             agentRole=row["agent_role"] if pd.notna(row["agent_role"]) else "unknown",
             workflowId=row["workflow_id"] if pd.notna(row["workflow_id"]) else "unknown",
             modelId=row["model_id"] if pd.notna(row["model_id"]) else "unknown",
-            createdAt=pd.Timestamp(row["created_at"]).isoformat()
+            createdAt=pd.Timestamp(row["created_at"]).isoformat(),
+            inputText=row.get("input_text", "") or "",
+            toolCalls=row.get("tool_calls", []) or [],
+            governanceLogs=row.get("governance_logs", []) or []
         ))
 
     edges = []
@@ -204,6 +207,97 @@ class ManifoldService:
         self.db_url = db_url
         self.pool = pool
         self._embedder = None
+        self._worker_thread = None
+        self._stop_event = None
+        self._setup_cache_table()
+
+    def _setup_cache_table(self):
+        import psycopg2
+        if self.pool and self.pool.pool:
+            conn = self.pool.pool.getconn()
+        else:
+            conn = psycopg2.connect(self.db_url)
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS manifold_cache (
+                        tenant_id TEXT PRIMARY KEY,
+                        payload JSONB NOT NULL,
+                        updated_at TIMESTAMP DEFAULT NOW()
+                    )
+                """)
+            conn.commit()
+        except Exception as e:
+            logger.error(f"Failed to setup manifold_cache table: {e}")
+            conn.rollback()
+        finally:
+            if self.pool and self.pool.pool:
+                self.pool.pool.putconn(conn)
+            else:
+                conn.close()
+
+    def start_background_worker(self, interval_seconds: int = 180):
+        import threading
+        import time
+        import json
+        
+        if self._worker_thread and self._worker_thread.is_alive():
+            return
+            
+        self._stop_event = threading.Event()
+        
+        def worker():
+            logger.info("Manifold background worker started.")
+            while not self._stop_event.is_set():
+                try:
+                    # For now we assume a single default tenant, 
+                    # in a real multi-tenant system we'd iterate over active tenants.
+                    tenant_id = "default"
+                    payload = self._compute_manifold_sync(tenant_id)
+                    
+                    import psycopg2
+                    if self.pool and self.pool.pool:
+                        conn = self.pool.pool.getconn()
+                    else:
+                        conn = psycopg2.connect(self.db_url)
+                    
+                    try:
+                        with conn.cursor() as cur:
+                            cur.execute("""
+                                INSERT INTO manifold_cache (tenant_id, payload, updated_at)
+                                VALUES (%s, %s, NOW())
+                                ON CONFLICT (tenant_id) DO UPDATE SET 
+                                payload = EXCLUDED.payload, 
+                                updated_at = NOW()
+                            """, (tenant_id, json.dumps(payload)))
+                        conn.commit()
+                        logger.info("Manifold background cache updated.")
+                    except Exception as e:
+                        logger.error(f"Error saving manifold cache: {e}")
+                        conn.rollback()
+                    finally:
+                        if self.pool and self.pool.pool:
+                            self.pool.pool.putconn(conn)
+                        else:
+                            conn.close()
+                            
+                except Exception as e:
+                    logger.error(f"Manifold worker iteration failed: {e}")
+                
+                # Sleep in short bursts to allow clean exit
+                for _ in range(interval_seconds):
+                    if self._stop_event.is_set():
+                        break
+                    time.sleep(1)
+                    
+        self._worker_thread = threading.Thread(target=worker, daemon=True)
+        self._worker_thread.start()
+
+    def stop_background_worker(self):
+        if self._stop_event:
+            self._stop_event.set()
+        if self._worker_thread:
+            self._worker_thread.join(timeout=5.0)
 
     @property
     def embedder(self) -> BgeEmbedder:
@@ -212,6 +306,61 @@ class ManifoldService:
         return self._embedder
 
     def generate_manifold(self, tenant_id: str) -> dict[str, Any]:
+        """Fetch precomputed manifold from cache, fallback to sync compute if missing."""
+        import psycopg2
+        import json
+        if self.pool and self.pool.pool:
+            conn = self.pool.pool.getconn()
+        else:
+            conn = psycopg2.connect(self.db_url)
+            
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT payload FROM manifold_cache WHERE tenant_id = %s", (tenant_id,))
+                row = cur.fetchone()
+                if row and row[0]:
+                    return row[0] if isinstance(row[0], dict) else json.loads(row[0])
+        except Exception as e:
+            logger.error(f"Failed to read manifold cache: {e}")
+            conn.rollback()
+        finally:
+            if self.pool and self.pool.pool:
+                self.pool.pool.putconn(conn)
+            else:
+                conn.close()
+                
+        # Fallback to sync computation if no cache exists yet
+        logger.info(f"No manifold cache found for tenant {tenant_id}, computing synchronously...")
+        payload = self._compute_manifold_sync(tenant_id)
+        
+        # Save it to cache for next time
+        try:
+            if self.pool and self.pool.pool:
+                conn = self.pool.pool.getconn()
+            else:
+                conn = psycopg2.connect(self.db_url)
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO manifold_cache (tenant_id, payload, updated_at)
+                    VALUES (%s, %s, NOW())
+                    ON CONFLICT (tenant_id) DO UPDATE SET 
+                    payload = EXCLUDED.payload, 
+                    updated_at = NOW()
+                """, (tenant_id, json.dumps(payload)))
+            conn.commit()
+        except Exception as e:
+            logger.error(f"Failed to save fallback cache: {e}")
+            if 'conn' in locals() and conn: conn.rollback()
+        finally:
+            if 'conn' in locals() and conn:
+                if self.pool and self.pool.pool:
+                    self.pool.pool.putconn(conn)
+                else:
+                    conn.close()
+                    
+        return payload
+
+    def _compute_manifold_sync(self, tenant_id: str) -> dict[str, Any]:
         """Fetch data from PostgreSQL, train SOM, and return serialized manifold."""
         # Using a direct psycopg2 connection for pandas.read_sql
         import psycopg2
