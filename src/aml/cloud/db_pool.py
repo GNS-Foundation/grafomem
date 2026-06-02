@@ -34,6 +34,36 @@ from psycopg.rows import dict_row
 logger = logging.getLogger("grafomem.cloud.db_pool")
 
 
+class _PooledConnectionProxy:
+    """Wraps a psycopg Connection to auto-return to the pool on GC.
+    
+    This patches the legacy `_get_conn()` usage where callers check out
+    a connection but never return it.
+    """
+    __slots__ = ("_db_pool", "_conn", "_returned")
+
+    def __init__(self, db_pool: DatabasePool, conn: psycopg.Connection):
+        self._db_pool = db_pool
+        self._conn = conn
+        self._returned = False
+
+    def __getattr__(self, item: str) -> Any:
+        return getattr(self._conn, item)
+
+    def __enter__(self):
+        return self._conn.__enter__()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        return self._conn.__exit__(exc_type, exc_val, exc_tb)
+
+    def __del__(self):
+        if not getattr(self, "_returned", True):
+            try:
+                self._db_pool.putconn(self)
+            except Exception:
+                pass
+
+
 class DatabasePool:
     """Centralized connection pool wrapping ``psycopg_pool.ConnectionPool``.
 
@@ -126,20 +156,30 @@ class DatabasePool:
             A dict-row connection with autocommit enabled.
         """
         if self._pool is not None:
-            return self._pool.getconn()
-        return psycopg.connect(
-            self._db_url, row_factory=dict_row, autocommit=True,
-        )
+            conn = self._pool.getconn()
+        else:
+            conn = psycopg.connect(
+                self._db_url, row_factory=dict_row, autocommit=True,
+            )
+        return _PooledConnectionProxy(self, conn)
 
-    def putconn(self, conn: psycopg.Connection) -> None:
+    def putconn(self, conn: psycopg.Connection | _PooledConnectionProxy) -> None:
         """Return a connection to the pool.
 
         If the pool is unavailable, closes the connection directly.
         """
-        if self._pool is not None:
-            self._pool.putconn(conn)
+        if isinstance(conn, _PooledConnectionProxy):
+            if getattr(conn, "_returned", True):
+                return
+            conn._returned = True
+            raw_conn = conn._conn
         else:
-            conn.close()
+            raw_conn = conn
+
+        if self._pool is not None:
+            self._pool.putconn(raw_conn)
+        else:
+            raw_conn.close()
 
     @property
     def stats(self) -> dict[str, Any]:
