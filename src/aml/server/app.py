@@ -635,6 +635,15 @@ def create_app(
             from aml.cloud.template_routes import get_template_routes
             app.include_router(get_template_routes(wm), prefix="/v1/templates")
             logger.info("Ontological Templates enabled (/v1/templates)")
+            
+            # Sprint 30: Semantic Manifold (GHSOM)
+            from aml.cloud.manifold import ManifoldService
+            from aml.cloud.manifold_routes import create_manifold_router
+            manifold_svc = ManifoldService(db_url, pool=pool)
+            app.state.manifold_service = manifold_svc
+            app.include_router(create_manifold_router(manifold_svc), prefix="/v1/manifold")
+            logger.info("Semantic Manifold enabled (/v1/manifold)")
+
             # R2 — Data-Provenance Customs
             from aml.cloud.provenance_customs import ProvenanceCustomsService
             from aml.cloud.provenance_customs_routes import create_provenance_customs_router
