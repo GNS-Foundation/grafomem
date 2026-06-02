@@ -204,6 +204,11 @@ class DecisionTrailService:
         """Create the ``decision_records`` table if it does not exist."""
         conn = self._get_conn()
         conn.execute(_SCHEMA_SQL)
+        # Migrate existing tables that don't have parent_decision_id
+        try:
+            conn.execute("ALTER TABLE decision_records ADD COLUMN IF NOT EXISTS parent_decision_id TEXT REFERENCES decision_records(decision_id);")
+        except Exception as e:
+            logger.warning(f"Could not alter decision_records table: {e}")
         logger.info("Decision Trail schema ensured")
 
     # ------------------------------------------------------------------
