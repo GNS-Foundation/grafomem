@@ -212,8 +212,8 @@ class ManifoldService:
 
     def ensure_schema(self):
         import psycopg2
-        if self.pool and self.pool.pool:
-            conn = self.pool.pool.getconn()
+        if self.pool:
+            conn = self.pool.getconn()
         else:
             conn = psycopg2.connect(self.db_url)
         try:
@@ -230,8 +230,8 @@ class ManifoldService:
             logger.error(f"Failed to setup manifold_cache table: {e}")
             conn.rollback()
         finally:
-            if self.pool and self.pool.pool:
-                self.pool.pool.putconn(conn)
+            if self.pool:
+                self.pool.putconn(conn)
             else:
                 conn.close()
 
@@ -255,8 +255,8 @@ class ManifoldService:
                     payload = self._compute_manifold_sync(tenant_id)
                     
                     import psycopg2
-                    if self.pool and self.pool.pool:
-                        conn = self.pool.pool.getconn()
+                    if self.pool:
+                        conn = self.pool.getconn()
                     else:
                         conn = psycopg2.connect(self.db_url)
                     
@@ -275,8 +275,8 @@ class ManifoldService:
                         logger.error(f"Error saving manifold cache: {e}")
                         conn.rollback()
                     finally:
-                        if self.pool and self.pool.pool:
-                            self.pool.pool.putconn(conn)
+                        if self.pool:
+                            self.pool.putconn(conn)
                         else:
                             conn.close()
                             
@@ -308,8 +308,8 @@ class ManifoldService:
         """Fetch precomputed manifold from cache, fallback to sync compute if missing."""
         import psycopg2
         import json
-        if self.pool and self.pool.pool:
-            conn = self.pool.pool.getconn()
+        if self.pool:
+            conn = self.pool.getconn()
         else:
             conn = psycopg2.connect(self.db_url)
             
@@ -323,8 +323,8 @@ class ManifoldService:
             logger.error(f"Failed to read manifold cache: {e}")
             conn.rollback()
         finally:
-            if self.pool and self.pool.pool:
-                self.pool.pool.putconn(conn)
+            if self.pool:
+                self.pool.putconn(conn)
             else:
                 conn.close()
                 
@@ -334,8 +334,8 @@ class ManifoldService:
         
         # Save it to cache for next time
         try:
-            if self.pool and self.pool.pool:
-                conn = self.pool.pool.getconn()
+            if self.pool:
+                conn = self.pool.getconn()
             else:
                 conn = psycopg2.connect(self.db_url)
             with conn.cursor() as cur:
@@ -352,8 +352,8 @@ class ManifoldService:
             if 'conn' in locals() and conn: conn.rollback()
         finally:
             if 'conn' in locals() and conn:
-                if self.pool and self.pool.pool:
-                    self.pool.pool.putconn(conn)
+                if self.pool:
+                    self.pool.putconn(conn)
                 else:
                     conn.close()
                     
@@ -363,8 +363,8 @@ class ManifoldService:
         """Fetch data from PostgreSQL, train SOM, and return serialized manifold."""
         # Using a direct psycopg2 connection for pandas.read_sql
         import psycopg2
-        if self.pool and self.pool.pool:
-            conn = self.pool.pool.getconn()
+        if self.pool:
+            conn = self.pool.getconn()
         else:
             conn = psycopg2.connect(self.db_url)
             
@@ -397,7 +397,7 @@ class ManifoldService:
             return serialize_manifold(df, bmu, side, source="live")
             
         finally:
-            if self.pool and self.pool.pool:
-                self.pool.pool.putconn(conn)
+            if self.pool:
+                self.pool.putconn(conn)
             else:
                 conn.close()
