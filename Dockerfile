@@ -76,6 +76,6 @@ CMD grafomem serve \
     --host 0.0.0.0 \
     --port ${PORT} \
     -b ${GRAFOMEM_BACKEND} \
-    --db ${GRAFOMEM_DB_URL:-/data/grafomem.db} \
+    --db ${DATABASE_URL:-${GRAFOMEM_DB_URL:-/data/grafomem.db}} \
     --auth ${GRAFOMEM_AUTH_MODE} \
     -e bge
