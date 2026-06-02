@@ -209,9 +209,8 @@ class ManifoldService:
         self._embedder = None
         self._worker_thread = None
         self._stop_event = None
-        self._setup_cache_table()
 
-    def _setup_cache_table(self):
+    def ensure_schema(self):
         import psycopg2
         if self.pool and self.pool.pool:
             conn = self.pool.pool.getconn()

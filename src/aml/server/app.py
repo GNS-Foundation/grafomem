@@ -644,7 +644,9 @@ def create_app(
             from aml.cloud.manifold import ManifoldService
             from aml.cloud.manifold_routes import create_manifold_router
             manifold_svc = ManifoldService(db_url, pool=pool)
-            manifold_svc.start_background_worker(interval_seconds=300)
+            _init(manifold_svc)
+            if not spec_only:
+                manifold_svc.start_background_worker(interval_seconds=300)
             app.state.manifold_service = manifold_svc
             app.include_router(create_manifold_router(manifold_svc), prefix="/v1/manifold")
             logger.info("Semantic Manifold enabled (/v1/manifold)")
