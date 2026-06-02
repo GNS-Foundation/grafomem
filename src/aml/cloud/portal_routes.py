@@ -181,20 +181,20 @@ async def signup(req: SignupRequest, request: Request):
 @router.post("/login", response_model=TokenResponse)
 async def login(req: LoginRequest, request: Request):
     """Authenticate with email and password, receive JWT."""
-    pa = _portal_auth(request)
     try:
+        pa = _portal_auth(request)
         result = pa.login(email=req.email, password=req.password)
+        if result is None:
+            raise HTTPException(401, "Invalid email or password")
+        info, token = result
+        return TokenResponse(token=token, **info)
+    except HTTPException:
+        raise
     except Exception as exc:
         import traceback
         err = traceback.format_exc()
         logger.error(f"Login error: {err}")
         raise HTTPException(500, f"Login crashed: {exc}")
-
-    if result is None:
-        raise HTTPException(401, "Invalid email or password")
-
-    info, token = result
-    return TokenResponse(token=token, **info)
 
 
 @router.post("/sync")
