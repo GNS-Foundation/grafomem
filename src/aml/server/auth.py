@@ -156,11 +156,14 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
                 auth_header = request.headers.get("Authorization", "")
                 if auth_header.startswith("Bearer "):
                     api_key = auth_header[7:].strip()
+            if not api_key:
+                # Fall back to query param for EventSource / WebSocket support
+                api_key = request.query_params.get("token", "")
 
             if not api_key:
                 return JSONResponse(
                     status_code=401,
-                    content={"detail": "Missing X-API-Key or Authorization header."},
+                    content={"detail": "Missing X-API-Key, Authorization header, or token query param."},
                 )
 
             tenant_id = self._resolve_api_key(api_key)
@@ -193,11 +196,14 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
             # Also check X-API-Key header (portal uses this)
             api_key = request.headers.get("X-API-Key", "")
             if not api_key:
+                # Finally, check query param
+                api_key = request.query_params.get("token", "")
+            if not api_key:
                 return JSONResponse(
                     status_code=401,
                     content={
                         "detail": "Missing or malformed Authorization header. "
-                                  "Expected: Bearer <token>",
+                                  "Expected: Bearer <token>"
                     },
                 )
             token = api_key

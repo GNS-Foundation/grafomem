@@ -296,11 +296,11 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
             logger.error("Workflow execution failed: %s", e)
             raise HTTPException(500, f"Workflow execution failed: {e}")
 
-    @router.post("/workflows/{workflow_id}/stream")
+    @router.get("/workflows/{workflow_id}/stream")
     async def stream_workflow(
         workflow_id: str,
-        req: RunWorkflowRequest,
         request: Request,
+        input_text: str = Query(..., description="The initial input for the workflow"),
     ):
         """Stream a workflow execution via Server-Sent Events.
 
@@ -349,7 +349,7 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
         def _run_in_thread():
             try:
                 orchestrator.run_workflow(
-                    workflow_id, req.input_text, emitter=emitter,
+                    workflow_id, input_text, emitter=emitter,
                 )
             except Exception as e:
                 logger.error("Streaming workflow failed: %s", e)
@@ -359,11 +359,21 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
         loop.run_in_executor(executor, _run_in_thread)
 
         async def _event_generator():
+            import json
             try:
                 async for event in emitter.events():
+                    d = dict(event.data)
+                    d["type"] = event.event
+                    d["timestamp"] = event.timestamp
+                    d["workflow_id"] = event.workflow_id
+                    if event.step_index is not None:
+                        d["step_index"] = event.step_index
+                    if event.agent_name:
+                        d["agent_name"] = event.agent_name
+                        
                     yield {
-                        "event": event.event,
-                        "data": event.to_sse(),
+                        "event": "message",
+                        "data": json.dumps(d, default=str),
                     }
             except asyncio.CancelledError:
                 # Client disconnected
@@ -389,6 +399,76 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
             return orchestrator.workflow_to_dict(result)
         except ValueError as e:
             raise HTTPException(400, str(e))
+
+    @router.get("/workflows/{workflow_id}/resume/stream")
+    async def resume_workflow_stream(
+        workflow_id: str,
+        approved: bool,
+        request: Request,
+    ):
+        """Resume a workflow waiting for HITL approval and stream the results."""
+        # Using the same token mechanism as stream_workflow
+        token = request.query_params.get("token")
+        if not token:
+            raise HTTPException(401, "Missing token")
+        try:
+            payload = verify_portal_token(token)
+            tenant_id = payload["sub"]
+        except Exception as e:
+            raise HTTPException(401, f"Invalid token: {e}")
+
+        workflow = orchestrator.get_workflow(workflow_id)
+        if workflow is None or workflow.tenant_id != tenant_id:
+            raise HTTPException(404, f"Workflow '{workflow_id}' not found")
+
+        if workflow.status.value != "waiting_hitl":
+            raise HTTPException(409, f"Workflow is not waiting for HITL (status={workflow.status.value})")
+
+        from aml.cloud.streaming_events import StreamEmitter
+        import asyncio
+        loop = asyncio.get_event_loop()
+        emitter = StreamEmitter(loop)
+
+        # Start execution in a background thread
+        from concurrent.futures import ThreadPoolExecutor
+        executor = ThreadPoolExecutor(max_workers=1)
+
+        def _run_in_thread():
+            try:
+                orchestrator.resume_workflow(
+                    workflow_id,
+                    approved,
+                    emitter=emitter,
+                )
+            except Exception as e:
+                logger.error("Resume stream failed: %s", e)
+                emitter.emit("workflow.error", {"error": str(e)})
+                emitter.close()
+
+        loop.run_in_executor(executor, _run_in_thread)
+
+        async def _event_generator():
+            import json
+            try:
+                async for event in emitter.events():
+                    d = dict(event.data)
+                    d["type"] = event.event
+                    d["timestamp"] = event.timestamp
+                    d["workflow_id"] = event.workflow_id
+                    if event.step_index is not None:
+                        d["step_index"] = event.step_index
+                    if event.agent_name:
+                        d["agent_name"] = event.agent_name
+                        
+                    yield {
+                        "event": "message",
+                        "data": json.dumps(d, default=str),
+                    }
+            except asyncio.CancelledError:
+                # Client disconnected
+                emitter.close()
+
+        return EventSourceResponse(_event_generator())
 
     @router.post("/workflows/{workflow_id}/terminate")
     async def terminate_workflow(workflow_id: str, request: Request):

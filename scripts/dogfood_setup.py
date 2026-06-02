@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Sprint 25 — Dogfood Permanent: GNS Engineering Tenant Setup
+Sprint 26 — Human-in-the-Loop (HITL) Manual Intervention
 
 Creates the gns-engineering production tenant on cloud.grafomem.com,
 seeds memory stores, defines governed agents and policies, and registers
@@ -166,6 +166,8 @@ class DogfoodSetup:
             "Sprint 19–20: Continuous Assurance + RoutingPool — Scheduled conformance checks with drift detection. Read-replica routing with automatic failover.",
             "Sprint 21–22: Resilience fixes + Tenant Admin — Tool_use sentinel, proto→dict, max_tokens floor. RBAC tenant management with invite/role/remove.",
             "Sprint 23–24: Audit Export + SDK v2 — BLAKE2b+Ed25519 signed ZIP exports. Async client, pagination, webhook HMAC verification. SDK version 0.2.0.",
+            "Sprint 25: Dogfood Permanent Setup + Security — GNS Engineering Tenant setup script. CORS wildcard lockdown and robust Auth middleware implementation.",
+            "Sprint 26: Human-in-the-Loop (HITL) Manual Intervention — Streaming backend resumption via SSE, frontend interactive Governance Escalation UI (Approve/Reject).",
         ]
         store_id = self.store_ids["decisions"]
         written = 0

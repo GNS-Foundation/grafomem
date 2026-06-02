@@ -1,0 +1,35 @@
+apiVersion: grafomem.com/v1alpha1
+kind: OntologyTemplate
+metadata:
+  name: gns-software-engineering
+  version: 1.0.0
+  description: "Canonical CI/CD and SDLC ontology for governed software teams"
+classes:
+  - name: CodeChange
+    properties:
+      title: { type: string, required: true }
+      files_changed: { type: integer }
+  - name: Deployment
+    properties:
+      environment: { type: string, required: true }
+      status: { type: string }
+  - name: Vulnerability
+    properties:
+      cve_id: { type: string, required: true }
+      severity: { type: string }
+relationships:
+  - name: CodeChangeTriggersDeployment
+    from: CodeChange
+    to: Deployment
+    cardinality: many_to_one
+  - name: DeploymentHasVulnerability
+    from: Deployment
+    to: Vulnerability
+    cardinality: many_to_many
+axioms:
+  - name: approve_deploy
+    subject: Deployment
+    required_trust_tier: verified
+  - name: merge_code
+    subject: CodeChange
+    required_trust_tier: basic

@@ -120,10 +120,14 @@ def _require_portal_auth(request: Request) -> dict:
         401 if missing/invalid token.
     """
     auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(401, "Missing Authorization: Bearer <token> header")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:].strip()
+    else:
+        token = request.headers.get("X-API-Key", "")
 
-    token = auth_header[7:].strip()
+    if not token:
+        raise HTTPException(401, "Missing Authorization or X-API-Key header")
+
     pa = _portal_auth(request)
     info = pa.verify_token(token)
     if info is None:

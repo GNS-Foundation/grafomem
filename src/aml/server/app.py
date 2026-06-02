@@ -631,6 +631,11 @@ def create_app(
             app.state.world_model = wm
             app.include_router(create_world_model_router(wm))
 
+            # Sprint 28: Ontological Templates
+            from aml.cloud.template_routes import get_template_routes
+            app.include_router(get_template_routes(wm), prefix="/v1/templates")
+            logger.info("Ontological Templates enabled (/v1/templates)")
+
             # R2 — Data-Provenance Customs
             from aml.cloud.provenance_customs import ProvenanceCustomsService
             from aml.cloud.provenance_customs_routes import create_provenance_customs_router
@@ -708,6 +713,7 @@ def create_app(
                 store_manager=app.state.store_manager,
                 llm_registry=llm_reg,
                 tool_registry=tool_reg,
+                gcrumbs=gc,
                 pool=pool,
             )
             _init(orch)

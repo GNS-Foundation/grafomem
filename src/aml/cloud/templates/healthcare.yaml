@@ -1,0 +1,28 @@
+apiVersion: grafomem.com/v1alpha1
+kind: OntologyTemplate
+metadata:
+  name: healthcare-compliance
+  version: 1.0.0
+  description: "EHR ontology and compliance rules for HIPAA-regulated data"
+classes:
+  - name: PatientRecord
+    properties:
+      mrn: { type: string, required: true }
+      dob: { type: string }
+      is_anonymized: { type: boolean }
+  - name: Diagnosis
+    properties:
+      icd10_code: { type: string, required: true }
+      description: { type: string }
+relationships:
+  - name: PatientHasDiagnosis
+    from: PatientRecord
+    to: Diagnosis
+    cardinality: many_to_many
+axioms:
+  - name: view_phi
+    subject: PatientRecord
+    required_trust_tier: verified
+  - name: export_dataset
+    subject: PatientRecord
+    required_trust_tier: trusted

@@ -133,6 +133,10 @@ class StepRecord:
     tool_results: list[dict]
     tokens_used: int
     latency_ms: int
+    latency_governance_ms: int
+    latency_memory_ms: int
+    latency_llm_ms: int
+    latency_tools_ms: int
     # Decision Trail link
     decision_id: str | None
     # Provenance
@@ -237,6 +241,10 @@ CREATE TABLE IF NOT EXISTS orchestrator_steps (
     tool_results        JSONB NOT NULL DEFAULT '[]',
     tokens_used         INTEGER NOT NULL DEFAULT 0,
     latency_ms          INTEGER NOT NULL DEFAULT 0,
+    latency_governance_ms INTEGER NOT NULL DEFAULT 0,
+    latency_memory_ms   INTEGER NOT NULL DEFAULT 0,
+    latency_llm_ms      INTEGER NOT NULL DEFAULT 0,
+    latency_tools_ms    INTEGER NOT NULL DEFAULT 0,
     decision_id         TEXT,
     signature           BYTEA,
     public_key          BYTEA,
@@ -293,6 +301,7 @@ class OrchestratorService:
         llm_registry: Any | None = None,
         tool_registry: Any | None = None,
         execution_receipts: Any | None = None,
+        gcrumbs: Any | None = None,
         pool=None,
     ) -> None:
         self._db_url = db_url
@@ -305,6 +314,7 @@ class OrchestratorService:
         self._llm_registry = llm_registry
         self._tool_registry = tool_registry
         self._execution_receipts = execution_receipts
+        self._gcrumbs = gcrumbs
 
     # ------------------------------------------------------------------
     # Connection
@@ -604,6 +614,7 @@ class OrchestratorService:
         *,
         parent_step_id: str | None = None,
         emitter: StreamEmitter | None = None,
+        ignore_governance: bool = False,
     ) -> StepRecord:
         """Execute a single governed agent step.
 
@@ -626,16 +637,29 @@ class OrchestratorService:
         )
 
         # ── 1. GOVERNANCE GATE ──────────────────────────────
+        t0_total = time.monotonic()
+        t0_gov = time.monotonic()
+        latency_governance_ms = 0
+        latency_memory_ms = 0
+        latency_llm_ms = 0
+        latency_tools_ms = 0
+
         gov_context = {
             "model_id": agent.model_id,
             "store_id": agent.memory_stores[0] if agent.memory_stores else None,
             "query": input_text,
             "tokens": agent.max_tokens_per_step,
         }
-        allowed, gov_logs = self._governance.evaluate_and_gate(
-            agent.tenant_id, "inference", gov_context,
-        )
-        gov_log_dicts = [self._governance.log_to_dict(l) for l in gov_logs]
+        if ignore_governance:
+            allowed = True
+            gov_logs = []
+            gov_log_dicts = []
+        else:
+            allowed, gov_logs = self._governance.evaluate_and_gate(
+                agent.tenant_id, "inference", gov_context,
+            )
+            gov_log_dicts = [self._governance.log_to_dict(l) for l in gov_logs]
+        latency_governance_ms = int((time.monotonic() - t0_gov) * 1000)
 
         if not allowed:
             # Determine if denied or escalated
@@ -660,7 +684,11 @@ class OrchestratorService:
                 tool_calls=[],
                 tool_results=[],
                 tokens_used=0,
-                latency_ms=0,
+                latency_ms=int((time.monotonic() - t0_total) * 1000),
+                latency_governance_ms=latency_governance_ms,
+                latency_memory_ms=0,
+                latency_llm_ms=0,
+                latency_tools_ms=0,
                 decision_id=None,
                 signature=None,
                 public_key=None,
@@ -696,6 +724,7 @@ class OrchestratorService:
             return step
 
         # ── 2. MEMORY RETRIEVE ──────────────────────────────
+        t0_mem = time.monotonic()
         retrieved_facts: list[dict[str, Any]] = []
         if self._store_manager and agent.memory_stores:
             from aml.backends.interface import RetrieveOptions
@@ -725,6 +754,7 @@ class OrchestratorService:
                             "Memory retrieve failed for store=%s: %s",
                             store_id, e,
                         )
+        latency_memory_ms = int((time.monotonic() - t0_mem) * 1000)
 
         # Stream: memory retrieval event
         if emitter:
@@ -742,7 +772,6 @@ class OrchestratorService:
         raw_output = ""
         tool_calls: list[dict] = []
         tokens_used = 0
-        latency_ms = 0
 
         if self._llm_registry is not None:
             # Build messages with memory context
@@ -783,7 +812,7 @@ class OrchestratorService:
                 llm_response = self._llm_registry.infer(
                     agent.tenant_id, llm_request,
                 )
-                latency_ms = int((time.monotonic() - t0) * 1000)
+                latency_llm_ms = int((time.monotonic() - t0) * 1000)
 
                 raw_output = llm_response.content
                 tool_calls = llm_response.tool_calls
@@ -795,7 +824,7 @@ class OrchestratorService:
                         "step.llm_complete",
                         {
                             "tokens_used": tokens_used,
-                            "latency_ms": latency_ms,
+                            "latency_ms": latency_llm_ms,
                             "has_tool_calls": bool(tool_calls),
                             "output_preview": raw_output[:200] if raw_output else "",
                         },
@@ -815,6 +844,7 @@ class OrchestratorService:
             )
 
         # ── 4. TOOL EXECUTION ──────────────────────────────
+        t0_tools = time.monotonic()
         tool_results: list[dict] = []
         if tool_calls and self._tool_registry:
             for tc in tool_calls:
@@ -841,19 +871,21 @@ class OrchestratorService:
                         "governance_allowed": True,
                     })
 
-            # Stream: tool call events
-            if emitter:
-                for tr in tool_results:
-                    emitter.emit(
-                        "step.tool_call",
-                        {
-                            "tool_name": tr.get("name", "unknown"),
-                            "success": tr.get("success", False),
-                            "governance_allowed": tr.get("governance_allowed", True),
-                        },
-                        step_index=step_number,
-                        agent_name=agent.name,
-                    )
+        latency_tools_ms = int((time.monotonic() - t0_tools) * 1000)
+
+        # Stream: tool call events
+        if emitter:
+            for tr in tool_results:
+                emitter.emit(
+                    "step.tool_call",
+                    {
+                        "tool_name": tr.get("name", "unknown"),
+                        "success": tr.get("success", False),
+                        "governance_allowed": tr.get("governance_allowed", True),
+                    },
+                    step_index=step_number,
+                    agent_name=agent.name,
+                )
 
         # ── 5. DECISION TRAIL ──────────────────────────────
         decision_id = None
@@ -879,7 +911,7 @@ class OrchestratorService:
                     retrieval_scores=[],
                     parameters={"temperature": agent.temperature},
                     output_tokens=tokens_used,
-                    latency_ms=latency_ms,
+                    latency_ms=latency_llm_ms,
                     parent_decision_id=parent_step_id,
                 )
                 decision_id = record.decision_id
@@ -915,7 +947,11 @@ class OrchestratorService:
             tool_calls=tool_calls,
             tool_results=tool_results,
             tokens_used=tokens_used,
-            latency_ms=latency_ms,
+            latency_ms=int((time.monotonic() - t0_total) * 1000),
+            latency_governance_ms=latency_governance_ms,
+            latency_memory_ms=latency_memory_ms,
+            latency_llm_ms=latency_llm_ms,
+            latency_tools_ms=latency_tools_ms,
             decision_id=decision_id,
             signature=signature,
             public_key=public_key,
@@ -969,7 +1005,11 @@ class OrchestratorService:
                     "status": "completed",
                     "decision_id": decision_id,
                     "tokens_used": tokens_used,
-                    "latency_ms": latency_ms,
+                    "latency_ms": int((time.monotonic() - t0_total) * 1000),
+                    "latency_governance_ms": latency_governance_ms,
+                    "latency_memory_ms": latency_memory_ms,
+                    "latency_llm_ms": latency_llm_ms,
+                    "latency_tools_ms": latency_tools_ms,
                     "facts_retrieved": len(retrieved_facts),
                     "tool_calls": len(tool_calls),
                     "output_preview": raw_output[:200] if raw_output else "",
@@ -1153,8 +1193,9 @@ class OrchestratorService:
                     agent_name=step.agent_id[:8],
                 )
 
-            # If denied or escalated, stop
             if step.status in (StepStatus.DENIED, StepStatus.ESCALATED):
+                if emitter and step.status == StepStatus.ESCALATED:
+                    emitter.emit("workflow.waiting_hitl", {"message": "Escalated to human"})
                 return
 
             # Chain output to next agent
@@ -1269,6 +1310,8 @@ class OrchestratorService:
         self,
         workflow_id: str,
         hitl_approved: bool,
+        *,
+        emitter: StreamEmitter | None = None,
     ) -> Workflow:
         """Resume a workflow that is waiting for HITL approval."""
         workflow = self.get_workflow(workflow_id)
@@ -1292,39 +1335,86 @@ class OrchestratorService:
 
             return self.get_workflow(workflow_id)
 
-        # Re-run from the last step's input
-        self._update_workflow_status(workflow_id, WorkflowStatus.RUNNING)
+        try:
+            import time
+            # Re-run from the last step's input
+            self._update_workflow_status(workflow_id, WorkflowStatus.RUNNING)
+    
+            # Find the last escalated step and re-execute from there
+            steps = self.get_workflow_steps(workflow_id)
+            if steps:
+                last_step = steps[-1]
+                # Continue with the next agent in sequence
+                if workflow.mode == WorkflowMode.SEQUENTIAL:
+                    agent_idx = workflow.agent_ids.index(last_step.agent_id)
+                    remaining = workflow.agent_ids[agent_idx:]
+                    current_input = last_step.input_text
+    
+                    for agent_id in remaining:
+                        if emitter:
+                            agent_def = self.get_agent(agent_id)
+                            emitter.emit(
+                                "step.started",
+                                {"agent_role": agent_def.role.value if agent_def else "unknown"},
+                                step_index=len(self.get_workflow_steps(workflow_id)) + 1,
+                                agent_name=agent_def.name if agent_def else agent_id[:8],
+                            )
 
-        # Find the last escalated step and re-execute from there
-        steps = self.get_workflow_steps(workflow_id)
-        if steps:
-            last_step = steps[-1]
-            # Continue with the next agent in sequence
-            if workflow.mode == WorkflowMode.SEQUENTIAL:
-                agent_idx = workflow.agent_ids.index(last_step.agent_id)
-                remaining = workflow.agent_ids[agent_idx:]
-                current_input = last_step.input_text
+                        step = self.execute_step(
+                            workflow_id, agent_id, current_input,
+                            emitter=emitter,
+                            ignore_governance=True if agent_id == last_step.agent_id else False,
+                        )
 
-                for agent_id in remaining:
-                    step = self.execute_step(
-                        workflow_id, agent_id, current_input,
-                    )
-                    if step.status != StepStatus.COMPLETED:
-                        break
-                    current_input = step.raw_output
+                        if emitter and step.governance_allowed:
+                            emitter.emit(
+                                "step.governance_pass",
+                                {"policies_evaluated": len(step.governance_logs), "allowed": True},
+                                step_index=step.step_number,
+                                agent_name=step.agent_id[:8],
+                            )
 
-        wf = self.get_workflow(workflow_id)
-        if wf and wf.status == WorkflowStatus.RUNNING:
-            self._update_workflow_status(
-                workflow_id, WorkflowStatus.COMPLETED,
-            )
-            self._set_workflow_completed(workflow_id)
-
-            try:
-                from aml.cloud.metrics import WORKFLOWS_TOTAL
-                WORKFLOWS_TOTAL.labels(status=WorkflowStatus.COMPLETED.value).inc()
-            except Exception:
-                pass
+                        if step.status != StepStatus.COMPLETED:
+                            break
+                        current_input = step.raw_output
+                
+                elif workflow.mode == WorkflowMode.ROUND_ROBIN:
+                    self._run_round_robin(workflow, last_step.raw_output, emitter=emitter)
+                elif workflow.mode == WorkflowMode.SUPERVISOR:
+                    self._run_supervisor(workflow, last_step.raw_output, emitter=emitter)
+    
+            wf = self.get_workflow(workflow_id)
+            if wf and wf.status == WorkflowStatus.RUNNING:
+                self._update_workflow_status(
+                    workflow_id, WorkflowStatus.COMPLETED,
+                )
+                self._set_workflow_completed(workflow_id)
+    
+                try:
+                    from aml.cloud.metrics import WORKFLOWS_TOTAL
+                    WORKFLOWS_TOTAL.labels(status=WorkflowStatus.COMPLETED.value).inc()
+                except Exception:
+                    pass
+            
+            if emitter:
+                final = self.get_workflow(workflow_id)
+                duration_ms = int((time.monotonic() - emitter._start_time) * 1000) if hasattr(emitter, "_start_time") else 0
+                emitter.emit(
+                    "workflow.complete",
+                    {
+                        "status": final.status.value if final else "completed",
+                        "total_steps": final.current_step if final else 0,
+                        "total_tokens": final.total_tokens if final else 0,
+                        "duration_ms": duration_ms,
+                    },
+                )
+                emitter.close()
+        except Exception as e:
+            logger.error("Resume failed: %s", e)
+            self._update_workflow_status(workflow_id, WorkflowStatus.FAILED)
+            if emitter:
+                emitter.emit("workflow.error", {"error": str(e)})
+                emitter.close()
 
         return self.get_workflow(workflow_id)
 
@@ -1480,10 +1570,12 @@ class OrchestratorService:
             "(step_id, workflow_id, agent_id, tenant_id, step_number, "
             " input_text, retrieved_facts, governance_allowed, governance_logs, "
             " model_id, raw_output, tool_calls, tool_results, "
-            " tokens_used, latency_ms, decision_id, signature, public_key, "
+            " tokens_used, latency_ms, latency_governance_ms, latency_memory_ms, "
+            " latency_llm_ms, latency_tools_ms, decision_id, signature, public_key, "
             " status, created_at) "
             "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, "
-            "        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            "        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, "
+            "        %s, %s, %s, %s)",
             (
                 kwargs["step_id"],
                 kwargs["workflow_id"],
@@ -1500,6 +1592,10 @@ class OrchestratorService:
                 json.dumps(kwargs["tool_results"]),
                 kwargs["tokens_used"],
                 kwargs["latency_ms"],
+                kwargs.get("latency_governance_ms", 0),
+                kwargs.get("latency_memory_ms", 0),
+                kwargs.get("latency_llm_ms", 0),
+                kwargs.get("latency_tools_ms", 0),
                 kwargs["decision_id"],
                 kwargs["signature"],
                 kwargs["public_key"],
@@ -1524,6 +1620,10 @@ class OrchestratorService:
             tool_results=kwargs["tool_results"],
             tokens_used=kwargs["tokens_used"],
             latency_ms=kwargs["latency_ms"],
+            latency_governance_ms=kwargs.get("latency_governance_ms", 0),
+            latency_memory_ms=kwargs.get("latency_memory_ms", 0),
+            latency_llm_ms=kwargs.get("latency_llm_ms", 0),
+            latency_tools_ms=kwargs.get("latency_tools_ms", 0),
             decision_id=kwargs["decision_id"],
             signature=kwargs["signature"],
             public_key=kwargs["public_key"],
@@ -1652,6 +1752,10 @@ class OrchestratorService:
             tool_results=_load(row.get("tool_results")),
             tokens_used=row.get("tokens_used", 0),
             latency_ms=row.get("latency_ms", 0),
+            latency_governance_ms=row.get("latency_governance_ms", 0),
+            latency_memory_ms=row.get("latency_memory_ms", 0),
+            latency_llm_ms=row.get("latency_llm_ms", 0),
+            latency_tools_ms=row.get("latency_tools_ms", 0),
             decision_id=row.get("decision_id"),
             signature=row.get("signature"),
             public_key=row.get("public_key"),
