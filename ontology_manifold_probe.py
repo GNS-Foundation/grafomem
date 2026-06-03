@@ -564,10 +564,15 @@ def export_manifold(df, bmu, side, path, source="synthetic", hex_px=40.0):
 
     steps = [dict(stepId=sid, cellId=cid, governanceAllowed=bool(ga),
                   agentRole=ar, workflowId=wf, modelId=mid,
-                  createdAt=pd.Timestamp(ts).isoformat())
-             for sid, cid, ga, ar, wf, mid, ts in zip(
+                  createdAt=pd.Timestamp(ts).isoformat(),
+                  inputText=it if pd.notna(it) else "",
+                  toolCalls=[{"name": t} for t in (tc if isinstance(tc, list) else [])],
+                  governanceLogs=[{"policy_name": g.get("policy_name"), "allowed": (g.get("result") == "allowed" if "result" in g else g.get("allowed", False))} for g in (gl if isinstance(gl, list) else [])]
+                  )
+             for sid, cid, ga, ar, wf, mid, ts, it, tc, gl in zip(
                  d["step_id"], d["_cell"], d["governance_allowed"], d["agent_role"],
-                 d["workflow_id"], d["model_id"], d["created_at"])]
+                 d["workflow_id"], d["model_id"], d["created_at"],
+                 d.get("input_text", [None]*len(d)), d.get("tool_calls", [None]*len(d)), d.get("governance_logs", [None]*len(d)))]
 
     edges = []
     if "parent_decision_id" in d:

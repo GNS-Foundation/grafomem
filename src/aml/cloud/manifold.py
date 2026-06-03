@@ -177,8 +177,8 @@ def serialize_manifold(df: pd.DataFrame, bmu: np.ndarray, side: int, source: str
             modelId=row["model_id"] if pd.notna(row["model_id"]) else "unknown",
             createdAt=pd.Timestamp(row["created_at"]).isoformat(),
             inputText=row.get("input_text", "") or "",
-            toolCalls=row.get("tool_calls", []) or [],
-            governanceLogs=row.get("governance_logs", []) or []
+            toolCalls=[{"name": t} for t in (row.get("tool_calls", []) or [])],
+            governanceLogs=[{"policy_name": g.get("policy_name"), "allowed": (g.get("result") == "allowed" if "result" in g else g.get("allowed", False))} for g in (row.get("governance_logs", []) or [])]
         ))
 
     edges = []
