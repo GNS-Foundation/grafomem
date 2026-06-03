@@ -139,6 +139,7 @@ class StepRecord:
     latency_tools_ms: int
     # Decision Trail link
     decision_id: str | None
+    parent_decision_id: str | None = None
     # Provenance
     signature: bytes | None
     public_key: bytes | None
@@ -1775,6 +1776,7 @@ class OrchestratorService:
             latency_llm_ms=row.get("latency_llm_ms", 0),
             latency_tools_ms=row.get("latency_tools_ms", 0),
             decision_id=row.get("decision_id"),
+            parent_decision_id=row.get("parent_decision_id"),
             signature=row.get("signature"),
             public_key=row.get("public_key"),
             status=StepStatus(row.get("status", "pending")),
@@ -1824,7 +1826,12 @@ class OrchestratorService:
             "tool_results": s.tool_results,
             "tokens_used": s.tokens_used,
             "latency_ms": s.latency_ms,
+            "latency_governance_ms": s.latency_governance_ms,
+            "latency_memory_ms": s.latency_memory_ms,
+            "latency_llm_ms": s.latency_llm_ms,
+            "latency_tools_ms": s.latency_tools_ms,
             "decision_id": s.decision_id,
+            "parent_decision_id": s.parent_decision_id,
             "signature": (
                 base64.b64encode(s.signature).decode() if s.signature else None
             ),

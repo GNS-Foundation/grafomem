@@ -178,7 +178,8 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
         tenant_id = _get_tenant_id(request)
         agents = orchestrator.list_agents(tenant_id, enabled_only=enabled_only)
         return {
-            "agents": [orchestrator.agent_to_dict(a) for a in agents]
+            "agents": [orchestrator.agent_to_dict(a) for a in agents],
+            "count": len(agents),
         }
 
     @router.get("/agents/{agent_id}")
@@ -252,7 +253,8 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
             tenant_id, status=status, limit=limit, offset=offset,
         )
         return {
-            "workflows": [orchestrator.workflow_to_dict(w) for w in workflows]
+            "workflows": [orchestrator.workflow_to_dict(w) for w in workflows],
+            "count": len(workflows),
         }
 
     @router.get("/workflows/{workflow_id}")

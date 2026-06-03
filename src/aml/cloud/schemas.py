@@ -247,9 +247,17 @@ class StepResponse(BaseModel):
     step_number: int = 0
     status: str = ""
     decision_id: Optional[str] = None
+    parent_decision_id: Optional[str] = None
     input_text: Optional[str] = None
     output_text: Optional[str] = None
     token_count: int = 0
+    latency_ms: int = 0
+    latency_governance_ms: int = 0
+    latency_memory_ms: int = 0
+    latency_llm_ms: int = 0
+    latency_tools_ms: int = 0
+    governance_allowed: bool = True
+    governance_logs: Optional[list[dict[str, Any]]] = None
     retrieved_facts: Optional[list[dict[str, Any]]] = None
     tools_called: Optional[list[dict[str, Any]]] = None
     started_at: Optional[str] = None
