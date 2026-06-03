@@ -505,19 +505,26 @@ def create_app(
     )
 
     from fastapi.middleware.cors import CORSMiddleware
+    
+    cors_origins = [
+        "https://grafomem.com",
+        "https://www.grafomem.com",
+        "https://cloud.grafomem.com",
+        "https://docs.grafomem.com",
+        "https://grafomem-cloud.pages.dev",
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://localhost:3002",
+        "http://localhost:3003",
+        "http://localhost:8642",
+    ]
+    if os.environ.get("GRAFOMEM_CORS_ORIGINS"):
+        cors_origins.extend([o.strip() for o in os.environ["GRAFOMEM_CORS_ORIGINS"].split(",") if o.strip()])
+
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "https://grafomem.com",
-            "https://www.grafomem.com",
-            "https://cloud.grafomem.com",
-            "https://docs.grafomem.com",
-            "http://localhost:3000",
-            "http://localhost:3001",
-            "http://localhost:3002",
-            "http://localhost:3003",
-            "http://localhost:8642",
-        ],
+        allow_origins=cors_origins,
+        allow_origin_regex=r"https://.*\.pages\.dev",
         allow_methods=["GET", "POST", "OPTIONS", "PUT", "PATCH", "DELETE"],
         allow_headers=["*"],
         allow_credentials=True,
