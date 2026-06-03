@@ -355,6 +355,10 @@ class LLMProviderResponse(BaseModel):
     config_id: str
     provider: str
     model_id: str
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+    temperature: Optional[float] = None
+    max_tokens: Optional[int] = None
     created_at: Optional[str] = None
 
 

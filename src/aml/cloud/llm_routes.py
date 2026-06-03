@@ -180,7 +180,16 @@ def create_llm_router(llm_registry, tool_registry) -> APIRouter:
         tenant_id = _get_tenant_id(request)
         tools = tool_registry.list_tools(tenant_id)
         return {
-            "tools": [tool_registry.tool_to_dict(t) for t in tools]
+            "tools": [
+                {
+                    "name": t.name,
+                    "description": t.description,
+                    "parameters": t.input_schema,
+                    "builtin": t.is_builtin,
+                }
+                for t in tools
+            ],
+            "count": len(tools),
         }
 
     @router.delete("/tools/{tool_name}")
