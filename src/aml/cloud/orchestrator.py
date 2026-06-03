@@ -246,6 +246,7 @@ CREATE TABLE IF NOT EXISTS orchestrator_steps (
     latency_llm_ms      INTEGER NOT NULL DEFAULT 0,
     latency_tools_ms    INTEGER NOT NULL DEFAULT 0,
     decision_id         TEXT,
+    parent_decision_id  TEXT,
     signature           BYTEA,
     public_key          BYTEA,
     status              TEXT NOT NULL DEFAULT 'pending',
@@ -343,6 +344,10 @@ class OrchestratorService:
     def ensure_schema(self) -> None:
         conn = self._get_conn()
         conn.execute(_SCHEMA_SQL)
+        try:
+            conn.execute("ALTER TABLE orchestrator_steps ADD COLUMN IF NOT EXISTS parent_decision_id TEXT;")
+        except Exception as e:
+            logger.warning(f"Could not alter orchestrator_steps table: {e}")
         logger.info("Orchestrator schema ensured")
 
     # ------------------------------------------------------------------
@@ -690,6 +695,7 @@ class OrchestratorService:
                 latency_llm_ms=0,
                 latency_tools_ms=0,
                 decision_id=None,
+                parent_decision_id=parent_step_id,
                 signature=None,
                 public_key=None,
                 status=step_status,
@@ -953,6 +959,7 @@ class OrchestratorService:
             latency_llm_ms=latency_llm_ms,
             latency_tools_ms=latency_tools_ms,
             decision_id=decision_id,
+            parent_decision_id=parent_step_id,
             signature=signature,
             public_key=public_key,
             status=StepStatus.COMPLETED,
@@ -1571,11 +1578,11 @@ class OrchestratorService:
             " input_text, retrieved_facts, governance_allowed, governance_logs, "
             " model_id, raw_output, tool_calls, tool_results, "
             " tokens_used, latency_ms, latency_governance_ms, latency_memory_ms, "
-            " latency_llm_ms, latency_tools_ms, decision_id, signature, public_key, "
+            " latency_llm_ms, latency_tools_ms, decision_id, parent_decision_id, signature, public_key, "
             " status, created_at) "
             "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, "
             "        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, "
-            "        %s, %s, %s, %s)",
+            "        %s, %s, %s, %s, %s)",
             (
                 kwargs["step_id"],
                 kwargs["workflow_id"],
@@ -1597,6 +1604,7 @@ class OrchestratorService:
                 kwargs.get("latency_llm_ms", 0),
                 kwargs.get("latency_tools_ms", 0),
                 kwargs["decision_id"],
+                kwargs.get("parent_decision_id"),
                 kwargs["signature"],
                 kwargs["public_key"],
                 kwargs["status"].value,
