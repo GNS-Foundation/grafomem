@@ -947,6 +947,7 @@ class OrchestratorService:
                 logger.warning("PII post-check failed: %s", e)
 
         # ── 7. PERSIST STEP ────────────────────────────────
+        latency_ms = int((time.monotonic() - t0_total) * 1000)
         step = self._persist_step(
             step_id=step_id,
             workflow_id=workflow_id,
@@ -962,7 +963,7 @@ class OrchestratorService:
             tool_calls=tool_calls,
             tool_results=tool_results,
             tokens_used=tokens_used,
-            latency_ms=int((time.monotonic() - t0_total) * 1000),
+            latency_ms=latency_ms,
             latency_governance_ms=latency_governance_ms,
             latency_memory_ms=latency_memory_ms,
             latency_llm_ms=latency_llm_ms,
