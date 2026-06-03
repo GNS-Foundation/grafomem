@@ -110,7 +110,7 @@ BUILTIN_TOOLS = [
                     "default": 10,
                 },
             },
-            "required": ["query", "store_id"],
+            "required": ["query", "store_id", "top_k"],
             "additionalProperties": False,
         },
         "config": {},
@@ -205,7 +205,7 @@ BUILTIN_TOOLS = [
                     "default": {},
                 },
             },
-            "required": ["url"],
+            "required": ["url", "headers"],
             "additionalProperties": False,
         },
         "config": {"method": "GET"},
@@ -232,7 +232,7 @@ BUILTIN_TOOLS = [
                     "default": {},
                 },
             },
-            "required": ["url"],
+            "required": ["url", "body", "headers"],
             "additionalProperties": False,
         },
         "config": {"method": "POST"},
@@ -429,7 +429,9 @@ class ToolRegistry:
                     " input_schema, config, enabled, requires_governance, "
                     " is_builtin, created_at) "
                     "VALUES (%s, %s, %s, %s, %s, %s, %s, TRUE, %s, TRUE, %s) "
-                    "ON CONFLICT (tenant_id, name) DO NOTHING",
+                    "ON CONFLICT (tenant_id, name) DO UPDATE SET "
+                    "  input_schema = EXCLUDED.input_schema, "
+                    "  description = EXCLUDED.description",
                     (
                         tool_id, tenant_id, tool_def["name"],
                         tool_def["description"],
@@ -440,8 +442,8 @@ class ToolRegistry:
                     ),
                 )
                 count += 1
-            except Exception:
-                pass  # Already seeded
+            except Exception as e:
+                logger.warning(f"Error seeding tool {tool_def['name']}: {e}")
 
         logger.info("Seeded %d built-in tools for tenant %s", count, tenant_id)
         return count

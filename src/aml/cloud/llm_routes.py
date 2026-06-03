@@ -105,7 +105,8 @@ def create_llm_router(llm_registry, tool_registry) -> APIRouter:
         tenant_id = _get_tenant_id(request)
         providers = llm_registry.list_providers(tenant_id)
         return {
-            "providers": [llm_registry.config_to_dict(p) for p in providers]
+            "providers": [llm_registry.config_to_dict(p) for p in providers],
+            "count": len(providers),
         }
 
     @router.delete("/providers/{model_id}")
