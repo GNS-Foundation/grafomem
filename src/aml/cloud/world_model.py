@@ -257,8 +257,12 @@ class WorldModelService:
 
         # (c) GOVERNANCE gate
         if self.gateway is not None:
-            allowed, logs = self.gateway.evaluate_and_gate(
-                tenant_id, operation, {"action": inv.action_name, "subjects": inv.subject_refs})
+            context = {
+                "action": inv.action_name,
+                "subjects": inv.subject_refs,
+                "params": inv.params
+            }
+            allowed, logs = self.gateway.evaluate_and_gate(tenant_id, operation, context)
             if not allowed:
                 ts = f"{time.time():.6f}"
                 aid = compute_action_id(tenant_id, inv.action_name, inv.subject_refs, ts)
@@ -325,7 +329,7 @@ class WorldModelService:
         aid = compute_action_id(tenant_id, inv.action_name, inv.subject_refs, ts)
         doc = {"schema_version": "wm/0.1", "tenant_id": tenant_id, "timestamp": ts,
                "action_name": inv.action_name, "operation": operation, "subject_refs": inv.subject_refs,
-               "params_digest": b2_256(canon(inv.params or {})), "authority": inv.authority or {},
+               "params": inv.params or {}, "params_digest": b2_256(canon(inv.params or {})), "authority": inv.authority or {},
                "gate": "allowed", "action_id": aid}
         self._sign_inplace(doc, _SIGNED_ACTION)
         # FUTURE: chain via execution_receipts.issue_receipt(...) — action invocation is step-shaped.

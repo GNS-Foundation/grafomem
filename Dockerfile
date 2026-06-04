@@ -24,6 +24,7 @@ COPY pyproject.toml README.md ./
 COPY src/ src/
 COPY adapter_template/ adapter_template/
 COPY corpus/ corpus/
+COPY tests/ tests/
 
 # Install the package with all production extras (includes cloud: stripe, bcrypt, PyJWT)
 ARG CACHEBUST=2
@@ -46,6 +47,7 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy app source
 COPY --from=builder /app /app
+COPY --from=builder /app/tests /app/tests
 
 # Copy cached model from builder
 COPY --from=builder /root/.cache/huggingface /root/.cache/huggingface

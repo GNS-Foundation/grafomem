@@ -2000,3 +2000,14 @@ conn = pool.getconn(readonly=True)                # → replica (failover → pr
 ### 35.3 Tests
 
 `test_read_replica.py`: 15 DB-free tests covering routing logic, failover, env-var activation, statistics, and lifecycle.
+
+## Appendix: Live Status
+
+| Component | Status | Evidence / Caveats |
+|---|---|---|
+| **Local Local-First Inference** | LIVE (production) | Full local BYOM abstraction. Tested with Llama3-8b over REST (llama-cpp-python). |
+| **Cloud Managed Inference** | LIVE (production) | Live integration with `gpt-4o`. |
+| **Action Extraction** | LIVE (production) | Extracts `action_name` and `params` perfectly via strict schema forcing. |
+| **Declarative Governance PEP** | LIVE (production) | PEP enforces policies from DB (`require_params`, `sandbox_financial_rules`) in production environment. |
+| **Tamper-Evident Receipts** | LIVE (production) | Ed25519 signatures generated and verifiable using production keys; cryptographic binding proven. |
+| **Erasure/Gcrumbs** | PENDING | Not required for v1 MVP. Will be implemented in v2. |

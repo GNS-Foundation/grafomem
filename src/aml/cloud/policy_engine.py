@@ -164,6 +164,7 @@ class PolicyEngine:
             PolicyType.TOKEN_BUDGET: self._eval_token_budget,
             PolicyType.HITL_REQUIRED: lambda p, c: self._eval_hitl(p, operation, c),
             PolicyType.PII_GUARD: self._eval_pii_guard,
+            PolicyType.WORLD_MODEL_CONSTRAINT: self._eval_world_model_constraint,
         }
         evaluator = evaluators.get(policy.policy_type)
         if evaluator is None:
@@ -286,6 +287,75 @@ class PolicyEngine:
                 f"PII detected: {'; '.join(findings)}"
             )
         return EvaluationResult.ALLOWED, "No PII detected"
+
+    def _eval_world_model_constraint(
+        self, policy: Policy, context: dict,
+    ) -> tuple[EvaluationResult, str]:
+        # 1. Require params generic check
+        require_params = policy.config.get("require_params", [])
+        if require_params:
+            for_actions = policy.config.get("for_actions", [])
+            if not for_actions or context.get("action") in for_actions:
+                params = context.get("params", {})
+                for p in require_params:
+                    if not params.get(p):
+                        return self._action_to_result(policy.action), f"Missing required parameter '{p}'"
+
+        # 2. Generic Declarative Constraints
+        deny_if = policy.config.get("deny_if")
+        if deny_if:
+            # Check if this rule applies to the current action
+            if deny_if.get("action") and context.get("action") != deny_if.get("action"):
+                return EvaluationResult.ALLOWED, "Action does not match constraint"
+            
+            params = context.get("params", {})
+            params_has = deny_if.get("params_has", [])
+            
+            # All conditions in params_has must be met by AT LEAST ONE item in the list
+            all_conditions_met = True
+            for condition in params_has:
+                list_path = condition.get("list_path")
+                match_all = condition.get("match_all", [])
+                
+                items = params.get(list_path, [])
+                if not isinstance(items, list):
+                    all_conditions_met = False
+                    break
+                    
+                # Does at least one item match all criteria?
+                condition_met_by_item = False
+                for item in items:
+                    item_matches = True
+                    for criterion in match_all:
+                        field = criterion.get("field")
+                        op = criterion.get("operator")
+                        val = criterion.get("value")
+                        item_val = item.get(field)
+                        
+                        if op == "==" and item_val != val:
+                            item_matches = False
+                        elif op == ">" and not (isinstance(item_val, (int, float)) and item_val > val):
+                            item_matches = False
+                        elif op == "<" and not (isinstance(item_val, (int, float)) and item_val < val):
+                            item_matches = False
+                        elif op == "contains" and not (isinstance(item_val, list) and val in item_val):
+                            item_matches = False
+                        
+                        if not item_matches:
+                            break
+                            
+                    if item_matches:
+                        condition_met_by_item = True
+                        break
+                        
+                if not condition_met_by_item:
+                    all_conditions_met = False
+                    break
+                    
+            if all_conditions_met and params_has:
+                return self._action_to_result(policy.action), "Stateful constraint violated"
+
+        return EvaluationResult.ALLOWED, "Constraints satisfied"
 
     # ------------------------------------------------------------------
     # Helpers

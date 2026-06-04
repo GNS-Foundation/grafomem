@@ -50,6 +50,7 @@ class PolicyType(str, Enum):
     TOKEN_BUDGET = "token_budget"
     HITL_REQUIRED = "hitl_required"
     PII_GUARD = "pii_guard"
+    WORLD_MODEL_CONSTRAINT = "world_model_constraint"
 
 
 class PolicyAction(str, Enum):
