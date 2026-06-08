@@ -1650,6 +1650,7 @@ class OrchestratorService:
             latency_llm_ms=kwargs.get("latency_llm_ms", 0),
             latency_tools_ms=kwargs.get("latency_tools_ms", 0),
             decision_id=kwargs["decision_id"],
+            parent_decision_id=kwargs.get("parent_decision_id"),
             signature=kwargs["signature"],
             public_key=kwargs["public_key"],
             status=kwargs["status"],
