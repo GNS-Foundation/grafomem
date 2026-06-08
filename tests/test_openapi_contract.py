@@ -111,7 +111,7 @@ class TestOpenAPISpec:
         _BODYLESS_OK = {
             "/test", "/replay", "/rotate-key", "/flush",
             "/seed-defaults", "/seed-builtins", "/terminate",
-            "/roll", "/webhook", "/cancel", "/acs",
+            "/roll", "/webhook", "/cancel", "/acs", "/clear_cache",
         }
         missing = []
         for path, methods in spec_paths.items():
