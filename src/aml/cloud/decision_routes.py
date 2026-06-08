@@ -153,12 +153,7 @@ def create_decision_router(decision_trail, store_manager=None, tenant_auth=None)
         """
         tenant_id = _get_tenant_id(request)
 
-        signing_key = None
-        if req.signing_key:
-            try:
-                signing_key = bytes.fromhex(req.signing_key)
-            except ValueError:
-                raise HTTPException(400, "signing_key must be hex-encoded")
+        # Removed client-provided signing_key parsing (Phase 0 KMS compliance)
 
         try:
             record = decision_trail.log(
@@ -177,7 +172,7 @@ def create_decision_router(decision_trail, store_manager=None, tenant_auth=None)
                 parsed_output=req.parsed_output,
                 output_tokens=req.output_tokens,
                 latency_ms=req.latency_ms,
-                signing_key=signing_key,
+                signing_identity=request.app.state.signing_identity,
                 parent_decision_id=req.parent_decision_id,
             )
         except Exception as e:
