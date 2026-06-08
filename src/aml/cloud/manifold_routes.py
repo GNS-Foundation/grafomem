@@ -19,4 +19,20 @@ def create_manifold_router(manifold_svc: ManifoldService) -> APIRouter:
             from fastapi import HTTPException
             raise HTTPException(status_code=500, detail=str(e))
 
+    @router.post("/clear_cache")
+    async def clear_cache(request: Request):
+        ctx = getattr(request.state, "tenant", None)
+        tenant = ctx.tenant_id if ctx else "default"
+        try:
+            import psycopg2
+            conn = psycopg2.connect(manifold_svc.db_url)
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM manifold_cache WHERE tenant_id = %s", (tenant,))
+            conn.commit()
+            conn.close()
+            return {"status": "ok"}
+        except Exception as e:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=500, detail=str(e))
+
     return router
