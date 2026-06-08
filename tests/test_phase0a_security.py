@@ -24,7 +24,10 @@ from aml.cloud.tool_registry import ToolRegistry, ToolType
 
 @pytest.fixture
 def temp_db_url():
-    return os.environ.get("GRAFOMEM_DB_URL", "postgresql://grafomem:grafomem_dev@localhost:5432/grafomem")
+    url = os.environ.get("GRAFOMEM_DB_URL")
+    if not url:
+        pytest.skip("GRAFOMEM_DB_URL not set")
+    return url
 
 @pytest.fixture
 def erasure_service(temp_db_url):
@@ -86,7 +89,9 @@ def test_rest_erasure_fail_closed(temp_db_url):
 
 def test_erasure_positive():
     """Positive test: Key set -> cert issued and verifies."""
-    db_url = os.environ.get("GRAFOMEM_DB_URL", "postgresql://grafomem:grafomem_dev@localhost:5432/grafomem")
+    db_url = os.environ.get("GRAFOMEM_DB_URL")
+    if not db_url:
+        pytest.skip("GRAFOMEM_DB_URL not set")
     # Generate Ed25519 seed
     private_key = Ed25519PrivateKey.generate()
     seed = private_key.private_bytes_raw()
@@ -110,7 +115,9 @@ def test_erasure_positive():
 
 def test_multi_fernet_rotation():
     """Verify MultiFernet encrypts with new key but decrypts legacy."""
-    db_url = os.environ.get("GRAFOMEM_DB_URL", "postgresql://grafomem:grafomem_dev@localhost:5432/grafomem")
+    db_url = os.environ.get("GRAFOMEM_DB_URL")
+    if not db_url:
+        pytest.skip("GRAFOMEM_DB_URL not set")
     
     key_a = Fernet.generate_key().decode()
     key_b = Fernet.generate_key().decode()
@@ -160,7 +167,9 @@ def test_multi_fernet_rotation():
 
 def test_strict_decryption_error():
     """Verify that corrupt/plaintext ciphertext throws a clean error."""
-    db_url = os.environ.get("GRAFOMEM_DB_URL", "postgresql://grafomem:grafomem_dev@localhost:5432/grafomem")
+    db_url = os.environ.get("GRAFOMEM_DB_URL")
+    if not db_url:
+        pytest.skip("GRAFOMEM_DB_URL not set")
     key_a = Fernet.generate_key().decode()
     os.environ["PROVIDER_ENCRYPTION_KEY"] = key_a
     
