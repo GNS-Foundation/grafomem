@@ -942,6 +942,18 @@ class OrchestratorService:
                 decision_id = record.decision_id
                 signature = record.signature
                 public_key = record.public_key
+                
+                # Sprint 15: gcrumbs chaining
+                if self._gcrumbs and decision_id:
+                    self._gcrumbs.append_breadcrumb(
+                        tenant_id=agent.tenant_id,
+                        event_type="orchestrator_decision",
+                        target_id=decision_id,
+                        payload={
+                            "model_id": agent.model_id,
+                            "workflow_id": workflow_id,
+                        }
+                    )
             except Exception as e:
                 logger.warning("Decision trail logging failed: %s", e)
 
