@@ -62,6 +62,14 @@ class EnvIdentity:
                 raise ValueError(f"Invalid GRAFOMEM_SIGNING_KEY: {e}")
 
         encryption_key = os.environ.get("PROVIDER_ENCRYPTION_KEY")
+        if not encryption_key:
+            db_url = os.environ.get("GRAFOMEM_DB_URL")
+            if db_url:
+                import hashlib
+                import base64
+                digest = hashlib.sha256(f"grafomem-fernet-{db_url}".encode()).digest()
+                encryption_key = base64.urlsafe_b64encode(digest).decode()
+
         if encryption_key:
             try:
                 from cryptography.fernet import Fernet, MultiFernet

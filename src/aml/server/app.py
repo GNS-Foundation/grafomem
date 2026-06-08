@@ -763,7 +763,7 @@ def create_app(
             from aml.cloud.tool_registry import ToolRegistry
             from aml.cloud.llm_routes import create_llm_router
 
-            llm_reg = LLMRegistry(db_url, encryption=identity if os.environ.get("PROVIDER_ENCRYPTION_KEY") else None, pool=pool)
+            llm_reg = LLMRegistry(db_url, encryption=identity, pool=pool)
             _init(llm_reg)
             app.state.llm_registry = llm_reg
 
