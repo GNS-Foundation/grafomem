@@ -27,7 +27,7 @@ EXTRACTION_SQL = """
 select s.step_id, a.role agent_role, s.workflow_id, s.model_id, s.governance_allowed,
        s.tool_calls, s.governance_logs, s.retrieved_facts,
        s.tokens_used, s.latency_ms, s.step_number, s.created_at,
-       s.input_text, s.raw_output, s.parent_decision_id
+       s.input_text, s.raw_output, s.parent_decision_id, s.is_synthetic
 from orchestrator_steps s
 left join orchestrator_agents a on a.agent_id = s.agent_id
 where s.tenant_id = %s
@@ -187,6 +187,29 @@ def serialize_manifold(df: pd.DataFrame, bmu: np.ndarray, side: int, source: str
             if isinstance(p, str) and p:
                 edges.append({"from": p, "to": sid, "kind": "parent"})
 
+    synthetic_count = int(d["is_synthetic"].sum()) if "is_synthetic" in d else 0
+    real_count = int(len(d) - synthetic_count)
+    if synthetic_count == 0:
+        steps_source = "real"
+        generator = None
+    elif real_count == 0:
+        steps_source = "synthetic"
+        generator = "som_seed@latest"
+    else:
+        steps_source = "mixed"
+        generator = "som_seed@latest"
+
+    provenance = dict(
+        vectors=dict(source=source, model="BAAI/bge-small-en-v1.5", dim=384),
+        steps=dict(
+            source=steps_source,
+            real_count=real_count,
+            synthetic_count=synthetic_count,
+            generator=generator,
+            schema_mirror="orchestrator_steps"
+        )
+    )
+
     manifold = dict(
         meta=dict(
             version="0.1.0",
@@ -198,7 +221,10 @@ def serialize_manifold(df: pd.DataFrame, bmu: np.ndarray, side: int, source: str
         ),
         cells=cells,
         steps=steps,
-        edges=edges
+        edges=edges,
+        hex_px=hex_px,
+        generated_at=dt.datetime.utcnow().isoformat() + "Z",
+        provenance=provenance
     )
     return manifold
 

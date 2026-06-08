@@ -348,15 +348,21 @@ class OrchestratorService:
         try:
             conn.execute("ALTER TABLE orchestrator_steps ADD COLUMN IF NOT EXISTS parent_decision_id TEXT;")
         except Exception as e:
-            logger.warning(f"Could not alter orchestrator_steps table: {e}")
-        # Migrate existing tables that might be missing the new latency columns
+            logger.warning(f"Could not alter orchestrator_steps table (parent_decision_id): {e}")
+
+        try:
+            conn.execute("ALTER TABLE orchestrator_steps ADD COLUMN IF NOT EXISTS is_synthetic BOOLEAN NOT NULL DEFAULT false;")
+            conn.execute("UPDATE orchestrator_steps SET is_synthetic = true;")
+        except Exception as e:
+            logger.warning(f"Could not alter orchestrator_steps table (is_synthetic): {e}")
+
         try:
             conn.execute("ALTER TABLE orchestrator_steps ADD COLUMN IF NOT EXISTS latency_governance_ms INTEGER NOT NULL DEFAULT 0;")
             conn.execute("ALTER TABLE orchestrator_steps ADD COLUMN IF NOT EXISTS latency_memory_ms INTEGER NOT NULL DEFAULT 0;")
             conn.execute("ALTER TABLE orchestrator_steps ADD COLUMN IF NOT EXISTS latency_llm_ms INTEGER NOT NULL DEFAULT 0;")
             conn.execute("ALTER TABLE orchestrator_steps ADD COLUMN IF NOT EXISTS latency_tools_ms INTEGER NOT NULL DEFAULT 0;")
         except Exception as e:
-            logger.warning(f"Could not alter orchestrator_steps table: {e}")
+            logger.warning(f"Could not alter orchestrator_steps table (latency): {e}")
 
         logger.info("Orchestrator schema ensured")
 
