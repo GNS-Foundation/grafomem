@@ -92,11 +92,13 @@ class Memory:
     source: SourceMeta | None = None        # if PROVENANCE / CRYPTOGRAPHIC_PROVENANCE
 
 
+from aml.cloud.identity import SigningIdentity
+
 @dataclass(slots=True)
 class WriteOptions:
     valid_from: datetime | None = None      # honored if BI_TEMPORAL
     tenant_id: str | None = None            # honored if MULTI_TENANT
-    signing_key: bytes | None = None        # if set, backend MUST sign (§4.1)
+    signing_identity: SigningIdentity | None = None  # if set, backend MUST sign (§4.1)
     metadata: dict = field(default_factory=dict)
 
 
@@ -248,7 +250,7 @@ class MemoryBackend(Protocol):
 
     def write(self, content: str, options: WriteOptions) -> Any:
         """Persist a new memory, return its opaque ref. Always required.
-        If options.signing_key is set, the backend MUST sign per §4.1 and MUST
+        If options.signing_identity is set, the backend MUST sign per §4.1 and MUST
         claim CRYPTOGRAPHIC_PROVENANCE."""
         ...
 

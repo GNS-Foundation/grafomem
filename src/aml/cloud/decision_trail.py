@@ -233,7 +233,7 @@ class DecisionTrailService:
         parsed_output: dict[str, Any] | None = None,
         output_tokens: int | None = None,
         latency_ms: int | None = None,
-        signing_key: bytes | None = None,
+        signing_identity=None,
         parent_decision_id: str | None = None,
     ) -> DecisionRecord:
         """Log an inference decision.
@@ -512,7 +512,7 @@ class DecisionTrailService:
             tenant_id=row["tenant_id"],
             store_id=row["store_id"],
             session_id=row.get("session_id"),
-            created_at=row["created_at"],
+            created_at=row["created_at"].astimezone(timezone.utc),
             query=row["query"],
             retrieved_refs=_load_json(row.get("retrieved_refs")) or [],
             retrieved_contents=_load_json(row.get("retrieved_contents")) or [],

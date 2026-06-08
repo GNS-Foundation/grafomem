@@ -111,10 +111,10 @@ class CustomsRejected(CustomsError):
 
 
 class ProvenanceCustomsService:
-    def __init__(self, db_url: str, *, signing_key: Optional[bytes] = None,
+    def __init__(self, db_url: str, *, signing_identity=None,
                  gateway=None, decision_trail=None, gcrumbs=None, pool=None):
         self.db_url = db_url
-        self.signing_key = signing_key
+        self.signing_identity = signing_identity
         self.gateway = gateway
         self.decision_trail = decision_trail
         self.gcrumbs = gcrumbs
@@ -282,10 +282,10 @@ class ProvenanceCustomsService:
 
     # ---- internals ----
     def _sign_inplace(self, doc: dict) -> None:
-        if not self.signing_key:
+        if not self.signing_identity:
             doc["signature"] = None; doc["signer_public_key"] = None; return
         from aml.provenance import sign_provenance
-        signature, public_key = sign_provenance(self.signing_key, _receipt_digest(doc))
+        signature, public_key = sign_provenance(self.signing_identity, _receipt_digest(doc))
         doc["signature"] = signature.hex()
         doc["signer_public_key"] = public_key.hex()
 

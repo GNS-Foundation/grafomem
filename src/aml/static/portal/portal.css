@@ -1724,3 +1724,111 @@ select option {
   color: var(--text-secondary);
   margin-left: auto;
 }
+
+/* ============================================================
+   Semantic Manifold Canvas
+   ============================================================ */
+
+.manifold-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.manifold-controls {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.lens-switcher {
+  display: flex;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.lens-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.4rem 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.lens-btn.active {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-bottom: 2px solid var(--primary);
+}
+
+.zoom-controls {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.manifold-canvas-container {
+  width: 100%;
+  height: calc(100vh - 180px);
+  background: var(--bg-dark);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  position: relative;
+  overflow: hidden;
+  cursor: grab;
+}
+
+.manifold-canvas-container:active {
+  cursor: grabbing;
+}
+
+#manifold-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.manifold-tooltip {
+  position: absolute;
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 1rem;
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  pointer-events: none;
+  z-index: 100;
+  min-width: 200px;
+  max-width: 300px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  transition: opacity 0.1s;
+}
+
+.manifold-tooltip h4 {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.3rem;
+}
+
+.manifold-tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.3rem;
+}
+
+.manifold-tooltip-label {
+  color: var(--text-muted);
+}
+
+.manifold-tooltip-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+}

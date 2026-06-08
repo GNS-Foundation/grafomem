@@ -645,19 +645,22 @@ class ToolRegistry:
         if entry is None:
             return f"Store '{store_id}' not found"
 
+        # Fail-closed before deletion: assert we can issue a certificate
+        if self._erasure_proof:
+            self._erasure_proof.assert_can_sign()
+        elif self._db_url:
+            raise RuntimeError("Erasure certificates unavailable: service absent in cloud mode")
+
         deleted = entry.backend.delete(ref)
 
         # Issue erasure certificate if available
         cert_id = None
         if deleted and self._erasure_proof:
-            try:
-                cert = self._erasure_proof.issue_certificate(
-                    tenant_id=tenant_id,
-                    fact_ref=ref,
-                )
-                cert_id = cert.certificate_id
-            except Exception as e:
-                logger.warning("Erasure certificate failed: %s", e)
+            cert = self._erasure_proof.issue_certificate(
+                tenant_id=tenant_id,
+                fact_ref=ref,
+            )
+            cert_id = cert.certificate_id
 
         return {
             "deleted": deleted,

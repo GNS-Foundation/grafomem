@@ -74,12 +74,12 @@ class AuditExportService:
         decision_trail: Any,
         governance: Any,
         gcrumbs: Any | None = None,
-        signing_key: bytes | None = None,
+        signing_identity=None,
     ) -> None:
         self._decisions = decision_trail
         self._governance = governance
         self._gcrumbs = gcrumbs
-        self._signing_key = signing_key
+        self._signing_identity = signing_identity
 
     # ------------------------------------------------------------------
     # Decision export

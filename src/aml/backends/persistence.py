@@ -49,7 +49,7 @@ class PersistenceBackend:
     def write(self, content: str, options: WriteOptions) -> int:
         if options.tenant_id is not None:
             raise CapabilityNotSupported(Capability.MULTI_TENANT, "write")
-        if options.signing_key is not None:
+        if options.signing_identity is not None:
             raise CapabilityNotSupported(
                 Capability.CRYPTOGRAPHIC_PROVENANCE, "write")
         ref = self._next

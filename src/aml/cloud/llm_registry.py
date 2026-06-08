@@ -21,8 +21,10 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import time
 import uuid
+from cryptography.fernet import Fernet, MultiFernet, InvalidToken
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -125,10 +127,25 @@ class LLMRegistry:
         PostgreSQL connection URI.
     """
 
-    def __init__(self, db_url: str, pool=None) -> None:
+    def __init__(self, db_url: str, encryption=None, pool=None) -> None:
         self._db_url = db_url
         self._pool = pool
         self._conn: psycopg.Connection[dict[str, Any]] | None = None
+        self._encryption = encryption
+
+        if db_url and not encryption:
+            raise RuntimeError("ProviderEncryption identity is required when a database is configured.")
+
+    def _encrypt(self, plaintext: str) -> str:
+        if self._encryption is None:
+            return plaintext
+        return self._encryption.encrypt(plaintext)
+
+    def _decrypt(self, ciphertext: str) -> str:
+        if self._encryption is None:
+            return ciphertext
+        return self._encryption.decrypt(ciphertext)
+
 
     # ------------------------------------------------------------------
     # Connection
@@ -180,6 +197,8 @@ class LLMRegistry:
 
         conn = self._get_conn()
 
+        enc_api_key = self._encrypt(api_key) if api_key else None
+
         # Upsert: delete existing config for this tenant+model
         conn.execute(
             "DELETE FROM llm_providers WHERE tenant_id = %s AND model_id = %s",
@@ -193,7 +212,7 @@ class LLMRegistry:
             "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
             (
                 config_id, tenant_id, provider.value, model_id,
-                api_key, base_url, default_temperature, max_tokens,
+                enc_api_key, base_url, default_temperature, max_tokens,
                 enabled, now,
             ),
         )
@@ -745,14 +764,16 @@ class LLMRegistry:
     # Row converters
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _row_to_config(row: dict[str, Any]) -> LLMConfig:
+    def _row_to_config(self, row: dict[str, Any]) -> LLMConfig:
+        raw_key = row.get("api_key")
+        decrypted_key = self._decrypt(raw_key) if raw_key else None
+        
         return LLMConfig(
             config_id=row["config_id"],
             tenant_id=row["tenant_id"],
             provider=LLMProvider(row["provider"]),
             model_id=row["model_id"],
-            api_key=row.get("api_key"),
+            api_key=decrypted_key,
             base_url=row.get("base_url"),
             default_temperature=row.get("temperature", 0.7),
             max_tokens=row.get("max_tokens", 4096),

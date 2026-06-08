@@ -48,10 +48,30 @@ class WriteOptionsModel(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     def to_internal(self, tenant_override: str | None = None) -> WriteOptions:
+        sid = None
+        if self.signing_key:
+            seed = bytes.fromhex(self.signing_key)
+            class _EphemeralIdentity:
+                def sign(self, message: bytes):
+                    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+                    from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+                    priv = Ed25519PrivateKey.from_private_bytes(seed)
+                    return priv.sign(message), priv.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+                def public_key(self):
+                    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+                    from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+                    priv = Ed25519PrivateKey.from_private_bytes(seed)
+                    return priv.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+            sid = _EphemeralIdentity()
+
+        tid = self.tenant_id
+        if tenant_override:
+            tid = f"{tenant_override}/{tid}" if tid else tenant_override
+
         return WriteOptions(
             valid_from=self.valid_from,
-            tenant_id=tenant_override or self.tenant_id,
-            signing_key=bytes.fromhex(self.signing_key) if self.signing_key else None,
+            tenant_id=tid,
+            signing_identity=sid,
             metadata=self.metadata,
         )
 
@@ -63,10 +83,14 @@ class RetrieveOptionsModel(BaseModel):
     top_k: int | None = None
 
     def to_internal(self, tenant_override: str | None = None) -> RetrieveOptions:
+        tid = self.tenant_id
+        if tenant_override:
+            tid = f"{tenant_override}/{tid}" if tid else tenant_override
+
         return RetrieveOptions(
             budget_tokens=self.budget_tokens,
             as_of=self.as_of,
-            tenant_id=tenant_override or self.tenant_id,
+            tenant_id=tid,
             top_k=self.top_k,
         )
 
@@ -106,12 +130,13 @@ class SourceMetaResponse(BaseModel):
     def from_internal(cls, s: SourceMeta | None):
         if s is None:
             return None
+        import base64
         return cls(
             write_id=s.write_id,
             written_at=s.written_at,
             written_by=s.written_by,
-            signature=s.signature.hex() if s.signature else None,
-            public_key=s.public_key.hex() if s.public_key else None,
+            signature=base64.b64encode(s.signature).decode("ascii") if s.signature else None,
+            public_key=base64.b64encode(s.public_key).decode("ascii") if s.public_key else None,
         )
 
 
@@ -212,6 +237,8 @@ async def write_memory(store_id: str, req: WriteRequest, request: Request):
     tenant = _tenant_id(request)
     entry = _get_store(request, store_id, tenant)
     opts = req.options.to_internal(tenant_override=tenant)
+    if getattr(request.app.state, "signing_identity", None) is not None:
+        opts.signing_identity = request.app.state.signing_identity
 
     try:
         ref = entry.backend.write(req.content, opts)
@@ -255,6 +282,8 @@ async def supersede_memory(store_id: str, req: SupersedeRequest, request: Reques
     tenant = _tenant_id(request)
     entry = _get_store(request, store_id, tenant)
     opts = req.options.to_internal(tenant_override=tenant)
+    if getattr(request.app.state, "signing_identity", None) is not None:
+        opts.signing_identity = request.app.state.signing_identity
 
     try:
         ref = entry.backend.supersede(req.old_ref, req.content, opts)
@@ -274,7 +303,21 @@ async def supersede_memory(store_id: str, req: SupersedeRequest, request: Reques
 
 @router.post("/v1/stores/{store_id}/delete")
 async def delete_memory(store_id: str, req: DeleteRequest, request: Request):
-    entry = _get_store(request, store_id, _tenant_id(request))
+    tenant = _tenant_id(request)
+    entry = _get_store(request, store_id, tenant)
+    
+    ep = getattr(request.app.state, "erasure_proof", None)
+    is_cloud = getattr(request.app.state, "tenant_manager", None) is not None
+
+    if is_cloud and not ep:
+        raise HTTPException(503, detail="Erasure certificates unavailable: service absent in cloud mode")
+
+    if ep:
+        try:
+            ep.assert_can_sign()
+        except RuntimeError as e:
+            raise HTTPException(503, detail=str(e))
+
     try:
         deleted = entry.backend.delete(req.ref)
     except CapabilityNotSupported as e:
@@ -283,12 +326,22 @@ async def delete_memory(store_id: str, req: DeleteRequest, request: Request):
             "capability": e.args[0].value,
             "operation": e.args[1],
         })
+
+    cert_id = None
+    if deleted and ep and tenant:
+        cert = ep.issue_certificate(tenant_id=tenant, fact_ref=req.ref)
+        cert_id = cert.certificate_id
+
     try:
         from aml.cloud.metrics import MEMORY_OPERATIONS
         MEMORY_OPERATIONS.labels(operation="delete").inc()
     except Exception:
         pass
-    return {"deleted": deleted}
+    
+    resp = {"deleted": deleted}
+    if cert_id:
+        resp["erasure_certificate_id"] = cert_id
+    return resp
 
 
 @router.post("/v1/stores/{store_id}/retrieve")
@@ -593,10 +646,12 @@ def create_app(
             from aml.cloud.erasure_routes import create_erasure_router
 
             # Use ERASURE_SIGNING_KEY env var if available
-            erasure_key_hex = os.environ.get("ERASURE_SIGNING_KEY")
-            erasure_key = bytes.fromhex(erasure_key_hex) if erasure_key_hex else None
+            from aml.cloud.identity import EnvIdentity
+            identity = EnvIdentity()
+            signing_identity = identity if os.environ.get("GRAFOMEM_SIGNING_KEY") else None
+            app.state.signing_identity = signing_identity
 
-            ep = ErasureProofService(db_url, decision_trail=dt, signing_key=erasure_key, pool=pool)
+            ep = ErasureProofService(db_url, decision_trail=dt, signing_identity=signing_identity, pool=pool)
             _init(ep)
             app.state.erasure_proof = ep
 
@@ -616,7 +671,7 @@ def create_app(
             from aml.cloud.gcrumbs import GcrumbsService
             from aml.cloud.gcrumbs_routes import create_gcrumbs_router
 
-            gc = GcrumbsService(db_url, signing_key=erasure_key, pool=pool)
+            gc = GcrumbsService(db_url, signing_identity=signing_identity, pool=pool)
             _init(gc)
             app.state.gcrumbs = gc
             app.include_router(create_gcrumbs_router(gc))
@@ -624,7 +679,7 @@ def create_app(
 
             from aml.cloud.landing_service import LandingService
             from aml.cloud.landing_routes import create_landing_router
-            ls = LandingService(db_url, signing_key=erasure_key, gateway=gg, decision_trail=dt,
+            ls = LandingService(db_url, signing_identity=signing_identity, gateway=gg, decision_trail=dt,
                                 epoch_anchor=False, gcrumbs=gc, pool=pool)
             _init(ls)
             app.state.landing_service = ls
@@ -632,7 +687,7 @@ def create_app(
 
             from aml.cloud.artifact_registry import ArtifactRegistryService
             from aml.cloud.artifact_registry_routes import create_artifact_registry_router
-            ar = ArtifactRegistryService(db_url, signing_key=erasure_key, gateway=gg, decision_trail=dt, pool=pool)
+            ar = ArtifactRegistryService(db_url, signing_identity=signing_identity, gateway=gg, decision_trail=dt, pool=pool)
             _init(ar)
             app.state.artifact_registry = ar
             app.include_router(create_artifact_registry_router(ar))
@@ -640,7 +695,7 @@ def create_app(
 
             from aml.cloud.world_model import WorldModelService
             from aml.cloud.world_model_routes import create_world_model_router
-            wm = WorldModelService(db_url, signing_key=erasure_key, gateway=gg, decision_trail=dt, gcrumbs=gc, pool=pool)
+            wm = WorldModelService(db_url, signing_identity=signing_identity, gateway=gg, decision_trail=dt, gcrumbs=gc, pool=pool)
             _init(wm)
             app.state.world_model = wm
             app.include_router(create_world_model_router(wm))
@@ -664,7 +719,7 @@ def create_app(
             # R2 — Data-Provenance Customs
             from aml.cloud.provenance_customs import ProvenanceCustomsService
             from aml.cloud.provenance_customs_routes import create_provenance_customs_router
-            pc = ProvenanceCustomsService(db_url, signing_key=erasure_key, gateway=gg, decision_trail=dt, gcrumbs=gc, pool=pool)
+            pc = ProvenanceCustomsService(db_url, signing_identity=signing_identity, gateway=gg, decision_trail=dt, gcrumbs=gc, pool=pool)
             _init(pc)
             app.state.provenance_customs = pc
             app.include_router(create_provenance_customs_router(pc))
@@ -672,7 +727,7 @@ def create_app(
             # R4 — Composition Governance
             from aml.cloud.composition_governance import CompositionGovernanceService
             from aml.cloud.composition_governance_routes import create_composition_governance_router
-            cg = CompositionGovernanceService(db_url, signing_key=erasure_key, gateway=gg, decision_trail=dt, gcrumbs=gc, pool=pool)
+            cg = CompositionGovernanceService(db_url, signing_identity=signing_identity, gateway=gg, decision_trail=dt, gcrumbs=gc, pool=pool)
             _init(cg)
             app.state.composition_governance = cg
             app.include_router(create_composition_governance_router(cg))
@@ -708,7 +763,7 @@ def create_app(
             from aml.cloud.tool_registry import ToolRegistry
             from aml.cloud.llm_routes import create_llm_router
 
-            llm_reg = LLMRegistry(db_url, pool=pool)
+            llm_reg = LLMRegistry(db_url, encryption=identity if os.environ.get("PROVIDER_ENCRYPTION_KEY") else None, pool=pool)
             _init(llm_reg)
             app.state.llm_registry = llm_reg
 
@@ -829,7 +884,7 @@ def create_app(
                 decision_trail=dt,
                 governance=gg,
                 gcrumbs=gc,
-                signing_key=erasure_key,
+                signing_identity=signing_identity,
             )
             app.state.audit_export_service = audit_export
             app.include_router(audit_export_router, prefix="/v1/audit/export")

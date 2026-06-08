@@ -127,11 +127,11 @@ class GMPReferenceBackend:
     def _make_source(self, ref: int, content: str, written_at,
                      options: WriteOptions) -> SourceMeta:
         # PROVENANCE: write_id + written_at on every write. CRYPTOGRAPHIC_PROVENANCE:
-        # given a signing_key, sign the content fact_id and record the public key.
+        # given a signing_identity, sign the content fact_id and record the public key.
         src = SourceMeta(write_id=str(ref), written_at=written_at)
-        if options.signing_key is not None:
+        if options.signing_identity is not None:
             fid = fact_id_for_content(content, options.tenant_id)
-            src.signature, src.public_key = sign_provenance(options.signing_key, fid)
+            src.signature, src.public_key = sign_provenance(options.signing_identity, fid)
             src.written_by = src.public_key.hex()
         return src
 
@@ -262,7 +262,7 @@ if __name__ == "__main__":
     bp = GMPReferenceBackend(embed_fn=_stub_embedder())
     key = Ed25519PrivateKey.generate().private_bytes(
         Encoding.Raw, PrivateFormat.Raw, NoEncryption())
-    rp = bp.write("Aria prefers tea", WriteOptions(signing_key=key, tenant_id="A"))
+    rp = bp.write("Aria prefers tea", WriteOptions(signing_identity=key, tenant_id="A"))
     bp.flush()
     m = next(m for m in bp.audit() if m.ref == rp)
     assert m.source is not None and m.source.write_id == str(rp)

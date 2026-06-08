@@ -165,13 +165,13 @@ class ErasureProofService:
         self,
         db_url: str,
         decision_trail=None,
-        signing_key: bytes | None = None,
+        signing_identity=None,
         gcrumbs=None,
         pool=None,
     ) -> None:
         self._db_url = db_url
         self._decision_trail = decision_trail
-        self._signing_key = signing_key
+        self._signing_identity = signing_identity
         self._gcrumbs = gcrumbs
         self._pool = pool
         self._conn: psycopg.Connection[dict[str, Any]] | None = None
@@ -209,6 +209,23 @@ class ErasureProofService:
         logger.info("Erasure Proof schema ensured")
 
     # ------------------------------------------------------------------
+    # Issuance requirements
+    # ------------------------------------------------------------------
+
+    def assert_can_sign(self, signing_identity=None) -> None:
+        """Verify that a signing identity is available for erasure certificates.
+
+        Raises RuntimeError if unsigned certificates would be produced,
+        enforcing a strictly fail-closed security posture.
+        """
+        key = signing_identity or self._signing_identity
+        if key is None:
+            raise RuntimeError(
+                "GRAFOMEM_SIGNING_KEY is required to issue erasure certificates. "
+                "Unsigned certificates are strictly prohibited."
+            )
+
+    # ------------------------------------------------------------------
     # Issue a certificate
     # ------------------------------------------------------------------
 
@@ -221,7 +238,7 @@ class ErasureProofService:
         memory_deleted: bool = True,
         legal_basis: str = "GDPR Article 17 — Right to Erasure",
         requested_by: str | None = "data_subject",
-        signing_key: bytes | None = None,
+        signing_identity=None,
     ) -> ErasureCertificate:
         """Issue a signed erasure certificate.
 
@@ -245,13 +262,15 @@ class ErasureProofService:
             Legal basis for the erasure (default: GDPR Article 17).
         requested_by : str, optional
             Who requested the erasure.
-        signing_key : bytes, optional
-            Override signing key (falls back to service-level key).
+        signing_identity : SigningIdentity, optional
+            Override signing identity (falls back to service-level identity).
 
         Returns
         -------
         ErasureCertificate
         """
+        self.assert_can_sign(signing_identity)
+
         requested_at = datetime.now(tz=timezone.utc)
 
         # Step 1: Scrub decision trail records
@@ -293,11 +312,10 @@ class ErasureProofService:
 
         signature = None
         public_key = None
-        key = signing_key or self._signing_key
-        if key is not None:
-            from aml.provenance import sign_provenance
-            digest = compute_certificate_digest(cert_data)
-            signature, public_key = sign_provenance(key, digest)
+        key = signing_identity or self._signing_identity
+        from aml.provenance import sign_provenance
+        digest = compute_certificate_digest(cert_data)
+        signature, public_key = sign_provenance(key, digest)
 
         # Step 5: Persist
         conn = self._get_conn()
@@ -509,8 +527,8 @@ class ErasureProofService:
             memory_deleted=row["memory_deleted"],
             decision_records_scrubbed=row["decision_records_scrubbed"],
             scrubbed_decision_ids=ids,
-            erasure_requested_at=row["erasure_requested_at"],
-            erasure_completed_at=row["erasure_completed_at"],
+            erasure_requested_at=row["erasure_requested_at"].astimezone(timezone.utc) if row["erasure_requested_at"] else None,
+            erasure_completed_at=row["erasure_completed_at"].astimezone(timezone.utc) if row["erasure_completed_at"] else None,
             legal_basis=row["legal_basis"],
             requested_by=row.get("requested_by"),
             signature=row.get("signature"),

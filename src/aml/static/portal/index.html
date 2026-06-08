@@ -97,6 +97,9 @@
           <a class="nav-item active" data-section="overview" id="nav-overview">
             <span class="nav-icon">⊞</span> Overview
           </a>
+          <a class="nav-item" data-section="manifold" id="nav-manifold">
+            <span class="nav-icon">⬡</span> Semantic Manifold
+          </a>
           <a class="nav-item" data-section="api-key" id="nav-api-key">
             <span class="nav-icon">⚿</span> API Key
           </a>
@@ -186,6 +189,28 @@ curl -X POST https://grafomem-production.up.railway.app/v1/stores/default/retrie
   -H "Authorization: Bearer <span class="code-highlight">YOUR_API_KEY</span>" \
   -H "Content-Type: application/json" \
   -d '{"query": "What does the user prefer?", "options": {"top_k": 5}}'</code></pre>
+          </div>
+        </section>
+
+        <!-- SEMANTIC MANIFOLD -->
+        <section id="section-manifold" class="section manifold-section" style="display:none">
+          <div class="manifold-header">
+            <h1 class="section-title">Semantic Manifold</h1>
+            <div class="manifold-controls">
+              <div class="lens-switcher">
+                <button class="lens-btn active" data-lens="compliance">∿ Compliance</button>
+                <button class="lens-btn" data-lens="latency">∿ Latency</button>
+              </div>
+              <div class="zoom-controls">
+                <button class="btn btn-sm" id="manifold-zoom-in">+</button>
+                <button class="btn btn-sm" id="manifold-zoom-out">-</button>
+                <button class="btn btn-sm" id="manifold-zoom-reset">Reset</button>
+              </div>
+            </div>
+          </div>
+          <div class="manifold-canvas-container" id="manifold-canvas-container">
+            <canvas id="manifold-canvas"></canvas>
+            <div id="manifold-tooltip" class="manifold-tooltip" style="display:none"></div>
           </div>
         </section>
 

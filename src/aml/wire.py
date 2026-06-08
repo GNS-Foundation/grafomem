@@ -141,7 +141,6 @@ def enc_write_options(o: WriteOptions):
     return {
         "valid_from": _enc_dt(o.valid_from),
         "tenant_id": o.tenant_id,
-        "signing_key": _enc_bytes(o.signing_key),
         "metadata": o.metadata,
     }
 
@@ -151,7 +150,6 @@ def dec_write_options(d) -> WriteOptions:
     return WriteOptions(
         valid_from=_dec_dt(d.get("valid_from")),
         tenant_id=d.get("tenant_id"),
-        signing_key=_dec_bytes(d.get("signing_key")),
         metadata=d.get("metadata", {}),
     )
 

@@ -45,25 +45,14 @@ def fact_id_for_content(content: str, tenant_id: str | None) -> bytes:
     return h.digest()
 
 
-def sign_provenance(signing_key: bytes, fact_id: bytes) -> tuple[bytes, bytes]:
-    """Ed25519-sign a 16-byte fact_id. `signing_key` is a 32-byte private seed
-    (WriteOptions.signing_key). Returns (signature, public_key) — 64 and 32 raw
+from aml.cloud.identity import SigningIdentity
+
+def sign_provenance(signing_identity: SigningIdentity, fact_id: bytes) -> tuple[bytes, bytes]:
+    """Ed25519-sign a 16-byte fact_id. `signing_identity` provides the sign() interface
+    (WriteOptions.signing_identity). Returns (signature, public_key) — 64 and 32 raw
     bytes — for SourceMeta. The counterpart to interface.verify_provenance.
     """
-    try:
-        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-        from cryptography.hazmat.primitives.serialization import (
-            Encoding, PublicFormat,
-        )
-    except ImportError as e:  # pragma: no cover
-        raise RuntimeError(
-            "sign_provenance requires the 'cryptography' package "
-            "(pip install grafomem[crypto])"
-        ) from e
-    priv = Ed25519PrivateKey.from_private_bytes(signing_key)
-    signature = priv.sign(fact_id)
-    public_key = priv.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
-    return signature, public_key
+    return signing_identity.sign(fact_id)
 
 
 # ============================================================================
@@ -95,13 +84,13 @@ def decision_id_for_record(
     return h.digest()
 
 
-def sign_decision(signing_key: bytes, decision_id: bytes) -> tuple[bytes, bytes]:
+def sign_decision(signing_identity: SigningIdentity, decision_id: bytes) -> tuple[bytes, bytes]:
     """Ed25519-sign a decision_id. Same interface as sign_provenance.
 
-    ``signing_key`` is a 32-byte Ed25519 private seed.
+    ``signing_identity`` provides the sign() interface.
     Returns (signature, public_key) — 64 and 32 raw bytes.
     """
-    return sign_provenance(signing_key, decision_id)
+    return sign_provenance(signing_identity, decision_id)
 
 
 # ============================================================================
@@ -132,7 +121,16 @@ if __name__ == "__main__":
     # 2. sign -> verify True
     seed = Ed25519PrivateKey.generate().private_bytes(
         Encoding.Raw, PrivateFormat.Raw, NoEncryption())
-    sig, pub = sign_provenance(seed, fid)
+    
+    class _MockIdentity:
+        def sign(self, message: bytes):
+            priv = Ed25519PrivateKey.from_private_bytes(seed)
+            return priv.sign(message), priv.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+        def public_key(self):
+            priv = Ed25519PrivateKey.from_private_bytes(seed)
+            return priv.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+            
+    sig, pub = sign_provenance(_MockIdentity(), fid)
     assert len(sig) == 64 and len(pub) == 32
     m = Memory(ref=1, content="Aria lives in Rome",
                written_at=datetime.now(timezone.utc), tenant_id="A",

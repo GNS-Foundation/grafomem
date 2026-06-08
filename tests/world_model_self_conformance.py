@@ -36,7 +36,7 @@ def main() -> int:
         print("ERROR: set GRAFOMEM_DB_URL"); return 2
 
     key = os.urandom(32)
-    svc = WorldModelService(DB, signing_key=key)        # gateway=None baseline
+    svc = WorldModelService(DB, signing_identity=_MockId(key))        # gateway=None baseline
     svc.ensure_schema()
 
     results, st = [], {}
@@ -127,13 +127,13 @@ def main() -> int:
 
     # W9 — governance deny + HITL escalate/resume
     def w9():
-        denier = WorldModelService(DB, signing_key=key, gateway=_Gateway(False, "denied"))
+        denier = WorldModelService(DB, signing_identity=_MockId(key), gateway=_Gateway(False, "denied"))
         try:
             denier.invoke_action(TENANT, ActionInvocation("approve_payment", ["Account:a1"],
                 {"amount": 1.0}, {"trust_tier": "root"})); assert False, "governance deny not enforced"
         except ActionDenied:
             pass
-        hitl = WorldModelService(DB, signing_key=key, gateway=_Gateway(False, "escalated"))
+        hitl = WorldModelService(DB, signing_identity=_MockId(key), gateway=_Gateway(False, "escalated"))
         try:
             hitl.invoke_action(TENANT, ActionInvocation("approve_payment", ["Account:a1"],
                 {"amount": 1.0}, {"trust_tier": "root"})); assert False, "escalation not parked"
@@ -175,3 +175,16 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+class _MockId:
+    def __init__(self, k): self.k = k
+    def sign(self, m): 
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+        priv = Ed25519PrivateKey.from_private_bytes(self.k)
+        return priv.sign(m), priv.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+    def public_key(self):
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+        return Ed25519PrivateKey.from_private_bytes(self.k).public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)

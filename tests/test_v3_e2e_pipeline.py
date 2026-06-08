@@ -68,7 +68,7 @@ def main() -> int:
 
     # --- R2: Seal a corpus ---
     def stage_r2():
-        pc = ProvenanceCustomsService(DB, signing_key=key, gateway=gw)
+        pc = ProvenanceCustomsService(DB, signing_identity=_MockId(key), gateway=gw)
         pc.ensure_schema()
         corpus = pc.register_corpus(tenant, CorpusRegisterRequest(
             name="e2e-pipeline-corpus",
@@ -93,7 +93,7 @@ def main() -> int:
 
     # --- R1: Register artifact ---
     def stage_r1():
-        ar = ArtifactRegistryService(DB, signing_key=key, gateway=gw)
+        ar = ArtifactRegistryService(DB, signing_identity=_MockId(key), gateway=gw)
         ar.ensure_schema()
         layer_data = b"e2e-test-layer-content"
         layer_hash = b2(layer_data)
@@ -116,7 +116,7 @@ def main() -> int:
 
     # --- R3: Issue landing certificate ---
     def stage_r3():
-        ls = LandingService(DB, signing_key=key, gateway=gw, epoch_anchor=False)
+        ls = LandingService(DB, signing_identity=_MockId(key), gateway=gw, epoch_anchor=False)
         ls.ensure_schema()
         ls.registry = state["ar"]  # wire auto-certify
         cert = ls.issue_certificate(tenant, LandingIssueRequest(
@@ -151,7 +151,7 @@ def main() -> int:
 
     # --- R4: Compose ---
     def stage_r4():
-        cg = CompositionGovernanceService(DB, signing_key=key, gateway=gw)
+        cg = CompositionGovernanceService(DB, signing_identity=_MockId(key), gateway=gw)
         cg.ensure_schema()
         comp = cg.compose(tenant, ComposeRequest(
             composition_kind="rag-kb+base",
@@ -177,7 +177,7 @@ def main() -> int:
 
     # --- R5: World-model types + governed action ---
     def stage_r5():
-        wm = WorldModelService(DB, signing_key=key, gateway=gw)
+        wm = WorldModelService(DB, signing_identity=_MockId(key), gateway=gw)
         wm.ensure_schema()
         # Object type
         obj_t = wm.register_type(tenant, "object", "E2EPipelineEntity", {
@@ -232,3 +232,16 @@ except ImportError:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+class _MockId:
+    def __init__(self, k): self.k = k
+    def sign(self, m): 
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+        priv = Ed25519PrivateKey.from_private_bytes(self.k)
+        return priv.sign(m), priv.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+    def public_key(self):
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+        return Ed25519PrivateKey.from_private_bytes(self.k).public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)

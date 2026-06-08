@@ -69,11 +69,11 @@ class LandingPendingHITL(LandingError):
 class LandingService:
     """Mirrors ErasureProofService(db_url, ..., signing_key=...)."""
 
-    def __init__(self, db_url: str, *, signing_key: Optional[bytes] = None,
+    def __init__(self, db_url: str, *, signing_identity=None,
                  gateway=None, decision_trail=None, epoch_anchor: bool = False, registry=None,
                  gcrumbs=None, pool=None):
         self.db_url = db_url
-        self.signing_key = signing_key          # 32-byte Ed25519 seed (same family as erasure_key)
+        self.signing_identity = signing_identity          # 32-byte Ed25519 seed (same family as erasure_key)
         self.gateway = gateway                  # GovernanceGateway
         self.decision_trail = decision_trail
         self.epoch_anchor = epoch_anchor        # future: gcrumbs Merkle-epoch inclusion proof
@@ -242,10 +242,10 @@ class LandingService:
         return cert
 
     def _sign_inplace(self, cert: dict) -> None:
-        if not self.signing_key:
+        if not self.signing_identity:
             cert["signature"] = None; cert["signer_public_key"] = None; return
         from aml.provenance import sign_provenance           # your real signer
-        signature, public_key = sign_provenance(self.signing_key, compute_certificate_digest(cert))
+        signature, public_key = sign_provenance(self.signing_identity, compute_certificate_digest(cert))
         cert["signature"] = signature.hex()
         cert["signer_public_key"] = public_key.hex()
 

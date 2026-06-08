@@ -197,7 +197,7 @@ def main() -> int:
     # ── Step 2: R2 — Seal the GNS corpus ──────────────────────────────────
     print("  ▸ R2: Sealing corpus through Article-10 customs...")
     try:
-        pc = ProvenanceCustomsService(DB, signing_key=key, gateway=gw)
+        pc = ProvenanceCustomsService(DB, signing_identity=_MockId(key), gateway=gw)
         pc.ensure_schema()
         corpus = pc.register_corpus(tenant, CorpusRegisterRequest(
             name="grafomem-codebase-v3.0",
@@ -237,7 +237,7 @@ def main() -> int:
     # ── Step 3: R1 — Register the GNS KB artifact ─────────────────────────
     print("  ▸ R1: Registering GNS Knowledge Base artifact...")
     try:
-        ar = ArtifactRegistryService(DB, signing_key=key, gateway=gw)
+        ar = ArtifactRegistryService(DB, signing_identity=_MockId(key), gateway=gw)
         ar.ensure_schema()
         # Use first 10 source hashes as representative layers
         kb_layers = [
@@ -272,7 +272,7 @@ def main() -> int:
     # ── Step 4: R3 — Issue Landing Certificate ────────────────────────────
     print("  ▸ R3: Issuing Landing Certificate...")
     try:
-        ls = LandingService(DB, signing_key=key, gateway=gw, epoch_anchor=False)
+        ls = LandingService(DB, signing_identity=_MockId(key), gateway=gw, epoch_anchor=False)
         ls.ensure_schema()
         ls.registry = ar  # wire auto-certify
         cert = ls.issue_certificate(tenant, LandingIssueRequest(
@@ -319,7 +319,7 @@ def main() -> int:
     # ── Step 5: R4 — Compose KB + Base Model ──────────────────────────────
     print("  ▸ R4: Composing GNS KB + Gemini 2.5 Pro...")
     try:
-        cg = CompositionGovernanceService(DB, signing_key=key, gateway=gw)
+        cg = CompositionGovernanceService(DB, signing_identity=_MockId(key), gateway=gw)
         cg.ensure_schema()
         comp = cg.compose(tenant, ComposeRequest(
             composition_kind="rag-kb+base-model",
@@ -348,7 +348,7 @@ def main() -> int:
     # ── Step 6: R5 — Define GNS Ontology + Governed Actions ──────────────
     print("  ▸ R5: Defining GNS Ontology...")
     try:
-        wm = WorldModelService(DB, signing_key=key, gateway=gw)
+        wm = WorldModelService(DB, signing_identity=_MockId(key), gateway=gw)
         wm.ensure_schema()
 
         # Register object types
@@ -485,3 +485,16 @@ except ImportError:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+class _MockId:
+    def __init__(self, k): self.k = k
+    def sign(self, m): 
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+        priv = Ed25519PrivateKey.from_private_bytes(self.k)
+        return priv.sign(m), priv.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+    def public_key(self):
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+        return Ed25519PrivateKey.from_private_bytes(self.k).public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)

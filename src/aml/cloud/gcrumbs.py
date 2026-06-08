@@ -201,9 +201,9 @@ class GcrumbsService:
         32-byte Ed25519 private seed (same key used by R1–R5 services).
     """
 
-    def __init__(self, db_url: str, *, signing_key: Optional[bytes] = None, pool=None) -> None:
+    def __init__(self, db_url: str, *, signing_identity=None, pool=None) -> None:
         self.db_url = db_url
-        self.signing_key = signing_key
+        self.signing_identity = signing_identity
         self._pool = pool
 
     # ------------------------------------------------------------------
@@ -243,20 +243,17 @@ class GcrumbsService:
 
     def _sign(self, message: bytes) -> tuple[str, str]:
         """Sign message with Ed25519. Returns (signature_hex, pubkey_hex)."""
-        if not self.signing_key:
-            raise GcrumbsError("signing_key required for gcrumbs operations")
+        if not self.signing_identity:
+            raise GcrumbsError("signing_identity required for gcrumbs operations")
         from aml.provenance import sign_provenance
-        sig, pub = sign_provenance(self.signing_key, message)
+        sig, pub = sign_provenance(self.signing_identity, message)
         return sig.hex(), pub.hex()
 
     def _pub_hex(self) -> str:
-        """Get the public key hex for the signing key."""
-        if not self.signing_key:
-            raise GcrumbsError("signing_key required")
-        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
-        priv = Ed25519PrivateKey.from_private_bytes(self.signing_key)
-        return priv.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw).hex()
+        """Get the public key hex for the signing identity."""
+        if not self.signing_identity:
+            raise GcrumbsError("signing_identity required")
+        return self.signing_identity.public_key().hex()
 
     # ------------------------------------------------------------------
     # Breadcrumb chain (Layer 1)

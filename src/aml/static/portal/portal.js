@@ -1981,6 +1981,284 @@
     });
   }
 
+  // ── Semantic Manifold ───────────────────────────────────────
+  const manifoldCanvas = $('manifold-canvas');
+  const manifoldCtx = manifoldCanvas ? manifoldCanvas.getContext('2d') : null;
+  let manifoldData = null;
+  let manifoldTransform = { x: 0, y: 0, k: 1 };
+  let currentLens = 'compliance';
+  let isDraggingManifold = false;
+  let dragStart = { x: 0, y: 0 };
+  let hoveredCell = null;
+
+  async function loadManifold() {
+    if (!manifoldCanvas) return;
+    try {
+      $('manifold-canvas-container').style.opacity = '0.5';
+      const data = await api('/v1/manifold/export');
+      manifoldData = data;
+      $('manifold-canvas-container').style.opacity = '1';
+      
+      // Auto-fit bounds
+      if (manifoldData && manifoldData.cells && manifoldData.cells.length > 0) {
+        fitManifold();
+      }
+      drawManifold();
+    } catch (e) {
+      toast(`Failed to load manifold: ${e.message}`, 'error');
+    }
+  }
+
+  function resizeManifold() {
+    if (!manifoldCanvas) return;
+    const rect = manifoldCanvas.parentElement.getBoundingClientRect();
+    manifoldCanvas.width = rect.width;
+    manifoldCanvas.height = rect.height;
+    drawManifold();
+  }
+
+  window.addEventListener('resize', resizeManifold);
+
+  function fitManifold() {
+    if (!manifoldCanvas || !manifoldData || !manifoldData.cells.length) return;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    manifoldData.cells.forEach(c => {
+      if (c.x < minX) minX = c.x;
+      if (c.y < minY) minY = c.y;
+      if (c.x > maxX) maxX = c.x;
+      if (c.y > maxY) maxY = c.y;
+    });
+    
+    // add padding
+    minX -= 60; minY -= 60; maxX += 60; maxY += 60;
+    
+    const w = maxX - minX;
+    const h = maxY - minY;
+    
+    const scale = Math.min(manifoldCanvas.width / w, manifoldCanvas.height / h) * 0.9;
+    manifoldTransform = {
+      k: scale,
+      x: (manifoldCanvas.width - w * scale) / 2 - minX * scale,
+      y: (manifoldCanvas.height - h * scale) / 2 - minY * scale
+    };
+  }
+
+  function drawHexagon(ctx, x, y, size, fillStyle, strokeStyle, strokeWidth) {
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const angle_deg = 60 * i - 30;
+      const angle_rad = Math.PI / 180 * angle_deg;
+      const hx = x + size * Math.cos(angle_rad);
+      const hy = y + size * Math.sin(angle_rad);
+      if (i === 0) ctx.moveTo(hx, hy);
+      else ctx.lineTo(hx, hy);
+    }
+    ctx.closePath();
+    if (fillStyle) {
+      ctx.fillStyle = fillStyle;
+      ctx.fill();
+    }
+    if (strokeStyle) {
+      ctx.lineWidth = strokeWidth;
+      ctx.strokeStyle = strokeStyle;
+      ctx.stroke();
+    }
+  }
+
+  function getLensColor(cell, lens) {
+    const val = cell.lenses[lens];
+    if (lens === 'compliance') {
+      // 1.0 = success (green), <1.0 = failure/partial (red/yellow)
+      if (val >= 0.99) return 'rgba(16, 185, 129, 0.7)'; // emerald-500
+      if (val >= 0.5) return 'rgba(245, 158, 11, 0.7)'; // amber-500
+      return 'rgba(239, 68, 68, 0.7)'; // red-500
+    } else if (lens === 'latency') {
+      // heat map: 0 = blue, 1000 = red
+      const h = Math.max(0, 240 - (Math.min(val, 2000) / 2000) * 240);
+      return `hsla(${h}, 80%, 50%, 0.7)`;
+    }
+    return 'rgba(148, 163, 184, 0.4)';
+  }
+
+  function drawManifold() {
+    if (!manifoldCtx || !manifoldData) return;
+    const ctx = manifoldCtx;
+    ctx.clearRect(0, 0, manifoldCanvas.width, manifoldCanvas.height);
+    
+    ctx.save();
+    ctx.translate(manifoldTransform.x, manifoldTransform.y);
+    ctx.scale(manifoldTransform.k, manifoldTransform.k);
+
+    const HEX_SIZE = 40; // Hardcoded in backend serialize_manifold `hex_px`
+    const R = HEX_SIZE / Math.sqrt(3);
+
+    // Edges (parent-child links)
+    if (manifoldData.edges && manifoldData.edges.length) {
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+      ctx.beginPath();
+      
+      // We need stepId -> cell mapping
+      const stepMap = {};
+      manifoldData.steps.forEach(s => stepMap[s.stepId] = s.cellId);
+      const cellMap = {};
+      manifoldData.cells.forEach(c => cellMap[c.id] = c);
+
+      manifoldData.edges.forEach(edge => {
+        const c1Id = stepMap[edge.from];
+        const c2Id = stepMap[edge.to];
+        if (c1Id && c2Id) {
+          const c1 = cellMap[c1Id];
+          const c2 = cellMap[c2Id];
+          if (c1 && c2) {
+            ctx.moveTo(c1.x, c1.y);
+            ctx.lineTo(c2.x, c2.y);
+          }
+        }
+      });
+      ctx.stroke();
+    }
+
+    // Hexagons
+    manifoldData.cells.forEach(cell => {
+      const isHovered = hoveredCell && hoveredCell.id === cell.id;
+      const fill = getLensColor(cell, currentLens);
+      const stroke = isHovered ? '#fff' : 'rgba(255,255,255,0.1)';
+      const strokeWidth = isHovered ? 2 : 1;
+      
+      drawHexagon(ctx, cell.x, cell.y, R * 0.95, fill, stroke, strokeWidth);
+      
+      // Label / Count
+      if (cell.count > 0 && manifoldTransform.k > 0.5) {
+        ctx.fillStyle = '#fff';
+        ctx.font = `${Math.max(10, 12/manifoldTransform.k)}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(cell.count.toString(), cell.x, cell.y);
+      }
+    });
+
+    ctx.restore();
+  }
+
+  // Pan / Zoom events
+  if (manifoldCanvas) {
+    manifoldCanvas.addEventListener('mousedown', e => {
+      isDraggingManifold = true;
+      dragStart = { x: e.clientX - manifoldTransform.x, y: e.clientY - manifoldTransform.y };
+    });
+
+    window.addEventListener('mouseup', () => isDraggingManifold = false);
+
+    manifoldCanvas.addEventListener('mousemove', e => {
+      if (isDraggingManifold) {
+        manifoldTransform.x = e.clientX - dragStart.x;
+        manifoldTransform.y = e.clientY - dragStart.y;
+        drawManifold();
+        $('manifold-tooltip').style.display = 'none';
+        return;
+      }
+
+      // Hit test for tooltip
+      if (!manifoldData) return;
+      const rect = manifoldCanvas.getBoundingClientRect();
+      const mouseX = (e.clientX - rect.left - manifoldTransform.x) / manifoldTransform.k;
+      const mouseY = (e.clientY - rect.top - manifoldTransform.y) / manifoldTransform.k;
+      
+      const HEX_SIZE = 40;
+      const R = HEX_SIZE / Math.sqrt(3);
+      
+      let found = null;
+      for (const cell of manifoldData.cells) {
+        const dx = mouseX - cell.x;
+        const dy = mouseY - cell.y;
+        if (dx*dx + dy*dy <= R*R * 0.8) { // simple circle hit test
+          found = cell;
+          break;
+        }
+      }
+
+      if (found !== hoveredCell) {
+        hoveredCell = found;
+        drawManifold(); // redraw to show hover outline
+      }
+
+      if (found) {
+        const tt = $('manifold-tooltip');
+        tt.style.display = 'block';
+        tt.style.left = (e.clientX - rect.left + 15) + 'px';
+        tt.style.top = (e.clientY - rect.top + 15) + 'px';
+        
+        tt.innerHTML = `
+          <h4>${found.label}</h4>
+          <div class="manifold-tooltip-row">
+            <span class="manifold-tooltip-label">Steps in Node</span>
+            <span class="manifold-tooltip-value">${found.count}</span>
+          </div>
+          <div class="manifold-tooltip-row">
+            <span class="manifold-tooltip-label">Compliance Avg</span>
+            <span class="manifold-tooltip-value">${(found.lenses.compliance * 100).toFixed(1)}%</span>
+          </div>
+          <div class="manifold-tooltip-row">
+            <span class="manifold-tooltip-label">Latency Avg</span>
+            <span class="manifold-tooltip-value">${found.lenses.latency}ms</span>
+          </div>
+        `;
+      } else {
+        $('manifold-tooltip').style.display = 'none';
+      }
+    });
+
+    manifoldCanvas.addEventListener('wheel', e => {
+      e.preventDefault();
+      const zoomIntensity = 0.1;
+      const wheel = e.deltaY < 0 ? 1 : -1;
+      const zoom = Math.exp(wheel * zoomIntensity);
+      
+      const rect = manifoldCanvas.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      manifoldTransform.x = mouseX - (mouseX - manifoldTransform.x) * zoom;
+      manifoldTransform.y = mouseY - (mouseY - manifoldTransform.y) * zoom;
+      manifoldTransform.k *= zoom;
+      drawManifold();
+    });
+
+    $('manifold-zoom-in')?.addEventListener('click', () => {
+      manifoldTransform.k *= 1.2;
+      drawManifold();
+    });
+
+    $('manifold-zoom-out')?.addEventListener('click', () => {
+      manifoldTransform.k /= 1.2;
+      drawManifold();
+    });
+
+    $('manifold-zoom-reset')?.addEventListener('click', () => {
+      fitManifold();
+      drawManifold();
+    });
+
+    document.querySelectorAll('.lens-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.lens-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentLens = btn.dataset.lens;
+        drawManifold();
+      });
+    });
+
+    const navManifold = $('nav-manifold');
+    if (navManifold) {
+      navManifold.addEventListener('click', () => {
+        showSection('manifold');
+        resizeManifold();
+        loadManifold();
+      });
+    }
+  }
+
   // Stop polling when switching away from monitoring
   document.querySelectorAll('.nav-item').forEach(nav => {
     nav.addEventListener('click', () => {

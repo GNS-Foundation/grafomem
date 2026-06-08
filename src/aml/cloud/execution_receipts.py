@@ -543,8 +543,8 @@ class ExecutionReceiptService:
             tool_call_hashes=tch,
             output_hash=row["output_hash"],
             decision_id=row.get("decision_id"),
-            started_at=row["started_at"],
-            completed_at=row["completed_at"],
+            started_at=row["started_at"].astimezone(timezone.utc),
+            completed_at=row["completed_at"].astimezone(timezone.utc),
             signature=row.get("signature"),
             public_key=row.get("public_key"),
         )

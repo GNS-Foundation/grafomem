@@ -225,7 +225,8 @@ def _test_provenance(factory: StoreFactory, seeds, budget) -> CapabilityResult:
         for c in contents:
             store.write(c, WriteOptions())
         store.flush()
-        memos = list(store.audit())
+        contents_set = set(contents)
+        memos = [m for m in store.audit() if m.content in contents_set]
         good = len(memos) == len(contents) and all(
             m.source is not None and m.source.write_id is not None
             and m.source.written_at is not None for m in memos)
@@ -240,19 +241,31 @@ def _test_crypto_provenance(factory, seeds, budget):
     the signature binds to the exact bytes). Crypto dep is touched only here."""
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
     from cryptography.hazmat.primitives.serialization import (
-        Encoding, NoEncryption, PrivateFormat,
+        Encoding, NoEncryption, PrivateFormat, PublicFormat,
     )
     valid_ps, tamper_ps = [], []
     for s in seeds:
         store = factory()
         key = Ed25519PrivateKey.generate().private_bytes(
             Encoding.Raw, PrivateFormat.Raw, NoEncryption())
+        
+        class _MockId:
+            def __init__(self, k): self.k = k
+            def sign(self, m): 
+                priv = Ed25519PrivateKey.from_private_bytes(self.k)
+                return priv.sign(m), priv.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+            def public_key(self):
+                return Ed25519PrivateKey.from_private_bytes(self.k).public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+
         contents = [f"signed probe {i} (seed {s})" for i in range(8)]
         for c in contents:
-            store.write(c, WriteOptions(signing_key=key))
+            store.write(c, WriteOptions(signing_identity=_MockId(key)))
         store.flush()
         valid, tamper = [], []
+        contents_set = set(contents)
         for m in store.audit():
+            if m.content not in contents_set:
+                continue
             valid.append(1.0 if verify_provenance(
                 m, fact_id_for_content(m.content, m.tenant_id)) else 0.0)
             tamper.append(1.0 if verify_provenance(

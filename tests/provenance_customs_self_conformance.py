@@ -53,7 +53,7 @@ def main() -> int:
         print("ERROR: set GRAFOMEM_DB_URL"); return 2
 
     key = os.urandom(32)
-    svc = ProvenanceCustomsService(DB, signing_key=key)
+    svc = ProvenanceCustomsService(DB, signing_identity=_MockId(key))
     svc.ensure_schema()
 
     results, st = [], {}
@@ -144,7 +144,7 @@ def main() -> int:
     gate("P8  Article-10: refuse missing bias examination", p8)
 
     def p9():
-        denier = ProvenanceCustomsService(DB, signing_key=key, gateway=_Gateway(False, "denied"))
+        denier = ProvenanceCustomsService(DB, signing_identity=_MockId(key), gateway=_Gateway(False, "denied"))
         try:
             denier.register_corpus(TENANT, good_corpus("gov-denied")); assert False, "governance deny not enforced"
         except CustomsRejected:
@@ -176,3 +176,16 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+class _MockId:
+    def __init__(self, k): self.k = k
+    def sign(self, m): 
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+        priv = Ed25519PrivateKey.from_private_bytes(self.k)
+        return priv.sign(m), priv.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+    def public_key(self):
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+        return Ed25519PrivateKey.from_private_bytes(self.k).public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)

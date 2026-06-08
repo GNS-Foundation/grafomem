@@ -229,10 +229,10 @@ class PostgresGMPBackend:
     @staticmethod
     def _provenance(content: str, options: WriteOptions):
         """Compute provenance columns. Same logic as SQLiteGMPBackend."""
-        if options.signing_key is None:
+        if options.signing_identity is None:
             return None, None, None
         fid = fact_id_for_content(content, options.tenant_id)
-        sig, pub = sign_provenance(options.signing_key, fid)
+        sig, pub = sign_provenance(options.signing_identity, fid)
         return pub.hex(), sig, pub
 
     def write_many(self, items: list[tuple[str, WriteOptions]]) -> list[int]:
@@ -513,7 +513,7 @@ if __name__ == "__main__":
         )
         key = Ed25519PrivateKey.generate().private_bytes(
             Encoding.Raw, PrivateFormat.Raw, NoEncryption())
-        rp = b.write("Aria prefers tea", WriteOptions(signing_key=key, tenant_id="A"))
+        rp = b.write("Aria prefers tea", WriteOptions(signing_identity=key, tenant_id="A"))
         mp = next(m for m in b.audit() if m.ref == rp)
         assert mp.source is not None
         assert verify_provenance(mp, fact_id_for_content(mp.content, mp.tenant_id))

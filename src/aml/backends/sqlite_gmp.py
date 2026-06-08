@@ -286,14 +286,14 @@ class SQLiteGMPBackend:
 
     @staticmethod
     def _provenance(content: str, options: WriteOptions):
-        """Provenance columns for a write. CRYPTOGRAPHIC_PROVENANCE: a signing_key signs
+        """Provenance columns for a write. CRYPTOGRAPHIC_PROVENANCE: a signing_identity signs
         the content fact_id and records the public key (also the writer identity).
         Unsigned writes store NULLs; write_id (= the ref) and written_at still provide
         PROVENANCE on read. Returns (written_by, signature, public_key)."""
-        if options.signing_key is None:
+        if options.signing_identity is None:
             return None, None, None
         fid = fact_id_for_content(content, options.tenant_id)
-        sig, pub = sign_provenance(options.signing_key, fid)
+        sig, pub = sign_provenance(options.signing_identity, fid)
         return pub.hex(), sig, pub
 
     def write_many(self, items: list[tuple[str, WriteOptions]]) -> list[int]:
@@ -502,7 +502,7 @@ if __name__ == "__main__":
     bp = SQLiteGMPBackend(ppath)
     key = Ed25519PrivateKey.generate().private_bytes(
         Encoding.Raw, PrivateFormat.Raw, NoEncryption())
-    rp = bp.write("Aria prefers tea", WriteOptions(signing_key=key, tenant_id="A"))
+    rp = bp.write("Aria prefers tea", WriteOptions(signing_identity=key, tenant_id="A"))
     bp.flush()
     bp.close()                                            # <- process boundary
     bp2 = SQLiteGMPBackend(ppath)                          # reopen

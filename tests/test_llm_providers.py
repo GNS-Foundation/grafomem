@@ -48,7 +48,7 @@ def _mock_config(model_id: str = "mock-model") -> LLMConfig:
 
 def _registry() -> LLMRegistry:
     """Create a registry that won't actually connect (mock-only usage)."""
-    return LLMRegistry(db_url="postgresql://test:test@localhost/test")
+    return LLMRegistry(db_url="postgresql://test:test@localhost/test", encryption=_MockId(b"0"*32))
 
 
 # ============================================================================
@@ -323,3 +323,16 @@ def test_infer_unknown_model_raises():
     )
     with pytest.raises(ValueError, match="No LLM provider configured"):
         reg.infer("tenant-unit-test", req)
+
+
+class _MockId:
+    def __init__(self, k): self.k = k
+    def sign(self, m): 
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+        priv = Ed25519PrivateKey.from_private_bytes(self.k)
+        return priv.sign(m), priv.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+    def public_key(self):
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+        return Ed25519PrivateKey.from_private_bytes(self.k).public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)

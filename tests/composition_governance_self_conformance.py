@@ -47,7 +47,7 @@ def main() -> int:
         print("ERROR: set GRAFOMEM_DB_URL"); return 2
 
     key = os.urandom(32)
-    svc = CompositionGovernanceService(DB, signing_key=key)
+    svc = CompositionGovernanceService(DB, signing_identity=_MockId(key))
     svc.ensure_schema()
 
     results, st = [], {}
@@ -143,12 +143,12 @@ def main() -> int:
     gate("K8  composer authority gate (non-vacuous)", k8)
 
     def k9():
-        denier = CompositionGovernanceService(DB, signing_key=key, gateway=_Gateway(False, "denied"))
+        denier = CompositionGovernanceService(DB, signing_identity=_MockId(key), gateway=_Gateway(False, "denied"))
         try:
             denier.compose(TENANT, good_request(target="oci://acme/gov-deny:1")); assert False, "deny not enforced"
         except ComposeRejected:
             pass
-        hitl = CompositionGovernanceService(DB, signing_key=key, gateway=_Gateway(False, "escalated"))
+        hitl = CompositionGovernanceService(DB, signing_identity=_MockId(key), gateway=_Gateway(False, "escalated"))
         try:
             hitl.compose(TENANT, good_request(target="oci://acme/hitl:1")); assert False, "escalation not parked"
         except ComposePendingHITL as e:
@@ -180,3 +180,16 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+class _MockId:
+    def __init__(self, k): self.k = k
+    def sign(self, m): 
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+        priv = Ed25519PrivateKey.from_private_bytes(self.k)
+        return priv.sign(m), priv.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+    def public_key(self):
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+        return Ed25519PrivateKey.from_private_bytes(self.k).public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)

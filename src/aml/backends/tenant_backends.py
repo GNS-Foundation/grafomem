@@ -72,7 +72,7 @@ class _TenantVectorBase:
 
     def write(self, content: str, options: WriteOptions) -> int:
         # MULTI_TENANT is claimed, so a tenant_id is accepted (not refused).
-        if options.signing_key is not None:
+        if options.signing_identity is not None:
             raise CapabilityNotSupported(
                 Capability.CRYPTOGRAPHIC_PROVENANCE, "write")
         ref = self._next

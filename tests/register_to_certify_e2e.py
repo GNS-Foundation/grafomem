@@ -22,8 +22,8 @@ if not DB:
 T = f"e2e-{uuid.uuid4().hex[:8]}"
 key = os.urandom(32)
 
-ar = ArtifactRegistryService(DB, signing_key=key); ar.ensure_schema()
-ls = LandingService(DB, signing_key=key, registry=ar); ls.ensure_schema()   # <-- registry wired
+ar = ArtifactRegistryService(DB, signing_identity=_MockId(key)); ar.ensure_schema()
+ls = LandingService(DB, signing_identity=_MockId(key), registry=ar); ls.ensure_schema()   # <-- registry wired
 
 l0, l1 = b"adapter-w0", b"adapter-w1"
 layers = [{"media_type": "application/vnd.modelpack.lora", "digest": b2_256(l0), "size": len(l0)},
@@ -63,3 +63,16 @@ finally:
             pass
 
 sys.exit(0 if ok else 1)
+
+
+class _MockId:
+    def __init__(self, k): self.k = k
+    def sign(self, m): 
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+        priv = Ed25519PrivateKey.from_private_bytes(self.k)
+        return priv.sign(m), priv.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+    def public_key(self):
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+        return Ed25519PrivateKey.from_private_bytes(self.k).public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)

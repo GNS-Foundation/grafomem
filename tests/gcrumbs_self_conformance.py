@@ -35,7 +35,7 @@ def main() -> int:
         print("ERROR: set GRAFOMEM_DB_URL"); return 2
 
     key = os.urandom(32)
-    svc = GcrumbsService(DB, signing_key=key)
+    svc = GcrumbsService(DB, signing_identity=_MockId(key))
     svc.ensure_schema()
 
     TENANT = f"gcrumbs-test-{uuid.uuid4().hex[:12]}"
@@ -264,3 +264,16 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+class _MockId:
+    def __init__(self, k): self.k = k
+    def sign(self, m): 
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+        priv = Ed25519PrivateKey.from_private_bytes(self.k)
+        return priv.sign(m), priv.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+    def public_key(self):
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+        return Ed25519PrivateKey.from_private_bytes(self.k).public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)

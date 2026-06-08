@@ -49,7 +49,7 @@ def main() -> int:
         print("ERROR: set GRAFOMEM_DB_URL"); return 2
 
     key = os.urandom(32)
-    svc = ArtifactRegistryService(DB, signing_key=key)
+    svc = ArtifactRegistryService(DB, signing_identity=_MockId(key))
     svc.ensure_schema()
 
     results, st = [], {}
@@ -119,7 +119,7 @@ def main() -> int:
     gate("A7  integrity check (non-vacuous)", a7)
 
     def a8():
-        denied = ArtifactRegistryService(DB, signing_key=key, gateway=_Gateway(False, "denied"))
+        denied = ArtifactRegistryService(DB, signing_identity=_MockId(key), gateway=_Gateway(False, "denied"))
         req = good_request(); req.artifact_ref = "oci://registry/acme/denied:1.0"  # distinct id so not idempotent-hit
         try:
             denied.register(TENANT, req); assert False, "deny not enforced"
@@ -128,7 +128,7 @@ def main() -> int:
     gate("A8  governance deny enforced", a8)
 
     def a9():
-        hitl = ArtifactRegistryService(DB, signing_key=key, gateway=_Gateway(False, "escalated"))
+        hitl = ArtifactRegistryService(DB, signing_identity=_MockId(key), gateway=_Gateway(False, "escalated"))
         req = good_request(); req.artifact_ref = "oci://registry/acme/hitl:1.0"
         try:
             hitl.register(TENANT, req); assert False, "escalation not parked"
@@ -164,3 +164,16 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+class _MockId:
+    def __init__(self, k): self.k = k
+    def sign(self, m): 
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+        priv = Ed25519PrivateKey.from_private_bytes(self.k)
+        return priv.sign(m), priv.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+    def public_key(self):
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+        return Ed25519PrivateKey.from_private_bytes(self.k).public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
