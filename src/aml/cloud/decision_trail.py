@@ -249,12 +249,12 @@ class DecisionTrailService:
         # Ed25519 signing (optional)
         signature = None
         public_key = None
-        if signing_key is not None:
+        if signing_identity is not None:
             from aml.provenance import sign_provenance
             did_bytes = compute_decision_id_bytes(
                 tenant_id, query, model_id, raw_output, now,
             )
-            signature, public_key = sign_provenance(signing_key, did_bytes)
+            signature, public_key = signing_identity.sign(did_bytes)
 
         refs = retrieved_refs or []
         contents = retrieved_contents or []

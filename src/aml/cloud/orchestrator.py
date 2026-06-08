@@ -304,6 +304,7 @@ class OrchestratorService:
         tool_registry: Any | None = None,
         execution_receipts: Any | None = None,
         gcrumbs: Any | None = None,
+        signing_identity: Any | None = None,
         pool=None,
     ) -> None:
         self._db_url = db_url
@@ -317,6 +318,7 @@ class OrchestratorService:
         self._tool_registry = tool_registry
         self._execution_receipts = execution_receipts
         self._gcrumbs = gcrumbs
+        self._signing_identity = signing_identity
 
     # ------------------------------------------------------------------
     # Connection
@@ -934,6 +936,7 @@ class OrchestratorService:
                     parameters={"temperature": agent.temperature},
                     output_tokens=tokens_used,
                     latency_ms=latency_llm_ms,
+                    signing_identity=self._signing_identity,
                     parent_decision_id=parent_step_id,
                 )
                 decision_id = record.decision_id

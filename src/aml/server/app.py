@@ -794,6 +794,7 @@ def create_app(
                 llm_registry=llm_reg,
                 tool_registry=tool_reg,
                 gcrumbs=gc,
+                signing_identity=signing_identity,
                 pool=pool,
             )
             _init(orch)
