@@ -108,13 +108,20 @@ def build_features(df: pd.DataFrame, about: np.ndarray):
     ])
     policy_lists = []
     for gl in df.governance_logs:
-        if gl:
+        if gl and isinstance(gl, list):
             policy_lists.append([g.get("policy_name") for g in gl if isinstance(g, dict)])
         else:
             policy_lists.append([])
+            
+    tool_lists = []
+    for tc in df.tool_calls:
+        if tc and isinstance(tc, list):
+            tool_lists.append([t.get("name") if isinstance(t, dict) else t for t in tc])
+        else:
+            tool_lists.append([])
     
     multi = np.hstack([
-        _multihot(df.tool_calls, TOOLS),
+        _multihot(tool_lists, TOOLS),
         _multihot(policy_lists, POLICIES)
     ])
     
