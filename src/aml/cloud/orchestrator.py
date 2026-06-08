@@ -948,7 +948,8 @@ class OrchestratorService:
                     self._gcrumbs.append_breadcrumb(
                         tenant_id=agent.tenant_id,
                         event_type="orchestrator_decision",
-                        target_id=decision_id,
+                        source_type="decision",
+                        source_ref=decision_id,
                         payload={
                             "model_id": agent.model_id,
                             "workflow_id": workflow_id,
