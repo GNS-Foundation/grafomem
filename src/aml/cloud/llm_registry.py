@@ -322,7 +322,11 @@ class LLMRegistry:
                 "Install with: pip install openai"
             )
 
-        client = openai.OpenAI(api_key=config.api_key)
+        import httpx
+        client = openai.OpenAI(
+            api_key=config.api_key,
+            http_client=httpx.Client(timeout=60.0)
+        )
 
         kwargs: dict[str, Any] = {
             "model": config.model_id,
@@ -381,7 +385,11 @@ class LLMRegistry:
                 "Install with: pip install anthropic"
             )
 
-        client = anthropic.Anthropic(api_key=config.api_key)
+        import httpx
+        client = anthropic.Anthropic(
+            api_key=config.api_key,
+            http_client=httpx.Client(timeout=60.0)
+        )
 
         # Floor max_tokens at 1024 — Anthropic can truncate short budgets
         effective_max = max(request.max_tokens, 1024)
@@ -444,7 +452,11 @@ class LLMRegistry:
                 "Install with: pip install google-genai"
             )
 
-        client = genai.Client(api_key=config.api_key)
+        import httpx
+        client = genai.Client(
+            api_key=config.api_key,
+            http_options={"timeout": 60.0}
+        )
 
         # Floor max_tokens at 1024 — Gemini can truncate short budgets
         effective_max = max(request.max_tokens, 1024)
@@ -571,7 +583,8 @@ class LLMRegistry:
                 for t in request.tools
             ]
 
-        with httpx.Client(timeout=120.0) as client:
+        import httpx
+        with httpx.Client(timeout=60.0) as client:
             resp = client.post(f"{base_url}/api/chat", json=payload)
             resp.raise_for_status()
             data = resp.json()

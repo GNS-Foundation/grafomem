@@ -41,6 +41,7 @@ class CreateAgentRequest(BaseModel):
     role: str = "custom"
     description: str = ""
     model_id: str
+    fallback_models: list[str] = Field(default_factory=list)
     system_prompt: str
     memory_stores: list[str] = Field(default_factory=list)
     tools: list[str] = Field(default_factory=list)
@@ -55,6 +56,7 @@ class UpdateAgentRequest(BaseModel):
     name: str | None = None
     description: str | None = None
     model_id: str | None = None
+    fallback_models: list[str] | None = None
     system_prompt: str | None = None
     memory_stores: list[str] | None = None
     tools: list[str] | None = None
@@ -150,11 +152,17 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
         """Create a new agent definition."""
         tenant_id = _get_tenant_id(request)
         try:
+            import os
+            # Ban mock provider in fallback chains in production unless explicit override
+            if "mock" in req.fallback_models and os.environ.get("ENVIRONMENT") == "production":
+                raise HTTPException(status_code=400, detail="The 'mock' provider cannot be used as a fallback in production")
+
             agent = orchestrator.create_agent(
                 tenant_id=tenant_id,
                 name=req.name,
                 role=req.role,
                 model_id=req.model_id,
+                fallback_models=req.fallback_models,
                 system_prompt=req.system_prompt,
                 description=req.description,
                 memory_stores=req.memory_stores,
@@ -199,6 +207,12 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
     ):
         """Update an agent definition."""
         tenant_id = _get_tenant_id(request)
+        
+        if req.fallback_models is not None:
+            import os
+            if "mock" in req.fallback_models and os.environ.get("ENVIRONMENT") == "production":
+                raise HTTPException(status_code=400, detail="The 'mock' provider cannot be used as a fallback in production")
+
         updates = req.model_dump(exclude_none=True)
 
         agent = orchestrator.update_agent(agent_id, tenant_id, **updates)

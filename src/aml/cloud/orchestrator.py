@@ -101,6 +101,7 @@ class AgentDefinition:
     role: AgentRole
     description: str
     model_id: str
+    fallback_models: list[str]
     system_prompt: str
     memory_stores: list[str]
     tools: list[str]
@@ -194,6 +195,7 @@ CREATE TABLE IF NOT EXISTS orchestrator_agents (
     role            TEXT NOT NULL DEFAULT 'custom',
     description     TEXT NOT NULL DEFAULT '',
     model_id        TEXT NOT NULL,
+    fallback_models JSONB NOT NULL DEFAULT '[]',
     system_prompt   TEXT NOT NULL DEFAULT '',
     memory_stores   JSONB NOT NULL DEFAULT '[]',
     tools           JSONB NOT NULL DEFAULT '[]',
@@ -359,6 +361,11 @@ class OrchestratorService:
             logger.warning(f"Could not alter orchestrator_steps table (is_synthetic): {e}")
 
         try:
+            conn.execute("ALTER TABLE orchestrator_agents ADD COLUMN IF NOT EXISTS fallback_models JSONB NOT NULL DEFAULT '[]';")
+        except Exception as e:
+            logger.warning(f"Could not alter orchestrator_agents table (fallback_models): {e}")
+
+        try:
             conn.execute("ALTER TABLE orchestrator_steps ADD COLUMN IF NOT EXISTS latency_governance_ms INTEGER NOT NULL DEFAULT 0;")
             conn.execute("ALTER TABLE orchestrator_steps ADD COLUMN IF NOT EXISTS latency_memory_ms INTEGER NOT NULL DEFAULT 0;")
             conn.execute("ALTER TABLE orchestrator_steps ADD COLUMN IF NOT EXISTS latency_llm_ms INTEGER NOT NULL DEFAULT 0;")
@@ -381,6 +388,7 @@ class OrchestratorService:
         system_prompt: str,
         *,
         description: str = "",
+        fallback_models: list[str] | None = None,
         memory_stores: list[str] | None = None,
         tools: list[str] | None = None,
         max_steps: int = 20,
@@ -397,17 +405,18 @@ class OrchestratorService:
 
         stores = memory_stores or []
         tool_list = tools or []
+        fallbacks = fallback_models or []
 
         conn = self._get_conn()
         conn.execute(
             "INSERT INTO orchestrator_agents "
-            "(agent_id, tenant_id, name, role, description, model_id, "
+            "(agent_id, tenant_id, name, role, description, model_id, fallback_models, "
             " system_prompt, memory_stores, tools, max_steps, max_tokens, "
             " temperature, enabled, created_at, updated_at) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
             (
                 agent_id, tenant_id, name, role.value, description,
-                model_id, system_prompt,
+                model_id, json.dumps(fallbacks), system_prompt,
                 json.dumps(stores), json.dumps(tool_list),
                 max_steps, max_tokens_per_step, temperature,
                 enabled, now, now,
@@ -426,6 +435,7 @@ class OrchestratorService:
             role=role,
             description=description,
             model_id=model_id,
+            fallback_models=fallbacks,
             system_prompt=system_prompt,
             memory_stores=stores,
             tools=tool_list,
@@ -478,7 +488,7 @@ class OrchestratorService:
             return None
 
         allowed = {
-            "name", "description", "model_id", "system_prompt",
+            "name", "description", "model_id", "fallback_models", "system_prompt",
             "memory_stores", "tools", "max_steps", "max_tokens_per_step",
             "temperature", "enabled",
         }
@@ -487,7 +497,7 @@ class OrchestratorService:
             return existing
 
         # Serialize JSON fields
-        for json_field in ("memory_stores", "tools"):
+        for json_field in ("memory_stores", "tools", "fallback_models"):
             if json_field in updates and isinstance(updates[json_field], list):
                 updates[json_field] = json.dumps(updates[json_field])
 
@@ -638,6 +648,7 @@ class OrchestratorService:
         parent_step_id: str | None = None,
         emitter: StreamEmitter | None = None,
         ignore_governance: bool = False,
+        deadline: float | None = None,
     ) -> StepRecord:
         """Execute a single governed agent step.
 
@@ -808,57 +819,153 @@ class OrchestratorService:
                     agent.tenant_id, agent.tools,
                 )
 
-            try:
-                from aml.cloud.llm_registry import LLMRequest
-                llm_request = LLMRequest(
-                    model_id=agent.model_id,
-                    system_prompt=agent.system_prompt,
-                    messages=messages,
-                    tools=tool_defs,
-                    temperature=agent.temperature,
-                    max_tokens=agent.max_tokens_per_step,
-                )
+            from aml.cloud.llm_registry import LLMRequest
+            import httpx
 
-                # Stream: LLM inference start
-                if emitter:
-                    emitter.emit(
-                        "step.llm_start",
-                        {
-                            "model_id": agent.model_id,
-                            "token_budget": agent.max_tokens_per_step,
-                            "facts_in_context": len(retrieved_facts),
-                        },
-                        step_index=step_number,
-                        agent_name=agent.name,
+            models_to_try = [agent.model_id] + (agent.fallback_models or [])
+            final_model_id = agent.model_id
+
+            for attempt_idx, current_model_id in enumerate(models_to_try):
+                if attempt_idx > 0 and self._governance:
+                    gov_context = {
+                        "model_id": current_model_id,
+                        "store_id": agent.memory_stores[0] if agent.memory_stores else None,
+                        "query": input_text,
+                        "tokens": agent.max_tokens_per_step,
+                        "fallback_attempt": attempt_idx,
+                    }
+                    gov_allowed, gov_fallback_logs = self._governance.evaluate_and_gate(
+                        agent.tenant_id, "inference", gov_context,
+                    )
+                    if not gov_allowed:
+                        logger.warning("Governance denied fallback model %s", current_model_id)
+                        continue
+
+                try:
+                    llm_request = LLMRequest(
+                        model_id=current_model_id,
+                        system_prompt=agent.system_prompt,
+                        messages=messages,
+                        tools=tool_defs,
+                        temperature=agent.temperature,
+                        max_tokens=agent.max_tokens_per_step,
                     )
 
-                t0 = time.monotonic()
-                llm_response = self._llm_registry.infer(
-                    agent.tenant_id, llm_request,
-                )
-                latency_llm_ms = int((time.monotonic() - t0) * 1000)
+                    if deadline and time.monotonic() > deadline:
+                        raise TimeoutError("Workflow execution deadline exceeded")
 
-                raw_output = llm_response.content
-                tool_calls = llm_response.tool_calls
-                tokens_used = llm_response.tokens_output
+                    # Stream: LLM inference start
+                    if emitter:
+                        emitter.emit(
+                            "step.llm_start",
+                            {
+                                "model_id": current_model_id,
+                                "token_budget": agent.max_tokens_per_step,
+                                "facts_in_context": len(retrieved_facts),
+                                "attempt": attempt_idx + 1
+                            },
+                            step_index=step_number,
+                            agent_name=agent.name,
+                        )
 
-                # Stream: LLM inference complete
-                if emitter:
-                    emitter.emit(
-                        "step.llm_complete",
-                        {
-                            "tokens_used": tokens_used,
-                            "latency_ms": latency_llm_ms,
-                            "has_tool_calls": bool(tool_calls),
-                            "output_preview": raw_output[:200] if raw_output else "",
-                        },
-                        step_index=step_number,
-                        agent_name=agent.name,
+                    t0 = time.monotonic()
+                    llm_response = self._llm_registry.infer(
+                        agent.tenant_id, llm_request,
                     )
+                    latency_llm_ms = int((time.monotonic() - t0) * 1000)
 
-            except Exception as e:
-                logger.error("LLM inference failed: %s", e)
-                raw_output = f"[LLM Error: {e}]"
+                    raw_output = llm_response.content
+                    tool_calls = llm_response.tool_calls
+                    tokens_used = llm_response.tokens_output
+                    final_model_id = current_model_id
+
+                    # Stream: LLM inference complete
+                    if emitter:
+                        emitter.emit(
+                            "step.llm_complete",
+                            {
+                                "tokens_used": tokens_used,
+                                "latency_ms": latency_llm_ms,
+                                "has_tool_calls": bool(tool_calls),
+                                "output_preview": raw_output[:200] if raw_output else "",
+                                "model_id": current_model_id
+                            },
+                            step_index=step_number,
+                            agent_name=agent.name,
+                        )
+                    break # Success!
+
+                except Exception as e:
+                    logger.error("LLM inference failed for model %s: %s", current_model_id, e)
+                    failed_latency = int((time.monotonic() - t0) * 1000) if 't0' in locals() else 0
+                    
+                    failed_decision_id = None
+                    failed_signature = None
+                    failed_public_key = None
+                    
+                    if self._decision_trail:
+                        try:
+                            rec = self._decision_trail.log(
+                                tenant_id=agent.tenant_id,
+                                store_id=agent.memory_stores[0] if agent.memory_stores else "orchestrator",
+                                query=input_text,
+                                model_id=current_model_id,
+                                raw_output=f"[LLM Error: {str(e)}]",
+                                retrieved_refs=[],
+                                retrieved_contents=[],
+                                retrieval_scores=[],
+                                parameters={"temperature": agent.temperature, "fallback_attempt": attempt_idx},
+                                output_tokens=0,
+                                latency_ms=failed_latency,
+                                signing_identity=self._signing_identity,
+                                parent_decision_id=parent_step_id,
+                            )
+                            failed_decision_id = rec.decision_id
+                            failed_signature = rec.signature
+                            failed_public_key = rec.public_key
+                            
+                            if self._gcrumbs and failed_decision_id:
+                                self._gcrumbs.append_breadcrumb(
+                                    tenant_id=agent.tenant_id,
+                                    event_type="orchestrator_fallback_error",
+                                    source_type="decision",
+                                    source_ref=failed_decision_id,
+                                    payload={"model_id": current_model_id, "error": str(e)}
+                                )
+                        except Exception as dt_err:
+                            logger.warning("Decision trail failed on fallback error: %s", dt_err)
+                            
+                    failed_step_id = _compute_id(workflow_id, str(step_number), current_model_id, str(attempt_idx), str(time.monotonic()))
+                    self._persist_step(
+                        step_id=failed_step_id,
+                        workflow_id=workflow_id,
+                        agent_id=agent_id,
+                        tenant_id=agent.tenant_id,
+                        step_number=step_number,
+                        input_text=input_text,
+                        retrieved_facts=retrieved_facts,
+                        governance_allowed=True,
+                        governance_logs=gov_log_dicts,
+                        model_id=current_model_id,
+                        raw_output=f"[LLM Error: {str(e)}]",
+                        tool_calls=[],
+                        tool_results=[],
+                        tokens_used=0,
+                        latency_ms=failed_latency,
+                        latency_governance_ms=latency_governance_ms,
+                        latency_memory_ms=latency_memory_ms,
+                        latency_llm_ms=failed_latency,
+                        latency_tools_ms=0,
+                        decision_id=failed_decision_id,
+                        parent_decision_id=parent_step_id,
+                        signature=failed_signature,
+                        public_key=failed_public_key,
+                        status=StepStatus.FAILED,
+                        created_at=datetime.now(timezone.utc),
+                    )
+            
+            if not raw_output and not tool_calls:
+                raw_output = "[LLM Error: All models in fallback chain failed]"
         else:
             # No LLM registry — use placeholder for testing
             raw_output = (
@@ -867,28 +974,80 @@ class OrchestratorService:
                 f"LLM registry not configured — returning placeholder.]"
             )
 
+        # ── 3.5 EXACT-REPEAT DETECTION ──────────────────────────
+        import hashlib
+        def _hash_output(out: str, tcs: list[dict]) -> str:
+            h = hashlib.sha256()
+            h.update((out or "").encode('utf-8'))
+            h.update(json.dumps(tcs or [], sort_keys=True).encode('utf-8'))
+            return h.hexdigest()
+
+        previous_steps = self.get_workflow_steps(workflow_id)
+        if previous_steps:
+            curr_hash = _hash_output(raw_output, tool_calls)
+            for last_step in reversed(previous_steps[-4:]):
+                if last_step.agent_id == agent_id:
+                    prev_hash = _hash_output(last_step.raw_output, last_step.tool_calls)
+                    if curr_hash == prev_hash:
+                        logger.warning("Exact-repeat detection triggered for agent %s in workflow %s", agent_id, workflow_id)
+                        raw_output = "[Error: Exact-Repeat Detected]"
+                        tool_calls = []
+                        break
+
         # ── 4. TOOL EXECUTION ──────────────────────────────
         t0_tools = time.monotonic()
         tool_results: list[dict] = []
         if tool_calls and self._tool_registry:
             for tc in tool_calls:
+                if deadline and time.monotonic() > deadline:
+                    logger.warning("Deadline exceeded before tool execution %s", tc["name"])
+                    break
+                tool_name = tc.get("name", "")
+                tool_args = tc.get("arguments", {})
+                
+                # Pre-flight governance hook
+                tool_allowed = True
+                if self._governance:
+                    tool_context = {
+                        "tool_name": tool_name,
+                        "tool_args": json.dumps(tool_args) if isinstance(tool_args, dict) else str(tool_args),
+                        "agent_id": agent_id,
+                        "model_id": final_model_id if self._llm_registry else agent.model_id,
+                    }
+                    tool_allowed, tool_gov_logs = self._governance.evaluate_and_gate(
+                        agent.tenant_id, "tool_execution", tool_context
+                    )
+                    # Extend step governance logs
+                    gov_log_dicts.extend([self._governance.log_to_dict(l) for l in tool_gov_logs])
+                
+                if not tool_allowed:
+                    logger.warning("Tool execution denied by governance: %s", tool_name)
+                    tool_results.append({
+                        "name": tool_name,
+                        "arguments": tool_args,
+                        "output": "[Governance Error: Tool execution denied]",
+                        "success": False,
+                        "governance_allowed": False,
+                    })
+                    continue
+                
                 try:
                     result = self._tool_registry.execute(
                         agent.tenant_id,
-                        tc.get("name", ""),
-                        tc.get("arguments", {}),
+                        tool_name,
+                        tool_args,
                     )
                     tool_results.append({
-                        "name": tc["name"],
-                        "arguments": tc.get("arguments", {}),
+                        "name": tool_name,
+                        "arguments": tool_args,
                         "output": result.output,
                         "success": result.success,
                         "governance_allowed": result.governance_allowed,
                     })
                 except Exception as e:
                     tool_results.append({
-                        "name": tc.get("name", "unknown"),
-                        "arguments": tc.get("arguments", {}),
+                        "name": tool_name,
+                        "arguments": tool_args,
                         "output": None,
                         "success": False,
                         "error": str(e),
@@ -926,7 +1085,7 @@ class OrchestratorService:
                         else "orchestrator"
                     ),
                     query=input_text,
-                    model_id=agent.model_id,
+                    model_id=final_model_id if self._llm_registry else agent.model_id,
                     raw_output=raw_output,
                     retrieved_refs=[f.get("ref", 0) for f in retrieved_facts],
                     retrieved_contents=[
@@ -951,7 +1110,7 @@ class OrchestratorService:
                         source_type="decision",
                         source_ref=decision_id,
                         payload={
-                            "model_id": agent.model_id,
+                            "model_id": final_model_id if self._llm_registry else agent.model_id,
                             "workflow_id": workflow_id,
                         }
                     )
@@ -981,7 +1140,7 @@ class OrchestratorService:
             retrieved_facts=retrieved_facts,
             governance_allowed=True,
             governance_logs=gov_log_dicts,
-            model_id=agent.model_id,
+            model_id=final_model_id if self._llm_registry else agent.model_id,
             raw_output=raw_output,
             tool_calls=tool_calls,
             tool_results=tool_results,
@@ -1070,6 +1229,7 @@ class OrchestratorService:
         initial_input: str,
         *,
         emitter: StreamEmitter | None = None,
+        timeout_seconds: float = 300.0,
     ) -> Workflow:
         """Execute a workflow from start to finish.
 
@@ -1097,13 +1257,15 @@ class OrchestratorService:
                 },
             )
 
+        deadline = time.monotonic() + timeout_seconds
+
         try:
             if workflow.mode == WorkflowMode.SEQUENTIAL:
-                self._run_sequential(workflow, initial_input, emitter=emitter)
+                self._run_sequential(workflow, initial_input, emitter=emitter, deadline=deadline)
             elif workflow.mode == WorkflowMode.SUPERVISOR:
-                self._run_supervisor(workflow, initial_input, emitter=emitter)
+                self._run_supervisor(workflow, initial_input, emitter=emitter, deadline=deadline)
             elif workflow.mode == WorkflowMode.ROUND_ROBIN:
-                self._run_round_robin(workflow, initial_input, emitter=emitter)
+                self._run_round_robin(workflow, initial_input, emitter=emitter, deadline=deadline)
 
             # Check final status (might be WAITING_HITL)
             final = self.get_workflow(workflow_id)
@@ -1179,6 +1341,7 @@ class OrchestratorService:
         initial_input: str,
         *,
         emitter: StreamEmitter | None = None,
+        deadline: float | None = None,
     ) -> None:
         """Sequential: agents run in order, each receives previous output."""
         current_input = initial_input
@@ -1218,7 +1381,7 @@ class OrchestratorService:
             # on deny — we emit pass here before the call for the happy path)
             step = self.execute_step(
                 workflow.workflow_id, agent_id, current_input,
-                emitter=emitter,
+                emitter=emitter, deadline=deadline
             )
 
             # Emit governance pass after the fact (if step was allowed)
@@ -1247,6 +1410,7 @@ class OrchestratorService:
         initial_input: str,
         *,
         emitter: StreamEmitter | None = None,
+        deadline: float | None = None,
     ) -> None:
         """Supervisor: a supervisor agent routes tasks to workers."""
         if not workflow.supervisor_agent_id:
@@ -1269,6 +1433,7 @@ class OrchestratorService:
                 workflow.workflow_id,
                 workflow.supervisor_agent_id,
                 current_context,
+                emitter=emitter, deadline=deadline
             )
             steps_executed += 1
 
@@ -1287,6 +1452,7 @@ class OrchestratorService:
                                 workflow.workflow_id,
                                 worker_id,
                                 worker_task,
+                                deadline=deadline
                             )
                             steps_executed += 1
                             current_context += (
@@ -1726,6 +1892,12 @@ class OrchestratorService:
         elif tools is None:
             tools = []
 
+        fallbacks = row.get("fallback_models")
+        if isinstance(fallbacks, str):
+            fallbacks = json.loads(fallbacks)
+        elif fallbacks is None:
+            fallbacks = []
+
         return AgentDefinition(
             agent_id=row["agent_id"],
             tenant_id=row["tenant_id"],
@@ -1733,6 +1905,7 @@ class OrchestratorService:
             role=AgentRole(row["role"]),
             description=row.get("description", ""),
             model_id=row["model_id"],
+            fallback_models=fallbacks,
             system_prompt=row.get("system_prompt", ""),
             memory_stores=stores,
             tools=tools,

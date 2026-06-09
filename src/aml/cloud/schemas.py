@@ -226,6 +226,7 @@ class AgentResponse(BaseModel):
     role: str
     description: str = ""
     model_id: str = ""
+    fallback_models: list[str] = Field(default_factory=list)
     system_prompt: Optional[str] = None
     memory_stores: list[str] = []
     tools: list[str] = []
