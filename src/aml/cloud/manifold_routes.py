@@ -19,6 +19,20 @@ def create_manifold_router(manifold_svc: ManifoldService) -> APIRouter:
             from fastapi import HTTPException
             raise HTTPException(status_code=500, detail=str(e))
 
+    @router.get("/locate/{step_id}")
+    async def locate_manifold_step(step_id: str, request: Request):
+        ctx = getattr(request.state, "tenant", None)
+        tenant = ctx.tenant_id if ctx else "default"
+        try:
+            res = manifold_svc.locate_step(step_id, tenant)
+            if "error" in res:
+                from fastapi import HTTPException
+                raise HTTPException(status_code=400, detail=res["error"])
+            return res
+        except Exception as e:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=500, detail=str(e))
+
     @router.post("/clear_cache")
     async def clear_cache(request: Request):
         ctx = getattr(request.state, "tenant", None)

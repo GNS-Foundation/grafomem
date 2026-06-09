@@ -86,6 +86,9 @@ class StepStatus(str, Enum):
     DENIED = "denied"
     ESCALATED = "escalated"
     FAILED = "failed"
+    FAILED_TIMEOUT = "failed_timeout"
+    HALTED_LOOP = "halted_loop"
+    FAILED_FAILOVER = "failed_failover"
 
 
 # ============================================================================
@@ -824,6 +827,7 @@ class OrchestratorService:
 
             models_to_try = [agent.model_id] + (agent.fallback_models or [])
             final_model_id = agent.model_id
+            last_failed_status = None
 
             for attempt_idx, current_model_id in enumerate(models_to_try):
                 if attempt_idx > 0 and self._governance:
@@ -935,6 +939,7 @@ class OrchestratorService:
                         except Exception as dt_err:
                             logger.warning("Decision trail failed on fallback error: %s", dt_err)
                             
+                    last_failed_status = StepStatus.FAILED_TIMEOUT if isinstance(e, TimeoutError) else StepStatus.FAILED_FAILOVER
                     failed_step_id = _compute_id(workflow_id, str(step_number), current_model_id, str(attempt_idx), str(time.monotonic()))
                     self._persist_step(
                         step_id=failed_step_id,
@@ -960,13 +965,16 @@ class OrchestratorService:
                         parent_decision_id=parent_step_id,
                         signature=failed_signature,
                         public_key=failed_public_key,
-                        status=StepStatus.FAILED,
+                        status=last_failed_status,
                         created_at=datetime.now(timezone.utc),
                     )
             
+            final_status = StepStatus.COMPLETED
             if not raw_output and not tool_calls:
                 raw_output = "[LLM Error: All models in fallback chain failed]"
+                final_status = last_failed_status or StepStatus.FAILED_FAILOVER
         else:
+            final_status = StepStatus.COMPLETED
             # No LLM registry — use placeholder for testing
             raw_output = (
                 f"[Orchestrator: agent '{agent.name}' received input "
@@ -992,6 +1000,7 @@ class OrchestratorService:
                         logger.warning("Exact-repeat detection triggered for agent %s in workflow %s", agent_id, workflow_id)
                         raw_output = "[Error: Exact-Repeat Detected]"
                         tool_calls = []
+                        final_status = StepStatus.HALTED_LOOP
                         break
 
         # ── 4. TOOL EXECUTION ──────────────────────────────
@@ -1154,7 +1163,7 @@ class OrchestratorService:
             parent_decision_id=parent_step_id,
             signature=signature,
             public_key=public_key,
-            status=StepStatus.COMPLETED,
+            status=final_status,
             created_at=now,
         )
 

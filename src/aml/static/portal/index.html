@@ -195,11 +195,17 @@ curl -X POST https://grafomem-production.up.railway.app/v1/stores/default/retrie
         <!-- SEMANTIC MANIFOLD -->
         <section id="section-manifold" class="section manifold-section" style="display:none">
           <div class="manifold-header">
-            <h1 class="section-title">Semantic Manifold</h1>
+            <div style="display:flex;align-items:center;gap:1rem">
+              <h1 class="section-title">Semantic Manifold</h1>
+              <div id="manifold-prov-badge" class="manifold-prov-badge" style="display:none"></div>
+            </div>
             <div class="manifold-controls">
               <div class="lens-switcher">
                 <button class="lens-btn active" data-lens="compliance">∿ Compliance</button>
                 <button class="lens-btn" data-lens="latency">∿ Latency</button>
+                <button class="lens-btn" data-lens="failover">∿ Failovers</button>
+                <button class="lens-btn" data-lens="loop">∿ Repeats</button>
+                <button class="lens-btn" data-lens="timeout">∿ Timeouts</button>
               </div>
               <div class="zoom-controls">
                 <button class="btn btn-sm" id="manifold-zoom-in">+</button>

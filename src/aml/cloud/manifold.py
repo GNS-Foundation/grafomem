@@ -27,7 +27,7 @@ EXTRACTION_SQL = """
 select s.step_id, a.role agent_role, s.workflow_id, s.model_id, s.governance_allowed,
        s.tool_calls, s.governance_logs, s.retrieved_facts,
        s.tokens_used, s.latency_ms, s.step_number, s.created_at,
-       s.input_text, s.raw_output, s.parent_decision_id, s.is_synthetic
+       s.input_text, s.raw_output, s.parent_decision_id, s.is_synthetic, s.status
 from orchestrator_steps s
 left join orchestrator_agents a on a.agent_id = s.agent_id
 where s.tenant_id = %s
@@ -133,20 +133,19 @@ def build_features(df: pd.DataFrame, about: np.ndarray):
     X = np.hstack([B * np.sqrt(wt) for B, wt in blocks])
     return X.astype(float)
 
-def train_som(X: np.ndarray, seed: int = 0):
+def train_som(X: np.ndarray, seed: int = 42):
     from minisom import MiniSom
     n = X.shape[0]
     side = max(6, int(round(np.sqrt(5 * np.sqrt(n)))))
-    som = MiniSom(side, side, X.shape[1], topology="hexagonal",
-                  activation_distance="euclidean", neighborhood_function="gaussian",
-                  sigma=max(1.0, side / 4), learning_rate=0.5, random_seed=seed)
-    som.pca_weights_init(X)
-    som.train_batch(X, num_iteration=max(2000, n * 5), verbose=False)
+    som = MiniSom(side, side, X.shape[1], sigma=1.0, learning_rate=0.5, random_seed=seed)
+    som.random_weights_init(X)
+    som.train_random(X, 500)
     bmu = np.array([som.winner(x) for x in X])
-    return som, side, bmu
+    return som, side, bmu, som.get_weights()
 
-def serialize_manifold(df: pd.DataFrame, bmu: np.ndarray, side: int, source: str = "live", hex_px: float = 40.0) -> dict:
-    LENSES = ["compliance", "latency"]
+def serialize_manifold(df: pd.DataFrame, bmu: np.ndarray, side: int, source: str = "synthetic", som_version: str = "unknown") -> dict[str, Any]:
+    hex_px = 60
+    LENSES = ["compliance", "latency", "failover", "loop", "timeout"]
     d = df.reset_index(drop=True).copy()
     d["_q"] = bmu[:, 0]
     d["_r"] = bmu[:, 1]
@@ -169,7 +168,10 @@ def serialize_manifold(df: pd.DataFrame, bmu: np.ndarray, side: int, source: str
             exemplars=g.step_id.head(8).tolist(),
             lenses=dict(
                 compliance=round(float(g.governance_allowed.mean()), 3) if not g.governance_allowed.isna().all() else 1.0,
-                latency=round(float(g.latency_ms.mean()), 1) if not g.latency_ms.isna().all() else 0.0
+                latency=round(float(g.latency_ms.mean()), 1) if not g.latency_ms.isna().all() else 0.0,
+                failover=int((g.status == "failed_failover").sum()) if "status" in g else 0,
+                loop=int((g.status == "halted_loop").sum()) if "status" in g else 0,
+                timeout=int((g.status == "failed_timeout").sum()) if "status" in g else 0,
             ),
         ))
 
@@ -183,6 +185,7 @@ def serialize_manifold(df: pd.DataFrame, bmu: np.ndarray, side: int, source: str
             workflowId=row["workflow_id"] if pd.notna(row["workflow_id"]) else "unknown",
             modelId=row["model_id"] if pd.notna(row["model_id"]) else "unknown",
             createdAt=pd.Timestamp(row["created_at"]).isoformat(),
+            status=row.get("status", "completed") if pd.notna(row.get("status")) else "completed",
             inputText=row.get("input_text", "") or "",
             toolCalls=[{"name": t} for t in (row.get("tool_calls", []) or [])],
             governanceLogs=[{"policy_name": g.get("policy_name"), "allowed": (g.get("result") == "allowed" if "result" in g else g.get("allowed", False))} for g in (row.get("governance_logs", []) or [])]
@@ -220,6 +223,7 @@ def serialize_manifold(df: pd.DataFrame, bmu: np.ndarray, side: int, source: str
     manifold = dict(
         meta=dict(
             version="0.1.0",
+            somVersion=som_version,
             generatedAt=dt.datetime.utcnow().isoformat() + "Z",
             source=source,
             somGrid=[int(side), int(side)],
@@ -255,7 +259,9 @@ class ManifoldService:
                     CREATE TABLE IF NOT EXISTS manifold_cache (
                         tenant_id TEXT PRIMARY KEY,
                         payload JSONB NOT NULL,
-                        updated_at TIMESTAMP DEFAULT NOW()
+                        updated_at TIMESTAMP DEFAULT NOW(),
+                        som_version TEXT,
+                        som_weights BYTEA
                     )
                 """)
             conn.commit()
@@ -282,36 +288,44 @@ class ManifoldService:
             logger.info("Manifold background worker started.")
             while not self._stop_event.is_set():
                 try:
-                    # For now we assume a single default tenant, 
-                    # in a real multi-tenant system we'd iterate over active tenants.
-                    tenant_id = "default"
-                    payload = self._compute_manifold_sync(tenant_id)
-                    
                     import psycopg2
                     if self.pool:
                         conn = self.pool.getconn()
                     else:
                         conn = psycopg2.connect(self.db_url)
-                    
+                        
+                    tenants = ["default"]
                     try:
                         with conn.cursor() as cur:
-                            cur.execute("""
-                                INSERT INTO manifold_cache (tenant_id, payload, updated_at)
-                                VALUES (%s, %s, NOW())
-                                ON CONFLICT (tenant_id) DO UPDATE SET 
-                                payload = EXCLUDED.payload, 
-                                updated_at = NOW()
-                            """, (tenant_id, json.dumps(payload)))
-                        conn.commit()
-                        logger.info("Manifold background cache updated.")
+                            cur.execute("SELECT DISTINCT tenant_id FROM orchestrator_steps")
+                            tenants = [row[0] for row in cur.fetchall()]
                     except Exception as e:
-                        logger.error(f"Error saving manifold cache: {e}")
+                        logger.error(f"Failed to fetch active tenants: {e}")
                         conn.rollback()
-                    finally:
-                        if self.pool:
-                            self.pool.putconn(conn)
-                        else:
-                            conn.close()
+
+                    for tenant_id in tenants:
+                        try:
+                            payload, som_version, som_weights = self._compute_manifold_sync(tenant_id)
+                            with conn.cursor() as cur:
+                                cur.execute("""
+                                    INSERT INTO manifold_cache (tenant_id, payload, updated_at, som_version, som_weights)
+                                    VALUES (%s, %s, NOW(), %s, %s)
+                                    ON CONFLICT (tenant_id) DO UPDATE SET 
+                                    payload = EXCLUDED.payload, 
+                                    updated_at = NOW(),
+                                    som_version = EXCLUDED.som_version,
+                                    som_weights = EXCLUDED.som_weights
+                                """, (tenant_id, json.dumps(payload), som_version, psycopg2.Binary(som_weights)))
+                            conn.commit()
+                            logger.info(f"Manifold background cache updated for {tenant_id}.")
+                        except Exception as e:
+                            logger.error(f"Error saving manifold cache for {tenant_id}: {e}")
+                            conn.rollback()
+                    
+                    if self.pool:
+                        self.pool.putconn(conn)
+                    else:
+                        conn.close()
                             
                 except Exception as e:
                     logger.error(f"Manifold worker iteration failed: {e}")
@@ -363,7 +377,7 @@ class ManifoldService:
                 
         # Fallback to sync computation if no cache exists yet
         logger.info(f"No manifold cache found for tenant {tenant_id}, computing synchronously...")
-        payload = self._compute_manifold_sync(tenant_id)
+        payload, som_version, som_weights = self._compute_manifold_sync(tenant_id)
         
         # Save it to cache for next time
         try:
@@ -373,12 +387,14 @@ class ManifoldService:
                 conn = psycopg2.connect(self.db_url)
             with conn.cursor() as cur:
                 cur.execute("""
-                    INSERT INTO manifold_cache (tenant_id, payload, updated_at)
-                    VALUES (%s, %s, NOW())
+                    INSERT INTO manifold_cache (tenant_id, payload, updated_at, som_version, som_weights)
+                    VALUES (%s, %s, NOW(), %s, %s)
                     ON CONFLICT (tenant_id) DO UPDATE SET 
                     payload = EXCLUDED.payload, 
-                    updated_at = NOW()
-                """, (tenant_id, json.dumps(payload)))
+                    updated_at = NOW(),
+                    som_version = EXCLUDED.som_version,
+                    som_weights = EXCLUDED.som_weights
+                """, (tenant_id, json.dumps(payload), som_version, psycopg2.Binary(som_weights)))
             conn.commit()
         except Exception as e:
             logger.error(f"Failed to save fallback cache: {e}")
@@ -392,8 +408,8 @@ class ManifoldService:
                     
         return payload
 
-    def _compute_manifold_sync(self, tenant_id: str) -> dict[str, Any]:
-        """Fetch data from PostgreSQL, train SOM, and return serialized manifold."""
+    def _compute_manifold_sync(self, tenant_id: str) -> tuple[dict[str, Any], str, bytes]:
+        """Fetch data from PostgreSQL, train SOM, and return (payload, som_version, som_weights)."""
         # Using a direct psycopg2 connection for pandas.read_sql
         import psycopg2
         if self.pool:
@@ -406,7 +422,10 @@ class ManifoldService:
             
             if len(df) == 0:
                 # Return empty manifold if no data
-                return serialize_manifold(pd.DataFrame(columns=["step_id", "agent_role", "workflow_id", "model_id", "governance_allowed", "tool_calls", "governance_logs", "retrieved_facts", "tokens_used", "latency_ms", "step_number", "created_at", "input_text", "raw_output", "parent_decision_id"]), np.zeros((0, 2)), 6, source="live")
+                som_version = dt.datetime.utcnow().isoformat() + "Z"
+                empty_df = pd.DataFrame(columns=["step_id", "agent_role", "workflow_id", "model_id", "governance_allowed", "tool_calls", "governance_logs", "retrieved_facts", "tokens_used", "latency_ms", "step_number", "created_at", "input_text", "raw_output", "parent_decision_id", "status", "is_synthetic"])
+                payload = serialize_manifold(empty_df, np.zeros((0, 2)), 6, source="live", som_version=som_version)
+                return payload, som_version, b""
             
             # Fetch embeddings for facts
             refs = sorted({r for fs in df.retrieved_facts for r in (fs or []) if isinstance(r, str)})
@@ -426,9 +445,85 @@ class ManifoldService:
             about = make_about_vectors(df, lookup, self.embedder)
             X = build_features(df, about)
             
-            som, side, bmu = train_som(X)
-            return serialize_manifold(df, bmu, side, source="live")
+            som, side, bmu, som_weights = train_som(X)
+            som_version = dt.datetime.utcnow().isoformat() + "Z"
+            payload = serialize_manifold(df, bmu, side, source="live", som_version=som_version)
+            return payload, som_version, som_weights.tobytes()
             
+        finally:
+            if self.pool:
+                self.pool.putconn(conn)
+            else:
+                conn.close()
+
+    def locate_step(self, step_id: str, tenant_id: str) -> dict[str, Any]:
+        """Dynamically compute the SOM cell placement for a given step using cached weights."""
+        import psycopg2
+        import json
+        if self.pool:
+            conn = self.pool.getconn()
+        else:
+            conn = psycopg2.connect(self.db_url)
+            
+        try:
+            # 1. Load the step
+            query = EXTRACTION_SQL.replace("order by s.created_at;", "and s.step_id = %s")
+            df = pd.read_sql(query, conn, params=(tenant_id, step_id))
+            if len(df) == 0:
+                return {"error": "Step not found"}
+                
+            # 2. Build features X
+            refs = sorted({r for fs in df.retrieved_facts for r in (fs or []) if isinstance(r, str)})
+            lookup = {}
+            if refs:
+                cur = conn.cursor()
+                try:
+                    cur.execute("select fact_ref, embedding::text from memory_embeddings where fact_ref = any(%s)", (refs,))
+                    for k, v in cur.fetchall():
+                        vec_list = [float(x) for x in str(v).strip("[]").split(",")]
+                        lookup[k] = np.asarray(vec_list, float)
+                except Exception as e:
+                    logger.warning(f"Failed to load fact embeddings: {e}. Falling back to text-only.")
+                    conn.rollback()
+                    
+            about = make_about_vectors(df, lookup, self.embedder)
+            X = build_features(df, about)
+            
+            # 3. Load som_weights from manifold_cache
+            cur = conn.cursor()
+            cur.execute("SELECT payload, som_version, som_weights FROM manifold_cache WHERE tenant_id = %s", (tenant_id,))
+            row = cur.fetchone()
+            if not row or not row[1] or not row[2]:
+                return {"error": "Manifold not trained yet"}
+                
+            payload = row[0] if isinstance(row[0], dict) else json.loads(row[0])
+            som_version = row[1]
+            som_weights_bytes = row[2]
+            
+            side = payload["meta"]["somGrid"][0]
+            feature_dim = X.shape[1]
+            
+            weights = np.frombuffer(som_weights_bytes, dtype=float).reshape(side, side, feature_dim)
+            
+            # 4. Compute BMU
+            from minisom import MiniSom
+            som = MiniSom(side, side, feature_dim)
+            som._weights = weights
+            winner = som.winner(X[0])
+            
+            # 5. Format return
+            cq, cr = winner
+            cellId = f"c_{int(cq):02d}_{int(cr):02d}"
+            
+            return {
+                "stepId": step_id,
+                "cellId": cellId,
+                "somVersion": som_version
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to locate step: {e}")
+            return {"error": str(e)}
         finally:
             if self.pool:
                 self.pool.putconn(conn)

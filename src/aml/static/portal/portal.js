@@ -1723,6 +1723,17 @@
                   // Update meta
                   const meta = document.getElementById(`step-meta-${stepIdx}`);
                   if (meta) meta.textContent = `${eventData.tokens_used || 0} tokens · ${eventData.latency_ms || 0}ms`;
+
+                  // MANIFOLD LIVE FLASH
+                  if (window._manifoldData && window._manifoldData.meta && window._manifoldData.meta.somVersion) {
+                    fetch(`${BASE}/v1/manifold/locate/${eventData.step_id}`, { headers: authHeaders() })
+                      .then(r => r.ok ? r.json() : null)
+                      .then(loc => {
+                        if (loc && loc.somVersion === window._manifoldData.meta.somVersion && window._flashManifoldCell) {
+                          window._flashManifoldCell(loc.cellId);
+                        }
+                      }).catch(err => console.warn('Failed to locate live step:', err));
+                  }
                 }
 
                 else if (eventType === 'workflow.complete') {
@@ -1997,8 +2008,22 @@
       $('manifold-canvas-container').style.opacity = '0.5';
       const data = await api('/v1/manifold/export');
       manifoldData = data;
+      window._manifoldData = data; // Export for SSE
       $('manifold-canvas-container').style.opacity = '1';
       
+      // Update Provenance Badge
+      if (data.provenance && data.provenance.steps) {
+        const p = data.provenance.steps;
+        const badge = $('manifold-prov-badge');
+        if (badge) {
+          badge.style.display = 'flex';
+          badge.innerHTML = `
+            <div class="m8-score" style="font-size:0.8rem">${p.real_count} real / ${p.synthetic_count} synthetic</div>
+            <div class="m8-label" style="margin-left:0.5rem">Data Mix</div>
+          `;
+        }
+      }
+
       // Auto-fit bounds
       if (manifoldData && manifoldData.cells && manifoldData.cells.length > 0) {
         fitManifold();
@@ -2076,6 +2101,8 @@
       // heat map: 0 = blue, 1000 = red
       const h = Math.max(0, 240 - (Math.min(val, 2000) / 2000) * 240);
       return `hsla(${h}, 80%, 50%, 0.7)`;
+    } else if (['failover', 'loop', 'timeout'].includes(lens)) {
+      return val > 0 ? 'rgba(239, 68, 68, 0.7)' : 'rgba(16, 185, 129, 0.4)';
     }
     return 'rgba(148, 163, 184, 0.4)';
   }
@@ -2140,6 +2167,27 @@
 
     ctx.restore();
   }
+
+  window._flashManifoldCell = function(cellId) {
+    if (!manifoldCanvas || !manifoldCtx || !manifoldData) return;
+    const cell = manifoldData.cells.find(c => c.id === cellId);
+    if (!cell) return;
+    
+    // Draw a quick pulse
+    const ctx = manifoldCtx;
+    ctx.save();
+    ctx.translate(manifoldTransform.x, manifoldTransform.y);
+    ctx.scale(manifoldTransform.k, manifoldTransform.k);
+    
+    const HEX_SIZE = 40; // Hardcoded in backend serialize_manifold `hex_px`
+    const R = HEX_SIZE / Math.sqrt(3);
+    
+    drawHexagon(ctx, cell.x, cell.y, R * 0.95, 'rgba(255, 255, 255, 0.8)', '#fff', 3);
+    ctx.restore();
+    
+    // Schedule redraw to clear it after a moment
+    setTimeout(drawManifold, 300);
+  };
 
   // Pan / Zoom events
   if (manifoldCanvas) {
