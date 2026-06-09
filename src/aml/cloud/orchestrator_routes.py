@@ -152,11 +152,10 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
         """Create a new agent definition."""
         tenant_id = _get_tenant_id(request)
         try:
-            db_url = os.environ.get("GRAFOMEM_DB_URL", "")
-            is_cloud = db_url and ("railway" in db_url.lower() or "supabase" in db_url.lower() or "rds" in db_url.lower())
+            unsafe_dev = os.environ.get("UNSAFE_LOCAL_DEV", "false").lower() == "true"
             
             # Ban mock provider in fallback chains in production
-            if "mock" in req.fallback_models and is_cloud:
+            if "mock" in req.fallback_models and not unsafe_dev:
                 raise HTTPException(status_code=400, detail="The 'mock' provider cannot be used as a fallback in production")
 
             agent = orchestrator.create_agent(
@@ -211,9 +210,8 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
         tenant_id = _get_tenant_id(request)
         
         if req.fallback_models is not None:
-            db_url = os.environ.get("GRAFOMEM_DB_URL", "")
-            is_cloud = db_url and ("railway" in db_url.lower() or "supabase" in db_url.lower() or "rds" in db_url.lower())
-            if "mock" in req.fallback_models and is_cloud:
+            unsafe_dev = os.environ.get("UNSAFE_LOCAL_DEV", "false").lower() == "true"
+            if "mock" in req.fallback_models and not unsafe_dev:
                 raise HTTPException(status_code=400, detail="The 'mock' provider cannot be used as a fallback in production")
 
         updates = req.model_dump(exclude_none=True)

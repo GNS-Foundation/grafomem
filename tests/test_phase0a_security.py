@@ -45,14 +45,13 @@ def test_erasure_fail_closed(erasure_service):
 from fastapi.testclient import TestClient
 from aml.server.app import create_app
 
-def test_rest_erasure_fail_closed(temp_db_url):
+def test_rest_erasure_fail_closed(temp_db_url, monkeypatch):
     """Negative test: REST DELETE without key -> crash and fact not deleted."""
     # We must ensure PROVIDER_ENCRYPTION_KEY is set or create_app will crash (because db_url is set).
     # conftest.py already sets PROVIDER_ENCRYPTION_KEY.
     
     # 1. Create app without an ERASURE_SIGNING_KEY in environment
-    if "ERASURE_SIGNING_KEY" in os.environ:
-        del os.environ["ERASURE_SIGNING_KEY"]
+    monkeypatch.delenv("ERASURE_SIGNING_KEY", raising=False)
         
     def _test_factory():
         from aml.backends.postgres_gmp import PostgresGMPBackend
@@ -161,7 +160,7 @@ def test_multi_fernet_rotation():
     with pytest.raises(ValueError, match="Decryption failures are strictly denied"):
         reg1.get_provider("tenant_a", "claude-3")
 
-    del os.environ["PROVIDER_ENCRYPTION_KEY"]
+    reg1.close()
     reg1.close()
     reg2.close()
 
@@ -191,5 +190,13 @@ def test_strict_decryption_error():
     with pytest.raises(ValueError, match="Decryption failures are strictly denied"):
         reg.get_provider(tenant, "gpt-err")
 
-    del os.environ["PROVIDER_ENCRYPTION_KEY"]
     reg.close()
+
+def test_encryption_required_fail_closed(monkeypatch):
+    """Verify EnvIdentity fails closed if encryption key missing and not opted out."""
+    monkeypatch.delenv("PROVIDER_ENCRYPTION_KEY", raising=False)
+    monkeypatch.delenv("UNSAFE_LOCAL_DEV", raising=False)
+        
+    from aml.cloud.identity import EnvIdentity
+    with pytest.raises(ValueError, match="PROVIDER_ENCRYPTION_KEY is required"):
+        EnvIdentity()

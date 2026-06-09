@@ -62,6 +62,7 @@ class EnvIdentity:
                 raise ValueError(f"Invalid GRAFOMEM_SIGNING_KEY: {e}")
 
         encryption_key = os.environ.get("PROVIDER_ENCRYPTION_KEY")
+        unsafe_dev = os.environ.get("UNSAFE_LOCAL_DEV", "false").lower() == "true"
 
         if encryption_key:
             try:
@@ -72,6 +73,8 @@ class EnvIdentity:
                 self._fernet = MultiFernet([Fernet(k.encode()) for k in keys])
             except Exception as e:
                 raise ValueError(f"Invalid PROVIDER_ENCRYPTION_KEY: {e}")
+        elif not unsafe_dev:
+            raise ValueError("PROVIDER_ENCRYPTION_KEY is required. Set UNSAFE_LOCAL_DEV=true to bypass locally.")
 
     # --- SigningIdentity ---
 
