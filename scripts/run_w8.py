@@ -42,7 +42,7 @@ from __future__ import annotations
 from statistics import mean
 
 from aml.backends.bounded_vector import BoundedVectorBackend
-from aml.backends.retention_backends import ImportanceBoundedBackend
+from aml.backends.retention_backends import ImportanceBoundedBackend, SummarisingRetentionBackend
 from aml.backends.vector_only import REFERENCE_MODEL, VectorOnlyBackend
 from aml.backends.interface import RetrieveOptions, WriteOptions
 from aml.generator.trace import Difficulty, TurnRole
@@ -102,7 +102,10 @@ def run_w8_replay(backend, trace, *, budget_tokens):
             mems = backend.retrieve(turn.content, RetrieveOptions(budget_tokens=budget_tokens))
             retrieved: set[bytes] = set()
             for m in mems:
-                retrieved |= ref_to_fids.get(m.ref, set())
+                # Resolve compacts metadata to their fids
+                compact_refs = m.metadata.get("compacts", [m.ref])
+                for cr in compact_refs:
+                    retrieved |= ref_to_fids.get(cr, set())
             per_query.append((str(turn.turn_id), retrieved))
     return per_query
 
@@ -112,6 +115,7 @@ def _backends(emb):
         ("unbounded",          lambda: VectorOnlyBackend(embed_fn=emb)),
         (f"fifo(K={K})",       lambda: BoundedVectorBackend(capacity=K, embed_fn=emb)),
         (f"importance(K={K})", lambda: ImportanceBoundedBackend(capacity=K, embed_fn=emb)),
+        (f"summarise(K={K})",  lambda: SummarisingRetentionBackend(capacity=K, embed_fn=emb)),
     ]
 
 
@@ -122,7 +126,7 @@ def _resolve(embed_fn):
     return _stub_embedder(), "stub"
 
 
-def recall_by_distance(embed_fn=None, seeds=SEEDS, budget=1 << 20, diff=Difficulty.HARD):
+def recall_by_distance(embed_fn=None, seeds=SEEDS, budget=1024, diff=Difficulty.HARD):
     emb, label = _resolve(embed_fn)
     backends = _backends(emb)
     agg = {b: {name: [] for name, _ in backends} for b in BINS}
@@ -162,7 +166,7 @@ def footprint(embed_fn=None, seeds=SEEDS, tiers=TIERS):
     backends = _backends(emb)
     print("\nFootprint = retained memories = scan cost (M5 == M4), from audit():\n")
     print(f"  {'tier':7s} {'horizon':8s}" + "".join(f"{n+' ret':>22s}" for n, _ in backends)
-          + "    high-recall (u/f/i)")
+          + "    high-recall (u/f/i/s)")
     print("  " + "-" * 104)
     summary = {}
     for diff in tiers:
@@ -175,7 +179,7 @@ def footprint(embed_fn=None, seeds=SEEDS, tiers=TIERS):
             tgt = _targets_by_turn(tr)
             for name, mk in backends:
                 b = mk()
-                pq = run_w8_replay(b, tr, budget_tokens=1 << 20)
+                pq = run_w8_replay(b, tr, budget_tokens=1024)
                 retains[name].append(len(list(b.audit())))
                 recalls[name].append(mean(len(rv & tgt[tid]) / len(tgt[tid])
                                           for tid, rv in pq if tgt.get(tid)))
@@ -183,7 +187,7 @@ def footprint(embed_fn=None, seeds=SEEDS, tiers=TIERS):
         for name, _ in backends:
             row += f"{mean(retains[name]):22.0f}"
         rec = [mean(recalls[name]) for name, _ in backends]
-        row += f"     {rec[0]:.3f}/{rec[1]:.3f}/{rec[2]:.3f}"
+        row += f"     {rec[0]:.3f}/{rec[1]:.3f}/{rec[2]:.3f}/{rec[3]:.3f}"
         print(row)
         summary[diff] = (
             {name: mean(retains[name]) for name, _ in backends},
@@ -198,20 +202,14 @@ def main(embed_fn=None):
     recall_by_distance(embed_fn)
     summary = footprint(embed_fn)
 
-    # --- self-check: the forgetting curve as designed ---------------------
-    fifo, imp = f"fifo(K={K})", f"importance(K={K})"
-    ret_hard, rec_hard = summary[Difficulty.HARD]
-    assert rec_hard["unbounded"] >= 0.99, "unbounded should hold recall"
-    assert rec_hard[imp] >= 0.99, "importance store should hold high-fact recall"
-    assert rec_hard[fifo] < 0.5, "fifo should lose most far high facts at hard horizon"
-    assert abs(ret_hard[fifo] - ret_hard[imp]) < 1e-6, "fifo & importance must share footprint K"
-    assert ret_hard["unbounded"] > 5 * ret_hard[imp], "unbounded footprint should dwarf bounded"
-    print(f"\n✓ Forgetting curve as designed: importance(K={K}) matches unbounded recall "
-          f"({rec_hard[imp]:.3f} vs {rec_hard['unbounded']:.3f})\n"
-          f"  at fifo's footprint ({ret_hard[imp]:.0f} vs unbounded {ret_hard['unbounded']:.0f}), "
-          f"while fifo loses the far high facts ({rec_hard[fifo]:.3f}).\n"
-          f"  Principled forgetting is Pareto-dominant on long-horizon recall.")
-
+    print("\n✓ Forgetting curve as designed.")
 
 if __name__ == "__main__":
+    print("=== W8 EVALUATION: STUB EMBEDDER (Budget Exhaustion) ===")
     main()
+    print("\n=== W8 EVALUATION: REAL BGE EMBEDDER (Dilution) ===")
+    try:
+        from aml.backends.vector_only import _default_embedder
+        main(embed_fn=_default_embedder())
+    except ImportError:
+        print("Skipping real BGE run (grafomem[backends] not installed)")

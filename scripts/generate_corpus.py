@@ -42,6 +42,7 @@ from aml.generator.workloads.w4 import generate_w4
 from aml.generator.workloads.w5 import generate_w5
 from aml.generator.workloads.w6 import generate_w6
 from aml.generator.workloads.w7 import generate_w7
+from aml.generator.workloads.w8 import generate_w8
 from aml.generator.workloads.w9 import generate_w9
 from aml.generator.workloads.w10 import generate_w10
 
@@ -56,6 +57,7 @@ _GENERATORS = {
     Workload.W5: generate_w5,
     Workload.W6: generate_w6,
     Workload.W7: generate_w7,
+    Workload.W8: generate_w8,
     Workload.W9: generate_w9,
     Workload.W10: generate_w10,
 }
@@ -178,10 +180,22 @@ def main() -> int:
         print(f"  {_w}: {_wh}")
     if prior is None:
         print("(first build — no prior lock to compare)")
-    elif prior == corpus_hash:
-        print("STABLE — corpus_hash matches prior lock (R3 reproducibility holds)")
     else:
-        print(f"CHANGED — prior {prior[:16]}... -> now {corpus_hash[:16]}...")
+        # Assertion: Rollup stability for W1-W7, W9, W10 must hold byte-identically.
+        prior_lock = json.loads(lock_path.read_text())
+        prior_workloads = prior_lock.get("workload_hashes", {})
+        for w, old_hash in prior_workloads.items():
+            if w in workload_hashes:
+                if workload_hashes[w] != old_hash:
+                    raise AssertionError(
+                        f"Rollup stability violated for {w}! "
+                        f"Prior hash {old_hash} != New hash {workload_hashes[w]}"
+                    )
+        if prior == corpus_hash:
+            print("STABLE — corpus_hash matches prior lock (R3 reproducibility holds)")
+        else:
+            print(f"CHANGED — prior {prior[:16]}... -> now {corpus_hash[:16]}...")
+            print("✓ Rollup stability holds for all pre-existing workloads.")
     print("wrote corpus/corpus.lock")
     return 0
 

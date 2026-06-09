@@ -23,21 +23,21 @@ def lock():
 
 def test_lock_metadata(lock):
     """corpus.lock has required fields."""
-    assert lock["name"] == "grafomem-bench-v0.2.0"
-    assert lock["n_traces"] == 135
+    assert lock["name"] == "grafomem-bench-v1.0.0"
+    assert lock["n_traces"] == 150
     assert "corpus_hash" in lock
     assert "trace_hashes" in lock
     assert "workload_hashes" in lock
 
 
 def test_trace_count(lock):
-    """135 traces across 9 workloads × 5 seeds × 3 difficulties."""
-    assert len(lock["trace_hashes"]) == 135
+    """150 traces across 10 workloads × 5 seeds × 3 difficulties."""
+    assert len(lock["trace_hashes"]) == 150
 
 
 def test_workload_coverage(lock):
-    """All 9 workloads present in the lock."""
-    expected = {"W1", "W2", "W3", "W4", "W5", "W6", "W7", "W9", "W10"}
+    """All 10 workloads present in the lock."""
+    expected = {"W1", "W2", "W3", "W4", "W5", "W6", "W7", "W8", "W9", "W10"}
     actual = set(lock["workload_hashes"].keys())
     assert actual == expected
 

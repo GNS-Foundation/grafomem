@@ -5,11 +5,11 @@
 # cross-product, generates + validates each trace, and records the R3
 # corpus content hash (and per-workload rollup hashes) in corpus.lock.
 
-name = "grafomem-bench-v0.2.0"
-schema_version = "0.1.3"  # baseline; W10 traces self-declare "0.2.0"
-generator_version = "0.1.0"
-description = "GRAFOMEM v0.2.0 suite. W1-W7 + W9 (schema v0.1.3) + W10 (Operational Concurrency & Isolation, schema v0.2.0). W8 (Forgetting Curve) is built but intentionally held out of the lock. Phantom anomaly probe deferred — four probes (lost_update, write_skew, non_repeatable_read, resurrection) cover every lattice cut. 5 seeds x 3 difficulties."
+name = "grafomem-bench-v1.0.0"
+schema_version = "0.2.0"  # baseline; W10 traces self-declare "0.2.0"
+generator_version = "0.2.0"
+description = "GRAFOMEM v1.0.0 suite. All workloads W1-W10 locked, including W8 (Forgetting Curve / Summarise-Merge). Two-sided conformance. R3 byte-identical reproducible. ANN excluded from explicit conformance generation. Phantom anomaly probe deferred. 5 seeds x 3 difficulties."
 
-workloads = ["W1", "W2", "W3", "W4", "W5", "W6", "W7", "W9", "W10"]
+workloads = ["W1", "W2", "W3", "W4", "W5", "W6", "W7", "W8", "W9", "W10"]
 seeds = [0, 1, 2, 3, 4]
 difficulties = ["easy", "medium", "hard"]
