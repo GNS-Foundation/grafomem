@@ -9,3 +9,5 @@ src/*.egg-info/
 build/
 ~$*
 .~lock.*
+.env.prod
+.env*

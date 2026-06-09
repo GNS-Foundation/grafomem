@@ -352,3 +352,46 @@ def test_near_repeat_not_halted(orchestrator, registry, test_tenant_id):
             step2 = orchestrator.execute_step("wf_id", "agent_id", "Hello again")
             assert step2.raw_output != "[Error: Exact-Repeat Detected]"
             assert "changed a character" in step2.raw_output
+
+def test_workflow_timeout_positive(orchestrator, registry, test_tenant_id):
+    """Test that a workflow well within the deadline executes normally."""
+    agent_def = MagicMock()
+    agent_def.agent_id = "agent_id"
+    agent_def.model_id = "mock-primary"
+    agent_def.fallback_models = []
+    agent_def.system_prompt = "You are a test agent."
+    agent_def.tenant_id = test_tenant_id
+    agent_def.memory_stores = []
+    agent_def.tools = []
+    agent_def.temperature = 0.5
+    agent_def.max_tokens_per_step = 100
+    agent_def.name = "TimeoutPositiveAgent"
+
+    def successful_infer(tenant_id: str, req: LLMRequest) -> LLMResponse:
+        return LLMResponse(
+            content="[executed in time]",
+            tool_calls=[],
+            tokens_input=10,
+            tokens_output=10,
+            model_id=req.model_id,
+            latency_ms=10,
+            raw_response={},
+        )
+
+    with patch.object(orchestrator, 'get_agent', return_value=agent_def), \
+         patch.object(orchestrator, '_next_step_number', return_value=1), \
+         patch.object(orchestrator, 'get_workflow_steps', return_value=[]), \
+         patch.object(registry, 'infer', side_effect=successful_infer):
+        
+        # deadline is 10 seconds in the future
+        deadline = time.monotonic() + 10.0
+        
+        step = orchestrator.execute_step(
+            workflow_id="wf_id",
+            agent_id="agent_id",
+            input_text="Hello?",
+            deadline=deadline
+        )
+
+    assert "[executed in time]" in step.raw_output
+    assert step.status != StepStatus.FAILED
