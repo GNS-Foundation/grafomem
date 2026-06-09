@@ -204,34 +204,18 @@ class SummarisingRetentionBackend:
         self._imp[ref] = float(options.metadata.get("importance", 0.0))
         
         # Compaction loop
+        # Compaction loop (Importance-blind structural merge)
+        # We merge the two oldest facts in the store (smallest refs) to satisfy capacity.
         while len(self._store) > self.capacity:
-            # Pick the 2 lowest-importance facts
-            ordered = sorted(self._store.keys(), key=lambda r: (self._imp[r], r))
+            ordered = sorted(self._store.keys())
             v1, v2 = ordered[0], ordered[1]
             
             m1, m2 = self._store[v1], self._store[v2]
             
-            # structural merge:
             new_content = m1.content + " | " + m2.content
-            
-            # merge compacts lists or create from refs. 
-            # run_w8 builds a map `ref_to_fids[ref]`. If we just create a new ref, 
-            # run_w8 won't know it maps to old fids. 
-            # BUT the spec says: "metadata['compacts'] stores the list of original fact_ids"
-            # wait, if run_w8 injects original fact_id into metadata... let's check run_w8.py.
-            # Currently run_w8 does not inject fact_id into metadata! 
-            # "metadata=({"subject": f.subject, "predicate": f.predicate, "importance": f.importance} if f else {})"
-            # We must update run_w8 to inject "fact_id", or have this backend just track original refs.
-            # We'll use metadata['compacts'] to store original refs from THIS store,
-            # and let run_w8 look at metadata['compacts'] to resolve original fact_ids!
             c1 = m1.metadata.get("compacts", [v1])
             c2 = m2.metadata.get("compacts", [v2])
             new_compacts = c1 + c2
-            
-            # The new summary gets the max importance of the two (or min? Min ensures it keeps getting compacted)
-            # Let's use max so high importance facts don't get dragged down, 
-            # but wait, we only compact the 2 LOWEST. So they'll both be 0.1.
-            new_imp = max(self._imp[v1], self._imp[v2])
             
             new_ref = self._next
             self._next += 1
@@ -239,17 +223,16 @@ class SummarisingRetentionBackend:
             self._store[new_ref] = Memory(
                 ref=new_ref, content=new_content,
                 written_at=datetime.now(tz=timezone.utc),
-                metadata={"importance": new_imp, "compacts": new_compacts},
+                metadata={"compacts": new_compacts},
             )
             self._vec[new_ref] = self._embed([new_content])[0]
-            self._imp[new_ref] = new_imp
             
             del self._store[v1]
             del self._vec[v1]
-            del self._imp[v1]
+            if v1 in self._imp: del self._imp[v1]
             del self._store[v2]
             del self._vec[v2]
-            del self._imp[v2]
+            if v2 in self._imp: del self._imp[v2]
 
         return ref
 
@@ -276,7 +259,8 @@ class SummarisingRetentionBackend:
         used = 0
         for i in order:
             m = self._store[refs[i]]
-            cost = len(m.content)
+            meta_cost = len(m.metadata.get("compacts", [m.ref])) * 16
+            cost = len(m.content) + meta_cost
             if used + cost > options.budget_tokens:
                 break
             out.append(m)
