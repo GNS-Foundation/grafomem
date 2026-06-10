@@ -125,6 +125,7 @@ class VectorOnlyBackend:
         refs = [r for r, _ in self._vecs]
         mat = np.stack([v for _, v in self._vecs])         # (n, d)
         sims = mat @ qv                                    # cosine (normalized)
+        sims = np.nan_to_num(sims, nan=-1.0)               # fallback for degenerate zero vectors
         # Deterministic order: descending similarity, ties broken by ref (§6.5).
         order = sorted(range(len(refs)),
                        key=lambda i: (-float(sims[i]), refs[i]))

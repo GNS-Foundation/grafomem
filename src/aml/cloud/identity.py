@@ -52,7 +52,7 @@ class EnvIdentity:
         self._signing_key = None
         self._fernet = None
 
-        signing_hex = os.environ.get("GRAFOMEM_SIGNING_KEY")
+        signing_hex = os.environ.get("ERASURE_SIGNING_KEY") or os.environ.get("GRAFOMEM_SIGNING_KEY")
         if signing_hex:
             try:
                 self._signing_key = bytes.fromhex(signing_hex)

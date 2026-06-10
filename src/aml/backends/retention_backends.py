@@ -253,13 +253,14 @@ class SummarisingRetentionBackend:
         qv = self._embed([query])[0]
         mat = np.stack([self._vec[r] for r in refs])
         sims = mat @ qv
+        sims = np.nan_to_num(sims, nan=-1.0)
         order = sorted(range(len(refs)),
                        key=lambda i: (-float(sims[i]), refs[i]))
         out: list[Memory] = []
         used = 0
         for i in order:
             m = self._store[refs[i]]
-            meta_cost = len(m.metadata.get("compacts", [m.ref])) * 16
+            meta_cost = len(m.metadata.get("compacts", [m.ref])) * 32
             cost = len(m.content) + meta_cost
             if used + cost > options.budget_tokens:
                 break

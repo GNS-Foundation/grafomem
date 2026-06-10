@@ -648,7 +648,7 @@ def create_app(
             # Use ERASURE_SIGNING_KEY env var if available
             from aml.cloud.identity import EnvIdentity
             identity = EnvIdentity()
-            signing_identity = identity if os.environ.get("GRAFOMEM_SIGNING_KEY") else None
+            signing_identity = identity if os.environ.get("ERASURE_SIGNING_KEY") or os.environ.get("GRAFOMEM_SIGNING_KEY") else None
             app.state.signing_identity = signing_identity
 
             ep = ErasureProofService(db_url, decision_trail=dt, signing_identity=signing_identity, pool=pool)
