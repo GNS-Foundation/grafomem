@@ -1210,7 +1210,7 @@ class OrchestratorService:
             emitter.emit(
                 "step.complete",
                 {
-                    "status": "completed",
+                    "status": final_status.value,
                     "decision_id": decision_id,
                     "tokens_used": tokens_used,
                     "latency_ms": int((time.monotonic() - t0_total) * 1000),

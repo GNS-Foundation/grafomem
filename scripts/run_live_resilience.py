@@ -158,7 +158,7 @@ def run_resilience():
     agent_loop = agent_resp3.json()["agent_id"]
 
     wf_resp1 = requests.post(f"{api_url}/v1/orchestrator/workflows", headers=headers, json={
-        "name": "Loop WF", "mode": "sequential", "max_total_steps": 10, "agent_ids": [agent_loop]
+        "name": "Loop WF", "mode": "round_robin", "max_total_steps": 10, "agent_ids": [agent_loop]
     })
     wf_resp1.raise_for_status()
     wf_loop = wf_resp1.json()["workflow_id"]
@@ -170,7 +170,7 @@ def run_resilience():
         for line in r.iter_lines():
             if line:
                 decoded = line.decode()
-                if "workflow.completed" in decoded and "HALTED_LOOP" in decoded:
+                if "step.complete" in decoded and "halted_loop" in decoded.lower():
                     halted = True
         if halted:
             print("  [✓] Workflow correctly halted due to exact-repeat loop.")
@@ -204,7 +204,7 @@ def run_resilience():
         for line in r.iter_lines():
             if line:
                 decoded = line.decode()
-                if "workflow.completed" in decoded and "TIMEOUT" in decoded:
+                if "workflow.error" in decoded and "deadline" in decoded.lower():
                     timed_out = True
         if timed_out:
             print("  [✓] Workflow correctly halted due to timeout.")
