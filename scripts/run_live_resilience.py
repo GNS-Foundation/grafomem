@@ -104,7 +104,7 @@ def run_resilience():
     }).raise_for_status()
 
     # Add governance policy to deny dangerous_tool
-    requests.post(f"{api_url}/v1/cloud/governance/policies", headers=headers, json={
+    requests.post(f"{api_url}/v1/governance/policies", headers=headers, json={
         "name": "Deny Dangerous Tools",
         "policy_type": "content_filter",
         "action": "deny",
