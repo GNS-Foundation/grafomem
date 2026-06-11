@@ -1484,6 +1484,7 @@ class OrchestratorService:
         initial_input: str,
         *,
         emitter: StreamEmitter | None = None,
+        deadline: float | None = None,
     ) -> None:
         """Round-robin: agents take turns until max steps."""
         current_input = initial_input
@@ -1513,6 +1514,7 @@ class OrchestratorService:
 
             step = self.execute_step(
                 workflow.workflow_id, agent_id, current_input,
+                emitter=emitter, deadline=deadline
             )
             step_count += 1
 
