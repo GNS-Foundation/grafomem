@@ -248,8 +248,8 @@ def run_flight():
     if local_merkle_root != epoch_merkle_srv:
         print(f"⚠️ WARNING: Local Merkle root {local_merkle_root} != Server Merkle Root {epoch_merkle_srv}. (Could be due to float serialization drift in payload). We will verify the signature over the server's root.")
     
-    # Recompute Epoch ID using the server's root (since we might have JSON float drift locally on payload)
-    recomputed_epoch_id = b2_128(tenant_id, str(1), epoch_merkle_srv, str(len(breadcrumbs)))
+    sealed_at = epoch_response["sealed_at"]
+    recomputed_epoch_id = b2_128("epoch", epoch_merkle_srv, str(sealed_at))
     if recomputed_epoch_id != epoch_id_srv:
         print(f"❌ ERROR: Recomputed Epoch ID {recomputed_epoch_id} != server {epoch_id_srv}")
         sys.exit(1)
@@ -283,7 +283,7 @@ def run_flight():
     print("INDEPENDENT THIRD-PARTY RECIPE (TOKEN-FREE):")
     print("Anyone can verify this data without a tenant token:")
     print(f"1. Fetch canonical key: curl {api_url}/v1/gcrumbs/public_key")
-    print(f"2. Recompute ID = BLAKE2b-128(tenant_id, epoch_number, merkle_root, n_leaves)")
+    print(f"2. Recompute ID = BLAKE2b-128('epoch', merkle_root, str(sealed_at))")
     print(f"3. Run Python locally:")
     print(f"   from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey")
     print(f"   pub = Ed25519PublicKey.from_public_bytes(bytes.fromhex('{canonical_pubkey}'))")
