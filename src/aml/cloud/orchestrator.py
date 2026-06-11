@@ -1506,8 +1506,11 @@ class OrchestratorService:
             ).hexdigest()
             if input_hash in seen_hashes:
                 logger.warning(
-                    "Loop detected in workflow %s at step %d",
+                    "Loop detected (input hash) in workflow %s at step %d",
                     workflow.workflow_id, step_count,
+                )
+                self._update_workflow_status(
+                    workflow.workflow_id, WorkflowStatus.TERMINATED,
                 )
                 return
             seen_hashes.add(input_hash)
@@ -1517,6 +1520,16 @@ class OrchestratorService:
                 emitter=emitter, deadline=deadline
             )
             step_count += 1
+
+            if step.status == StepStatus.HALTED_LOOP:
+                logger.warning(
+                    "Loop detected (exact repeat) in workflow %s at step %d",
+                    workflow.workflow_id, step_count,
+                )
+                self._update_workflow_status(
+                    workflow.workflow_id, WorkflowStatus.TERMINATED,
+                )
+                return
 
             if step.status != StepStatus.COMPLETED:
                 return
