@@ -102,6 +102,7 @@ def run_resilience():
         "input_schema": {
             "type": "object", 
             "properties": {"confirm": {"type": "boolean"}},
+            "required": ["confirm"],
             "additionalProperties": False
         },
         "config": {"webhook_url": "http://localhost:8000"}
