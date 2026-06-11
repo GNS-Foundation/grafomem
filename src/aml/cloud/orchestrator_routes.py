@@ -80,6 +80,7 @@ class CreateWorkflowRequest(BaseModel):
 class RunWorkflowRequest(BaseModel):
     """Request body for POST /v1/orchestrator/workflows/{id}/run."""
     input_text: str
+    timeout_seconds: float | None = None
 
 
 class ResumeWorkflowRequest(BaseModel):
@@ -91,6 +92,7 @@ class ExecuteStepRequest(BaseModel):
     """Request body for POST /v1/orchestrator/step."""
     agent_id: str
     input_text: str
+    timeout_seconds: float | None = None
 
 
 # ============================================================================
@@ -368,6 +370,7 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
             try:
                 orchestrator.run_workflow(
                     workflow_id, input_text, emitter=emitter,
+                    timeout_seconds=req.timeout_seconds if req.timeout_seconds is not None else 300.0
                 )
             except Exception as e:
                 logger.error("Streaming workflow failed: %s", e)
