@@ -130,6 +130,8 @@ def run_resilience():
     })
     step_data = step_resp.json()
     tool_results = step_data.get("tool_results", [])
+    print(f"  [DEBUG] LLM Output: {step_data.get('output', '')}")
+    print(f"  [DEBUG] Tool Results: {tool_results}")
     if any(not tr.get("governance_allowed", True) for tr in tool_results):
         print(f"  [✓] Tool execution correctly blocked by Governance.")
     else:
