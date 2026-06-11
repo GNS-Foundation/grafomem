@@ -308,7 +308,10 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
             )
 
         try:
-            result = orchestrator.run_workflow(workflow_id, req.input_text)
+            result = orchestrator.run_workflow(
+                workflow_id, req.input_text,
+                timeout_seconds=req.timeout_seconds if req.timeout_seconds is not None else 300.0,
+            )
             return orchestrator.workflow_to_dict(result)
         except ValueError as e:
             raise HTTPException(400, str(e))
