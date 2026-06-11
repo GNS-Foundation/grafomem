@@ -126,12 +126,17 @@ def create_erasure_router(erasure_service) -> APIRouter:
         """
         tenant_id = _get_tenant_id(request)
 
-        signing_key = None
+        signing_identity = None
         if req.signing_key:
             try:
-                signing_key = bytes.fromhex(req.signing_key)
+                key_bytes = bytes.fromhex(req.signing_key)
             except ValueError:
                 raise HTTPException(400, "signing_key must be hex-encoded")
+            try:
+                from aml.provenance import SigningIdentity
+                signing_identity = SigningIdentity(key_bytes)
+            except Exception as e:
+                raise HTTPException(400, f"Invalid signing key: {e}")
 
         try:
             cert = erasure_service.issue_certificate(
@@ -141,7 +146,7 @@ def create_erasure_router(erasure_service) -> APIRouter:
                 memory_deleted=req.memory_deleted,
                 legal_basis=req.legal_basis,
                 requested_by=req.requested_by,
-                signing_key=signing_key,
+                signing_identity=signing_identity,
             )
         except Exception as e:
             logger.error("Failed to issue erasure certificate: %s", e)

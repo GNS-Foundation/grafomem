@@ -224,11 +224,16 @@ def run_resilience():
     fact_ref = write_resp.json()["ref"]
 
     # Issue erasure certificate
-    erasure_req = requests.post(f"{api_url}/v1/erasure/issue", headers=headers, json={
+    erasure_resp = requests.post(f"{api_url}/v1/erasure/issue", headers=headers, json={
         "fact_ref": fact_ref,
         "fact_content": "Sensitive data to be erased.",
         "legal_basis": "User requested right to be forgotten"
-    }).raise_for_status().json()
+    })
+    if erasure_resp.status_code != 200:
+        print(f"  [DEBUG] Erasure issue failed: HTTP {erasure_resp.status_code}")
+        print(f"  [DEBUG] Response: {erasure_resp.text}")
+        sys.exit(1)
+    erasure_req = erasure_resp.json()
 
     cert_id = erasure_req["certificate_id"]
     print(f"  [*] Erasure executed. Certificate generated: {cert_id}")
