@@ -19,10 +19,19 @@ def run_resilience():
         sys.exit(1)
 
     # Note: We need ONE valid API key for the fallback model to succeed
-    valid_gemini_key = os.environ.get("GEMINI_API_KEY")
-    if not valid_gemini_key:
-        print("❌ ERROR: GEMINI_API_KEY is required to test successful failover.")
+    valid_openai = os.environ.get("OPENAI_API_KEY")
+    valid_gemini = os.environ.get("GEMINI_API_KEY")
+    
+    if not valid_openai and not valid_gemini:
+        print("❌ ERROR: OPENAI_API_KEY or GEMINI_API_KEY is required to test successful failover.")
         sys.exit(1)
+        
+    if valid_openai:
+        good_prov, good_model, good_key = "openai", "gpt-4o", valid_openai
+        bad_prov, bad_model = "gemini", "gemini-2.5-pro"
+    else:
+        good_prov, good_model, good_key = "gemini", "gemini-2.5-pro", valid_gemini
+        bad_prov, bad_model = "openai", "gpt-4o"
 
     flight_id = uuid.uuid4().hex[:8]
     ephemeral_email = f"resil-{flight_id}@test.com"
@@ -50,19 +59,19 @@ def run_resilience():
     print("\n--- TEST 1: LLM Provider Failover ---")
     # Register primary with an intentionally INVALID key
     requests.post(f"{api_url}/v1/llm/providers", headers=headers, json={
-        "provider": "openai", "model_id": "gpt-4o", "api_key": "sk-invalid-key"
+        "provider": bad_prov, "model_id": bad_model, "api_key": "sk-invalid-key"
     }).raise_for_status()
     # Register fallback with a VALID key
     requests.post(f"{api_url}/v1/llm/providers", headers=headers, json={
-        "provider": "gemini", "model_id": "gemini-2.5-pro", "api_key": valid_gemini_key
+        "provider": good_prov, "model_id": good_model, "api_key": good_key
     }).raise_for_status()
 
     # Create agent
     agent_failover = requests.post(f"{api_url}/v1/orchestrator/agents", headers=headers, json={
         "name": "FailoverAgent",
         "role": "worker",
-        "model_id": "gpt-4o",  # Primary (will fail)
-        "fallback_models": ["gemini-2.5-pro"], # Fallback (will succeed)
+        "model_id": bad_model,  # Primary (will fail)
+        "fallback_models": [good_model], # Fallback (will succeed)
         "system_prompt": "You are a helpful assistant. Output exactly 'Hello from fallback!'."
     }).json()["agent_id"]
 
@@ -73,7 +82,7 @@ def run_resilience():
     })
     step_data = step_resp.json()
     print(f"  [✓] Fallback successful. Model used: {step_data['model_id']}")
-    if step_data['model_id'] != "gemini-2.5-pro":
+    if step_data['model_id'] != good_model:
         print("  ❌ Failover did NOT switch to the fallback model!")
         sys.exit(1)
     
