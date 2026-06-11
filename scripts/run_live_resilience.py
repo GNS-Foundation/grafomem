@@ -238,12 +238,16 @@ def run_resilience():
     cert_id = erasure_req["certificate_id"]
     print(f"  [*] Erasure executed. Certificate generated: {cert_id}")
 
-    # Fetch canonical key
-    pub_key = requests.get(f"{api_url}/v1/gcrumbs/public_key").json()["public_key"]
+    # Fetch canonical key from gcrumbs (hex-encoded)
+    pub_key_hex = requests.get(f"{api_url}/v1/gcrumbs/public_key").json()["public_key"]
+    print(f"  [DEBUG] gcrumbs public_key (hex): {pub_key_hex[:20]}...")
 
     # Validate cert signature locally
     cert_data = requests.get(f"{api_url}/v1/erasure/{cert_id}", headers=headers).json()
-    cert_sig = cert_data["signature"]
+    cert_sig_b64 = cert_data["signature"]       # base64
+    cert_pub_b64 = cert_data["public_key"]       # base64
+    print(f"  [DEBUG] cert signature (b64): {cert_sig_b64[:20]}...")
+    print(f"  [DEBUG] cert public_key (b64): {cert_pub_b64[:20]}...")
     
     # Reconstruct the cert string for verification
     cert_payload = canon({
@@ -258,13 +262,17 @@ def run_resilience():
         "legal_basis": cert_data["legal_basis"],
     })
     
-    import hashlib
+    import hashlib, base64 as b64
     digest = hashlib.blake2b(cert_payload, digest_size=32).digest()
     
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-    pub = Ed25519PublicKey.from_public_bytes(bytes.fromhex(pub_key))
+    # Decode public key from hex (gcrumbs canonical key)
+    pub_bytes = bytes.fromhex(pub_key_hex)
+    pub = Ed25519PublicKey.from_public_bytes(pub_bytes)
+    # Decode signature from base64 (cert response format)
+    sig_bytes = b64.b64decode(cert_sig_b64)
     try:
-        pub.verify(bytes.fromhex(cert_sig), digest)
+        pub.verify(sig_bytes, digest)
         print("  [✓] Erasure Certificate cryptographically verified against canonical key.")
     except Exception as e:
         print(f"  ❌ Erasure Certificate validation FAILED! {e}")
