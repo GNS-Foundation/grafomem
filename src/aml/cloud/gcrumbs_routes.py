@@ -27,6 +27,13 @@ def _get_tenant_id(request: Request) -> str:
 def create_gcrumbs_router(svc: GcrumbsService) -> APIRouter:
     router = APIRouter(prefix="/v1/gcrumbs", tags=["gcrumbs"])
 
+    @router.get("/public_key")
+    def get_public_key():
+        try:
+            return {"public_key": svc._pub_hex()}
+        except GcrumbsError as e:
+            raise HTTPException(503, str(e))
+
     @router.post("/roll")
     def roll_epoch(request: Request):
         tenant_id = _get_tenant_id(request)
