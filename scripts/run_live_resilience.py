@@ -158,7 +158,7 @@ def run_resilience():
     agent_loop = agent_resp3.json()["agent_id"]
 
     wf_resp1 = requests.post(f"{api_url}/v1/orchestrator/workflows", headers=headers, json={
-        "name": "Loop WF", "mode": "sequential", "max_steps": 10, "agents": [agent_loop]
+        "name": "Loop WF", "mode": "sequential", "max_total_steps": 10, "agent_ids": [agent_loop]
     })
     wf_resp1.raise_for_status()
     wf_loop = wf_resp1.json()["workflow_id"]
@@ -192,7 +192,7 @@ def run_resilience():
     agent_time = agent_resp4.json()["agent_id"]
 
     wf_resp2 = requests.post(f"{api_url}/v1/orchestrator/workflows", headers=headers, json={
-        "name": "Time WF", "mode": "sequential", "max_steps": 5, "agents": [agent_time]
+        "name": "Time WF", "mode": "sequential", "max_total_steps": 5, "agent_ids": [agent_time]
     })
     wf_resp2.raise_for_status()
     wf_time = wf_resp2.json()["workflow_id"]
@@ -224,13 +224,16 @@ def run_resilience():
     store_id = store_resp["store_id"]
 
     # Write a memory
-    requests.post(f"{api_url}/v1/memory/stores/{store_id}/records", headers=headers, json={
+    write_resp = requests.post(f"{api_url}/v1/memory/stores/{store_id}/records", headers=headers, json={
         "content": "Sensitive data to be erased."
-    }).raise_for_status()
+    }).raise_for_status().json()
+    fact_ref = write_resp["ref"]
 
-    # Erase the store
-    erasure_req = requests.post(f"{api_url}/v1/erasure/request", headers=headers, json={
-        "store_id": store_id, "reason": "User requested right to be forgotten"
+    # Issue erasure certificate
+    erasure_req = requests.post(f"{api_url}/v1/erasure/issue", headers=headers, json={
+        "fact_ref": fact_ref,
+        "fact_content": "Sensitive data to be erased.",
+        "legal_basis": "User requested right to be forgotten"
     }).raise_for_status().json()
 
     cert_id = erasure_req["certificate_id"]
@@ -240,22 +243,29 @@ def run_resilience():
     pub_key = requests.get(f"{api_url}/v1/gcrumbs/public_key").json()["public_key"]
 
     # Validate cert signature locally
-    cert_data = requests.get(f"{api_url}/v1/erasure/certificates/{cert_id}", headers=headers).json()
+    cert_data = requests.get(f"{api_url}/v1/erasure/{cert_id}", headers=headers).json()
     cert_sig = cert_data["signature"]
     
     # Reconstruct the cert string for verification
     cert_payload = canon({
         "certificate_id": cert_data["certificate_id"],
         "tenant_id": cert_data["tenant_id"],
-        "store_id": cert_data["store_id"],
-        "records_erased": cert_data["records_erased"],
-        "erased_at": cert_data["erased_at"],
+        "fact_ref": cert_data["fact_ref"],
+        "fact_content_hash": cert_data["fact_content_hash"],
+        "memory_deleted": cert_data["memory_deleted"],
+        "decision_records_scrubbed": cert_data["decision_records_scrubbed"],
+        "erasure_requested_at": cert_data["erasure_requested_at"],
+        "erasure_completed_at": cert_data["erasure_completed_at"],
+        "legal_basis": cert_data["legal_basis"],
     })
+    
+    import hashlib
+    digest = hashlib.blake2b(cert_payload, digest_size=32).digest()
     
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
     pub = Ed25519PublicKey.from_public_bytes(bytes.fromhex(pub_key))
     try:
-        pub.verify(bytes.fromhex(cert_sig), cert_payload)
+        pub.verify(bytes.fromhex(cert_sig), digest)
         print("  [✓] Erasure Certificate cryptographically verified against canonical key.")
     except Exception as e:
         print(f"  ❌ Erasure Certificate validation FAILED! {e}")
