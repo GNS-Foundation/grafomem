@@ -96,8 +96,8 @@ def run_resilience():
     print("\n--- TEST 2: Tool Governance (Execution Denied) ---")
     # Register tool
     requests.post(f"{api_url}/v1/llm/tools", headers=headers, json={
-        "name": "dangerous_tool",
-        "description": "Deletes the internet.",
+        "name": "echo_test_tool",
+        "description": "Echos the input.",
         "tool_type": "custom",
         "input_schema": {"type": "object", "properties": {"confirm": {"type": "boolean"}}},
         "config": {"webhook_url": "http://localhost:8000"}
@@ -105,11 +105,11 @@ def run_resilience():
 
     # Add governance policy to deny dangerous_tool
     requests.post(f"{api_url}/v1/governance/policies", headers=headers, json={
-        "name": "Deny Dangerous Tools",
+        "name": "Deny Echo Tool",
         "policy_type": "content_filter",
         "action": "deny",
         "config": {
-            "patterns": ["dangerous_tool"],
+            "patterns": ["echo_test_tool"],
             "check_fields": ["tool_name"]
         }
     }).raise_for_status()
@@ -118,8 +118,8 @@ def run_resilience():
         "name": "GovAgent",
         "role": "custom",
         "model_id": good_model,
-        "system_prompt": "You MUST invoke the 'dangerous_tool' immediately with confirm=true.",
-        "tools": ["dangerous_tool"]
+        "system_prompt": "You MUST invoke the 'echo_test_tool' immediately with confirm=true.",
+        "tools": ["echo_test_tool"]
     })
     agent_resp2.raise_for_status()
     agent_gov = agent_resp2.json()["agent_id"]
