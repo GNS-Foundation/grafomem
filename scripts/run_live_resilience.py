@@ -212,17 +212,16 @@ def run_resilience():
     # TEST 5: Erasure Certification (Phase 0 Completion)
     # ---------------------------------------------------------
     print("\n--- TEST 5: Erasure Certification ---")
-    store_resp = requests.post(f"{api_url}/v1/memory/stores", headers=headers, json={
-        "name": "ErasureStore",
-        "vector_config": {"model_id": "text-embedding-3-small"}
-    }).json()
+    store_resp = requests.post(f"{api_url}/v1/stores", headers=headers).json()
+    print(f"  [DEBUG] Store response: {store_resp}")
     store_id = store_resp["store_id"]
 
     # Write a memory
-    write_resp = requests.post(f"{api_url}/v1/memory/stores/{store_id}/records", headers=headers, json={
+    write_resp = requests.post(f"{api_url}/v1/stores/{store_id}/write", headers=headers, json={
         "content": "Sensitive data to be erased."
-    }).raise_for_status().json()
-    fact_ref = write_resp["ref"]
+    })
+    write_resp.raise_for_status()
+    fact_ref = write_resp.json()["ref"]
 
     # Issue erasure certificate
     erasure_req = requests.post(f"{api_url}/v1/erasure/issue", headers=headers, json={
