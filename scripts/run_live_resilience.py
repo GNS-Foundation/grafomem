@@ -181,6 +181,54 @@ def run_resilience():
             sys.exit(1)
 
 
+    # ---------------------------------------------------------
+    # TEST 5: Erasure Certification (Phase 0 Completion)
+    # ---------------------------------------------------------
+    print("\n--- TEST 5: Erasure Certification ---")
+    store_resp = requests.post(f"{api_url}/v1/memory/stores", headers=headers, json={
+        "name": "ErasureStore",
+        "vector_config": {"model_id": "text-embedding-3-small"}
+    }).json()
+    store_id = store_resp["store_id"]
+
+    # Write a memory
+    requests.post(f"{api_url}/v1/memory/stores/{store_id}/records", headers=headers, json={
+        "content": "Sensitive data to be erased."
+    }).raise_for_status()
+
+    # Erase the store
+    erasure_req = requests.post(f"{api_url}/v1/erasure/request", headers=headers, json={
+        "store_id": store_id, "reason": "User requested right to be forgotten"
+    }).raise_for_status().json()
+
+    cert_id = erasure_req["certificate_id"]
+    print(f"  [*] Erasure executed. Certificate generated: {cert_id}")
+
+    # Fetch canonical key
+    pub_key = requests.get(f"{api_url}/v1/gcrumbs/public_key").json()["public_key"]
+
+    # Validate cert signature locally
+    cert_data = requests.get(f"{api_url}/v1/erasure/certificates/{cert_id}", headers=headers).json()
+    cert_sig = cert_data["signature"]
+    
+    # Reconstruct the cert string for verification
+    cert_payload = canon({
+        "certificate_id": cert_data["certificate_id"],
+        "tenant_id": cert_data["tenant_id"],
+        "store_id": cert_data["store_id"],
+        "records_erased": cert_data["records_erased"],
+        "erased_at": cert_data["erased_at"],
+    })
+    
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+    pub = Ed25519PublicKey.from_public_bytes(bytes.fromhex(pub_key))
+    try:
+        pub.verify(bytes.fromhex(cert_sig), cert_payload)
+        print("  [✓] Erasure Certificate cryptographically verified against canonical key.")
+    except Exception as e:
+        print(f"  ❌ Erasure Certificate validation FAILED! {e}")
+        sys.exit(1)
+
     print("\n==========================================================")
     print(" ✅ PHASE 2 RESILIENCE CONFORMANCE FLIGHT SUCCESSFUL ")
     print("==========================================================")
