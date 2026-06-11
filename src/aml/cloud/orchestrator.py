@@ -673,6 +673,39 @@ class OrchestratorService:
             workflow_id, agent_id, str(step_number), now.isoformat(),
         )
 
+        # ── 0. DEADLINE CHECK ───────────────────────────────
+        if deadline and time.monotonic() > deadline:
+            logger.warning("Deadline exceeded before step %d in workflow %s", step_number, workflow_id)
+            step = self._persist_step(
+                step_id=step_id,
+                workflow_id=workflow_id,
+                agent_id=agent_id,
+                tenant_id=agent.tenant_id,
+                step_number=step_number,
+                input_text=input_text,
+                retrieved_facts=[],
+                governance_allowed=True,
+                governance_logs=[],
+                model_id=agent.model_id,
+                raw_output="[Error: Deadline exceeded]",
+                tool_calls=[],
+                tool_results=[],
+                tokens_used=0,
+                latency_ms=0,
+                latency_governance_ms=0,
+                latency_memory_ms=0,
+                latency_llm_ms=0,
+                latency_tools_ms=0,
+                decision_id=None,
+                parent_decision_id=parent_step_id,
+                signature=None,
+                public_key=None,
+                status=StepStatus.FAILED_TIMEOUT,
+                created_at=now,
+            )
+            self._increment_workflow(workflow_id, 0)
+            return step
+
         # ── 1. GOVERNANCE GATE ──────────────────────────────
         t0_total = time.monotonic()
         t0_gov = time.monotonic()
@@ -1404,6 +1437,12 @@ class OrchestratorService:
                     step_index=step.step_number,
                     agent_name=step.agent_id[:8],
                 )
+
+            if step.status == StepStatus.FAILED_TIMEOUT:
+                self._update_workflow_status(
+                    workflow.workflow_id, WorkflowStatus.TERMINATED,
+                )
+                return
 
             if step.status in (StepStatus.DENIED, StepStatus.ESCALATED):
                 if emitter and step.status == StepStatus.ESCALATED:
