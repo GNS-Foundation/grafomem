@@ -67,13 +67,17 @@ def run_resilience():
     }).raise_for_status()
 
     # Create agent
-    agent_failover = requests.post(f"{api_url}/v1/orchestrator/agents", headers=headers, json={
+    agent_resp = requests.post(f"{api_url}/v1/orchestrator/agents", headers=headers, json={
         "name": "FailoverAgent",
-        "role": "worker",
-        "model_id": bad_model,  # Primary (will fail)
+        "role": "custom",
+        "model_id": bad_model,
         "fallback_models": [good_model], # Fallback (will succeed)
         "system_prompt": "You are a helpful assistant. Output exactly 'Hello from fallback!'."
-    }).json()["agent_id"]
+    })
+    if agent_resp.status_code != 200:
+        print(f"❌ ERROR: Failed to create FailoverAgent. {agent_resp.text}")
+        sys.exit(1)
+    agent_failover = agent_resp.json()["agent_id"]
 
     # Run step
     step_resp = requests.post(f"{api_url}/v1/orchestrator/step", headers=headers, json={
@@ -109,13 +113,15 @@ def run_resilience():
         }
     }).raise_for_status()
 
-    agent_gov = requests.post(f"{api_url}/v1/orchestrator/agents", headers=headers, json={
+    agent_resp2 = requests.post(f"{api_url}/v1/orchestrator/agents", headers=headers, json={
         "name": "GovAgent",
-        "role": "worker",
-        "model_id": "gemini-2.5-pro",
+        "role": "custom",
+        "model_id": good_model,
         "system_prompt": "You MUST invoke the 'dangerous_tool' immediately with confirm=true.",
         "tools": ["dangerous_tool"]
-    }).json()["agent_id"]
+    })
+    agent_resp2.raise_for_status()
+    agent_gov = agent_resp2.json()["agent_id"]
 
     step_resp = requests.post(f"{api_url}/v1/orchestrator/step", headers=headers, json={
         "agent_id": agent_gov,
@@ -133,16 +139,20 @@ def run_resilience():
     # TEST 3: Loop Detection (Exact-Repeat)
     # ---------------------------------------------------------
     print("\n--- TEST 3: Loop Detection (Exact Repeat) ---")
-    agent_loop = requests.post(f"{api_url}/v1/orchestrator/agents", headers=headers, json={
+    agent_resp3 = requests.post(f"{api_url}/v1/orchestrator/agents", headers=headers, json={
         "name": "LoopAgent",
-        "role": "worker",
-        "model_id": "gemini-2.5-pro",
+        "role": "custom",
+        "model_id": good_model,
         "system_prompt": "You are caught in a loop. No matter what is said, output exactly: 'I am a robot.' and nothing else. DO NOT use tools."
-    }).json()["agent_id"]
+    })
+    agent_resp3.raise_for_status()
+    agent_loop = agent_resp3.json()["agent_id"]
 
-    wf_loop = requests.post(f"{api_url}/v1/orchestrator/workflows", headers=headers, json={
+    wf_resp1 = requests.post(f"{api_url}/v1/orchestrator/workflows", headers=headers, json={
         "name": "Loop WF", "mode": "sequential", "max_steps": 10, "agents": [agent_loop]
-    }).json()["workflow_id"]
+    })
+    wf_resp1.raise_for_status()
+    wf_loop = wf_resp1.json()["workflow_id"]
 
     print(f"  [*] Running workflow {wf_loop} to trigger loop halt...")
     # Because it streams, we can use requests.post with stream=True or just parse the chunks.
@@ -163,16 +173,20 @@ def run_resilience():
     # TEST 4: Workflow Timeout
     # ---------------------------------------------------------
     print("\n--- TEST 4: Workflow Timeout ---")
-    agent_time = requests.post(f"{api_url}/v1/orchestrator/agents", headers=headers, json={
+    agent_resp4 = requests.post(f"{api_url}/v1/orchestrator/agents", headers=headers, json={
         "name": "TimeAgent",
-        "role": "worker",
-        "model_id": "gemini-2.5-pro",
+        "role": "custom",
+        "model_id": good_model,
         "system_prompt": "Just say Hello."
-    }).json()["agent_id"]
+    })
+    agent_resp4.raise_for_status()
+    agent_time = agent_resp4.json()["agent_id"]
 
-    wf_time = requests.post(f"{api_url}/v1/orchestrator/workflows", headers=headers, json={
+    wf_resp2 = requests.post(f"{api_url}/v1/orchestrator/workflows", headers=headers, json={
         "name": "Time WF", "mode": "sequential", "max_steps": 5, "agents": [agent_time]
-    }).json()["workflow_id"]
+    })
+    wf_resp2.raise_for_status()
+    wf_time = wf_resp2.json()["workflow_id"]
 
     # We send timeout_seconds=0.001 which is impossible to beat for a network call
     print("  [*] Running workflow with 0.001s timeout...")
