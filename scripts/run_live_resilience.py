@@ -170,6 +170,7 @@ def run_resilience():
         for line in r.iter_lines():
             if line:
                 decoded = line.decode()
+                print(f"  [SSE] {decoded}")
                 if "step.complete" in decoded and "halted_loop" in decoded.lower():
                     halted = True
         if halted:
@@ -204,6 +205,7 @@ def run_resilience():
         for line in r.iter_lines():
             if line:
                 decoded = line.decode()
+                print(f"  [SSE] {decoded}")
                 if "workflow.error" in decoded and "deadline" in decoded.lower():
                     timed_out = True
         if timed_out:
