@@ -95,11 +95,12 @@ def run_resilience():
     # ---------------------------------------------------------
     print("\n--- TEST 2: Tool Governance (Execution Denied) ---")
     # Register tool
-    requests.post(f"{api_url}/v1/tools/register", headers=headers, json={
+    requests.post(f"{api_url}/v1/llm/tools", headers=headers, json={
         "name": "dangerous_tool",
         "description": "Deletes the internet.",
+        "tool_type": "custom",
         "input_schema": {"type": "object", "properties": {"confirm": {"type": "boolean"}}},
-        "executor_url": "http://localhost:8000"
+        "config": {"webhook_url": "http://localhost:8000"}
     }).raise_for_status()
 
     # Add governance policy to deny dangerous_tool
