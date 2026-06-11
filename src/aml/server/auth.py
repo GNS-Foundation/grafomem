@@ -31,6 +31,7 @@ _SKIP_AUTH_PATHS = frozenset({
     "/docs", "/openapi.json", "/redoc",
     "/v1/portal/signup", "/v1/portal/login",
     "/v1/cloud/billing/webhook",
+    "/v1/gcrumbs/public_key",
 })
 
 
