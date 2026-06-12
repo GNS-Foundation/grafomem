@@ -379,6 +379,9 @@ def run_resilience():
     # Acceptable: completed (if 4 steps complete normally) or terminated with max_steps_reached
     print(f"  [✓] Near-repeat not killed. status={wf_result3b['status']}, "
           f"reason={term_reason}, steps={wf_result3b.get('current_step')}")
+    # Verify receipts on each workflow step
+    for s in wf_result3b.get("steps", []):
+        verify_step_receipt(s, pub_key_hex, f"Loop ctrl step {s.get('step_number')}", api_url, headers)
 
     # ==========================================================
     # TEST 4a: Timeout FIRE arm — 0.001s → terminated
@@ -462,6 +465,10 @@ def run_resilience():
             f"Need current_step >= 1 for mid-execution kill."
         )
         print(f"  [✓] MID-EXECUTION timeout. {steps_done} step(s) completed before deadline killed the run.")
+        # Verify receipts on the completed steps
+        for s in wf_result4b.get("steps", []):
+            if s.get("signature"):
+                verify_step_receipt(s, pub_key_hex, f"Timeout mid-exec step {s.get('step_number')}", api_url, headers)
     elif wf_result4b.get("status") == "completed":
         print(f"  ❌ All 6 essay agents completed in <5s — workload not slow enough.")
         print(f"       Mid-execution timeout path UNEXERCISED.")
