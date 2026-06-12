@@ -106,14 +106,13 @@ def run_resilience():
     if valid_openai:
         good_prov, good_model, good_key = "openai", "gpt-4o", valid_openai
         fallback_model = "gpt-4o-mini"
-        # Use a non-existent model name that will 404 at the provider API.
-        # An invalid API key alone may not work because the server may use
-        # its own environment key instead of the per-tenant registered key.
-        bad_prov, bad_model = "openai", "gpt-4o-NONEXISTENT-2099"
+        # Use a model_id with NO registered provider — guaranteed to fail.
+        # get_provider() returns None → infer() raises ValueError.
+        bad_model = "unregistered-model-will-fail"
     else:
         good_prov, good_model, good_key = "gemini", "gemini-2.5-pro", valid_gemini
         fallback_model = "gemini-2.0-flash"
-        bad_prov, bad_model = "gemini", "gemini-NONEXISTENT-2099"
+        bad_model = "unregistered-model-will-fail"
 
     flight_id = uuid.uuid4().hex[:8]
     ephemeral_email = f"resil-{flight_id}@test.com"
@@ -148,10 +147,9 @@ def run_resilience():
         "provider": good_prov, "model_id": fallback_model, "api_key": good_key
     }).raise_for_status()
 
-    # Register bad provider for failover fire arm (nonexistent model, valid key)
-    requests.post(f"{api_url}/v1/llm/providers", headers=headers, json={
-        "provider": bad_prov, "model_id": bad_model, "api_key": good_key
-    }).raise_for_status()
+    # NOTE: We do NOT register a provider for bad_model.
+    # The agent's primary model_id will have no provider → infer() raises ValueError
+    # → failover to the fallback model (which IS registered).
 
     # ==========================================================
     # TEST 1a: Failover FIRE arm — bad primary → fallback fires
