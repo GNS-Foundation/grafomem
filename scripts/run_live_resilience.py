@@ -106,11 +106,14 @@ def run_resilience():
     if valid_openai:
         good_prov, good_model, good_key = "openai", "gpt-4o", valid_openai
         fallback_model = "gpt-4o-mini"
-        bad_prov, bad_model = "gemini", "gemini-2.5-pro"
+        # Use a non-existent model name that will 404 at the provider API.
+        # An invalid API key alone may not work because the server may use
+        # its own environment key instead of the per-tenant registered key.
+        bad_prov, bad_model = "openai", "gpt-4o-NONEXISTENT-2099"
     else:
         good_prov, good_model, good_key = "gemini", "gemini-2.5-pro", valid_gemini
         fallback_model = "gemini-2.0-flash"
-        bad_prov, bad_model = "openai", "gpt-4o"
+        bad_prov, bad_model = "gemini", "gemini-NONEXISTENT-2099"
 
     flight_id = uuid.uuid4().hex[:8]
     ephemeral_email = f"resil-{flight_id}@test.com"
@@ -145,9 +148,9 @@ def run_resilience():
         "provider": good_prov, "model_id": fallback_model, "api_key": good_key
     }).raise_for_status()
 
-    # Register bad provider for failover fire arm
+    # Register bad provider for failover fire arm (nonexistent model, valid key)
     requests.post(f"{api_url}/v1/llm/providers", headers=headers, json={
-        "provider": bad_prov, "model_id": bad_model, "api_key": "sk-invalid-key"
+        "provider": bad_prov, "model_id": bad_model, "api_key": good_key
     }).raise_for_status()
 
     # ==========================================================
