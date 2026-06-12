@@ -322,6 +322,9 @@ class LLMRegistry:
                 "Install with: pip install openai"
             )
 
+        if not config.api_key:
+            raise ValueError("API key is required for OpenAI provider but was not provided.")
+
         import httpx
         client = openai.OpenAI(
             api_key=config.api_key,
@@ -384,6 +387,9 @@ class LLMRegistry:
                 "anthropic package required for Anthropic provider. "
                 "Install with: pip install anthropic"
             )
+
+        if not config.api_key:
+            raise ValueError("API key is required for Anthropic provider but was not provided.")
 
         import httpx
         client = anthropic.Anthropic(
@@ -451,6 +457,9 @@ class LLMRegistry:
                 "google-genai package required for Gemini provider. "
                 "Install with: pip install google-genai"
             )
+
+        if not config.api_key:
+            raise ValueError("API key is required for Gemini provider but was not provided.")
 
         import httpx
         client = genai.Client(
