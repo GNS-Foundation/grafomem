@@ -1,0 +1,27 @@
+=== W8 EVALUATION: STUB EMBEDDER (Budget Exhaustion) ===
+
+W8 recall by distance d (hard, 5 seeds) [stub]:
+
+  distance          unbounded       fifo(K=64) importance(K=64)  summarise(K=64)
+  ------------------------------------------------------------------------------
+  <16                   0.964            1.000            1.000            1.000
+  16-63                 0.950            1.000            1.000            0.500
+  64-255                0.950            0.000            1.000            0.000
+  256-1023              1.000            0.000            1.000            0.000
+  >=1024                1.000            0.000            1.000            0.000
+  ------------------------------------------------------------------------------
+  (fifo cliffs at d=K=64; importance flat — it keeps the high facts; unbounded flat)
+
+Footprint = retained memories = scan cost (M5 == M4), from audit():
+
+  tier    horizon          unbounded ret        fifo(K=64) ret  importance(K=64) ret   summarise(K=64) ret    high-recall (u/f/i/s)
+  --------------------------------------------------------------------------------------------------------
+  easy        250                    250                    64                    64                    64     1.000/0.688/1.000/0.794
+  medium     1000                   1000                    64                    64                    64     1.000/0.524/1.000/0.405
+  hard       4000                   4000                    64                    64                    64     0.973/0.432/1.000/0.341
+  --------------------------------------------------------------------------------------------------------
+  (unbounded retain grows with horizon; fifo & importance both plateau at K=64)
+
+✓ Forgetting curve as designed.
+
+=== W8 EVALUATION: REAL BGE EMBEDDER (Dilution) ===

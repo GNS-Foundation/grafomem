@@ -169,6 +169,7 @@ class Workflow:
     started_at: datetime | None
     completed_at: datetime | None
     created_at: datetime
+    termination_reason: str | None = None
     # In-memory only — not persisted at workflow level
     steps: list[StepRecord] = field(default_factory=list)
 
@@ -226,6 +227,7 @@ CREATE TABLE IF NOT EXISTS orchestrator_workflows (
     total_tokens        INTEGER NOT NULL DEFAULT 0,
     started_at          TIMESTAMPTZ,
     completed_at        TIMESTAMPTZ,
+    termination_reason  TEXT,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_ow_tenant
@@ -375,6 +377,11 @@ class OrchestratorService:
             conn.execute("ALTER TABLE orchestrator_steps ADD COLUMN IF NOT EXISTS latency_tools_ms INTEGER NOT NULL DEFAULT 0;")
         except Exception as e:
             logger.warning(f"Could not alter orchestrator_steps table (latency): {e}")
+
+        try:
+            conn.execute("ALTER TABLE orchestrator_workflows ADD COLUMN IF NOT EXISTS termination_reason TEXT;")
+        except Exception as e:
+            logger.warning(f"Could not alter orchestrator_workflows table (termination_reason): {e}")
 
         logger.info("Orchestrator schema ensured")
 
@@ -1340,6 +1347,7 @@ class OrchestratorService:
                     "workflow.complete",
                     {
                         "status": final.status.value if final else "completed",
+                        "termination_reason": final.termination_reason if final else None,
                         "total_steps": final.current_step if final else 0,
                         "total_tokens": final.total_tokens if final else 0,
                         "duration_ms": duration_ms,
@@ -1394,6 +1402,7 @@ class OrchestratorService:
             if wf and wf.current_step >= wf.max_total_steps:
                 self._update_workflow_status(
                     workflow.workflow_id, WorkflowStatus.TERMINATED,
+                    termination_reason="max_steps_reached",
                 )
 
                 try:
@@ -1441,6 +1450,7 @@ class OrchestratorService:
             if step.status == StepStatus.FAILED_TIMEOUT:
                 self._update_workflow_status(
                     workflow.workflow_id, WorkflowStatus.TERMINATED,
+                    termination_reason="deadline_exceeded",
                 )
                 return
 
@@ -1550,6 +1560,7 @@ class OrchestratorService:
                 )
                 self._update_workflow_status(
                     workflow.workflow_id, WorkflowStatus.TERMINATED,
+                    termination_reason="loop_detected",
                 )
                 return
             seen_hashes.add(input_hash)
@@ -1567,6 +1578,7 @@ class OrchestratorService:
                 )
                 self._update_workflow_status(
                     workflow.workflow_id, WorkflowStatus.TERMINATED,
+                    termination_reason="loop_detected",
                 )
                 return
 
@@ -1594,6 +1606,7 @@ class OrchestratorService:
         if not hitl_approved:
             self._update_workflow_status(
                 workflow_id, WorkflowStatus.TERMINATED,
+                termination_reason="hitl_rejected",
             )
 
             try:
@@ -1692,7 +1705,7 @@ class OrchestratorService:
         workflow = self.get_workflow(workflow_id)
         if workflow is None or workflow.tenant_id != tenant_id:
             return False
-        self._update_workflow_status(workflow_id, WorkflowStatus.TERMINATED)
+        self._update_workflow_status(workflow_id, WorkflowStatus.TERMINATED, termination_reason="manual")
 
         try:
             from aml.cloud.metrics import WORKFLOWS_TOTAL
@@ -1904,11 +1917,12 @@ class OrchestratorService:
 
     def _update_workflow_status(
         self, workflow_id: str, status: WorkflowStatus,
+        termination_reason: str | None = None,
     ) -> None:
         conn = self._get_conn()
         conn.execute(
-            "UPDATE orchestrator_workflows SET status = %s WHERE workflow_id = %s",
-            (status.value, workflow_id),
+            "UPDATE orchestrator_workflows SET status = %s, termination_reason = %s WHERE workflow_id = %s",
+            (status.value, termination_reason, workflow_id),
         )
 
     def _set_workflow_started(self, workflow_id: str) -> None:
@@ -2003,6 +2017,7 @@ class OrchestratorService:
             started_at=row.get("started_at"),
             completed_at=row.get("completed_at"),
             created_at=row["created_at"],
+            termination_reason=row.get("termination_reason"),
         )
 
     @staticmethod
@@ -2120,6 +2135,7 @@ class OrchestratorService:
                 w.completed_at.isoformat() if w.completed_at else None
             ),
             "created_at": w.created_at.isoformat(),
+            "termination_reason": w.termination_reason,
             "steps": [
                 OrchestratorService.step_to_dict(s) for s in w.steps
             ],

@@ -134,6 +134,11 @@ def create_governance_router(gateway) -> APIRouter:
                     "description": "Detect PII patterns in model outputs",
                     "config_schema": {"patterns": "list[str]", "check_fields": "list[str]"},
                 },
+                {
+                    "type": "tool_deny",
+                    "description": "Deny specific tools from being executed by agents",
+                    "config_schema": {"denied_tools": "list[str]"},
+                },
             ]
         }
 

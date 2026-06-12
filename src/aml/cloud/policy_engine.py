@@ -165,6 +165,7 @@ class PolicyEngine:
             PolicyType.HITL_REQUIRED: lambda p, c: self._eval_hitl(p, operation, c),
             PolicyType.PII_GUARD: self._eval_pii_guard,
             PolicyType.WORLD_MODEL_CONSTRAINT: self._eval_world_model_constraint,
+            PolicyType.TOOL_DENY: self._eval_tool_deny,
         }
         evaluator = evaluators.get(policy.policy_type)
         if evaluator is None:
@@ -356,6 +357,34 @@ class PolicyEngine:
                 return self._action_to_result(policy.action), "Stateful constraint violated"
 
         return EvaluationResult.ALLOWED, "Constraints satisfied"
+
+    def _eval_tool_deny(
+        self, policy: Policy, context: dict,
+    ) -> tuple[EvaluationResult, str]:
+        """Deny specific tools by name. Native tool-execution-deny policy.
+
+        Config: {"denied_tools": ["tool_name_1", "tool_pattern_*"]}
+        Context: {"tool_name": "...", ...}  (passed by orchestrator for op=tool_execution)
+        """
+        denied_tools = policy.config.get("denied_tools", [])
+        tool_name = context.get("tool_name", "")
+        if not tool_name or not denied_tools:
+            return EvaluationResult.ALLOWED, "No tool deny restriction"
+
+        for pattern in denied_tools:
+            # Exact match first, then regex fallback
+            if pattern == tool_name:
+                return self._action_to_result(policy.action), (
+                    f"Tool '{tool_name}' denied by policy: exact match '{pattern}'"
+                )
+            try:
+                if re.fullmatch(pattern, tool_name):
+                    return self._action_to_result(policy.action), (
+                        f"Tool '{tool_name}' denied by policy: pattern match '{pattern}'"
+                    )
+            except re.error:
+                continue
+        return EvaluationResult.ALLOWED, f"Tool '{tool_name}' not in deny list"
 
     # ------------------------------------------------------------------
     # Helpers

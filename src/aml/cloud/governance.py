@@ -51,6 +51,7 @@ class PolicyType(str, Enum):
     HITL_REQUIRED = "hitl_required"
     PII_GUARD = "pii_guard"
     WORLD_MODEL_CONSTRAINT = "world_model_constraint"
+    TOOL_DENY = "tool_deny"
 
 
 class PolicyAction(str, Enum):
