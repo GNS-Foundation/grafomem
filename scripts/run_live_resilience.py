@@ -30,37 +30,43 @@ def canon(obj) -> bytes:
     return json.dumps(obj, sort_keys=True, separators=(",", ":"), default=str).encode()
 
 
-def verify_step_receipt(step_data: dict, pub_key_hex: str, label: str) -> None:
+def verify_step_receipt(step_data: dict, pub_key_hex: str, label: str,
+                        api_url: str, headers: dict) -> None:
     """Verify Ed25519 signature on a decision step using its own preimage.
 
-    Decision preimage: BLAKE2b-128(tenant||0x1f||query||0x1f||model||0x1f||output||0x1f||created_at||0x1f)
+    The decision preimage uses 5 fields: tenant_id, query, model_id, raw_output,
+    and the decision trail's created_at (NOT the step's created_at — these are
+    two different timestamps). We fetch the decision record from /v1/decisions/
+    to get the correct created_at.
+
+    Preimage: BLAKE2b-128(tenant||0x1f||query||0x1f||model||0x1f||output||0x1f||created_at||0x1f)
     Ed25519 signs the raw 16-byte digest.
-    Signature and public_key in API are base64-encoded.
     """
     sig_b64 = step_data.get("signature")
-    if not sig_b64:
-        print(f"    ⚠ {label}: No signature present — step may be unsigned")
+    decision_id = step_data.get("decision_id")
+    if not sig_b64 or not decision_id:
+        print(f"    ⚠ {label}: No signature or decision_id — step may be unsigned")
         return
 
-    # Reconstruct the preimage exactly as decision_trail computes it
+    # Fetch the decision record to get its own created_at
+    dec_resp = requests.get(f"{api_url}/v1/decisions/{decision_id}", headers=headers)
+    if dec_resp.status_code != 200:
+        print(f"    ⚠ {label}: Could not fetch decision record (HTTP {dec_resp.status_code})")
+        return
+    dec_data = dec_resp.json()
+
+    # Reconstruct the preimage exactly as compute_decision_id computes it
     sep = b"\x1f"
     h = hashlib.blake2b(digest_size=16)
-    h.update(step_data["tenant_id"].encode())
-    h.update(sep)
-    h.update(step_data["input_text"].encode())
-    h.update(sep)
-    h.update(step_data["model_id"].encode())
-    h.update(sep)
-    h.update(step_data["raw_output"].encode())
-    h.update(sep)
-    # created_at comes back as ISO string from the API
-    h.update(step_data["created_at"].encode())
-    h.update(sep)
-    expected_did = h.hexdigest()
+    for part in [dec_data["tenant_id"], dec_data["query"], dec_data["model_id"],
+                 dec_data["raw_output"], dec_data["created_at"]]:
+        h.update(part.encode("utf-8"))
+        h.update(sep)
+    recomputed_did = h.hexdigest()
 
-    # Verify the decision_id matches
-    if step_data["decision_id"] != expected_did:
-        print(f"    ❌ {label}: decision_id mismatch! expected={expected_did}, got={step_data['decision_id']}")
+    # Verify the decision_id matches the recomputed hash
+    if decision_id != recomputed_did:
+        print(f"    ❌ {label}: decision_id mismatch! recomputed={recomputed_did}, stored={decision_id}")
         sys.exit(1)
 
     # Verify Ed25519 signature over the raw 16-byte digest
@@ -70,7 +76,7 @@ def verify_step_receipt(step_data: dict, pub_key_hex: str, label: str) -> None:
     pub = Ed25519PublicKey.from_public_bytes(pub_bytes)
     try:
         pub.verify(sig_bytes, did_bytes)
-        print(f"    [✓] {label}: Ed25519 receipt verified (decision_id={expected_did[:12]}...)")
+        print(f"    [✓] {label}: Ed25519 receipt verified (decision_id={decision_id[:12]}...)")
     except Exception as e:
         print(f"    ❌ {label}: Ed25519 verification FAILED! {e}")
         sys.exit(1)
@@ -165,7 +171,7 @@ def run_resilience():
     step_data = step_resp.json()
     assert step_data["model_id"] == good_model, f"Expected {good_model}, got {step_data['model_id']}"
     print(f"  [✓] Failover fired. Model used: {step_data['model_id']}")
-    verify_step_receipt(step_data, pub_key_hex, "Failover fire")
+    verify_step_receipt(step_data, pub_key_hex, "Failover fire", api_url, headers)
 
     # ==========================================================
     # TEST 1b: Failover CONTROL arm — good primary, no fallback
@@ -259,7 +265,7 @@ def run_resilience():
     assert len(tool_deny_log) > 0, f"No tool_deny governance log found! logs={gov_logs}"
     print(f"  [✓] Tool execution blocked by native tool_deny policy.")
     print(f"       Policy: {tool_deny_log[0].get('policy_name', 'N/A')}")
-    verify_step_receipt(step_data, pub_key_hex, "Tool deny fire")
+    verify_step_receipt(step_data, pub_key_hex, "Tool deny fire", api_url, headers)
 
     # ==========================================================
     # TEST 2b: Tool Governance CONTROL arm — safe_tool allowed
