@@ -35,13 +35,13 @@ Footprint = retained memories = per-query scan cost (M5 == M4), with high-fact r
 `fifo(64)` and `importance(64)` retain exactly 64 memories each, yet their high-fact recall diverges completely (0.432 vs 1.000 at hard). The cliff moves, or vanishes, when you change the policy (eviction key), not the bound.
 
 ## F18 — Structural compaction UNDERPERFORMS plain FIFO at medium/long horizons
-Structural concatenation-compaction (`summarise`) does **not** soften the forgetting cliff. As horizons expand, accretion's dilution + budget cost make it underperform plain FIFO. At hard horizons, summarise recall is 0.341 vs fifo's 0.432. The predicted benefit of maintaining semantic traces of evicted facts is entirely overwhelmed by the cost of packing them into a bounded window, proving that structural summarization is an inferior retention strategy compared to simple eviction.
+Structural concatenation-compaction (`summarise`) does **not** soften the forgetting cliff. The degradation is budget-dominated (embedder-independent at these horizons); dilution is not separable in this configuration. At hard horizons, summarise recall is 0.341 vs fifo's 0.432. The predicted benefit of maintaining semantic traces of evicted facts is entirely overwhelmed by the cost of packing them into a bounded window, proving that structural summarization is an inferior retention strategy compared to simple eviction.
 
 ## Embedder Invariance & Budget Domination
 
 **What is [injected]?** The "REAL BGE" table used the `bge-small-en-v1.5` embedder running against real text payloads ("injected" refers to the fact that text payloads were injected into the trace, replacing stub integers). 
 
-**Budget-Dominated Recovery:** The stub and bge models show IDENTICAL medium/hard aggregates (0.405/0.341 for summarise, 0.524/0.432 for fifo). This identical performance under two completely different embedder architectures proves that recovery in bounded stores is **budget-dominated (embedder-INDEPENDENT)**. The failure of `summarise` is not embedder-coupled via dilution; it is a structural consequence of budget exhaustion. No embedder can retrieve what the store drops or over-compacts.
+**Budget-Dominated Recovery:** The stub and bge models show IDENTICAL medium/hard aggregates (0.405/0.341 for summarise, 0.524/0.432 for fifo). The degradation is budget-dominated (embedder-independent at these horizons); dilution is not separable in this configuration. No embedder can retrieve what the store drops or over-compacts.
 
 ## Reproduce
 
