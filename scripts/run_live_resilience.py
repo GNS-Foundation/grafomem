@@ -177,13 +177,15 @@ def run_resilience():
     # TEST 1b: Failover CONTROL arm — good primary, no fallback
     # ==========================================================
     print("\n--- TEST 1b: Failover CONTROL arm ---")
-    agent_resp = requests.post(f"{api_url}/v1/orchestrator/agents", headers=headers, json={
+    ctrl_config = {
         "name": "FailoverControlAgent",
         "role": "custom",
         "model_id": good_model,
         "fallback_models": [fallback_model],
         "system_prompt": "Output exactly: 'Hello from primary!'"
-    })
+    }
+    print(f"  [CONFIG] primary={ctrl_config['model_id']}, fallback={ctrl_config['fallback_models']}")
+    agent_resp = requests.post(f"{api_url}/v1/orchestrator/agents", headers=headers, json=ctrl_config)
     agent_resp.raise_for_status()
     agent_failover_ctrl = agent_resp.json()["agent_id"]
 
@@ -196,7 +198,8 @@ def run_resilience():
         f"Control arm: expected primary {good_model}, got {step_data['model_id']} — silent failover!"
     assert step_data["model_id"] != fallback_model, \
         f"Control arm: used fallback {fallback_model} when primary should have succeeded!"
-    print(f"  [✓] No failover. Primary used: {step_data['model_id']}")
+    print(f"  [✓] No failover. model_id={step_data['model_id']} (== primary {good_model}, != fallback {fallback_model})")
+    verify_step_receipt(step_data, pub_key_hex, "Failover control", api_url, headers)
 
     # ==========================================================
     # TEST 2a: Tool Governance FIRE arm — tool_deny policy blocks
@@ -263,8 +266,11 @@ def run_resilience():
     gov_logs = step_data.get("governance_logs", [])
     tool_deny_log = [g for g in gov_logs if g.get("result") == "denied" and g.get("operation") == "tool_execution"]
     assert len(tool_deny_log) > 0, f"No tool_deny governance log found! logs={gov_logs}"
+    # HOLD 2 EVIDENCE: print the raw governance log entry
     print(f"  [✓] Tool execution blocked by native tool_deny policy.")
-    print(f"       Policy: {tool_deny_log[0].get('policy_name', 'N/A')}")
+    print(f"  [GOVERNANCE_LOG] (raw):")
+    for gl in tool_deny_log:
+        pprint.pprint(gl, indent=4, width=100)
     verify_step_receipt(step_data, pub_key_hex, "Tool deny fire", api_url, headers)
 
     # ==========================================================
@@ -302,6 +308,7 @@ def run_resilience():
     else:
         # LLM didn't call the tool — still a valid control (no denial happened)
         print(f"  [✓] No tool calls made, no false denials.")
+    verify_step_receipt(step_data, pub_key_hex, "Tool gov control", api_url, headers)
 
     # ==========================================================
     # TEST 3a: Loop Detection FIRE arm — exact repeat → terminated
@@ -404,46 +411,61 @@ def run_resilience():
     print(f"  [✓] Timeout enforced. status={wf_result4['status']}, reason={wf_result4['termination_reason']}")
 
     # ==========================================================
-    # TEST 4b: Timeout REALISTIC — multi-step, mid-execution kill
+    # TEST 4b: Timeout MID-EXECUTION — genuinely slow workload
     # ==========================================================
-    print("\n--- TEST 4b: Timeout REALISTIC (mid-execution) ---")
-    # Create 3 agents for a sequential workflow
-    multi_agents = []
-    for i in range(3):
+    print("\n--- TEST 4b: Timeout MID-EXECUTION (slow workload) ---")
+    # Create 6 agents each requiring a long, detailed essay output
+    # to guarantee the deadline is crossed BETWEEN steps (not at entry)
+    slow_agents = []
+    for i in range(6):
         r = requests.post(f"{api_url}/v1/orchestrator/agents", headers=headers, json={
-            "name": f"MultiAgent{i}",
+            "name": f"EssayAgent{i}",
             "role": "custom",
             "model_id": good_model,
-            "system_prompt": f"You are agent {i}. Summarize the input in 2 sentences, then pass along."
+            "system_prompt": (
+                f"You are essay writer {i}. You MUST write a detailed 500-word essay "
+                f"about a DIFFERENT aspect of the input topic. Cover history, current "
+                f"state, future directions, challenges, and ethical considerations. "
+                f"Be thorough and verbose. Do not summarize. Do not use tools."
+            )
         })
         r.raise_for_status()
-        multi_agents.append(r.json()["agent_id"])
+        slow_agents.append(r.json()["agent_id"])
 
     wf_resp4b = requests.post(f"{api_url}/v1/orchestrator/workflows", headers=headers, json={
-        "name": "Multi WF", "mode": "sequential", "max_total_steps": 10,
-        "agent_ids": multi_agents
+        "name": "Slow WF", "mode": "sequential", "max_total_steps": 10,
+        "agent_ids": slow_agents
     })
     wf_resp4b.raise_for_status()
-    wf_multi = wf_resp4b.json()["workflow_id"]
+    wf_slow = wf_resp4b.json()["workflow_id"]
 
-    # 3 seconds — should allow step 1 but not all 3
-    print(f"  [*] Running 3-agent workflow with 3s timeout...")
-    run_resp4b = requests.post(f"{api_url}/v1/orchestrator/workflows/{wf_multi}/run",
-                               headers=headers, json={"input_text": "Tell me about machine learning in healthcare.", "timeout_seconds": 3.0})
+    # 5 seconds — enough for 1-2 LLM calls generating long essays, not all 6
+    print(f"  [*] Running 6-agent essay workflow with 5s timeout...")
+    run_resp4b = requests.post(f"{api_url}/v1/orchestrator/workflows/{wf_slow}/run",
+                               headers=headers, json={
+                                   "input_text": (
+                                       "Write about the intersection of quantum computing, "
+                                       "climate science, and international policy. Cover "
+                                       "technical foundations, current research, and societal "
+                                       "implications in detail."
+                                   ),
+                                   "timeout_seconds": 5.0
+                               })
     wf_result4b = run_resp4b.json()
+    steps_done = wf_result4b.get("current_step", 0)
     print(f"  [DEBUG] status={wf_result4b.get('status')}, reason={wf_result4b.get('termination_reason')}, "
-          f"steps={wf_result4b.get('current_step')}")
+          f"steps={steps_done}/6")
 
     if wf_result4b.get("status") == "terminated" and wf_result4b.get("termination_reason") == "deadline_exceeded":
-        steps_done = wf_result4b.get("current_step", 0)
-        if steps_done >= 1:
-            print(f"  [✓] Mid-execution timeout. {steps_done} step(s) completed before deadline.")
-        else:
-            print(f"  [✓] Timeout at entry (0 steps). 3s too short for even step 1 on this deploy.")
+        assert steps_done >= 1, (
+            f"Timeout at entry (0 steps) — this is 4a, not mid-execution. "
+            f"Need current_step >= 1 for mid-execution kill."
+        )
+        print(f"  [✓] MID-EXECUTION timeout. {steps_done} step(s) completed before deadline killed the run.")
     elif wf_result4b.get("status") == "completed":
-        print(f"  [⚠] Workflow completed before 3s deadline. All 3 steps finished quickly.")
-        print(f"       This means the timeout path was NOT exercised mid-execution.")
-        print(f"       (Acceptable — real LLM was fast enough. Fire arm 4a already proves the knob works.)")
+        print(f"  ❌ All 6 essay agents completed in <5s — workload not slow enough.")
+        print(f"       Mid-execution timeout path UNEXERCISED.")
+        sys.exit(1)
     else:
         print(f"  ❌ Unexpected: status={wf_result4b.get('status')}, reason={wf_result4b.get('termination_reason')}")
         sys.exit(1)
@@ -520,11 +542,10 @@ def run_resilience():
     # ==========================================================
     print("\n==========================================================")
     print(" PHASE 2 TWO-SIDED RESILIENCE — ALL ARMS GREEN")
-    print("  Fire arms:   1a ✓  2a ✓  3a ✓  4a ✓")
+    print("  Fire arms:    1a ✓  2a ✓  3a ✓  4a ✓  4b ✓ (mid-exec)")
     print("  Control arms: 1b ✓  2b ✓  3b ✓  4c ✓")
-    print("  Realistic:   4b ✓")
-    print("  Receipts:    Ed25519 verified on fire-arm steps")
-    print("  Phase 0:     Erasure cert verified")
+    print("  Receipts:     Ed25519 verified on fire + control arms")
+    print("  Phase 0:      Erasure cert verified")
     print("==========================================================")
 
 
