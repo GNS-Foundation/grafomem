@@ -29,7 +29,7 @@ The platform is built on **7 governance layers** stacked on top of the open-sour
 | API endpoints | **~163** — authoritative count is the exported `docs/openapi.json` (incl. R1–R5 governed services, gcrumbs, assurance, `/stream` SSE, webhooks, SSO, SAML) |
 | **OpenAPI schemas** | **~500 lines** shared response models (`schemas.py`) |
 | Portal tabs | **14** |
-| Database tables | **27+** (PostgreSQL + pgvector; core platform + gcrumbs + assurance + SAML, plus the R1–R5 governed-services tables — authoritative list in the schema files) |
+| Database tables | **27+** (PostgreSQL + Qdrant backend; core platform + gcrumbs + assurance + SAML, plus the R1–R5 governed-services tables — authoritative list in the schema files) |
 | E2E conformance suite | **~1,784 lines** — **51 tests** across **22 phases**. Mock **51/51**. Live: OpenAI 39-test baseline · Anthropic **49/51** · Gemini **48/51** (see §32) |
 | SDK integration test | **~240 lines** — **33 tests** across **10 phases** |
 | Backend implementations | **4,681 lines** across 15 files |
@@ -72,15 +72,15 @@ The platform is built on **7 governance layers** stacked on top of the open-sour
 │ · supersede  │     │   Proof        │      │ · Tool Registry  │
 │ · audit      │     │ · Governance   │      │ · Step executor  │
 │              │     │   Gateway      │      │                  │
-│ PostgreSQL   │     │ · Regulatory   │      │ 7-step governed  │
-│ + pgvector   │     │   Reports     │      │ execution loop   │
+│ Qdrant GMP   │     │ · Regulatory   │      │ 7-step governed  │
+│ Adapter      │     │   Reports     │      │ execution loop   │
 └──────────────┘     └────────────────┘      └──────────────────┘
         │                        │                        │
         └────────────────────────┼────────────────────────┘
                                  │
                     ┌────────────▼────────────────────┐
-                    │       PostgreSQL (Supabase)      │
-                    │   27+ tables, pgvector, Ed25519  │
+                    │   PostgreSQL + Qdrant backend    │
+                    │   27+ tables, Qdrant, Ed25519    │
                     └─────────────────────────────────┘
 ```
 
@@ -183,12 +183,12 @@ Backends declare a **capability set** from 10 flags:
 
 Any operation outside the declared set raises `CapabilityNotSupported`.
 
-### 3.4 PostgreSQL + pgvector Backend
+### 3.4 Qdrant Vector Backend (MOBY DB Adopted)
 
 - Embedding model: `BAAI/bge-small-en-v1.5` (384-dim)
-- Similarity: cosine distance via pgvector's `<=>` operator
-- Schema: `memories` table with `vector(384)` column
-- Tenant isolation: `WHERE tenant_id = %s` on every query
+- Similarity: cosine distance via Qdrant's exact search
+- Schema: Qdrant collections with mandatory payload indexing on all filterable fields (`tenant_id`, `valid_from`, `valid_until`)
+- Tenant isolation: Filter-aware query planning. pgvector remains a supported pattern for colocated deployments.
 
 ---
 
@@ -567,8 +567,8 @@ class LLMResponse:
 
 API keys are stored in PostgreSQL per-tenant. The `config_to_dict()` method **never exposes the raw key** — it returns `api_key_set: true/false` instead.
 
-> [!WARNING]
-> **Pre-production hardening needed**: API keys are currently stored in plaintext in PostgreSQL. Before going live with real customer keys, implement Fernet symmetric encryption or integrate with a secrets manager (AWS Secrets Manager, Vault, etc.).
+> [!NOTE]
+> **Pre-production hardening applied**: API keys are stored encrypted at rest using Fernet symmetric encryption via the `PROVIDER_ENCRYPTION_KEY`. All production plaintext keys have been migrated and purged. Additionally, BYOM inference is fail-closed: a missing tenant key explicitly aborts rather than falling back to platform environment variables.
 
 ---
 
@@ -774,7 +774,7 @@ apsw                           # SQLite bindings
 ### PostgreSQL (Cloud)
 ```
 psycopg[binary] >= 3.1        # PostgreSQL adapter (sync, dict_row)
-pgvector >= 0.3                # Vector similarity extension
+qdrant-client >= 1.9.0             # Vector similarity backend
 ```
 
 ### Server
@@ -926,7 +926,7 @@ httpx                          # Ollama HTTP + tool webhooks
 | Test | What to Verify | Priority | Status |
 |---|---|---|---|
 | **3-agent sequential workflow** | Researcher → Writer → Reviewer executes end-to-end | P0 | ✅ **VALIDATED** (238 tokens, mock) |
-| **Memory write + retrieve** | pgvector HNSW search returns relevant facts | P0 | ✅ **VALIDATED** (5 facts) |
+| **Memory write + retrieve** | Qdrant exact search returns relevant facts | P0 | ✅ **VALIDATED** (5 facts) |
 | **Decision trail logging** | Every step produces a signed decision record | P0 | ✅ **VALIDATED** (3 decisions) |
 | **Execution receipts** | Every step produces a hash-chained receipt | P0 | ✅ **VALIDATED** (3 receipts, chain intact) |
 | **Deterministic replay** | Re-execute with same inputs → IDENTICAL output | P0 | ✅ **VALIDATED** (status=identical, confidence=1.00) |
@@ -955,7 +955,7 @@ httpx                          # Ollama HTTP + tool webhooks
 | Gate | What to Validate | Status |
 |---|---|---|
 | **Mock conformance** | 49/49 — governance, security, attestation, replay, HITL lifecycle, streaming, webhooks, PDF, SSO | ✅ Complete |
-| **GMP self-conformance** | W2/W5/W6/W10 against PostgreSQL+pgvector backend — M8 = 1.000 (7/7) | ✅ Complete |
+| **GMP self-conformance** | W2/W5/W6/W10 against Qdrant GMP backend — M8 = 1.000 (7/7) | ✅ Complete |
 | **Live-LLM provider suite** | OpenAI gpt-4o-mini — 49/49, 1104 tokens, replay diverged confidence=0.54 | ✅ Complete |
 | **HITL resume lifecycle** | Escalate → approve → COMPLETED; escalate → reject → TERMINATED | ✅ Complete |
 | **OpenAPI contract** | SDK types match OpenAPI spec — no drift | ✅ Complete |
@@ -1113,7 +1113,7 @@ httpx                          # Ollama HTTP + tool webhooks
 
 | Component | Configuration |
 |---|---|
-| **Database** | PostgreSQL 17 + pgvector 0.8.2 (Docker, `pgvector/pgvector:pg17`) |
+| **Database** | PostgreSQL 17 + Qdrant (Docker) |
 | **Vector Search** | HNSW index, 384-dimensional embeddings |
 | **Embeddings** | `BAAI/bge-small-en-v1.5` (local, 384-dim) |
 | **LLM** | MockLLM (deterministic, input-dependent via BLAKE2b-128) |
@@ -1140,7 +1140,7 @@ httpx                          # Ollama HTTP + tool webhooks
   ✅ Signup (Tenant B) — second tenant for isolation tests
 
 💾 Phase 2: Memory Store
-  ✅ Create Store — PostgreSQL + pgvector backend
+  ✅ Create Store — Qdrant backend
   ✅ Seed 5 Facts — 5/5 compliance facts written
 
 🛡️ Phase 3: Governance Policies
