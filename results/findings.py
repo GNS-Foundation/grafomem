@@ -123,7 +123,7 @@ if __name__ == "__main__":
     for msg in validate(tampered, lock=lock):
         print("   VIOLATION:", msg)
 
-    print("\n4) freshness (current = v0.2.0 / bge-small-en-v1.5):")
+    print("\n4) freshness (current = v1.0.0 / bge-small-en-v1.5):")
     s = stale(fs, corpus_hash=meta["corpus_hash"], embedder="bge-small-en-v1.5")
     print("   needs re-confirm:", ", ".join(f.id for f in s) or "none")
 

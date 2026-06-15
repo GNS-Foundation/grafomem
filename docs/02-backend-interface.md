@@ -83,7 +83,7 @@ class Capability(StrEnum):
 | Flag | Meaning |
 |---|---|
 | `BI_TEMPORAL` | `retrieve()` accepts an `as_of: datetime` parameter and returns the world-state as it stood at that time. Required for W2 pre-supersession queries. |
-| `HARD_DELETE` | `delete()` permanently destroys the referenced memory. Post-`delete`, the ref is unrecoverable via any interface. Required for W8 (deferred). |
+| `HARD_DELETE` | `delete()` permanently destroys the referenced memory. Post-`delete`, the ref is unrecoverable via any interface. Required for W8/W9. |
 | `SUPERSESSION_CHAIN` | `supersede()` is supported and tracks the explicit linkage between old and new memories. Required for W2 historical queries. |
 | `CROSS_SESSION_PROPAGATION` | Writes, supersessions, and deletions in one session are immediately visible to other sessions of the same tenant. Required for W8. |
 | `MULTI_TENANT` | The backend honors a `tenant_id` parameter and enforces isolation. Required for W5. |
@@ -325,7 +325,7 @@ How the eval harness adapts to each backend's declared capabilities.
 | **W5** Multi-Tenant Isolation | `MULTI_TENANT` | If absent: workload skipped (backend marked "single-tenant only"). |
 | **W6** Deletion & Leakage | — | `delete()` dispatched only to `HARD_DELETE` backends; others no-op and leak (leaky baseline). Leakage via Check L (§8); over-deletion via survivor-probe recall. |
 | **W7** Conflict Detection *(deferred, v0.2)* | — | If `CONFLICT_DETECTION` absent: backend cannot reach `conflict_flag`; defaults to observed behavior class. |
-| **W8** Forgetting Curve *(deferred, v0.2)* | — | TBD. |
+| **W8** Forgetting Curve *(v1.0.0)* | — | TBD. |
 | **W9** Cross-Session Deletion *(deferred, v0.2)* | `HARD_DELETE`, `CROSS_SESSION_PROPAGATION` | If either absent: workload skipped. |
 
 The deletion-leakage check (§8) and the cryptographic-provenance check (§8) are **always** run, regardless of workload, on backends that claim the relevant capability.

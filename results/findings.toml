@@ -11,7 +11,7 @@
 #   except for tombstones.
 
 registry_version = "1"
-canonical_corpus = "grafomem-bench-v0.2.0"
+canonical_corpus = "grafomem-bench-v1.0.0"
 corpus_hash = "f049820bc24505111595b030ee9b2e6abd1812e80e96e3e770e1bbbcfb077ca6"
 
 finding = [

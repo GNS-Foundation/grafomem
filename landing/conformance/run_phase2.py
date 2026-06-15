@@ -57,7 +57,7 @@ def main():
         ingest_log.append({"source": path.name, "path": str(path), "content_hash": h, "breadcrumb": bc["breadcrumb_id"], "obj": oid})
         if path.suffix.lower() in (".md", ".txt"):
             doc_text += "\n" + raw.decode("utf-8", "ignore")
-    crumbs.emit("customs:corpus_attest", {"corpus": "grafomem-bench-v0.2.0", "corpus_hash": published})
+    crumbs.emit("customs:corpus_attest", {"corpus": "grafomem-bench-v1.0.0", "corpus_hash": published})
 
     # ---- CODE CUSTOMS (R2 extended): ingest src/aml ----
     code_root = Path(args.code)

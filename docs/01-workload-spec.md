@@ -28,7 +28,7 @@
 - Tightened `valid_from` precision to microseconds (§3.2).
 - W6 procedure now requires distinct `valid_from` and `sequence` for concurrent writes (§4.6).
 - Added validation Rules V1–V5 (§7.3).
-- Added W8 (Right to Be Forgotten) to deferred items (§8).
+- Added W8 (Right to Be Forgotten) to W8 (Forgetting Curve).
 - Added design principle P6 (deletion vs. supersession) (§2).
 
 ---
@@ -412,7 +412,7 @@ and defaults to its observed behavior class.
 
 **RQs addressed:** RQ2 (conflict resolution at concurrency), partial RQ6.
 
-### 4.8 W8 — Forgetting Curve *(built, v0.2)*
+### 4.8 W8 — Forgetting Curve *(built, v1.0.0)*
 
 **Status:** Built (v0.2), not yet corpus-locked. Generator `workloads/w8.py`,
 importance-weighted backend `backends/retention_backends.py`, runner `scripts/run_w8.py`.
@@ -630,7 +630,7 @@ The generator ships with a smoke suite: 1 seed × 6 workloads × `easy` difficul
 - **W10 — Operational Concurrency & Isolation.** Designed (§4.10; gmp-spec §10), not built — the genuinely net-new axis, requiring a trace-schema v0.2 bump and the first new interface method since v0.1. Home of the reserved `CONCURRENCY_CONTROL`.
 - **Provenance / Check-P workload** — undesigned. Would home the reserved `PROVENANCE` / `CRYPTOGRAPHIC_PROVENANCE` capabilities (currently refused-only; gmp-spec §7.5).
 
-(Forgetting Curve, Right-to-be-Forgotten, and Conflict Detection — formerly listed here as deferred — are now **built** as W8, W9, and W7 respectively; see §4.7–§4.9. W7 and W9 are corpus-locked; W8 is held out pending the summarise/merge variant.)
+(Forgetting Curve, Right-to-be-Forgotten, and Conflict Detection — formerly listed here as deferred — are now **built** as W8, W9, and W7 respectively; see §4.7–§4.9. All are locked in v1.0.0.)
 
 ---
 

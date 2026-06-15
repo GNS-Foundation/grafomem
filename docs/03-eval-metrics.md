@@ -285,9 +285,10 @@ A backend whose `non_deterministic` rate is > 0 has a consistency bug and is fla
 | **W4** Long-Horizon | M1 at the longest horizon | last-N turns (effectively zero recall at long H) | M1 ≥ 1.2 × persistence M1 (low absolute bar) |
 | **W5** Multi-Tenant | M1 + M7 | "no isolation" baseline (single bucket) | M1 ≥ 1.2 × no-isolation baseline; **and** M7 ≥ 0.95 |
 | **W6** Concurrent | classification | "no consistency" baseline (typically `silent_data_loss` or `last_write_wins`) | non_deterministic rate = 0; dominant class declared explicitly |
-| **W7** Forgetting *(v0.2)* | TBD | TBD | TBD |
-| **W8** Right to Be Forgotten *(v0.2)* | Check L pass rate | "soft delete only" baseline (fails everything) | Check L: zero leaks |
-| **W10** Concurrency & Isolation *(v0.2)* | M8 (+ achieved level) | over-claimer baseline (declares `serializable`, delivers less) | M8 = 1.0 — achieved ≥ declared on every lattice probe **and** zero §10.4 resurrections; achieved level declared explicitly |
+| **W7** Conflict Detection *(v1.0.0)* | TBD | TBD | TBD |
+| **W8** Forgetting Curve *(v1.0.0)* | Retention mechanism validation | FIFO baseline (recall cliff at K) | importance(K) unbounded recall |
+| **W9** Right to Be Forgotten *(v1.0.0)* | Check L pass rate | "soft delete only" baseline (fails everything) | Check L: zero leaks |
+| **W10** Concurrency & Isolation *(v1.0.0)* | M8 (+ achieved level) | over-claimer baseline (declares `serializable`, delivers less) | M8 = 1.0 — achieved ≥ declared on every lattice probe **and** zero §10.4 resurrections; achieved level declared explicitly |
 
 **Always required for deployment, on every workload:**
 
@@ -323,7 +324,7 @@ class PersistenceBackend(MemoryBackend):
 - W2: M6 is N/A (no BI_TEMPORAL). M1 still computed; typically very low because persistence has no notion of supersession.
 - W5: M7 is N/A (no MULTI_TENANT). W5 isn't run on PersistenceBackend; instead the baseline for W5 is a `NoIsolationBackend` that does store memories but ignores `tenant_id`.
 - W6: classifies as `last_write_wins` or `silent_data_loss` depending on the buffer policy.
-- W8: classifies as full leakage on Check L.
+- W9: classifies as full leakage on Check L.
 
 ---
 

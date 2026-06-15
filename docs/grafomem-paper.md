@@ -991,7 +991,7 @@ here, and are left to future workloads.
 
 ## Appendix B — Corpus provenance
 
-Suite `grafomem-bench-v0.2.0`: 135 traces (9 workloads — W1–W7, W9, W10; W8 held
+Suite `grafomem-bench-v1.0.0`: 150 traces (10 workloads — W1–W10).
 out — × 5 seeds × 3 difficulties), 61,754 turns, 17,612 queries. Each trace is
 content-addressed by BLAKE2b-256 over
 its canonical JSON (excluding the random trace identifier and the generation

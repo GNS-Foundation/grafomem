@@ -70,7 +70,7 @@ def main():
         oid = wm.add_object("Document", {"source": path.name, "content_hash": content_hash})
         ingest_log.append({"source": path.name, "path": str(path), "content_hash": content_hash,
                            "breadcrumb": bc["breadcrumb_id"], "obj": oid})
-    crumbs.emit("customs:corpus_attest", {"corpus": "grafomem-bench-v0.2.0",
+    crumbs.emit("customs:corpus_attest", {"corpus": "grafomem-bench-v1.0.0",
                 "corpus_hash": published_corpus_hash, "source": "corpus/corpus.lock"})
 
     # ---- 2. WORLD-MODEL (R5): seed the GNS twin ----

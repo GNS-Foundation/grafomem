@@ -1,14 +1,14 @@
 # GRAFOMEM Cloud — Internal Technical Whitepaper
 
 **Classification: INTERNAL — Not for publication**
-**Version: 2.6 · June 2026**
+**Version: 2.6.1 · June 2026**
 **Authors: GNS Foundation Engineering**
 
 ---
 
 ## 1. Executive Summary
 
-GRAFOMEM Cloud is a **governed agent memory platform** — the only production system where every AI inference decision is logged, signed, and replayable, every memory operation is policy-gated, and every data deletion produces a cryptographic erasure certificate.
+GRAFOMEM Cloud is a **governed agent memory platform** where every AI inference decision is logged, signed, and replayable, every memory operation is policy-gated, and every data deletion produces a cryptographic erasure certificate.
 
 The platform is built on **7 governance layers** stacked on top of the open-source GMP (Grafomem Memory Protocol) specification. The open spec (MIT, frozen at v0.2.0) defines what a memory store must do; the Cloud platform enforces *how* it does it — with provenance, compliance, and auditability at every step.
 
@@ -17,6 +17,8 @@ The platform is built on **7 governance layers** stacked on top of the open-sour
 >
 > **v2.4/2.5 milestone**: Sprints 17–20 deliver **multi-provider LLM support** — all three providers now have a live conformance run (OpenAI gpt-4o-mini at the 39-test baseline; Anthropic Claude Opus 4 at **49/51**; Google Gemini 2.5 Pro at **48/51** — no live run is a clean 51; see §32) — plus **CrewAI/AutoGen SDK adapters**, **Continuous Assurance** (drift detection, scheduled checks, baselines), and **RoutingPool** (read-replica routing). Platform now has **~163 API endpoints**, **112/112 unit tests green**, and **113 conformance gates** (mock).
 > v2.5 is a consistency reconciliation pass — endpoint/table counts now cite `openapi.json` and the schema as the source of truth; §16, §18, §21, and §2 are brought current through Sprint 20.
+>
+> **v2.6.1** is a status-reconciliation pass: the Appendix live-status table and the §17.1 critical-path rows are brought current with shipped functionality (gcrumbs + signed erasure live since Sprint 15; the resilience mechanisms — failover, tool-deny, timeout, loop — validated two-sided in the sealed run); §17.2 conformance counts are aligned to §32 (51/51 mock; OpenAI 39-test baseline); and competitive-absolute language ("the only") and one "tamper-proof" slip are corrected to defensible claims ("tamper-evident").
 
 ### Key Numbers
 
@@ -385,7 +387,7 @@ Each report contains:
   - **Evidence**: actual data from the tenant's usage
   - **Recommendations**: what to do if non-compliant
 - **Hash**: BLAKE2b-256 over the full report content
-- **Signature**: Ed25519 over the hash (tamper-proof)
+- **Signature**: Ed25519 over the hash (tamper-evident)
 
 ---
 
@@ -942,10 +944,10 @@ httpx                          # Ollama HTTP + tool webhooks
 | **Webhook CRUD + isolation** | Register → list → cross-tenant 404 → delete | P0 | ✅ **VALIDATED** (two-sided Phase 19) |
 | **PDF report export** | Download → `%PDF-` magic bytes, 404 on missing | P0 | ✅ **VALIDATED** (two-sided Phase 20) |
 | **SSO provider list** | `/v1/portal/sso/providers` → 200 | P0 | ✅ **VALIDATED** (Phase 21) |
-| **LLM provider failover** | Provider timeout → graceful error, no data loss | P1 | ⏳ Pending |
-| **Tool governance** | Tool call denied by governance → step records denial | P1 | ⏳ Pending |
-| **Workflow timeout** | Long-running workflow → terminated after timeout_seconds | P1 | ⏳ Pending |
-| **Loop detection** | Agent repeating same output → auto-terminate | P2 | ⏳ Pending |
+| **LLM provider failover** | Primary timeout → fallback used AND healthy primary used | P1 | ✅ **VALIDATED** (two-sided, resilience sealed run; receipts verified) |
+| **Tool governance** | Disallowed tool denied AND safe tool executed | P1 | ✅ **VALIDATED** (two-sided, native `tool_deny`, resilience sealed run) |
+| **Workflow timeout** | Over-deadline workflow terminated AND in-budget workflow completes | P1 | ✅ **VALIDATED** (two-sided, resilience sealed run; between-step enforcement, intra-step abort not demonstrated) |
+| **Loop detection** | Repeated output auto-terminated AND legitimate progress not killed | P2 | ✅ **VALIDATED** (two-sided, resilience sealed run) |
 
 ### 17.2 Next Gates Before Production
 
@@ -954,9 +956,9 @@ httpx                          # Ollama HTTP + tool webhooks
 
 | Gate | What to Validate | Status |
 |---|---|---|
-| **Mock conformance** | 49/49 — governance, security, attestation, replay, HITL lifecycle, streaming, webhooks, PDF, SSO | ✅ Complete |
+| **Mock conformance** | 51/51 — governance, security, attestation, replay, HITL lifecycle, streaming, webhooks, PDF, SSO | ✅ Complete |
 | **GMP self-conformance** | W2/W5/W6/W10 against Qdrant GMP backend — M8 = 1.000 (7/7) | ✅ Complete |
-| **Live-LLM provider suite** | OpenAI gpt-4o-mini — 49/49, 1104 tokens, replay diverged confidence=0.54 | ✅ Complete |
+| **Live-LLM provider suite** | OpenAI gpt-4o-mini — 39/39 baseline, 1104 tokens, replay diverged confidence=0.54 | ✅ Complete |
 | **HITL resume lifecycle** | Escalate → approve → COMPLETED; escalate → reject → TERMINATED | ✅ Complete |
 | **OpenAPI contract** | SDK types match OpenAPI spec — no drift | ✅ Complete |
 
@@ -1263,7 +1265,7 @@ GRAFOMEM's market differentiator is not just agent orchestration — it is **cry
 | **Decision Reproducibility** | — | Deterministic replay with confidence scoring | DORA Art. 28–30 (third-party ICT provider obligations) |
 | **Policy Enforcement** | — | Append-only governance evaluation logs | ISO 42001 (AI management) |
 
-**Positioning statement**: *"The only AI agent platform where every step is governed, every decision is signed, and every action is replayable."*
+**Positioning statement**: *"An agent platform where every step is governed, every decision is signed, and every action is replayable."*
 
 ---
 
@@ -2003,11 +2005,14 @@ conn = pool.getconn(readonly=True)                # → replica (failover → pr
 
 ## Appendix: Live Status
 
+> [!NOTE]
+> "LIVE" denotes a working, deployed code path validated locally and/or against a small live sample — not a battle-tested-at-scale claim. Conformance figures are mock/local unless a specific live run and provider are cited (see §32).
+
 | Component | Status | Evidence / Caveats |
 |---|---|---|
-| **Local Local-First Inference** | LIVE (production) | Full local BYOM abstraction. Tested with Llama3-8b over REST (llama-cpp-python). |
-| **Cloud Managed Inference** | LIVE (production) | Live integration with `gpt-4o`. |
-| **Action Extraction** | LIVE (production) | Extracts `action_name` and `params` perfectly via strict schema forcing. |
-| **Declarative Governance PEP** | LIVE (production) | PEP enforces policies from DB (`require_params`, `sandbox_financial_rules`) in production environment. |
-| **Tamper-Evident Receipts** | LIVE (production) | Ed25519 signatures generated and verifiable using production keys; cryptographic binding proven. |
-| **Erasure/Gcrumbs** | PENDING | Not required for v1 MVP. Will be implemented in v2. |
+| **Local-first inference (BYOM)** | LIVE | Local BYOM abstraction over REST; exercised with a llama-cpp-python backend. |
+| **Cloud managed inference** | LIVE | Multi-provider (§32): OpenAI `gpt-4o-mini` (39-test baseline), Anthropic Claude Opus 4 (49/51), Gemini 2.5 Pro (48/51). No live run is a clean 51. |
+| **Action extraction** | LIVE | Extracts `action_name` and `params` via strict schema forcing. |
+| **Declarative governance PEP** | LIVE | PEP enforces DB-defined policies (e.g. `require_params`, `sandbox_financial_rules`); resilience mechanisms (failover, tool-deny, timeout, loop) validated two-sided in the sealed run (§17.1). |
+| **Tamper-evident receipts** | LIVE | Ed25519 signatures generated and independently verifiable with bound production keys; tamper detection proven via negative tests. |
+| **Erasure / gcrumbs** | LIVE (Sprint 15) | Production `GcrumbsService` — breadcrumb chain + Merkle epoch anchor — plus signed erasure certificates (§5). B0 reproduces the pinned crypto artifact; B1–B10 validate the DB service; 12/12 gcrumbs gates green (mock/local). |

@@ -636,7 +636,7 @@ def serve(host, port, backend, db, embedder, mcp, mcp_port, auth, batch, batch_s
     db_display = db if not is_postgres else db.split("@")[-1] if "@" in db else db
     engine_name = "PostgreSQL + pgvector" if is_postgres else "SQLite + sqlite-vec"
 
-    click.echo(f"GRAFOMEM server v0.2.0")
+    click.echo(f"GRAFOMEM server v1.0.0")
     click.echo(f"  Engine:    {engine_name}")
     click.echo(f"  Backend:   {backend_spec}")
     click.echo(f"  Database:  {db_display}")

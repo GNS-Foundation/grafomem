@@ -2017,10 +2017,17 @@
         const badge = $('manifold-prov-badge');
         if (badge) {
           badge.style.display = 'flex';
-          badge.innerHTML = `
-            <div class="m8-score" style="font-size:0.8rem">${p.real_count} real / ${p.synthetic_count} synthetic</div>
-            <div class="m8-label" style="margin-left:0.5rem">Data Mix</div>
-          `;
+          if (p.source === 'real') {
+            badge.innerHTML = `
+              <div class="m8-score" style="font-size:0.8rem;color:var(--success)">${p.real_count} Real Steps</div>
+              <div class="m8-label" style="margin-left:0.5rem">Live Manifold</div>
+            `;
+          } else {
+            badge.innerHTML = `
+              <div class="m8-score" style="font-size:0.8rem">${p.real_count} real / ${p.synthetic_count} synthetic</div>
+              <div class="m8-label" style="margin-left:0.5rem">Data Mix</div>
+            `;
+          }
         }
       }
 
