@@ -531,6 +531,7 @@ def create_app(
         from aml.cloud.metrics import PrometheusMiddleware, metrics_endpoint
         app.add_middleware(PrometheusMiddleware)
         app.add_route("/metrics", metrics_endpoint, include_in_schema=False)
+        app.add_route("/observability/metrics", metrics_endpoint, include_in_schema=False)
         logger.info("Prometheus metrics enabled (/metrics)")
     except Exception as e:
         logger.info("Prometheus metrics not available: %s", e)

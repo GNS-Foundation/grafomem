@@ -211,7 +211,7 @@ _PATH_PATTERNS = [
 ]
 
 # Paths to exclude from metrics (high cardinality or static files)
-_EXCLUDED_PATHS = {"/metrics", "/healthz", "/readyz", "/docs", "/redoc", "/openapi.json"}
+_EXCLUDED_PATHS = {"/metrics", "/observability/metrics", "/healthz", "/readyz", "/docs", "/redoc", "/openapi.json"}
 
 
 def _normalize_path(path: str) -> str:

@@ -27,7 +27,7 @@ DEFAULT_NAMESPACE = "default_namespace"
 
 # Paths that bypass auth entirely (public endpoints)
 _SKIP_AUTH_PATHS = frozenset({
-    "/health", "/healthz", "/readyz", "/metrics",
+    "/health", "/healthz", "/readyz", "/metrics", "/observability/metrics",
     "/docs", "/openapi.json", "/redoc",
     "/v1/portal/signup", "/v1/portal/login",
     "/v1/cloud/billing/webhook",
