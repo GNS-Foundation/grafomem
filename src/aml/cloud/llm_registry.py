@@ -134,7 +134,7 @@ class LLMRegistry:
         self._encryption = encryption
 
         if db_url and not encryption:
-            raise RuntimeError("ProviderEncryption identity is required when a database is configured.")
+            raise RuntimeError("AtRestEncryption identity is required when a database is configured.")
 
     def _encrypt(self, plaintext: str) -> str:
         if self._encryption is None:

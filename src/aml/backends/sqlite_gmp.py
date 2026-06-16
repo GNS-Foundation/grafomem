@@ -216,9 +216,19 @@ class SQLiteGMPBackend:
 
     __grafomem_interface__ = "0.2.0"
 
-    def __init__(self, db_path: str = ":memory:", embed_fn=None) -> None:
+    def __init__(self, db_path: str = ":memory:", embed_fn=None, encryption=None) -> None:
+        try:
+            import sqlite3
+            import sqlite_vec
+        except ImportError as e:
+            raise RuntimeError(
+                "SQLiteGMPBackend requires sqlite-vec — "
+                "`pip install grafomem[sqlite]`"
+            ) from e
+
         self._embed = embed_fn or _default_embedder()
         self._db_path = db_path
+        self._encryption = encryption
         self._conn = _open(db_path)
 
         # Production pragmas: WAL enables concurrent readers during writes;
@@ -266,11 +276,13 @@ class SQLiteGMPBackend:
         if emb.shape[0] != self._dim:
             raise ValueError(f"embedding dim {emb.shape[0]} != store dim {self._dim}")
         written_by, signature, public_key = self._provenance(content, options)
+        enc_content = self._encryption.encrypt(content) if self._encryption else content
+
         cur = self._conn.execute(
             "INSERT INTO memories(content, written_at, metadata, valid_from, valid_until, "
             "tenant_id, superseded_by, written_by, signature, public_key) "
             "VALUES (?,?,?,?,?,?,?,?,?,?)",
-            (content, datetime.now(timezone.utc).isoformat(),
+            (enc_content, datetime.now(timezone.utc).isoformat(),
              json.dumps(options.metadata or {}), _to_ts(options.valid_from),
              None, options.tenant_id, None, written_by, signature, public_key),
         )
@@ -318,11 +330,12 @@ class SQLiteGMPBackend:
             for (content, options), row in zip(items, embs):
                 emb = _normalize(row)
                 written_by, signature, public_key = self._provenance(content, options)
+                enc_content = self._encryption.encrypt(content) if self._encryption else content
                 cur = self._conn.execute(
                     "INSERT INTO memories(content, written_at, metadata, valid_from, valid_until, "
                     "tenant_id, superseded_by, written_by, signature, public_key) "
                     "VALUES (?,?,?,?,?,?,?,?,?,?)",
-                    (content, now, json.dumps(options.metadata or {}),
+                    (enc_content, now, json.dumps(options.metadata or {}),
                      _to_ts(options.valid_from), None, options.tenant_id, None,
                      written_by, signature, public_key),
                 )
@@ -410,10 +423,15 @@ class SQLiteGMPBackend:
             ).fetchone()
             if row is None:
                 continue
-            if used + len(row[1]) > budget:              # budget is the limit -> done
+            content = row[1]
+            if self._encryption:
+                content = self._encryption.decrypt(content)
+
+            if used + len(content) > budget:              # budget is the limit -> done
                 break
-            out.append(self._row_to_memory(row))
-            used += len(row[1])
+            # row is a tuple, we pass content as override
+            out.append(self._row_to_memory(row, content_override=content))
+            used += len(content)
         return out
 
     def audit(self) -> Iterator[Memory]:
@@ -429,8 +447,14 @@ class SQLiteGMPBackend:
         self._conn.close()
 
     # -- internals --------------------------------------------------------
-    def _row_to_memory(self, row) -> Memory:
+    def _row_to_memory(self, row, content_override: str | None = None) -> Memory:
         ref, content, written_at, metadata, vf, vu, tenant, sby, written_by, sig, pub = row
+        
+        if content_override is not None:
+            content = content_override
+        elif self._encryption:
+            content = self._encryption.decrypt(content)
+
         wat = datetime.fromisoformat(written_at)
         return Memory(
             ref=ref, content=content, written_at=wat,

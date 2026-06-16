@@ -193,6 +193,18 @@ def _tenant_id(request: Request) -> str | None:
         return None
     return ctx.tenant_id
 
+def _require_role(request: Request, allowed_roles: set[str]) -> None:
+    ctx = getattr(request.state, "tenant", None)
+    print("DEBUG _require_role", getattr(ctx, "role", "NO_ROLE"), allowed_roles, getattr(ctx, "tenant_id", "NO_TENANT"))
+    """Enforce RBAC on the current request."""
+    ctx = getattr(request.state, "tenant", None)
+    # If no auth middleware is running or it's default namespace, skip RBAC
+    if ctx is None or ctx.tenant_id == DEFAULT_NAMESPACE:
+        return
+    role = getattr(ctx, "role", "admin")
+    if role not in allowed_roles:
+        raise HTTPException(403, f"Access denied: requires one of {allowed_roles}, got {role}")
+
 
 # ============================================================================
 # Router — all GMP endpoints
@@ -213,6 +225,7 @@ async def health(request: Request):
 
 @router.post("/v1/stores")
 async def create_store(request: Request):
+    _require_role(request, {"admin"})
     mgr: StoreManager = request.app.state.store_manager
     tenant = _tenant_id(request)
     store_id = mgr.create(tenant_id=tenant)
@@ -234,6 +247,7 @@ async def get_capabilities(store_id: str, request: Request):
 
 @router.post("/v1/stores/{store_id}/write")
 async def write_memory(store_id: str, req: WriteRequest, request: Request):
+    _require_role(request, {"admin", "agent"})
     tenant = _tenant_id(request)
     entry = _get_store(request, store_id, tenant)
     opts = req.options.to_internal(tenant_override=tenant)
@@ -258,6 +272,7 @@ async def write_memory(store_id: str, req: WriteRequest, request: Request):
 
 @router.post("/v1/stores/{store_id}/write_batch")
 async def write_batch(store_id: str, req: WriteBatchRequest, request: Request):
+    _require_role(request, {"admin", "agent"})
     tenant = _tenant_id(request)
     entry = _get_store(request, store_id, tenant)
 
@@ -279,6 +294,7 @@ async def write_batch(store_id: str, req: WriteBatchRequest, request: Request):
 
 @router.post("/v1/stores/{store_id}/supersede")
 async def supersede_memory(store_id: str, req: SupersedeRequest, request: Request):
+    _require_role(request, {"admin", "agent"})
     tenant = _tenant_id(request)
     entry = _get_store(request, store_id, tenant)
     opts = req.options.to_internal(tenant_override=tenant)
@@ -303,6 +319,7 @@ async def supersede_memory(store_id: str, req: SupersedeRequest, request: Reques
 
 @router.post("/v1/stores/{store_id}/delete")
 async def delete_memory(store_id: str, req: DeleteRequest, request: Request):
+    _require_role(request, {"admin", "agent"})
     tenant = _tenant_id(request)
     entry = _get_store(request, store_id, tenant)
     
@@ -375,6 +392,7 @@ async def audit_memories(store_id: str, request: Request):
 
 @router.post("/v1/stores/{store_id}/flush")
 async def flush_store(store_id: str, request: Request):
+    _require_role(request, {"admin", "agent"})
     entry = _get_store(request, store_id, _tenant_id(request))
     entry.backend.flush()
     return {}

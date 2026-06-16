@@ -42,10 +42,11 @@ def _normalize(v) -> np.ndarray:
 class QdrantGMPBackend(MemoryBackend):
     __grafomem_interface__ = "0.2.0"
 
-    def __init__(self, url: str = "http://127.0.0.1:6333", collection_name: str = "grafomem", embed_fn=None) -> None:
+    def __init__(self, url: str = "http://127.0.0.1:6333", collection_name: str = "grafomem", embed_fn=None, encryption_provider=None) -> None:
         self._embed = embed_fn or _default_embedder()
         self.url = url
         self.collection_name = collection_name
+        self.encryption_provider = encryption_provider
         self.client = QdrantClient(url=url, port=6333, grpc_port=6334, prefer_grpc=True, timeout=60.0)
 
         self._dim = int(np.asarray(self._embed("dimension probe")).shape[0])
@@ -100,11 +101,16 @@ class QdrantGMPBackend(MemoryBackend):
         emb = _normalize(self._embed(content)).tolist()
         written_by, signature, public_key = self._provenance(content, options)
 
+        metadata_str = json.dumps(options.metadata or {})
+        if self.encryption_provider:
+            content = self.encryption_provider.encrypt(content)
+            metadata_str = self.encryption_provider.encrypt(metadata_str)
+
         point_id = str(uuid.uuid4())
         payload = {
             "content": content,
             "written_at": datetime.now(timezone.utc).isoformat(),
-            "metadata": json.dumps(options.metadata or {}),
+            "metadata": metadata_str,
             "valid_from": _vec_from(options.valid_from),
             "valid_until": _vec_until(None),
             "tenant_id": options.tenant_id,
@@ -147,13 +153,20 @@ class QdrantGMPBackend(MemoryBackend):
 
             emb = _normalize(row).tolist()
             written_by, signature, public_key = self._provenance(content, options)
+            metadata_str = json.dumps(options.metadata or {})
+            content_to_store = content
+            
+            if self.encryption_provider:
+                content_to_store = self.encryption_provider.encrypt(content)
+                metadata_str = self.encryption_provider.encrypt(metadata_str)
+
             point_id = str(uuid.uuid4())
             ids.append(point_id)
 
             payload = {
-                "content": content,
+                "content": content_to_store,
                 "written_at": now,
-                "metadata": json.dumps(options.metadata or {}),
+                "metadata": metadata_str,
                 "valid_from": _vec_from(options.valid_from),
                 "valid_until": _vec_until(None),
                 "tenant_id": options.tenant_id,
@@ -298,15 +311,20 @@ class QdrantGMPBackend(MemoryBackend):
         vf = datetime.fromisoformat(payload["valid_from"]) if payload.get("valid_from") != FROM_BEGIN_TS else None
         vu = datetime.fromisoformat(payload["valid_until"]) if payload.get("valid_until") != OPEN_UNTIL_TS else None
 
-        md = payload.get("metadata")
-        if isinstance(md, str):
-            md = json.loads(md)
-        elif not md:
-            md = {}
+        content = payload["content"]
+        metadata_str = payload.get("metadata", "{}")
+        if self.encryption_provider:
+            try:
+                content = self.encryption_provider.decrypt(content)
+                metadata_str = self.encryption_provider.decrypt(metadata_str)
+            except Exception:
+                pass  # Fallback if decryption fails or wasn't encrypted
+
+        md = json.loads(metadata_str)
 
         return Memory(
             ref=ref,
-            content=payload["content"],
+            content=content,
             written_at=datetime.fromisoformat(payload["written_at"]),
             metadata=md,
             valid_from=vf,

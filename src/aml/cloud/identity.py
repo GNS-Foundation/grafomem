@@ -31,7 +31,7 @@ class SigningIdentity(Protocol):
         ...
 
 
-class ProviderEncryption(Protocol):
+class AtRestEncryption(Protocol):
     """Abstract interface for encrypting LLM provider keys at rest."""
 
     def encrypt(self, plaintext: str) -> str:
@@ -102,7 +102,7 @@ class EnvIdentity:
         priv = Ed25519PrivateKey.from_private_bytes(self._signing_key)
         return priv.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
 
-    # --- ProviderEncryption ---
+    # --- AtRestEncryption ---
 
     def encrypt(self, plaintext: str) -> str:
         if not self._fernet:

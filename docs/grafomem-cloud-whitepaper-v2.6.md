@@ -962,6 +962,13 @@ httpx                          # Ollama HTTP + tool webhooks
 | **HITL resume lifecycle** | Escalate → approve → COMPLETED; escalate → reject → TERMINATED | ✅ Complete |
 | **OpenAPI contract** | SDK types match OpenAPI spec — no drift | ✅ Complete |
 
+### 17.3 Reopening Triggers (Phase 6)
+
+The architectural decision to migrate to Qdrant as the primary vector backend (Phase 6) is considered closed unless one of the following reopening triggers is observed:
+1. **Verified absence of attestation**: If a cryptographically verified failure occurs where attestation is missing AND we can prove a below-adapter superiority argument.
+2. **Snapshot/restore failure (W10)**: If a database snapshot restoration revives committed hard deletes (breaking erasure certifications).
+3. **Partitioning failure**: If the epoch-partitioning pattern fails catastrophically on real-world vector distributions.
+
 ---
 
 ## 18. File Inventory

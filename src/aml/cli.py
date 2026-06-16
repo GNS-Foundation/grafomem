@@ -598,6 +598,13 @@ def serve(host, port, backend, db, embedder, mcp, mcp_port, auth, batch, batch_s
         if "signing_identity" in sig.parameters:
             from aml.cloud.identity import EnvIdentity
             kwargs["signing_identity"] = EnvIdentity() if os.environ.get("GRAFOMEM_SIGNING_KEY") else None
+        # Wire encryption provider if accepted
+        if "encryption_provider" in sig.parameters:
+            from aml.cloud.identity import EnvIdentity
+            kwargs["encryption_provider"] = EnvIdentity() if os.environ.get("PROVIDER_ENCRYPTION_KEY") else None
+        if "encryption" in sig.parameters:
+            from aml.cloud.identity import EnvIdentity
+            kwargs["encryption"] = EnvIdentity() if os.environ.get("PROVIDER_ENCRYPTION_KEY") else None
         return cls(**kwargs)
 
     # MCP mode: run the MCP server directly (no FastAPI)

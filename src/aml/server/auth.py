@@ -40,6 +40,7 @@ class TenantContext:
     """Injected into request.state by the auth middleware."""
     tenant_id: str
     authenticated: bool
+    role: str = "admin"
 
 
 class TenantAuthMiddleware(BaseHTTPMiddleware):
@@ -60,8 +61,8 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
         self.auth_mode = auth_mode or os.environ.get("GRAFOMEM_AUTH_MODE", "none")
         self.tokens = tokens or self._load_tokens()
         self._db_url = db_url
-        # In-memory cache for API key → tenant_id lookups (populated lazily)
-        self._api_key_cache: dict[str, str] = {}
+        # In-memory cache for API key → (tenant_id, role) lookups (populated lazily)
+        self._api_key_cache: dict[str, tuple[str, str]] = {}
         if self.auth_mode == "token":
             logger.info("Token auth enabled (%d tokens loaded)", len(self.tokens))
         elif self.auth_mode == "cloud":
@@ -78,8 +79,8 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
             logger.warning("GRAFOMEM_TOKENS is not valid JSON — no tokens loaded")
             return {}
 
-    def _resolve_api_key(self, api_key: str) -> str | None:
-        """Resolve an API key to a tenant_id using the DB. Caches results."""
+    def _resolve_api_key(self, api_key: str) -> tuple[str, str] | None:
+        """Resolve an API key to (tenant_id, role) using the DB. Caches results."""
         if api_key in self._api_key_cache:
             return self._api_key_cache[api_key]
 
@@ -92,19 +93,28 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
             conn = psycopg.connect(self._db_url, row_factory=dict_row,
                                    autocommit=True)
             row = conn.execute(
-                "SELECT id FROM tenants WHERE api_key = %s",
+                "SELECT tenant_id, role FROM tenant_api_keys WHERE api_key = %s",
                 (api_key,),
             ).fetchone()
+            
+            # Fallback for legacy schema
+            if not row:
+                row = conn.execute(
+                    "SELECT id as tenant_id, 'admin' as role FROM tenants WHERE api_key = %s",
+                    (api_key,),
+                ).fetchone()
+                
             conn.close()
             if row:
-                tenant_id = row["id"]
-                self._api_key_cache[api_key] = tenant_id
-                return tenant_id
+                tenant_id = row["tenant_id"]
+                role = row["role"]
+                self._api_key_cache[api_key] = (tenant_id, role)
+                return tenant_id, role
         except Exception as e:
             logger.warning("API key lookup failed: %s", e)
         return None
 
-    def _resolve_jwt(self, token: str) -> str | None:
+    def _resolve_jwt(self, token: str) -> tuple[str, str] | None:
         """Try to resolve a portal JWT (Supabase or legacy) to a tenant_id.
 
         Uses the PortalAuth instance already on app.state (which shares the
@@ -123,9 +133,10 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
             info = portal_auth.verify_token(token)
             if info and info.get("tenant_id"):
                 tenant_id = info["tenant_id"]
+                role = info.get("role", "admin")
                 # Cache so subsequent calls with the same JWT are fast
-                self._api_key_cache[token] = tenant_id
-                return tenant_id
+                self._api_key_cache[token] = (tenant_id, role)
+                return tenant_id, role
         except Exception as e:
             logger.debug("JWT resolution failed: %s", e)
         return None
@@ -167,20 +178,22 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
                     content={"detail": "Missing X-API-Key, Authorization header, or token query param."},
                 )
 
-            tenant_id = self._resolve_api_key(api_key)
+            resolved = self._resolve_api_key(api_key)
 
             # Fallback: try decoding as a portal JWT token
-            if tenant_id is None:
-                tenant_id = self._resolve_jwt(api_key)
+            if resolved is None:
+                resolved = self._resolve_jwt(api_key)
 
-            if tenant_id is None:
+            if resolved is None:
                 return JSONResponse(
                     status_code=403,
                     content={"detail": "Invalid API key."},
                 )
 
+            tenant_id, role = resolved
+
             request.state.tenant = TenantContext(
-                tenant_id=tenant_id, authenticated=True
+                tenant_id=tenant_id, authenticated=True, role=role
             )
             return await call_next(request)
 
@@ -211,23 +224,30 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
         else:
             token = auth_header[7:].strip()
 
+        resolved = None
+        
         tenant_id = self.tokens.get(token)
+        role = "admin"
+        if tenant_id:
+            resolved = (tenant_id, role)
 
         # Fallback: try resolving as a DB API key (portal-issued keys)
-        if tenant_id is None and self._db_url:
-            tenant_id = self._resolve_api_key(token)
+        if resolved is None and self._db_url:
+            resolved = self._resolve_api_key(token)
 
         # Fallback: try resolving as a portal JWT
-        if tenant_id is None and self._db_url:
-            tenant_id = self._resolve_jwt(token)
+        if resolved is None and self._db_url:
+            resolved = self._resolve_jwt(token)
 
-        if tenant_id is None:
+        if resolved is None:
             return JSONResponse(
                 status_code=403,
                 content={"detail": "Invalid token. Not mapped to any tenant."},
             )
 
+        tenant_id, role = resolved
+
         request.state.tenant = TenantContext(
-            tenant_id=tenant_id, authenticated=True
+            tenant_id=tenant_id, authenticated=True, role=role
         )
         return await call_next(request)

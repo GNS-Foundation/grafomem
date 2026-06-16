@@ -132,6 +132,10 @@ def _require_portal_auth(request: Request) -> dict:
     info = pa.verify_token(token)
     if info is None:
         raise HTTPException(401, "Invalid or expired token")
+        
+    if info.get("role") and info.get("role") != "admin":
+        raise HTTPException(403, f"Access denied: portal access requires admin role, got {info.get('role')}")
+        
     return info
 
 
@@ -277,15 +281,33 @@ async def get_dashboard(request: Request):
     )
 
 
+class CreateApiKeyRequest(BaseModel):
+    name: str = "custom_key"
+    role: str = "admin"
+
+@router.post("/api-keys")
+async def create_api_key(req: CreateApiKeyRequest, request: Request):
+    """Generate a new scoped API key."""
+    tenant = _require_portal_auth(request)
+    mgr = _tenant_manager(request)
+    try:
+        new_key = mgr.create_api_key(tenant["tenant_id"], name=req.name, role=req.role)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"api_key": new_key}
+
 @router.post("/rotate-key")
 async def rotate_key(request: Request):
     """Revoke the current API key and issue a new one."""
     tenant = _require_portal_auth(request)
     mgr = _tenant_manager(request)
+    tenant_id = tenant["tenant_id"]
     try:
-        new_key = mgr.revoke_key(tenant["tenant_id"])
-    except KeyError:
-        raise HTTPException(404, "Tenant not found")
+        conn = mgr._get_conn()
+        conn.execute("DELETE FROM tenant_api_keys WHERE tenant_id = %s", (tenant_id,))
+        new_key = mgr.create_api_key(tenant_id, name="default_admin", role="admin")
+    except Exception as e:
+        raise HTTPException(500, f"Error rotating keys: {e}")
     return {"api_key": new_key}
 
 

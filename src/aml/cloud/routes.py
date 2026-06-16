@@ -145,6 +145,17 @@ def _audit_to_response(record) -> AuditRecordResponse:
     )
 
 
+def _require_admin(request: Request):
+    """Enforce admin role for cloud management endpoints."""
+    ctx = getattr(request.state, "tenant", None)
+    # If no auth middleware is running, skip RBAC
+    if ctx is None:
+        return
+    role = getattr(ctx, "role", "admin")
+    if role != "admin":
+        raise HTTPException(403, f"Access denied: requires admin role, got {role}")
+
+
 # ============================================================================
 # Router
 # ============================================================================
@@ -155,6 +166,7 @@ router = APIRouter(prefix="/v1/cloud", tags=["Cloud Management"])
 @router.post("/tenants", response_model=TenantResponse, status_code=201)
 async def create_tenant(req: CreateTenantRequest, request: Request):
     """Provision a new tenant with the specified plan."""
+    _require_admin(request)
     mgr = _tenant_manager(request)
     try:
         info = mgr.create_tenant(name=req.name, plan=req.plan)
@@ -166,6 +178,7 @@ async def create_tenant(req: CreateTenantRequest, request: Request):
 @router.get("/tenants", response_model=list[TenantResponse])
 async def list_tenants(request: Request):
     """List all provisioned tenants."""
+    _require_admin(request)
     mgr = _tenant_manager(request)
     tenants = mgr.list_tenants()
     return [_tenant_to_response(t) for t in tenants]
@@ -174,6 +187,7 @@ async def list_tenants(request: Request):
 @router.get("/tenants/{tenant_id}", response_model=TenantResponse)
 async def get_tenant(tenant_id: str, request: Request):
     """Retrieve a single tenant by ID."""
+    _require_admin(request)
     mgr = _tenant_manager(request)
     info = mgr.get_tenant(tenant_id)
     if info is None:
@@ -186,11 +200,14 @@ async def get_tenant(tenant_id: str, request: Request):
 )
 async def rotate_key(tenant_id: str, request: Request):
     """Revoke the current API key and issue a new one."""
+    _require_admin(request)
     mgr = _tenant_manager(request)
     try:
-        new_key = mgr.revoke_key(tenant_id)
-    except KeyError:
-        raise HTTPException(404, f"Tenant {tenant_id!r} not found")
+        conn = mgr._get_conn()
+        conn.execute("DELETE FROM tenant_api_keys WHERE tenant_id = %s", (tenant_id,))
+        new_key = mgr.create_api_key(tenant_id, name="default_admin", role="admin")
+    except Exception as e:
+        raise HTTPException(500, f"Error rotating keys: {e}")
     return RotateKeyResponse(tenant_id=tenant_id, new_api_key=new_key)
 
 
@@ -201,6 +218,7 @@ async def get_usage(
     tenant_id: str, request: Request, period: str = "current_month",
 ):
     """Retrieve aggregated usage for a tenant's billing period."""
+    _require_admin(request)
     svc = _metering(request)
 
     # Verify tenant exists
@@ -233,6 +251,7 @@ async def get_compliance(
     tenant_id: str, request: Request, limit: int = 10,
 ):
     """Retrieve conformance audit history for a tenant."""
+    _require_admin(request)
     tracker = _compliance(request)
 
     # Verify tenant exists
@@ -249,6 +268,7 @@ async def get_compliance(
 )
 async def compliance_dashboard(request: Request):
     """Global compliance dashboard — latest audit per tenant."""
+    _require_admin(request)
     tracker = _compliance(request)
     records = tracker.get_all_latest()
     return ComplianceDashboardResponse(

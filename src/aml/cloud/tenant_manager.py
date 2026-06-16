@@ -77,6 +77,7 @@ class TenantInfo:
     plan: str
     created_at: datetime
     limits: TenantLimits
+    role: str = "admin"
 
 
 # ============================================================================
@@ -89,9 +90,23 @@ CREATE TABLE IF NOT EXISTS tenants (
     name        TEXT        NOT NULL,
     api_key     TEXT        NOT NULL UNIQUE,
     plan        TEXT        NOT NULL DEFAULT 'starter',
+    email       TEXT        UNIQUE,
+    supabase_uid TEXT       UNIQUE,
+    password_hash TEXT,
+    status      TEXT        NOT NULL DEFAULT 'active',
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_tenants_api_key ON tenants (api_key);
+
+CREATE TABLE IF NOT EXISTS tenant_api_keys (
+    key_id      TEXT        PRIMARY KEY,
+    tenant_id   TEXT        NOT NULL,
+    api_key     TEXT        NOT NULL UNIQUE,
+    name        TEXT        NOT NULL,
+    role        TEXT        NOT NULL DEFAULT 'admin',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_tenant_api_keys_key ON tenant_api_keys (api_key);
+CREATE INDEX IF NOT EXISTS idx_tenant_api_keys_tenant ON tenant_api_keys (tenant_id);
 """
 
 
@@ -148,6 +163,15 @@ class TenantManager:
         """Create the ``tenants`` table if it does not exist."""
         conn = self._get_conn()
         conn.execute(_SCHEMA_SQL)
+        
+        # Migrate existing API keys to tenant_api_keys
+        conn.execute("""
+            INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role, created_at)
+            SELECT gen_random_uuid()::text, id, api_key, 'Default Admin Key', 'admin', created_at
+            FROM tenants
+            ON CONFLICT (api_key) DO NOTHING;
+        """)
+        
         logger.info("Tenant schema ensured")
 
     # ------------------------------------------------------------------
@@ -189,6 +213,11 @@ class TenantManager:
             "VALUES (%s, %s, %s, %s, %s)",
             (tenant_id, name, api_key, plan, now),
         )
+        conn.execute(
+            "INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role, created_at) "
+            "VALUES (gen_random_uuid()::text, %s, %s, 'Default Admin Key', 'admin', %s)",
+            (tenant_id, api_key, now),
+        )
         logger.info("Tenant created: %s (%s, plan=%s)", tenant_id, name, plan)
 
         return TenantInfo(
@@ -213,6 +242,27 @@ class TenantManager:
         """Look up a tenant by its API key.  Returns ``None`` if not found."""
         conn = self._get_conn()
         row = conn.execute(
+            "SELECT t.id, t.name, k.api_key, t.plan, t.created_at, k.role "
+            "FROM tenants t "
+            "JOIN tenant_api_keys k ON t.id = k.tenant_id "
+            "WHERE k.api_key = %s",
+            (api_key,),
+        ).fetchone()
+        
+        if row:
+            plan = row["plan"]
+            return TenantInfo(
+                id=row["id"],
+                name=row["name"],
+                api_key=row["api_key"],
+                plan=plan,
+                created_at=row["created_at"],
+                limits=PLAN_LIMITS.get(plan, PLAN_LIMITS["starter"]),
+                role=row["role"]
+            )
+            
+        # Fallback to legacy column if not migrated
+        row = conn.execute(
             "SELECT id, name, api_key, plan, created_at FROM tenants WHERE api_key = %s",
             (api_key,),
         ).fetchone()
@@ -227,29 +277,34 @@ class TenantManager:
         ).fetchall()
         return [self._row_to_info(r) for r in rows]
 
-    def revoke_key(self, tenant_id: str) -> str:
-        """Revoke the current API key and generate a replacement.
-
-        Returns
-        -------
-        str
-            The newly-generated API key.
-
-        Raises
-        ------
-        KeyError
-            If no tenant with *tenant_id* exists.
-        """
+    def create_api_key(self, tenant_id: str, name: str, role: str = "admin") -> str:
+        """Create a new scoped API key for a tenant."""
+        if role not in ("admin", "agent", "read_only"):
+            raise ValueError(f"Invalid role: {role}")
+            
         new_key = _generate_api_key()
+        now = datetime.now(tz=timezone.utc)
         conn = self._get_conn()
-        cur = conn.execute(
-            "UPDATE tenants SET api_key = %s WHERE id = %s",
-            (new_key, tenant_id),
-        )
-        if cur.rowcount == 0:
+        
+        # Verify tenant exists
+        if not conn.execute("SELECT id FROM tenants WHERE id = %s", (tenant_id,)).fetchone():
             raise KeyError(f"Tenant {tenant_id!r} not found")
-        logger.info("API key rotated for tenant %s", tenant_id)
+            
+        conn.execute(
+            "INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role, created_at) "
+            "VALUES (gen_random_uuid()::text, %s, %s, %s, %s, %s)",
+            (tenant_id, new_key, name, role, now),
+        )
+        logger.info("API key created for tenant %s (role=%s)", tenant_id, role)
         return new_key
+
+    def revoke_key(self, api_key: str) -> None:
+        """Revoke a specific API key."""
+        conn = self._get_conn()
+        cur = conn.execute("DELETE FROM tenant_api_keys WHERE api_key = %s", (api_key,))
+        if cur.rowcount == 0:
+            raise KeyError(f"API key not found")
+        logger.info("API key revoked")
 
     def update_plan(self, tenant_id: str, plan: str) -> TenantInfo:
         """Change a tenant's plan tier.
@@ -288,10 +343,11 @@ class TenantManager:
         return TenantInfo(
             id=row["id"],
             name=row["name"],
-            api_key=row["api_key"],
+            api_key=row.get("api_key", ""),
             plan=plan,
             created_at=row["created_at"],
             limits=PLAN_LIMITS.get(plan, PLAN_LIMITS["starter"]),
+            role=row.get("role", "admin"),
         )
 
     # ------------------------------------------------------------------

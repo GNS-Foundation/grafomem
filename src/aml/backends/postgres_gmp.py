@@ -133,7 +133,7 @@ class PostgresGMPBackend:
 
     __grafomem_interface__ = "0.2.0"
 
-    def __init__(self, db_url: str, embed_fn=None) -> None:
+    def __init__(self, db_url: str, embed_fn=None, encryption=None) -> None:
         try:
             import psycopg
             from pgvector.psycopg import register_vector
@@ -145,6 +145,7 @@ class PostgresGMPBackend:
 
         self._embed = embed_fn or _default_embedder()
         self._db_url = db_url
+        self._encryption = encryption
 
         # Probe embedding dimension
         self._dim = int(np.asarray(self._embed("dimension probe")).shape[0])
@@ -198,6 +199,7 @@ class PostgresGMPBackend:
             raise ValueError(f"embedding dim {emb.shape[0]} != store dim {self._dim}")
 
         written_by, signature, public_key = self._provenance(content, options)
+        enc_content = self._encryption.encrypt(content) if self._encryption else content
 
         with self._conn.cursor() as cur:
             cur.execute(
@@ -206,7 +208,7 @@ class PostgresGMPBackend:
                     tenant_id, superseded_by, written_by, signature, public_key)
                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                    RETURNING ref""",
-                (content, datetime.now(timezone.utc),
+                (enc_content, datetime.now(timezone.utc),
                  json.dumps(options.metadata or {}),
                  options.valid_from, None,
                  options.tenant_id, None,
@@ -252,6 +254,7 @@ class PostgresGMPBackend:
                 for (content, options), row in zip(items, embs):
                     emb = _normalize(row)
                     written_by, signature, public_key = self._provenance(content, options)
+                    enc_content = self._encryption.encrypt(content) if self._encryption else content
 
                     cur.execute(
                         """INSERT INTO memories
@@ -259,7 +262,7 @@ class PostgresGMPBackend:
                             tenant_id, superseded_by, written_by, signature, public_key)
                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                            RETURNING ref""",
-                        (content, now, json.dumps(options.metadata or {}),
+                        (enc_content, now, json.dumps(options.metadata or {}),
                          options.valid_from, None,
                          options.tenant_id, None,
                          written_by, signature, public_key),
@@ -368,9 +371,12 @@ class PostgresGMPBackend:
             if row is None:
                 continue
             content = row[1]
+            if self._encryption:
+                content = self._encryption.decrypt(content)
+                
             if used + len(content) > budget:
                 break
-            out.append(self._row_to_memory(row))
+            out.append(self._row_to_memory(row, content_override=content))
             used += len(content)
         return out
 
@@ -394,10 +400,14 @@ class PostgresGMPBackend:
 
     # -- internals --------------------------------------------------------
 
-    @staticmethod
-    def _row_to_memory(row) -> Memory:
+    def _row_to_memory(self, row, content_override: str | None = None) -> Memory:
         (ref, content, written_at, metadata,
          vf, vu, tenant, sby, written_by, sig, pub) = row
+
+        if content_override is not None:
+            content = content_override
+        elif self._encryption:
+            content = self._encryption.decrypt(content)
 
         # Handle metadata: could be dict (JSONB auto-parsed) or string
         if isinstance(metadata, str):

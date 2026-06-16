@@ -292,6 +292,11 @@ class PortalAuth:
             "VALUES (%s, %s, %s, %s, %s, %s, %s, 'active')",
             (tenant_id, final_name, api_key, plan, now, email, supabase_uid),
         )
+        conn.execute(
+            "INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role, created_at) "
+            "VALUES (gen_random_uuid()::text, %s, %s, 'Default Admin Key', 'admin', %s)",
+            (tenant_id, api_key, now),
+        )
 
         logger.info(
             "Auto-provisioned tenant %s for Supabase user %s (%s)",
@@ -346,6 +351,11 @@ class PortalAuth:
             "  email, password_hash, status) "
             "VALUES (%s, %s, %s, %s, %s, %s, %s, 'active')",
             (tenant_id, name, api_key, plan, now, email, pw_hash),
+        )
+        conn.execute(
+            "INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role, created_at) "
+            "VALUES (gen_random_uuid()::text, %s, %s, 'Default Admin Key', 'admin', %s)",
+            (tenant_id, api_key, now),
         )
 
         logger.info("Tenant signed up: %s (%s, %s)", tenant_id, name, email)

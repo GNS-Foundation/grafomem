@@ -1,0 +1,188 @@
+{
+  "report_id": "db28a903f3904f9aa8f6c40c",
+  "tenant_id": "test_flight_tenant",
+  "report_type": "full_audit",
+  "title": "Full Regulatory Audit Package (2026-05-17 \u2192 2026-06-16)",
+  "status": "complete",
+  "period_start": "2026-05-17T04:53:15.998773+00:00",
+  "period_end": "2026-06-16T04:53:15.998773+00:00",
+  "content": {
+    "framework": "Full Audit Package",
+    "generated_at": "2026-06-16T04:53:15.998773+00:00",
+    "period": {
+      "start": "2026-05-17T04:53:15.998773+00:00",
+      "end": "2026-06-16T04:53:15.998773+00:00"
+    },
+    "frameworks": {
+      "eu_ai_act": {
+        "framework": "EU AI Act",
+        "regulation": "Regulation (EU) 2024/1689",
+        "generated_at": "2026-06-16T04:53:15.998773+00:00",
+        "period": {
+          "start": "2026-05-17T04:53:15.998773+00:00",
+          "end": "2026-06-16T04:53:15.998773+00:00"
+        },
+        "sections": {
+          "article_13_transparency": {
+            "title": "Article 13 \u2014 Transparency Obligations",
+            "requirement": "AI systems shall be designed to enable users to interpret the system's output and use it appropriately.",
+            "compliance_evidence": {
+              "decision_trail_active": false,
+              "total_decisions_logged": 0,
+              "models_used": null,
+              "average_latency_ms": null,
+              "replay_capability": true,
+              "fact_provenance": "BLAKE2b-128 content-addressed, Ed25519-signed"
+            },
+            "finding": "INSUFFICIENT_DATA"
+          },
+          "article_14_human_oversight": {
+            "title": "Article 14 \u2014 Human Oversight",
+            "requirement": "AI systems shall be designed to allow human oversight, including the ability to intervene or override.",
+            "compliance_evidence": {
+              "governance_gateway_active": false,
+              "total_policies": 0,
+              "active_policies": 0,
+              "hitl_policies": 0,
+              "evaluations_total": 0,
+              "requests_denied": 0,
+              "requests_escalated_hitl": 0
+            },
+            "finding": "PARTIAL"
+          },
+          "article_15_accuracy": {
+            "title": "Article 15 \u2014 Accuracy, Robustness and Cybersecurity",
+            "requirement": "Appropriate levels of accuracy, robustness, and cybersecurity.",
+            "compliance_evidence": {
+              "gmp_conformance_rate": null,
+              "capabilities_declared": [],
+              "cryptographic_provenance": "Ed25519 signatures on decisions and erasure certificates",
+              "content_addressing": "BLAKE2b-128 / BLAKE2b-256"
+            },
+            "finding": "PARTIAL"
+          }
+        },
+        "overall_finding": "INSUFFICIENT_DATA"
+      },
+      "gdpr": {
+        "framework": "GDPR",
+        "regulation": "Regulation (EU) 2016/679",
+        "generated_at": "2026-06-16T04:53:15.998773+00:00",
+        "period": {
+          "start": "2026-05-17T04:53:15.998773+00:00",
+          "end": "2026-06-16T04:53:15.998773+00:00"
+        },
+        "sections": {
+          "article_17_erasure": {
+            "title": "Article 17 \u2014 Right to Erasure",
+            "requirement": "Data subjects have the right to obtain erasure of personal data without undue delay.",
+            "compliance_evidence": {
+              "erasure_proof_active": true,
+              "certificates_issued": 0,
+              "decisions_scrubbed": 0,
+              "signed_certificates": 0,
+              "signature_algorithm": "Ed25519",
+              "content_hash_algorithm": "BLAKE2b-128 (proof without PII retention)",
+              "first_erasure": null,
+              "last_erasure": null
+            },
+            "finding": "COMPLIANT"
+          },
+          "article_30_records": {
+            "title": "Article 30 \u2014 Records of Processing Activities",
+            "requirement": "Maintain a record of processing activities under its responsibility.",
+            "compliance_evidence": {
+              "decision_trail_active": false,
+              "total_processing_records": 0,
+              "models_used": null,
+              "replay_available": true,
+              "export_format": "NDJSON",
+              "retention_policy": "Configurable per tenant"
+            },
+            "finding": "INSUFFICIENT_DATA"
+          },
+          "article_25_by_design": {
+            "title": "Article 25 \u2014 Data Protection by Design and by Default",
+            "requirement": "Implement appropriate technical measures for data protection.",
+            "compliance_evidence": {
+              "content_addressing": "BLAKE2b-128 for facts, BLAKE2b-256 for corpus",
+              "cryptographic_signing": "Ed25519 for decisions and erasure certificates",
+              "tenant_isolation": "Per-tenant data partitioning at database level",
+              "pii_guard_available": true,
+              "gdpr_scrub_endpoint": "DELETE /v1/decisions/scrub/{fact_ref}",
+              "erasure_certificates": "POST /v1/erasure/issue"
+            },
+            "finding": "COMPLIANT"
+          }
+        },
+        "overall_finding": "INSUFFICIENT_DATA"
+      },
+      "dora": {
+        "framework": "DORA",
+        "regulation": "Regulation (EU) 2022/2554",
+        "generated_at": "2026-06-16T04:53:15.998773+00:00",
+        "period": {
+          "start": "2026-05-17T04:53:15.998773+00:00",
+          "end": "2026-06-16T04:53:15.998773+00:00"
+        },
+        "sections": {
+          "article_6_ict_risk": {
+            "title": "Article 6 \u2014 ICT Risk Management Framework",
+            "requirement": "Establish a sound ICT risk management framework.",
+            "compliance_evidence": {
+              "governance_gateway_active": false,
+              "policy_types_available": [
+                "rate_limit",
+                "model_allowlist",
+                "content_filter",
+                "data_scope",
+                "token_budget",
+                "hitl_required",
+                "pii_guard"
+              ],
+              "active_policies": 0,
+              "total_evaluations": 0,
+              "blocked_requests": 0
+            },
+            "finding": "PARTIAL"
+          },
+          "article_9_protection": {
+            "title": "Article 9 \u2014 Protection and Prevention",
+            "requirement": "Implement policies, procedures, and tools for ICT security.",
+            "compliance_evidence": {
+              "content_integrity": "BLAKE2b content addressing",
+              "signature_verification": "Ed25519 for decisions and certificates",
+              "rate_limiting": true,
+              "pii_detection": true,
+              "content_filtering": true,
+              "access_control": "API key + tenant isolation"
+            },
+            "finding": "COMPLIANT"
+          },
+          "article_11_audit_trail": {
+            "title": "Article 11 \u2014 Response and Recovery / Audit Trail",
+            "requirement": "Maintain audit trails for all ICT-related incidents.",
+            "compliance_evidence": {
+              "decision_trail_active": false,
+              "total_decisions_logged": 0,
+              "governance_evaluation_log": 0,
+              "erasure_audit_trail": true,
+              "all_records_immutable": "Content-addressed with BLAKE2b"
+            },
+            "finding": "PARTIAL"
+          }
+        },
+        "overall_finding": "PARTIAL"
+      }
+    },
+    "overall_finding": "PARTIAL",
+    "framework_summary": {
+      "eu_ai_act": "INSUFFICIENT_DATA",
+      "gdpr": "INSUFFICIENT_DATA",
+      "dora": "PARTIAL"
+    }
+  },
+  "content_hash": "f61cb6193479fc75ca7f83c977fe15492e8d493b7c2cf927902e864dd711f6b1",
+  "created_at": "2026-06-16T04:53:15.998773+00:00",
+  "file_size_bytes": 5001
+}
