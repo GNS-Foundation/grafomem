@@ -170,7 +170,7 @@ class PostgresGMPBackend:
             register_vector(conn)
             with conn.transaction():
                 with conn.cursor() as cur:
-                    cur.execute("SET LOCAL app.current_tenant = %s", (tenant_id,))
+                    cur.execute("SELECT set_config('app.current_tenant', %s, true)", (tenant_id,))
                     yield conn, cur
 
     def _ensure_schema(self) -> None:
