@@ -713,6 +713,10 @@ class OrchestratorService:
             self._increment_workflow(workflow_id, 0)
             return step
 
+        # ── 0. PII REDACTION ────────────────────────────────
+        if not ignore_governance and self._governance:
+            input_text = self._governance.redact(agent.tenant_id, input_text)
+
         # ── 1. GOVERNANCE GATE ──────────────────────────────
         t0_total = time.monotonic()
         t0_gov = time.monotonic()

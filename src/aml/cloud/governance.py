@@ -323,6 +323,23 @@ class GovernanceGateway:
             ).fetchall()
         return [self._row_to_policy(r) for r in rows]
 
+    def redact(self, tenant_id: str, text: str) -> str:
+        """Apply PII redaction rules to the input text."""
+        if not text:
+            return text
+            
+        policies = self.list_policies(tenant_id, enabled_only=True)
+        for policy in policies:
+            if policy.policy_type == "pii_guard" and policy.action == "redact":
+                patterns = policy.config.get("patterns", [])
+                for pattern in patterns:
+                    try:
+                        import re
+                        text = re.sub(pattern, "[REDACTED]", text)
+                    except Exception:
+                        pass
+        return text
+
     def update_policy(
         self,
         policy_id: str,

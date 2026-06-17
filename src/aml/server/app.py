@@ -643,6 +643,9 @@ def create_app(
             _init(ms)
             app.state.metering_service = ms
 
+            from aml.cloud.audit import AuditLogger
+            app.state.audit_logger = AuditLogger(pool) if pool else None
+
             app.include_router(cloud_router)
             logger.info("Cloud management layer enabled (/v1/cloud)")
 

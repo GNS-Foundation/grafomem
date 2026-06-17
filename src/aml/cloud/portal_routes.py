@@ -158,6 +158,10 @@ def _stripe_billing(request: Request):
     return getattr(request.app.state, "stripe_billing", None)
 
 
+def _audit_logger(request: Request):
+    return getattr(request.app.state, "audit_logger", None)
+
+
 # ============================================================================
 # Router
 # ============================================================================
@@ -290,8 +294,17 @@ async def create_api_key(req: CreateApiKeyRequest, request: Request):
     """Generate a new scoped API key."""
     tenant = _require_portal_auth(request)
     mgr = _tenant_manager(request)
+    audit = _audit_logger(request)
     try:
         new_key = mgr.create_api_key(tenant["tenant_id"], name=req.name, role=req.role)
+        if audit:
+            audit.log(
+                tenant_id=tenant["tenant_id"],
+                actor=tenant["email"],
+                action="create_api_key",
+                resource="api_keys",
+                metadata={"name": req.name, "role": req.role}
+            )
     except ValueError as e:
         raise HTTPException(400, str(e))
     return {"api_key": new_key}
@@ -301,14 +314,33 @@ async def rotate_key(request: Request):
     """Revoke the current API key and issue a new one."""
     tenant = _require_portal_auth(request)
     mgr = _tenant_manager(request)
+    audit = _audit_logger(request)
     tenant_id = tenant["tenant_id"]
     try:
         conn = mgr._get_conn()
         conn.execute("DELETE FROM tenant_api_keys WHERE tenant_id = %s", (tenant_id,))
         new_key = mgr.create_api_key(tenant_id, name="default_admin", role="admin")
+        if audit:
+            audit.log(
+                tenant_id=tenant_id,
+                actor=tenant["email"],
+                action="rotate_api_key",
+                resource="api_keys",
+            )
     except Exception as e:
         raise HTTPException(500, f"Error rotating keys: {e}")
     return {"api_key": new_key}
+
+@router.get("/audit")
+async def get_audit_logs(request: Request, limit: int = 100):
+    """Retrieve immutable audit logs for the tenant."""
+    tenant = _require_portal_auth(request)
+    audit = _audit_logger(request)
+    if not audit:
+        return {"logs": []}
+    
+    logs = audit.get_logs(tenant["tenant_id"], limit=limit)
+    return {"logs": logs}
 
 
 @router.post("/upgrade")

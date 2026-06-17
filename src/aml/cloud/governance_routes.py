@@ -65,6 +65,15 @@ def _get_tenant_id(request: Request) -> str:
         raise HTTPException(401, "Authentication required")
     return ctx.tenant_id
 
+def _get_actor(request: Request) -> str:
+    ctx = getattr(request.state, "tenant", None)
+    if ctx is None:
+        return "system"
+    return getattr(ctx, "api_key", "system")
+
+def _audit_logger(request: Request):
+    return getattr(request.app.state, "audit_logger", None)
+
 
 # ============================================================================
 # Router factory
@@ -152,7 +161,7 @@ def create_governance_router(gateway) -> APIRouter:
         tenant_id = _get_tenant_id(request)
 
         try:
-            policy = gateway.create_policy(
+            policy_id = gateway.create_policy(
                 tenant_id=tenant_id,
                 name=req.name,
                 description=req.description,
@@ -162,8 +171,19 @@ def create_governance_router(gateway) -> APIRouter:
                 enabled=req.enabled,
                 priority=req.priority,
             )
-        except ValueError as e:
-            raise HTTPException(400, str(e))
+
+            audit = _audit_logger(request)
+            if audit:
+                audit.log(
+                    tenant_id=tenant_id,
+                    actor=_get_actor(request),
+                    action="create_policy",
+                    resource=f"policy:{policy_id}",
+                    metadata={"name": req.name, "type": req.policy_type, "action": req.action}
+                )
+
+            # Re-fetch for response
+            policy = gateway.get_policy(policy_id)
         except Exception as e:
             logger.error("Failed to create policy: %s", e)
             raise HTTPException(500, f"Failed to create policy: {e}")
@@ -227,6 +247,15 @@ def create_governance_router(gateway) -> APIRouter:
         if updated is None:
             raise HTTPException(404, f"Policy '{policy_id}' not found")
 
+        audit = _audit_logger(request)
+        if audit:
+            audit.log(
+                tenant_id=tenant_id,
+                actor=_get_actor(request),
+                action="update_policy",
+                resource=f"policy:{policy_id}",
+            )
+
         return gateway.policy_to_dict(updated)
 
     # ------------------------------------------------------------------
@@ -241,6 +270,15 @@ def create_governance_router(gateway) -> APIRouter:
 
         if not deleted:
             raise HTTPException(404, f"Policy '{policy_id}' not found")
+
+        audit = _audit_logger(request)
+        if audit:
+            audit.log(
+                tenant_id=tenant_id,
+                actor=_get_actor(request),
+                action="delete_policy",
+                resource=f"policy:{policy_id}",
+            )
 
         return {"deleted": True, "policy_id": policy_id}
 

@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any
 
@@ -136,10 +137,11 @@ class PostgresGMPBackend:
     def __init__(self, db_url: str, embed_fn=None, encryption=None) -> None:
         try:
             import psycopg
+            from psycopg_pool import ConnectionPool
             from pgvector.psycopg import register_vector
         except ImportError as e:
             raise RuntimeError(
-                "PostgresGMPBackend requires psycopg and pgvector — "
+                "PostgresGMPBackend requires psycopg, psycopg_pool, and pgvector — "
                 "`pip install grafomem[postgres]`"
             ) from e
 
@@ -150,41 +152,81 @@ class PostgresGMPBackend:
         # Probe embedding dimension
         self._dim = int(np.asarray(self._embed("dimension probe")).shape[0])
 
+        # Initialize connection pool
+        self._pool = ConnectionPool(db_url, min_size=1, max_size=20)
+
         # Connect — create the pgvector extension FIRST, then register types
-        self._conn = psycopg.connect(db_url, autocommit=True)
-        with self._conn.cursor() as cur:
-            cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
-        register_vector(self._conn)
+        with self._pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+            register_vector(conn)
         self._ensure_schema()
+
+    @contextmanager
+    def _tenant_conn(self, tenant_id: str):
+        """Yields a connection and cursor with the Postgres RLS tenant context set."""
+        with self._pool.connection() as conn:
+            from pgvector.psycopg import register_vector
+            register_vector(conn)
+            with conn.transaction():
+                with conn.cursor() as cur:
+                    cur.execute("SET LOCAL app.current_tenant = %s", (tenant_id,))
+                    yield conn, cur
 
     def _ensure_schema(self) -> None:
         """Create tables and indexes if they don't exist."""
-        with self._conn.cursor() as cur:
-            # Memories table (no format needed — no dimension)
-            cur.execute(_SCHEMA_MEMORIES.format())
+        with self._pool.connection() as conn:
+            with conn.cursor() as cur:
+                # Memories table (no format needed — no dimension)
+                cur.execute(_SCHEMA_MEMORIES.format())
 
-            # Embeddings table (dimension injected)
-            cur.execute(_SCHEMA_EMBEDDINGS.format(dim=self._dim))
+                # Embeddings table (dimension injected)
+                cur.execute(_SCHEMA_EMBEDDINGS.format(dim=self._dim))
 
-            # Indexes
-            cur.execute(
-                "CREATE INDEX IF NOT EXISTS idx_mem_tenant_valid "
-                "ON memories(tenant_id, valid_until, valid_from)"
-            )
-            cur.execute(_HNSW_INDEX.strip())
-            cur.execute(_TENANT_FILTER_INDEX.strip())
+                # Indexes
+                cur.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_mem_tenant_valid "
+                    "ON memories(tenant_id, valid_until, valid_from)"
+                )
+                cur.execute(_HNSW_INDEX.strip())
+                cur.execute(_TENANT_FILTER_INDEX.strip())
+
+                # Enable Postgres RLS
+                cur.execute("ALTER TABLE memories ENABLE ROW LEVEL SECURITY")
+                cur.execute(
+                    """
+                    DO $$ BEGIN
+                        CREATE POLICY tenant_isolation_memories ON memories
+                            USING (tenant_id = current_setting('app.current_tenant', true) OR current_setting('app.current_tenant', true) = 'admin');
+                    EXCEPTION
+                        WHEN duplicate_object THEN null;
+                    END $$;
+                    """
+                )
+                cur.execute("ALTER TABLE memory_embeddings ENABLE ROW LEVEL SECURITY")
+                cur.execute(
+                    """
+                    DO $$ BEGIN
+                        CREATE POLICY tenant_isolation_embeddings ON memory_embeddings
+                            USING (tenant_id = current_setting('app.current_tenant', true) OR current_setting('app.current_tenant', true) = 'admin');
+                    EXCEPTION
+                        WHEN duplicate_object THEN null;
+                    END $$;
+                    """
+                )
 
     # -- Storage reporting (M5, duck-typed) --------------------------------
 
     def storage_bytes(self) -> int | None:
         """Report PostgreSQL database size in bytes."""
         try:
-            with self._conn.cursor() as cur:
-                cur.execute(
-                    "SELECT pg_database_size(current_database())"
-                )
-                row = cur.fetchone()
-                return int(row[0]) if row else None
+            with self._pool.connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT pg_database_size(current_database())"
+                    )
+                    row = cur.fetchone()
+                    return int(row[0]) if row else None
         except Exception:
             return None
 
@@ -201,7 +243,7 @@ class PostgresGMPBackend:
         written_by, signature, public_key = self._provenance(content, options)
         enc_content = self._encryption.encrypt(content) if self._encryption else content
 
-        with self._conn.cursor() as cur:
+        with self._tenant_conn(options.tenant_id) as (conn, cur):
             cur.execute(
                 """INSERT INTO memories
                    (content, written_at, metadata, valid_from, valid_until,
@@ -249,36 +291,35 @@ class PostgresGMPBackend:
         now = datetime.now(timezone.utc)
         refs: list[int] = []
 
-        with self._conn.transaction():
-            with self._conn.cursor() as cur:
-                for (content, options), row in zip(items, embs):
-                    emb = _normalize(row)
-                    written_by, signature, public_key = self._provenance(content, options)
-                    enc_content = self._encryption.encrypt(content) if self._encryption else content
+        for (content, options), row in zip(items, embs):
+            emb = _normalize(row)
+            written_by, signature, public_key = self._provenance(content, options)
+            enc_content = self._encryption.encrypt(content) if self._encryption else content
 
-                    cur.execute(
-                        """INSERT INTO memories
-                           (content, written_at, metadata, valid_from, valid_until,
-                            tenant_id, superseded_by, written_by, signature, public_key)
-                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                           RETURNING ref""",
-                        (enc_content, now, json.dumps(options.metadata or {}),
-                         options.valid_from, None,
-                         options.tenant_id, None,
-                         written_by, signature, public_key),
-                    )
-                    ref = cur.fetchone()[0]
+            with self._tenant_conn(options.tenant_id) as (conn, cur):
+                cur.execute(
+                    """INSERT INTO memories
+                       (content, written_at, metadata, valid_from, valid_until,
+                        tenant_id, superseded_by, written_by, signature, public_key)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                       RETURNING ref""",
+                    (enc_content, now, json.dumps(options.metadata or {}),
+                     options.valid_from, None,
+                     options.tenant_id, None,
+                     written_by, signature, public_key),
+                )
+                ref = cur.fetchone()[0]
 
-                    cur.execute(
-                        """INSERT INTO memory_embeddings
-                           (ref, embedding, tenant_id, valid_from, valid_until)
-                           VALUES (%s, %s::vector, %s, %s, %s)""",
-                        (ref, emb.tolist(),
-                         _vec_tenant(options.tenant_id),
-                         _vec_from(options.valid_from),
-                         OPEN_UNTIL_TS),
-                    )
-                    refs.append(ref)
+                cur.execute(
+                    """INSERT INTO memory_embeddings
+                       (ref, embedding, tenant_id, valid_from, valid_until)
+                       VALUES (%s, %s::vector, %s, %s, %s)""",
+                    (ref, emb.tolist(),
+                     _vec_tenant(options.tenant_id),
+                     _vec_from(options.valid_from),
+                     OPEN_UNTIL_TS),
+                )
+                refs.append(ref)
         return refs
 
     def supersede(self, old_ref: Any, content: str, options: WriteOptions) -> int:
@@ -286,7 +327,7 @@ class PostgresGMPBackend:
 
         close_at = options.valid_from or datetime.now(timezone.utc)
 
-        with self._conn.cursor() as cur:
+        with self._tenant_conn(options.tenant_id) as (conn, cur):
             # Close predecessor's interval in memories table
             cur.execute(
                 "UPDATE memories SET valid_until = %s, superseded_by = %s WHERE ref = %s",
@@ -300,14 +341,14 @@ class PostgresGMPBackend:
         return new_ref
 
     def delete(self, ref: Any) -> bool:
-        with self._conn.cursor() as cur:
+        with self._tenant_conn("admin") as (conn, cur):
             # CASCADE deletes memory_embeddings row automatically
             cur.execute("DELETE FROM memories WHERE ref = %s", (ref,))
             return cur.rowcount > 0
 
     def retrieve(self, query: str, options: RetrieveOptions) -> list[Memory]:
         # Check if any embeddings exist
-        with self._conn.cursor() as cur:
+        with self._tenant_conn(options.tenant_id) as (conn, cur):
             cur.execute("SELECT COUNT(*) FROM memory_embeddings")
             n = cur.fetchone()[0]
         if not n:
@@ -342,7 +383,7 @@ class PostgresGMPBackend:
         params.append(qvec.tolist())  # for the ORDER BY
         params.append(k)
 
-        with self._conn.cursor() as cur:
+        with self._tenant_conn(options.tenant_id) as (conn, cur):
             # pgvector cosine distance: 1 - cosine_similarity
             # ORDER BY embedding <=> query_vector gives nearest neighbors
             cur.execute(
@@ -359,7 +400,7 @@ class PostgresGMPBackend:
         out: list[Memory] = []
         used = 0
         for (ref,) in ranked:
-            with self._conn.cursor() as cur:
+            with self._tenant_conn(options.tenant_id) as (conn, cur):
                 cur.execute(
                     """SELECT ref, content, written_at, metadata,
                               valid_from, valid_until, tenant_id,
@@ -381,7 +422,7 @@ class PostgresGMPBackend:
         return out
 
     def audit(self) -> Iterator[Memory]:
-        with self._conn.cursor() as cur:
+        with self._tenant_conn("admin") as (conn, cur):
             cur.execute(
                 """SELECT ref, content, written_at, metadata,
                           valid_from, valid_until, tenant_id,
@@ -396,7 +437,7 @@ class PostgresGMPBackend:
         pass
 
     def close(self) -> None:
-        self._conn.close()
+        self._pool.close()
 
     # -- internals --------------------------------------------------------
 
@@ -468,8 +509,9 @@ if __name__ == "__main__":
     print(f"  Capabilities: {sorted(c.value for c in b.capabilities())}")
 
     # Clean slate
-    with b._conn.cursor() as cur:
-        cur.execute("DELETE FROM memories")
+    with b._pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM memories")
 
     t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
     t1 = t0 + timedelta(days=30)
@@ -533,8 +575,9 @@ if __name__ == "__main__":
         print("⊘ cryptographic provenance   (skipped — install grafomem[crypto])")
 
     # Cleanup
-    with b._conn.cursor() as cur:
-        cur.execute("DELETE FROM memories")
+    with b._pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM memories")
     b.close()
 
     print(f"\n✓ PostgresGMPBackend passes all smoke checks — GMP v0.2 profile.")
