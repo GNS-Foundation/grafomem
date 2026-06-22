@@ -15,6 +15,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
+from aml.server.scopes import require_scope
 
 logger = logging.getLogger("grafomem.cloud.portal")
 
@@ -288,6 +289,8 @@ async def get_dashboard(request: Request):
 class CreateApiKeyRequest(BaseModel):
     name: str = "custom_key"
     role: str = "admin"
+    expires_at: int | None = None  # Unix timestamp
+    ip_allowlist: list[str] | None = None
 
 @router.post("/api-keys")
 async def create_api_key(req: CreateApiKeyRequest, request: Request):
@@ -296,7 +299,15 @@ async def create_api_key(req: CreateApiKeyRequest, request: Request):
     mgr = _tenant_manager(request)
     audit = _audit_logger(request)
     try:
-        new_key = mgr.create_api_key(tenant["tenant_id"], name=req.name, role=req.role)
+        from datetime import datetime, timezone
+        exp_dt = datetime.fromtimestamp(req.expires_at, tz=timezone.utc) if req.expires_at else None
+        key_info = mgr.create_api_key(
+            tenant["tenant_id"], 
+            name=req.name, 
+            role=req.role,
+            expires_at=exp_dt,
+            ip_allowlist=req.ip_allowlist
+        )
         if audit:
             audit.log(
                 tenant_id=tenant["tenant_id"],
@@ -307,7 +318,7 @@ async def create_api_key(req: CreateApiKeyRequest, request: Request):
             )
     except ValueError as e:
         raise HTTPException(400, str(e))
-    return {"api_key": new_key}
+    return key_info
 
 @router.post("/rotate-key")
 async def rotate_key(request: Request):
@@ -329,7 +340,7 @@ async def rotate_key(request: Request):
             )
     except Exception as e:
         raise HTTPException(500, f"Error rotating keys: {e}")
-    return {"api_key": new_key}
+    return {"api_key": new_key["api_key"]}
 
 @router.get("/audit")
 async def get_audit_logs(request: Request, limit: int = 100):
