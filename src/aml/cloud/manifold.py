@@ -265,6 +265,22 @@ class ManifoldService:
                     )
                 """)
             conn.commit()
+            
+            with conn.cursor() as cur:
+                try:
+                    cur.execute("SAVEPOINT manifold_update1")
+                    cur.execute("ALTER TABLE manifold_cache ADD COLUMN som_version TEXT;")
+                    cur.execute("RELEASE SAVEPOINT manifold_update1")
+                except Exception:
+                    cur.execute("ROLLBACK TO SAVEPOINT manifold_update1")
+                    
+                try:
+                    cur.execute("SAVEPOINT manifold_update2")
+                    cur.execute("ALTER TABLE manifold_cache ADD COLUMN som_weights BYTEA;")
+                    cur.execute("RELEASE SAVEPOINT manifold_update2")
+                except Exception:
+                    cur.execute("ROLLBACK TO SAVEPOINT manifold_update2")
+            conn.commit()
         except Exception as e:
             logger.error(f"Failed to setup manifold_cache table: {e}")
             conn.rollback()
