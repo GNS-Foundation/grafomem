@@ -1040,7 +1040,7 @@ def create_app(
                 tenant_id = str(uuid.uuid4())
                 try:
                     with psycopg.connect(db, autocommit=True) as conn:
-                        conn.execute("INSERT INTO tenants (id, name, email) VALUES (%s, %s, %s)", (tenant_id, "Tamper Tenant", f"tamper_{tenant_id}@test.com"))
+                        conn.execute("INSERT INTO tenants (id, name, email, api_key) VALUES (%s, %s, %s, %s)", (tenant_id, "Tamper Tenant", f"tamper_{tenant_id}@test.com", f"legacy-{tenant_id}"))
                         conn.execute("INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role) VALUES (%s, %s, %s, %s, %s)", (str(uuid.uuid4()), tenant_id, f"sk-tamper-{tenant_id}", "Tamper Key", "admin"))
                         
                         # Create workflow, steps, receipt
