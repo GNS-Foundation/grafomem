@@ -56,6 +56,9 @@ def mock_infer(
         "messages": messages,
     }, sort_keys=True, ensure_ascii=True)
     input_hash = hashlib.blake2b(canonical.encode(), digest_size=16).hexdigest()
+    
+    with open("/tmp/mock_log.txt", "a") as f:
+        f.write(f"HASH {input_hash}\n{canonical}\n===\n")
 
     # ── Role detection (from system prompt) ───────────────────
     sp_lower = system_prompt.lower()

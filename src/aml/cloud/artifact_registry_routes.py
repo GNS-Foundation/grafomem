@@ -5,6 +5,7 @@ Factory: create_artifact_registry_router(service) -> APIRouter (mirrors create_l
 Tenant via request.state.tenant.tenant_id.
 """
 from fastapi import APIRouter, Request, HTTPException, Query
+from aml.server.scopes import require_scope
 from pydantic import BaseModel
 
 from .artifact_registry import (
@@ -42,6 +43,7 @@ def create_artifact_registry_router(service) -> APIRouter:
     @router.post("/register", status_code=201)
     async def register(req: RegisterRequest, request: Request):
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "artifacts:admin")
         try:
             return service.register(tenant_id, ArtifactRegisterRequest(**req.model_dump()))
         except RegistryDenied as e:
@@ -53,10 +55,12 @@ def create_artifact_registry_router(service) -> APIRouter:
 
     @router.get("/stats")
     async def stats(request: Request):
+        require_scope(request, "artifacts:read")
         return service.get_stats(_get_tenant_id(request))
 
     @router.get("/{artifact_id}")
     async def get_one(artifact_id: str, request: Request):
+        require_scope(request, "artifacts:read")
         try:
             return service.get(_get_tenant_id(request), artifact_id)
         except RegistryError:
@@ -64,26 +68,32 @@ def create_artifact_registry_router(service) -> APIRouter:
 
     @router.get("/{artifact_id}/verify")
     async def verify(artifact_id: str, request: Request):
+        require_scope(request, "artifacts:read")
         return service.verify(_get_tenant_id(request), artifact_id)
 
     @router.post("/{artifact_id}/integrity")
     async def integrity(artifact_id: str, req: IntegrityRequest, request: Request):
+        require_scope(request, "artifacts:admin")
         return service.check_integrity(_get_tenant_id(request), artifact_id, req.layer_hashes)
 
     @router.post("/{artifact_id}/certify")
     async def certify(artifact_id: str, req: CertifyRequest, request: Request):
+        require_scope(request, "artifacts:admin")
         return service.certify(_get_tenant_id(request), artifact_id, req.certificate_id)
 
     @router.get("")
     async def list_all(request: Request, limit: int = Query(50, le=200), offset: int = 0):
+        require_scope(request, "artifacts:read")
         return service.list_artifacts(_get_tenant_id(request), limit=limit, offset=offset)
 
     @router.post("/{artifact_id}/approve")
     async def approve(artifact_id: str, req: ResumeRequest, request: Request):
+        require_scope(request, "artifacts:admin")
         return service.resume(_get_tenant_id(request), artifact_id, True, req.approver)
 
     @router.post("/{artifact_id}/reject")
     async def reject(artifact_id: str, req: ResumeRequest, request: Request):
+        require_scope(request, "artifacts:admin")
         return service.resume(_get_tenant_id(request), artifact_id, False, req.approver)
 
     return router

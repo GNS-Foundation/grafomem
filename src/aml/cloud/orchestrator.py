@@ -32,8 +32,11 @@ from typing import Any, Iterator, TYPE_CHECKING
 if TYPE_CHECKING:
     from aml.cloud.streaming_events import StreamEmitter
 
+import functools
 import psycopg
 from psycopg.rows import dict_row
+
+_CANON = functools.partial(json.dumps, sort_keys=True, separators=(",", ":"), default=str)
 
 logger = logging.getLogger("grafomem.cloud.orchestrator")
 
@@ -313,6 +316,7 @@ class OrchestratorService:
         gcrumbs: Any | None = None,
         signing_identity: Any | None = None,
         pool=None,
+        encryption: Any | None = None,
     ) -> None:
         self._db_url = db_url
         self._pool = pool
@@ -326,6 +330,7 @@ class OrchestratorService:
         self._execution_receipts = execution_receipts
         self._gcrumbs = gcrumbs
         self._signing_identity = signing_identity
+        self._encryption = encryption
 
     # ------------------------------------------------------------------
     # Connection
@@ -354,34 +359,6 @@ class OrchestratorService:
     def ensure_schema(self) -> None:
         conn = self._get_conn()
         conn.execute(_SCHEMA_SQL)
-        try:
-            conn.execute("ALTER TABLE orchestrator_steps ADD COLUMN IF NOT EXISTS parent_decision_id TEXT;")
-        except Exception as e:
-            logger.warning(f"Could not alter orchestrator_steps table (parent_decision_id): {e}")
-
-        try:
-            conn.execute("ALTER TABLE orchestrator_steps ADD COLUMN IF NOT EXISTS is_synthetic BOOLEAN NOT NULL DEFAULT false;")
-            conn.execute("UPDATE orchestrator_steps SET is_synthetic = true;")
-        except Exception as e:
-            logger.warning(f"Could not alter orchestrator_steps table (is_synthetic): {e}")
-
-        try:
-            conn.execute("ALTER TABLE orchestrator_agents ADD COLUMN IF NOT EXISTS fallback_models JSONB NOT NULL DEFAULT '[]';")
-        except Exception as e:
-            logger.warning(f"Could not alter orchestrator_agents table (fallback_models): {e}")
-
-        try:
-            conn.execute("ALTER TABLE orchestrator_steps ADD COLUMN IF NOT EXISTS latency_governance_ms INTEGER NOT NULL DEFAULT 0;")
-            conn.execute("ALTER TABLE orchestrator_steps ADD COLUMN IF NOT EXISTS latency_memory_ms INTEGER NOT NULL DEFAULT 0;")
-            conn.execute("ALTER TABLE orchestrator_steps ADD COLUMN IF NOT EXISTS latency_llm_ms INTEGER NOT NULL DEFAULT 0;")
-            conn.execute("ALTER TABLE orchestrator_steps ADD COLUMN IF NOT EXISTS latency_tools_ms INTEGER NOT NULL DEFAULT 0;")
-        except Exception as e:
-            logger.warning(f"Could not alter orchestrator_steps table (latency): {e}")
-
-        try:
-            conn.execute("ALTER TABLE orchestrator_workflows ADD COLUMN IF NOT EXISTS termination_reason TEXT;")
-        except Exception as e:
-            logger.warning(f"Could not alter orchestrator_workflows table (termination_reason): {e}")
 
         logger.info("Orchestrator schema ensured")
 
@@ -397,6 +374,7 @@ class OrchestratorService:
         model_id: str,
         system_prompt: str,
         *,
+        encryption: Any | None = None,
         description: str = "",
         fallback_models: list[str] | None = None,
         memory_stores: list[str] | None = None,
@@ -417,16 +395,23 @@ class OrchestratorService:
         tool_list = tools or []
         fallbacks = fallback_models or []
 
+
+        if encryption and hasattr(encryption, "get_encryptor"):
+            encryption = encryption.get_encryptor(tenant_id)
+
+        enc_prompt = encryption.encrypt(system_prompt) if encryption else None
+        db_prompt = "[ENCRYPTED]" if encryption else system_prompt
+
         conn = self._get_conn()
         conn.execute(
             "INSERT INTO orchestrator_agents "
             "(agent_id, tenant_id, name, role, description, model_id, fallback_models, "
-            " system_prompt, memory_stores, tools, max_steps, max_tokens, "
+            " system_prompt, system_prompt_enc, memory_stores, tools, max_steps, max_tokens, "
             " temperature, enabled, created_at, updated_at) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
             (
                 agent_id, tenant_id, name, role.value, description,
-                model_id, json.dumps(fallbacks), system_prompt,
+                model_id, json.dumps(fallbacks), db_prompt, enc_prompt,
                 json.dumps(stores), json.dumps(tool_list),
                 max_steps, max_tokens_per_step, temperature,
                 enabled, now, now,
@@ -457,13 +442,13 @@ class OrchestratorService:
             updated_at=now,
         )
 
-    def get_agent(self, agent_id: str) -> AgentDefinition | None:
-        conn = self._get_conn()
-        row = conn.execute(
-            "SELECT * FROM orchestrator_agents WHERE agent_id = %s",
-            (agent_id,),
-        ).fetchone()
-        return self._row_to_agent(row) if row else None
+    def get_agent(self, agent_id: str, encryption: Any | None = None) -> AgentDefinition | None:
+        with self._get_conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM orchestrator_agents WHERE agent_id = %s",
+                (agent_id,),
+            ).fetchone()
+            return self._row_to_agent(row, encryption) if row else None
 
     def list_agents(
         self,
@@ -484,7 +469,7 @@ class OrchestratorService:
                 "WHERE tenant_id = %s ORDER BY created_at DESC",
                 (tenant_id,),
             ).fetchall()
-        return [self._row_to_agent(r) for r in rows]
+        return [self._row_to_agent(r, encryption) for r in rows]
 
     def update_agent(
         self,
@@ -599,17 +584,17 @@ class OrchestratorService:
         )
 
     def get_workflow(self, workflow_id: str) -> Workflow | None:
-        conn = self._get_conn()
-        row = conn.execute(
-            "SELECT * FROM orchestrator_workflows WHERE workflow_id = %s",
-            (workflow_id,),
-        ).fetchone()
-        if row is None:
-            return None
-        workflow = self._row_to_workflow(row)
-        # Attach steps
-        workflow.steps = self.get_workflow_steps(workflow_id)
-        return workflow
+        with self._get_conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM orchestrator_workflows WHERE workflow_id = %s",
+                (workflow_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            workflow = self._row_to_workflow(row)
+            # Attach steps
+            workflow.steps = self.get_workflow_steps(workflow_id)
+            return workflow
 
     def list_workflows(
         self,
@@ -636,14 +621,14 @@ class OrchestratorService:
         ).fetchall()
         return [self._row_to_workflow(r) for r in rows]
 
-    def get_workflow_steps(self, workflow_id: str) -> list[StepRecord]:
+    def get_workflow_steps(self, workflow_id: str, encryption: Any | None = None) -> list[StepRecord]:
         conn = self._get_conn()
         rows = conn.execute(
             "SELECT * FROM orchestrator_steps "
             "WHERE workflow_id = %s ORDER BY step_number ASC",
             (workflow_id,),
         ).fetchall()
-        return [self._row_to_step(r) for r in rows]
+        return [self._row_to_step(r, encryption) for r in rows]
 
     # ------------------------------------------------------------------
     # Step execution — THE CORE METHOD
@@ -655,6 +640,7 @@ class OrchestratorService:
         agent_id: str,
         input_text: str,
         *,
+        encryption: Any | None = None,
         parent_step_id: str | None = None,
         emitter: StreamEmitter | None = None,
         ignore_governance: bool = False,
@@ -670,7 +656,7 @@ class OrchestratorService:
           5. Decision Trail   — log the full decision with provenance
           6. PII Post-check   — post-execution PII guard on output
         """
-        agent = self.get_agent(agent_id)
+        agent = self.get_agent(agent_id, encryption)
         if agent is None:
             raise ValueError(f"Agent '{agent_id}' not found")
 
@@ -683,7 +669,7 @@ class OrchestratorService:
         # ── 0. DEADLINE CHECK ───────────────────────────────
         if deadline and time.monotonic() > deadline:
             logger.warning("Deadline exceeded before step %d in workflow %s", step_number, workflow_id)
-            step = self._persist_step(
+            step = self._persist_step(encryption=encryption,
                 step_id=step_id,
                 workflow_id=workflow_id,
                 agent_id=agent_id,
@@ -750,7 +736,7 @@ class OrchestratorService:
             )
             step_status = StepStatus.ESCALATED if escalated else StepStatus.DENIED
 
-            step = self._persist_step(
+            step = self._persist_step(encryption=encryption,
                 step_id=step_id,
                 workflow_id=workflow_id,
                 agent_id=agent_id,
@@ -967,6 +953,7 @@ class OrchestratorService:
                                 latency_ms=failed_latency,
                                 signing_identity=self._signing_identity,
                                 parent_decision_id=parent_step_id,
+                                encryption=self._encryption,
                             )
                             failed_decision_id = rec.decision_id
                             failed_signature = rec.signature
@@ -1145,11 +1132,15 @@ class OrchestratorService:
                         f.get("content", "") for f in retrieved_facts
                     ],
                     retrieval_scores=[],
-                    parameters={"temperature": agent.temperature},
+                    parameters={
+                        "temperature": agent.temperature,
+                        "system_prompt": agent.system_prompt
+                    },
                     output_tokens=tokens_used,
                     latency_ms=latency_llm_ms,
                     signing_identity=self._signing_identity,
                     parent_decision_id=parent_step_id,
+                    encryption=self._encryption,
                 )
                 decision_id = record.decision_id
                 signature = record.signature
@@ -1183,7 +1174,7 @@ class OrchestratorService:
 
         # ── 7. PERSIST STEP ────────────────────────────────
         latency_ms = int((time.monotonic() - t0_total) * 1000)
-        step = self._persist_step(
+        step = self._persist_step(encryption=encryption,
             step_id=step_id,
             workflow_id=workflow_id,
             agent_id=agent_id,
@@ -1587,6 +1578,13 @@ class OrchestratorService:
                 )
                 return
 
+            if step.status == StepStatus.FAILED_TIMEOUT:
+                self._update_workflow_status(
+                    workflow.workflow_id, WorkflowStatus.TERMINATED,
+                    termination_reason="deadline_exceeded",
+                )
+                return
+
             if step.status != StepStatus.COMPLETED:
                 return
 
@@ -1820,7 +1818,7 @@ class OrchestratorService:
         # Add memory context if facts were retrieved
         if retrieved_facts:
             fact_text = "\n".join(
-                f"- [{f.get('store_id', '?')}] {f.get('content', '')}"
+                f"- {f.get('content', '')}"
                 for f in retrieved_facts
             )
             messages.append({
@@ -1841,16 +1839,46 @@ class OrchestratorService:
     # ------------------------------------------------------------------
 
     def _next_step_number(self, workflow_id: str) -> int:
-        conn = self._get_conn()
-        row = conn.execute(
-            "SELECT COALESCE(MAX(step_number), 0) AS max_step "
-            "FROM orchestrator_steps WHERE workflow_id = %s",
-            (workflow_id,),
-        ).fetchone()
-        return (row["max_step"] if row else 0) + 1
+        with self._get_conn() as conn:
+            row = conn.execute(
+                "SELECT COALESCE(MAX(step_number), 0) + 1 AS next_step "
+                "FROM orchestrator_steps WHERE workflow_id = %s",
+                (workflow_id,),
+            ).fetchone()
+            return row["next_step"]
 
     def _persist_step(self, **kwargs) -> StepRecord:
         """Persist a step record to the database and return the StepRecord."""
+        encryption = kwargs.pop("encryption", None)
+        
+        # Canonical JSON
+        facts_canon = _CANON(kwargs["retrieved_facts"])
+        logs_canon = _CANON(kwargs["governance_logs"])
+        calls_canon = _CANON(kwargs["tool_calls"])
+        res_canon = _CANON(kwargs["tool_results"])
+
+        tenant_id = kwargs["tenant_id"]
+        if encryption and hasattr(encryption, "get_encryptor"):
+            encryption = encryption.get_encryptor(tenant_id)
+
+        enc_input = encryption.encrypt(kwargs["input_text"]) if encryption else None
+        db_input = "[ENCRYPTED]" if encryption else kwargs["input_text"]
+
+        enc_raw = encryption.encrypt(kwargs["raw_output"]) if encryption else None
+        db_raw = "[ENCRYPTED]" if encryption else kwargs["raw_output"]
+
+        enc_facts = encryption.encrypt(facts_canon) if encryption else None
+        db_facts = "[]" if encryption else facts_canon
+
+        enc_logs = encryption.encrypt(logs_canon) if encryption else None
+        db_logs = "[]" if encryption else logs_canon
+
+        enc_calls = encryption.encrypt(calls_canon) if encryption else None
+        db_calls = "[]" if encryption else calls_canon
+
+        enc_results = encryption.encrypt(res_canon) if encryption else None
+        db_results = "[]" if encryption else res_canon
+
         conn = self._get_conn()
         conn.execute(
             "INSERT INTO orchestrator_steps "
@@ -1859,24 +1887,25 @@ class OrchestratorService:
             " model_id, raw_output, tool_calls, tool_results, "
             " tokens_used, latency_ms, latency_governance_ms, latency_memory_ms, "
             " latency_llm_ms, latency_tools_ms, decision_id, parent_decision_id, signature, public_key, "
-            " status, created_at) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, "
-            "        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, "
-            "        %s, %s, %s, %s, %s)",
+            " status, created_at, "
+            " input_text_enc, retrieved_facts_enc, governance_logs_enc, raw_output_enc, tool_calls_enc, tool_results_enc) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s::jsonb, %s, "
+            "        %s, %s::jsonb, %s::jsonb, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, "
+            "        %s, %s, %s, %s, %s, %s)",
             (
                 kwargs["step_id"],
                 kwargs["workflow_id"],
                 kwargs["agent_id"],
                 kwargs["tenant_id"],
                 kwargs["step_number"],
-                kwargs["input_text"],
-                json.dumps(kwargs["retrieved_facts"]),
+                db_input,
+                db_facts,
                 kwargs["governance_allowed"],
-                json.dumps(kwargs["governance_logs"]),
+                db_logs,
                 kwargs["model_id"],
-                kwargs["raw_output"],
-                json.dumps(kwargs["tool_calls"]),
-                json.dumps(kwargs["tool_results"]),
+                db_raw,
+                db_calls,
+                db_results,
                 kwargs["tokens_used"],
                 kwargs["latency_ms"],
                 kwargs.get("latency_governance_ms", 0),
@@ -1889,6 +1918,7 @@ class OrchestratorService:
                 kwargs["public_key"],
                 kwargs["status"].value,
                 kwargs["created_at"],
+                enc_input, enc_facts, enc_logs, enc_raw, enc_calls, enc_results
             ),
         )
 
@@ -1961,7 +1991,10 @@ class OrchestratorService:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _row_to_agent(row: dict[str, Any]) -> AgentDefinition:
+    def _row_to_agent(row: dict[str, Any], encryption: Any | None = None) -> AgentDefinition:
+        tenant_id = row["tenant_id"]
+        if encryption and hasattr(encryption, "get_encryptor"):
+            encryption = encryption.get_encryptor(tenant_id)
         stores = row.get("memory_stores")
         if isinstance(stores, str):
             stores = json.loads(stores)
@@ -2026,7 +2059,10 @@ class OrchestratorService:
         )
 
     @staticmethod
-    def _row_to_step(row: dict[str, Any]) -> StepRecord:
+    def _row_to_step(row: dict[str, Any], encryption: Any | None = None) -> StepRecord:
+        tenant_id = row["tenant_id"]
+        if encryption and hasattr(encryption, "get_encryptor"):
+            encryption = encryption.get_encryptor(tenant_id)
         def _load(val):
             if val is None:
                 return []

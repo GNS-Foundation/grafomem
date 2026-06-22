@@ -4,6 +4,7 @@ src/aml/cloud/composition_governance_routes.py   (R4)
 Factory: create_composition_governance_router(service) -> APIRouter. Tenant via request.state.tenant.tenant_id.
 """
 from fastapi import APIRouter, Request, HTTPException, Query
+from aml.server.scopes import require_scope
 from pydantic import BaseModel
 
 from .composition_governance import (
@@ -34,6 +35,7 @@ def create_composition_governance_router(service) -> APIRouter:
 
     @router.post("", status_code=201)
     async def compose(body: ComposeBody, request: Request):
+        require_scope(request, "artifacts:admin")
         try:
             return service.compose(_tenant(request), ComposeRequest(**body.model_dump()))
         except ComposeRejected as e:
@@ -45,14 +47,17 @@ def create_composition_governance_router(service) -> APIRouter:
 
     @router.get("/stats")
     async def stats(request: Request):
+        require_scope(request, "artifacts:read")
         return service.get_stats(_tenant(request))
 
     @router.get("")
     async def list_all(request: Request, limit: int = Query(50, le=200), offset: int = 0):
+        require_scope(request, "artifacts:read")
         return service.list_compositions(_tenant(request), limit=limit, offset=offset)
 
     @router.get("/{composition_id}")
     async def get_one(composition_id: str, request: Request):
+        require_scope(request, "artifacts:read")
         try:
             return service.get(_tenant(request), composition_id)
         except CompositionError:
@@ -60,19 +65,23 @@ def create_composition_governance_router(service) -> APIRouter:
 
     @router.get("/{composition_id}/verify")
     async def verify(composition_id: str, request: Request):
+        require_scope(request, "artifacts:read")
         return service.verify(_tenant(request), composition_id)
 
     @router.get("/{composition_id}/artifact")
     async def composed_artifact(composition_id: str, request: Request):
         """Descriptor to register the composed result back in R1."""
+        require_scope(request, "artifacts:read")
         return service.composed_artifact(_tenant(request), composition_id)
 
     @router.post("/{composition_id}/approve")
     async def approve(composition_id: str, body: ResumeBody, request: Request):
+        require_scope(request, "artifacts:admin")
         return service.resume(_tenant(request), composition_id, True, body.approver)
 
     @router.post("/{composition_id}/reject")
     async def reject(composition_id: str, body: ResumeBody, request: Request):
+        require_scope(request, "artifacts:admin")
         return service.resume(_tenant(request), composition_id, False, body.approver)
 
     return router

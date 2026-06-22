@@ -1,0 +1,24 @@
+{
+  "content_hash": "74ee9bcfc9eb4ddd45c62695c695f2ec6f733140d2f8050206afd5fcd47643d1",
+  "mode": "mock",
+  "provider": "mock",
+  "report_type": "grafomem_conformance",
+  "results": [
+    {
+      "detail": "tenant=...",
+      "live_only": false,
+      "name": "Signup (Tenant A)",
+      "state": "fail"
+    }
+  ],
+  "server": "http://localhost:8080",
+  "summary": {
+    "degraded": 0,
+    "failed": 1,
+    "passed": 0,
+    "skipped": 0,
+    "total": 1
+  },
+  "timestamp": "2026-06-22T14:26:08.754526+00:00",
+  "version": "2.0"
+}

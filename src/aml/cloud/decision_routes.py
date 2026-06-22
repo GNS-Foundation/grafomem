@@ -19,6 +19,8 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from aml.server.scopes import require_scope
+
 logger = logging.getLogger("grafomem.cloud.decision_routes")
 
 
@@ -152,6 +154,7 @@ def create_decision_router(decision_trail, store_manager=None, tenant_auth=None)
         and optionally Ed25519-signs the decision record.
         """
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "decisions:read")
 
         # Removed client-provided signing_key parsing (Phase 0 KMS compliance)
 
@@ -189,6 +192,7 @@ def create_decision_router(decision_trail, store_manager=None, tenant_auth=None)
     async def decision_stats(request: Request):
         """Summary statistics for the tenant's decision trail."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "decisions:read")
         return decision_trail.get_stats(tenant_id)
 
     # ------------------------------------------------------------------
@@ -207,6 +211,7 @@ def create_decision_router(decision_trail, store_manager=None, tenant_auth=None)
         Suitable for feeding to auditors, compliance tools, or SIEM systems.
         """
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "decisions:read")
 
         def generate():
             for record_dict in decision_trail.export(
@@ -230,6 +235,7 @@ def create_decision_router(decision_trail, store_manager=None, tenant_auth=None)
     async def get_decision(decision_id: str, request: Request):
         """Retrieve a single decision record by its ID."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "decisions:read")
         record = decision_trail.get(decision_id)
 
         if record is None:
@@ -252,6 +258,7 @@ def create_decision_router(decision_trail, store_manager=None, tenant_auth=None)
         the AI knew when it made a decision.
         """
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "decisions:read")
         record = decision_trail.get(decision_id)
 
         if record is None:
@@ -326,6 +333,7 @@ def create_decision_router(decision_trail, store_manager=None, tenant_auth=None)
     ):
         """Query decisions with filters and pagination."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "decisions:read")
 
         records = decision_trail.query_decisions(
             tenant_id,
@@ -358,6 +366,7 @@ def create_decision_router(decision_trail, store_manager=None, tenant_auth=None)
         Returns the number of affected decisions.
         """
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "decisions:read")
 
         try:
             affected = decision_trail.scrub_fact(fact_ref, tenant_id)

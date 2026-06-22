@@ -191,6 +191,14 @@ class PostgresGMPBackend:
                 cur.execute(_HNSW_INDEX.strip())
                 cur.execute(_TENANT_FILTER_INDEX.strip())
 
+
+                # Migration for encryption columns
+                try:
+                    cur.execute("ALTER TABLE memories ADD COLUMN IF NOT EXISTS content_enc TEXT;")
+                    cur.execute("ALTER TABLE memories ADD COLUMN IF NOT EXISTS metadata_enc TEXT;")
+                except Exception as e:
+                    logger.warning(f"Could not alter memories table for encryption columns: {e}")
+
                 # Enable Postgres RLS
                 cur.execute("ALTER TABLE memories ENABLE ROW LEVEL SECURITY")
                 cur.execute(
@@ -235,13 +243,33 @@ class PostgresGMPBackend:
     def capabilities(self) -> set[Capability]:
         return set(GMP_V02_PROFILE)
 
+    def _encrypt_memory(self, content: str, metadata: dict | None, tenant_id: str | None) -> tuple[str, str | None, str, str | None]:
+        """Return (db_content, enc_content, db_metadata, enc_metadata)"""
+        meta_canon = _CANON(metadata) if metadata else "{}"
+        if self._encryption:
+            encryptor = self._encryption
+            if tenant_id and hasattr(encryptor, "get_encryptor"):
+                encryptor = encryptor.get_encryptor(tenant_id)
+            enc_content = encryptor.encrypt(content)
+            db_content = "[ENCRYPTED]"
+            enc_meta = encryptor.encrypt(meta_canon)
+            db_meta = "{}"
+            return db_content, enc_content, db_meta, enc_meta
+        else:
+            return content, None, meta_canon, None
+
     def write(self, content: str, options: WriteOptions) -> int:
         emb = _normalize(self._embed(content))
         if emb.shape[0] != self._dim:
             raise ValueError(f"embedding dim {emb.shape[0]} != store dim {self._dim}")
 
         written_by, signature, public_key = self._provenance(content, options)
-        enc_content = self._encryption.encrypt(content) if self._encryption else content
+        
+        encryptor = self._encryption
+        if self._encryption and options.tenant_id and hasattr(self._encryption, "get_encryptor"):
+            encryptor = self._encryption.get_encryptor(options.tenant_id)
+            
+        enc_content = encryptor.encrypt(content) if encryptor else content
 
         with self._tenant_conn(options.tenant_id) as (conn, cur):
             cur.execute(
@@ -294,19 +322,21 @@ class PostgresGMPBackend:
         for (content, options), row in zip(items, embs):
             emb = _normalize(row)
             written_by, signature, public_key = self._provenance(content, options)
-            enc_content = self._encryption.encrypt(content) if self._encryption else content
+            db_content, enc_content, db_meta, enc_meta = self._encrypt_memory(content, options.metadata, options.tenant_id)
 
             with self._tenant_conn(options.tenant_id) as (conn, cur):
                 cur.execute(
                     """INSERT INTO memories
                        (content, written_at, metadata, valid_from, valid_until,
-                        tenant_id, superseded_by, written_by, signature, public_key)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        tenant_id, superseded_by, written_by, signature, public_key,
+                        content_enc, metadata_enc)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                        RETURNING ref""",
-                    (enc_content, now, json.dumps(options.metadata or {}),
+                    (db_content, now, db_meta,
                      options.valid_from, None,
                      options.tenant_id, None,
-                     written_by, signature, public_key),
+                     written_by, signature, public_key,
+                     enc_content, enc_meta),
                 )
                 ref = cur.fetchone()[0]
 
@@ -322,8 +352,8 @@ class PostgresGMPBackend:
                 refs.append(ref)
         return refs
 
-    def supersede(self, old_ref: Any, content: str, options: WriteOptions) -> int:
-        new_ref = self.write(content, options)
+    def supersede(self, ref: int, content: str, metadata: dict | None, options: WriteOptions) -> int:
+        db_content, enc_content, db_meta, enc_meta = self._encrypt_memory(content, metadata, options.tenant_id)
 
         close_at = options.valid_from or datetime.now(timezone.utc)
 
@@ -413,7 +443,10 @@ class PostgresGMPBackend:
                 continue
             content = row[1]
             if self._encryption:
-                content = self._encryption.decrypt(content)
+                encryptor = self._encryption
+                if options.tenant_id and hasattr(encryptor, "get_encryptor"):
+                    encryptor = encryptor.get_encryptor(options.tenant_id)
+                content = encryptor.decrypt(content)
                 
             if used + len(content) > budget:
                 break
@@ -448,7 +481,10 @@ class PostgresGMPBackend:
         if content_override is not None:
             content = content_override
         elif self._encryption:
-            content = self._encryption.decrypt(content)
+            encryptor = self._encryption
+            if options.tenant_id and hasattr(encryptor, "get_encryptor"):
+                encryptor = encryptor.get_encryptor(options.tenant_id)
+            content = encryptor.decrypt(content)
 
         # Handle metadata: could be dict (JSONB auto-parsed) or string
         if isinstance(metadata, str):

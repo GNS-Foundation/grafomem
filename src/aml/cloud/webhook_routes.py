@@ -13,6 +13,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
+from aml.server.scopes import require_scope
+
 logger = logging.getLogger("grafomem.cloud.webhook_routes")
 
 from aml.cloud.schemas import (
@@ -72,6 +74,7 @@ def create_webhook_router(webhook_service) -> APIRouter:
         only once at creation time).
         """
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "webhooks:admin")
 
         try:
             config = webhook_service.register(
@@ -96,6 +99,7 @@ def create_webhook_router(webhook_service) -> APIRouter:
     async def list_webhooks(request: Request):
         """List all webhooks for the tenant."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "webhooks:admin")
         configs = webhook_service.list_webhooks(tenant_id)
         return {
             "webhooks": [webhook_service.config_to_dict(c) for c in configs],
@@ -110,6 +114,7 @@ def create_webhook_router(webhook_service) -> APIRouter:
     async def get_webhook(webhook_id: str, request: Request):
         """Get a single webhook configuration."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "webhooks:admin")
         config = webhook_service.get_webhook(webhook_id)
 
         if config is None or config.tenant_id != tenant_id:
@@ -129,6 +134,7 @@ def create_webhook_router(webhook_service) -> APIRouter:
     ):
         """Update webhook configuration."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "webhooks:admin")
 
         try:
             config = webhook_service.update_webhook(
@@ -155,6 +161,7 @@ def create_webhook_router(webhook_service) -> APIRouter:
     async def delete_webhook(webhook_id: str, request: Request):
         """Delete a webhook configuration."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "webhooks:admin")
         deleted = webhook_service.delete_webhook(webhook_id, tenant_id)
 
         if not deleted:
@@ -175,6 +182,7 @@ def create_webhook_router(webhook_service) -> APIRouter:
     ):
         """Get delivery history for a webhook."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "webhooks:admin")
         config = webhook_service.get_webhook(webhook_id)
 
         if config is None or config.tenant_id != tenant_id:
@@ -196,6 +204,7 @@ def create_webhook_router(webhook_service) -> APIRouter:
     async def test_webhook(webhook_id: str, request: Request):
         """Send a test event to a webhook endpoint."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "webhooks:admin")
         delivery = webhook_service.send_test(webhook_id, tenant_id)
 
         if delivery is None:

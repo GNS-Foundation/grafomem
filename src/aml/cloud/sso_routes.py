@@ -13,6 +13,7 @@ import os
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from aml.server.scopes import require_scope
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
@@ -138,6 +139,7 @@ def create_sso_router(sso_provider) -> APIRouter:
         client credentials for the specified provider.
         """
         # /v1/portal/* paths bypass auth middleware → verify JWT directly
+        require_scope(request, "sso:admin")
         auth_header = request.headers.get("Authorization", "")
         if not auth_header.startswith("Bearer "):
             raise HTTPException(401, "Authentication required — provide Authorization: Bearer <token>")
@@ -171,12 +173,13 @@ def create_sso_router(sso_provider) -> APIRouter:
     # ------------------------------------------------------------------
 
     @router.get("/saml/metadata")
-    async def saml_metadata():
+    async def saml_metadata(request: Request):
         """Download SP metadata XML for SAML 2.0 configuration.
 
         This endpoint returns the GRAFOMEM Service Provider metadata
         that the enterprise IdP admin needs to import.
         """
+        require_scope(request, "sso:admin")
         from fastapi.responses import Response
         xml = sso_provider.get_sp_metadata()
         return Response(
@@ -200,6 +203,7 @@ def create_sso_router(sso_provider) -> APIRouter:
         ctx = getattr(request.state, "tenant", None)
         if ctx is None or not ctx.authenticated:
             raise HTTPException(401, "Authentication required")
+        require_scope(request, "sso:admin")
 
         # Accept form data or JSON body
         body = {}

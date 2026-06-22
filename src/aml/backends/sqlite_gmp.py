@@ -276,7 +276,11 @@ class SQLiteGMPBackend:
         if emb.shape[0] != self._dim:
             raise ValueError(f"embedding dim {emb.shape[0]} != store dim {self._dim}")
         written_by, signature, public_key = self._provenance(content, options)
-        enc_content = self._encryption.encrypt(content) if self._encryption else content
+        
+        encryption = self._encryption
+        if encryption and hasattr(encryption, "get_encryptor"):
+            encryption = encryption.get_encryptor(options.tenant_id)
+        enc_content = encryption.encrypt(content) if encryption else content
 
         cur = self._conn.execute(
             "INSERT INTO memories(content, written_at, metadata, valid_from, valid_until, "
@@ -330,12 +334,21 @@ class SQLiteGMPBackend:
             for (content, options), row in zip(items, embs):
                 emb = _normalize(row)
                 written_by, signature, public_key = self._provenance(content, options)
-                enc_content = self._encryption.encrypt(content) if self._encryption else content
+                
+                encryption = self._encryption
+                if encryption and hasattr(encryption, "get_encryptor"):
+                    encryption = encryption.get_encryptor(options.tenant_id)
+                enc_content = encryption.encrypt(content) if encryption else content
+                
+                meta_canon = _CANON(options.metadata) if options.metadata else "{}"
+                enc_meta = encryption.encrypt(meta_canon) if encryption else None
+                db_meta = "[ENCRYPTED]" if encryption else meta_canon
+                
                 cur = self._conn.execute(
                     "INSERT INTO memories(content, written_at, metadata, valid_from, valid_until, "
                     "tenant_id, superseded_by, written_by, signature, public_key) "
                     "VALUES (?,?,?,?,?,?,?,?,?,?)",
-                    (enc_content, now, json.dumps(options.metadata or {}),
+                    (enc_content, now, db_meta,
                      _to_ts(options.valid_from), None, options.tenant_id, None,
                      written_by, signature, public_key),
                 )
@@ -414,6 +427,10 @@ class SQLiteGMPBackend:
             (qvec, *params),
         ).fetchall()
 
+        encryption = self._encryption
+        if encryption and hasattr(encryption, "get_encryptor"):
+            encryption = encryption.get_encryptor(options.tenant_id)
+
         # Greedy char budget over the already-filtered candidates in similarity order.
         out: list[Memory] = []
         used = 0
@@ -424,8 +441,8 @@ class SQLiteGMPBackend:
             if row is None:
                 continue
             content = row[1]
-            if self._encryption:
-                content = self._encryption.decrypt(content)
+            if encryption:
+                content = encryption.decrypt(content)
 
             if used + len(content) > budget:              # budget is the limit -> done
                 break
@@ -453,7 +470,10 @@ class SQLiteGMPBackend:
         if content_override is not None:
             content = content_override
         elif self._encryption:
-            content = self._encryption.decrypt(content)
+            encryption = self._encryption
+            if hasattr(encryption, "get_encryptor"):
+                encryption = encryption.get_encryptor(tenant)
+            content = encryption.decrypt(content)
 
         wat = datetime.fromisoformat(written_at)
         return Memory(

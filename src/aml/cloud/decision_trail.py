@@ -15,6 +15,7 @@ as ComplianceTracker and MeteringService.
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import logging
@@ -27,6 +28,8 @@ import psycopg
 from psycopg.rows import dict_row
 
 logger = logging.getLogger("grafomem.cloud.decision_trail")
+
+_CANON = functools.partial(json.dumps, sort_keys=True, separators=(",", ":"), default=str)
 
 # BLAKE2b-128 for decision IDs — matches fact_id in provenance.py
 _DECISION_ID_BYTES = 16
@@ -204,11 +207,7 @@ class DecisionTrailService:
         """Create the ``decision_records`` table if it does not exist."""
         conn = self._get_conn()
         conn.execute(_SCHEMA_SQL)
-        # Migrate existing tables that don't have parent_decision_id
-        try:
-            conn.execute("ALTER TABLE decision_records ADD COLUMN IF NOT EXISTS parent_decision_id TEXT REFERENCES decision_records(decision_id);")
-        except Exception as e:
-            logger.warning(f"Could not alter decision_records table: {e}")
+
         logger.info("Decision Trail schema ensured")
 
     # ------------------------------------------------------------------
@@ -235,6 +234,7 @@ class DecisionTrailService:
         latency_ms: int | None = None,
         signing_identity=None,
         parent_decision_id: str | None = None,
+        encryption: Any | None = None,
     ) -> DecisionRecord:
         """Log an inference decision.
 
@@ -262,6 +262,25 @@ class DecisionTrailService:
         ret_opts = retrieval_options or {}
         params = parameters or {}
 
+        # Resolve per-tenant encryptor if possible
+        if encryption and hasattr(encryption, "get_encryptor"):
+            encryption = encryption.get_encryptor(tenant_id)
+
+        # Prepare encrypted variants if encryption is active
+        enc_query = encryption.encrypt(query) if encryption else None
+        db_query = "[ENCRYPTED]" if encryption else query
+
+        enc_raw_output = encryption.encrypt(raw_output) if encryption else None
+        db_raw_output = "[ENCRYPTED]" if encryption else raw_output
+        
+        contents_canon = _CANON(contents)
+        enc_contents = encryption.encrypt(contents_canon) if encryption else None
+        db_contents = "[]" if encryption else contents_canon
+
+        parsed_canon = _CANON(parsed_output) if parsed_output is not None else None
+        enc_parsed = encryption.encrypt(parsed_canon) if encryption and parsed_canon else None
+        db_parsed = None if encryption else parsed_canon
+
         conn = self._get_conn()
         conn.execute(
             "INSERT INTO decision_records "
@@ -269,19 +288,21 @@ class DecisionTrailService:
             " query, retrieved_refs, retrieved_contents, retrieval_scores, "
             " retrieval_options, model_id, prompt_hash, parameters, "
             " raw_output, parsed_output, output_tokens, latency_ms, "
-            " signature, public_key, parent_decision_id) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, "
-            "        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            " signature, public_key, parent_decision_id, "
+            " query_enc, retrieved_contents_enc, raw_output_enc, parsed_output_enc) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, "
+            "        %s, %s, %s::jsonb, %s, %s::jsonb, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
             (
                 decision_id, tenant_id, store_id, session_id, now,
-                query,
-                json.dumps(refs), json.dumps(contents), json.dumps(scores),
-                json.dumps(ret_opts),
-                model_id, prompt_hash, json.dumps(params),
-                raw_output, json.dumps(parsed_output) if parsed_output else None,
+                db_query,
+                _CANON(refs), db_contents, _CANON(scores),
+                _CANON(ret_opts),
+                model_id, prompt_hash, _CANON(params),
+                db_raw_output, db_parsed,
                 output_tokens, latency_ms,
                 signature, public_key,
                 parent_decision_id,
+                enc_query, enc_contents, enc_raw_output, enc_parsed
             ),
         )
         logger.info(
@@ -322,14 +343,14 @@ class DecisionTrailService:
     # Queries
     # ------------------------------------------------------------------
 
-    def get(self, decision_id: str) -> DecisionRecord | None:
+    def get(self, decision_id: str, encryption: Any | None = None) -> DecisionRecord | None:
         """Retrieve a single decision by ID."""
         conn = self._get_conn()
         row = conn.execute(
             "SELECT * FROM decision_records WHERE decision_id = %s",
             (decision_id,),
         ).fetchone()
-        return self._row_to_record(row) if row else None
+        return self._row_to_record(row, encryption) if row else None
 
     def query_decisions(
         self,
@@ -342,6 +363,7 @@ class DecisionTrailService:
         model_id: str | None = None,
         limit: int = 100,
         offset: int = 0,
+        encryption: Any | None = None,
     ) -> list[DecisionRecord]:
         """Query decisions with filters and pagination."""
         clauses = ["tenant_id = %s"]
@@ -374,7 +396,7 @@ class DecisionTrailService:
             f"LIMIT %s OFFSET %s",
             params,
         ).fetchall()
-        return [self._row_to_record(r) for r in rows]
+        return [self._row_to_record(r, encryption) for r in rows]
 
     def get_stats(self, tenant_id: str) -> dict[str, Any]:
         """Summary stats for a tenant's decision trail."""
@@ -414,6 +436,7 @@ class DecisionTrailService:
         *,
         from_time: datetime | None = None,
         to_time: datetime | None = None,
+        encryption: Any | None = None,
     ) -> Iterator[dict[str, Any]]:
         """Stream decision records as JSON-safe dicts for bulk export."""
         clauses = ["tenant_id = %s"]
@@ -427,23 +450,23 @@ class DecisionTrailService:
             params.append(to_time)
 
         where = " AND ".join(clauses)
-
-        conn = self._get_conn()
-        cursor = conn.execute(
+        query = (
             f"SELECT * FROM decision_records "
             f"WHERE {where} "
-            f"ORDER BY created_at",
-            params,
+            f"ORDER BY created_at"
         )
-        for row in cursor:
-            rec = self._row_to_record(row)
-            yield self._record_to_dict(rec)
+
+        conn = self._get_conn()
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(query, params)
+            for row in cur:
+                yield self._record_to_dict(self._row_to_record(row, encryption))
 
     # ------------------------------------------------------------------
-    # GDPR — scrub deleted facts from decision records
+    # GDPR Erasure / Scrubbing
     # ------------------------------------------------------------------
 
-    def scrub_fact(self, fact_ref: int, tenant_id: str) -> int:
+    def scrub_fact(self, fact_ref: int, tenant_id: str, encryption: Any | None = None) -> int:
         """Scrub a deleted fact from all decision records.
 
         Finds all decisions that referenced this fact_ref, replaces the
@@ -454,11 +477,15 @@ class DecisionTrailService:
         is hard-deleted from memory, its content is also scrubbed from
         the decision audit trail.
         """
+        # Resolve per-tenant encryptor if possible
+        if encryption and hasattr(encryption, "get_encryptor"):
+            encryption = encryption.get_encryptor(tenant_id)
+
         conn = self._get_conn()
 
         # Find decisions referencing this fact
         rows = conn.execute(
-            "SELECT decision_id, retrieved_refs, retrieved_contents "
+            "SELECT decision_id, retrieved_refs, retrieved_contents, retrieved_contents_enc "
             "FROM decision_records "
             "WHERE tenant_id = %s "
             "  AND retrieved_refs @> %s::jsonb",
@@ -467,22 +494,34 @@ class DecisionTrailService:
 
         affected = 0
         for row in rows:
-            refs = row["retrieved_refs"] if isinstance(row["retrieved_refs"], list) else json.loads(row["retrieved_refs"])
-            contents = row["retrieved_contents"] if isinstance(row["retrieved_contents"], list) else json.loads(row["retrieved_contents"])
+            contents_enc = row.get("retrieved_contents_enc")
+            contents_str = encryption.decrypt(contents_enc) if encryption and contents_enc else row.get("retrieved_contents")
+            
+            if contents_str is None:
+                continue
+                
+            contents = contents_str if isinstance(contents_str, list) else json.loads(contents_str)
+            refs = row.get("retrieved_refs", [])
+            if isinstance(refs, str):
+                refs = json.loads(refs)
 
             # Replace content at matching index positions
-            updated = False
+            scrubbed = False
             for i, ref in enumerate(refs):
                 if ref == fact_ref and i < len(contents):
                     contents[i] = "[REDACTED — GDPR Article 17]"
-                    updated = True
+                    scrubbed = True
 
-            if updated:
+            if scrubbed:
+                contents_canon = _CANON(contents)
+                new_enc = encryption.encrypt(contents_canon) if encryption else None
+                new_db = "[]" if encryption else contents_canon
+
                 conn.execute(
                     "UPDATE decision_records "
-                    "SET retrieved_contents = %s "
+                    "SET retrieved_contents = %s, retrieved_contents_enc = %s "
                     "WHERE decision_id = %s",
-                    (json.dumps(contents), row["decision_id"]),
+                    (new_db, new_enc, row["decision_id"]),
                 )
                 affected += 1
 
@@ -498,7 +537,7 @@ class DecisionTrailService:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _row_to_record(row: dict[str, Any]) -> DecisionRecord:
+    def _row_to_record(row: dict[str, Any], encryption: Any | None = None) -> DecisionRecord:
         """Convert a database row dict into a DecisionRecord."""
         def _load_json(val):
             if val is None:
@@ -507,22 +546,37 @@ class DecisionTrailService:
                 return val
             return json.loads(val)
 
+        if encryption and hasattr(encryption, "get_encryptor"):
+            encryption = encryption.get_encryptor(row["tenant_id"])
+
+        query_enc = row.get("query_enc")
+        query = encryption.decrypt(query_enc) if encryption and query_enc else row["query"]
+
+        raw_output_enc = row.get("raw_output_enc")
+        raw_output = encryption.decrypt(raw_output_enc) if encryption and raw_output_enc else row["raw_output"]
+
+        contents_enc = row.get("retrieved_contents_enc")
+        contents_str = encryption.decrypt(contents_enc) if encryption and contents_enc else row.get("retrieved_contents")
+        
+        parsed_enc = row.get("parsed_output_enc")
+        parsed_str = encryption.decrypt(parsed_enc) if encryption and parsed_enc else row.get("parsed_output")
+
         return DecisionRecord(
             decision_id=row["decision_id"],
             tenant_id=row["tenant_id"],
             store_id=row["store_id"],
             session_id=row.get("session_id"),
             created_at=row["created_at"].astimezone(timezone.utc),
-            query=row["query"],
+            query=query,
             retrieved_refs=_load_json(row.get("retrieved_refs")) or [],
-            retrieved_contents=_load_json(row.get("retrieved_contents")) or [],
+            retrieved_contents=_load_json(contents_str) or [],
             retrieval_scores=_load_json(row.get("retrieval_scores")) or [],
             retrieval_options=_load_json(row.get("retrieval_options")) or {},
             model_id=row["model_id"],
             prompt_hash=row.get("prompt_hash"),
             parameters=_load_json(row.get("parameters")) or {},
-            raw_output=row["raw_output"],
-            parsed_output=_load_json(row.get("parsed_output")),
+            raw_output=raw_output,
+            parsed_output=_load_json(parsed_str),
             output_tokens=row.get("output_tokens"),
             latency_ms=row.get("latency_ms"),
             signature=row.get("signature"),

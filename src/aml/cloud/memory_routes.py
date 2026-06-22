@@ -3,6 +3,7 @@ GRAFOMEM Memory Sync & Export Routes — Sprint 29.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from aml.server.scopes import require_scope
 from pydantic import BaseModel
 
 from aml.cloud.memory_sync import MemorySyncService
@@ -20,6 +21,7 @@ def get_memory_sync_routes(
 
     @router.get("/{store_id}/export")
     def export_memory_graph(request: Request, store_id: str):
+        require_scope(request, "memory:read")
         tenant_id = getattr(request.state, "tenant_id", "default_namespace")
         tenant_role = getattr(request.state, "tenant_role", "admin")
         # Admin check
@@ -38,6 +40,7 @@ def get_memory_sync_routes(
 
     @router.post("/{store_id}/sync")
     def sync_memory_graph(request: Request, store_id: str, pkg: SyncPayload):
+        require_scope(request, "memory:write")
         tenant_id = getattr(request.state, "tenant_id", "default_namespace")
         tenant_role = getattr(request.state, "tenant_role", "admin")
         # Admin check

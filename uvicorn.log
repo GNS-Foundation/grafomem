@@ -1,0 +1,110 @@
+GRAFOMEM_LEDGER_URL not set! Defaulting to local postgresql://grafomem:dev@localhost:5432/grafomem_ledger to ensure restore-independence.
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objINFO:     127.0.0.1:52222 - "POST /v1/portal/signup HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55831 - "POST /v1/portal/signup HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57434 - "POST /v1/portal/signup HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57442 - "POST /v1/portal/signup HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57446 - "GET /health HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [73464]
+using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+GRAFOMEM server v1.0.0
+  Engine:    PostgreSQL + pgvector
+  Backend:   aml.backends.postgres_gmp:PostgresGMPBackend
+  Database:  localhost:5432/grafomem
+  Embedder:  bge
+  Auth:      none
+  Batching:  OFF
+  Cloud:     ON (/v1/cloud)
+  Listening: http://0.0.0.0:8080
+  Docs:      http://0.0.0.0:8080/docs
+
+INFO:     Started server process [3472]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+ERROR:    [Errno 48] error while attempting to bind on address ('0.0.0.0', 8080): address already in use
+INFO:     Waiting for application shutdown.
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+Error saving manifold cache for 0ba6c2f9115a4e84bd2abe661f5dda25: unhashable type: 'dict'
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+INFO:     Application shutdown complete.

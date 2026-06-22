@@ -4,6 +4,7 @@ src/aml/cloud/world_model_routes.py   (R5)
 Factory: create_world_model_router(service) -> APIRouter. Tenant via request.state.tenant.tenant_id.
 """
 from fastapi import APIRouter, Request, HTTPException, Query
+from aml.server.scopes import require_scope
 from pydantic import BaseModel
 from typing import Optional
 
@@ -48,6 +49,7 @@ def create_world_model_router(service) -> APIRouter:
 
     @router.post("/types", status_code=201)
     async def register_type(req: RegisterTypeRequest, request: Request):
+        require_scope(request, "artifacts:admin")
         try:
             return service.register_type(_tenant(request), req.kind, req.name, req.spec)
         except WorldModelError as e:
@@ -55,10 +57,12 @@ def create_world_model_router(service) -> APIRouter:
 
     @router.get("/types")
     async def list_types(request: Request, kind: Optional[str] = Query(None)):
+        require_scope(request, "artifacts:read")
         return service.list_types(_tenant(request), kind=kind)
 
     @router.get("/types/{type_id}")
     async def get_type(type_id: str, request: Request):
+        require_scope(request, "artifacts:read")
         try:
             return service.get_type(_tenant(request), type_id)
         except WorldModelError:
@@ -66,10 +70,12 @@ def create_world_model_router(service) -> APIRouter:
 
     @router.get("/types/{type_id}/verify")
     async def verify_type(type_id: str, request: Request):
+        require_scope(request, "artifacts:read")
         return service.verify_type(_tenant(request), type_id)
 
     @router.post("/validate/object")
     async def validate_object(req: ValidateObjectRequest, request: Request):
+        require_scope(request, "artifacts:admin")
         try:
             return service.validate_object(_tenant(request), req.type_name, req.instance)
         except WorldModelError as e:
@@ -77,6 +83,7 @@ def create_world_model_router(service) -> APIRouter:
 
     @router.post("/validate/link")
     async def validate_link(req: ValidateLinkRequest, request: Request):
+        require_scope(request, "artifacts:admin")
         try:
             return service.validate_link(_tenant(request), req.link_name, req.from_type, req.to_type)
         except WorldModelError as e:
@@ -84,6 +91,7 @@ def create_world_model_router(service) -> APIRouter:
 
     @router.post("/actions/invoke", status_code=201)
     async def invoke(req: InvokeRequest, request: Request):
+        require_scope(request, "artifacts:admin")
         try:
             return service.invoke_action(_tenant(request), ActionInvocation(**req.model_dump()))
         except ActionDenied as e:
@@ -95,10 +103,12 @@ def create_world_model_router(service) -> APIRouter:
 
     @router.get("/actions/stats")
     async def stats(request: Request):
+        require_scope(request, "artifacts:read")
         return service.get_stats(_tenant(request))
 
     @router.get("/actions/{action_id}")
     async def get_action(action_id: str, request: Request):
+        require_scope(request, "artifacts:read")
         try:
             return service.get_action(_tenant(request), action_id)
         except WorldModelError:
@@ -106,14 +116,17 @@ def create_world_model_router(service) -> APIRouter:
 
     @router.get("/actions/{action_id}/verify")
     async def verify_action(action_id: str, request: Request):
+        require_scope(request, "artifacts:read")
         return service.verify_action(_tenant(request), action_id)
 
     @router.post("/actions/{action_id}/approve")
     async def approve(action_id: str, req: ResumeRequest, request: Request):
+        require_scope(request, "artifacts:admin")
         return service.resume_action(_tenant(request), action_id, True, req.approver)
 
     @router.post("/actions/{action_id}/reject")
     async def reject(action_id: str, req: ResumeRequest, request: Request):
+        require_scope(request, "artifacts:admin")
         return service.resume_action(_tenant(request), action_id, False, req.approver)
 
     return router

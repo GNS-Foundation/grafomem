@@ -18,6 +18,7 @@ from aml.cloud.schemas import (
     LLMProviderListResponse,
     ToolListResponse,
 )
+from aml.server.scopes import require_scope
 
 logger = logging.getLogger("grafomem.cloud.llm_routes")
 
@@ -83,6 +84,7 @@ def create_llm_router(llm_registry, tool_registry) -> APIRouter:
     async def register_provider(req: RegisterProviderRequest, request: Request):
         """Register or update an LLM provider for your tenant."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "llm:admin")
         try:
             config = llm_registry.register_provider(
                 tenant_id=tenant_id,
@@ -103,6 +105,7 @@ def create_llm_router(llm_registry, tool_registry) -> APIRouter:
     async def list_providers(request: Request):
         """List all registered LLM providers for your tenant."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "llm:admin")
         providers = llm_registry.list_providers(tenant_id)
         return {
             "providers": [llm_registry.config_to_dict(p) for p in providers],
@@ -113,6 +116,7 @@ def create_llm_router(llm_registry, tool_registry) -> APIRouter:
     async def delete_provider(model_id: str, request: Request):
         """Remove an LLM provider registration."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "llm:admin")
         deleted = llm_registry.delete_provider(tenant_id, model_id)
         if not deleted:
             raise HTTPException(404, f"Provider '{model_id}' not found")
@@ -122,6 +126,7 @@ def create_llm_router(llm_registry, tool_registry) -> APIRouter:
     async def update_provider(model_id: str, request: Request):
         """Update an existing LLM provider (API key, base URL, temperature, max tokens)."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "llm:admin")
         body = await request.json()
 
         # Find existing provider
@@ -158,6 +163,7 @@ def create_llm_router(llm_registry, tool_registry) -> APIRouter:
     async def register_tool(req: RegisterToolRequest, request: Request):
         """Register a custom tool for your tenant."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "llm:admin")
         try:
             tool = tool_registry.register_tool(
                 tenant_id=tenant_id,
@@ -178,6 +184,7 @@ def create_llm_router(llm_registry, tool_registry) -> APIRouter:
     async def list_tools(request: Request):
         """List all tools (built-in + custom) for your tenant."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "llm:admin")
         tools = tool_registry.list_tools(tenant_id)
         return {
             "tools": [
@@ -196,6 +203,7 @@ def create_llm_router(llm_registry, tool_registry) -> APIRouter:
     async def delete_tool(tool_name: str, request: Request):
         """Remove a custom tool (built-in tools cannot be deleted)."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "llm:admin")
         deleted = tool_registry.delete_tool(tenant_id, tool_name)
         if not deleted:
             raise HTTPException(
@@ -212,6 +220,7 @@ def create_llm_router(llm_registry, tool_registry) -> APIRouter:
     async def seed_builtins(request: Request):
         """Seed built-in tools for your tenant (grafomem_retrieve, etc.)."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "llm:admin")
         count = tool_registry.seed_builtin_tools(tenant_id)
         return {"seeded": count}
 

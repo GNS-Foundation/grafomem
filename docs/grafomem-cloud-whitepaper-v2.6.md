@@ -1,7 +1,7 @@
 # GRAFOMEM Cloud — Internal Technical Whitepaper
 
 **Classification: INTERNAL — Not for publication**
-**Version: 2.6.1 · June 2026**
+**Version: 2.6.2 · June 2026**
 **Authors: GNS Foundation Engineering**
 
 ---
@@ -18,14 +18,19 @@ The platform is built on **7 governance layers** stacked on top of the open-sour
 > **v2.4/2.5 milestone**: Sprints 17–20 deliver **multi-provider LLM support** — all three providers now have a live conformance run (OpenAI gpt-4o-mini at the 39-test baseline; Anthropic Claude Opus 4 at **49/51**; Google Gemini 2.5 Pro at **48/51** — no live run is a clean 51; see §32) — plus **CrewAI/AutoGen SDK adapters**, **Continuous Assurance** (drift detection, scheduled checks, baselines), and **RoutingPool** (read-replica routing). Platform now has **~163 API endpoints**, **112/112 unit tests green**, and **113 conformance gates** (mock).
 > v2.5 is a consistency reconciliation pass — endpoint/table counts now cite `openapi.json` and the schema as the source of truth; §16, §18, §21, and §2 are brought current through Sprint 20.
 >
+> **v2.6.2** adds Sprint 22: **Integration Seam Regression Net** — 13 integration tests against real local Postgres (no mocks) covering RBAC, key rotation, loop detection, timeout, SSE status, and erasure wiring. Five infrastructure bugs fixed during bringup: `_PooledConnectionProxy.__setattr__` (broke pooled transactional connections), gcrumbs transaction rollback (advisory lock deadlocks), `_run_round_robin` missing `FAILED_TIMEOUT` handler (deadline-exceeded workflows not terminated), `stream_workflow` route referencing undefined `req` (SSE streaming broken), and `termination_reason` wired to Workflow dataclass + DB + API + SSE.
+>
+> **v2.6.3** adds Sprint 23: **Scoped / Role-Based Keys** — flat single-key-per-tenant replaced with scoped, prefixed, least-privilege API keys. 14-scope vocabulary (`memory:read/write/admin`, `orchestrator:run/admin`, `governance:read/admin`, `decisions:read`, `erasure:execute`, `gcrumbs:read`, `llm:admin`, `webhooks:admin`, `keys:admin`, `*`). Key prefixes (`gfm_`, `gfm_ro_`, `gfm_sa_`). Scope enforcement wired into all 6 route files (30+ endpoints). Per-key `expires_at`, `allowed_stores`, `ip_allowlist`, `last_used_at`. Test suite at 26/26 (13 new scope tests, zero regressions).
+>
+> **v2.6.4** adds Sprint 23b: **Scope Perimeter Closure** — the scope audit expanded enforcement from 6 to **all 22 route files** and the vocabulary from 14 to **21 scopes** (added `admin:platform`, `compliance:read/admin`, `artifacts:read/admin`, `manifold:read`, `sso:admin`). Every authenticated endpoint now resolves to a defined scope. LLM provider routes (holding API keys) require `llm:admin`; key-management endpoints require `keys:admin` (privilege-escalation guard). `revoke_key` now invalidates the TTL cache immediately. `ip_allowlist` enforced at auth time (source IP checked → 403 on mismatch). Two-sided (deny+allow) tests for every scoped surface. Test suite at **58/58** (32 new tests, zero regressions).
 > **v2.6.1** is a status-reconciliation pass: the Appendix live-status table and the §17.1 critical-path rows are brought current with shipped functionality (gcrumbs + signed erasure live since Sprint 15; the resilience mechanisms — failover, tool-deny, timeout, loop — validated two-sided in the sealed run); §17.2 conformance counts are aligned to §32 (51/51 mock; OpenAI 39-test baseline); and competitive-absolute language ("the only") and one "tamper-proof" slip are corrected to defensible claims ("tamper-evident").
 
 ### Key Numbers
 
 | Metric | Value |
 |---|---|
-| Total Python source | **~37,000 lines** |
-| Cloud modules (`src/aml/cloud/`) | **~18,500 lines** across 38 files |
+| Total Python source | **~39,000 lines** |
+| Cloud modules (`src/aml/cloud/`) | **~22,800 lines** across 63 files |
 | **Python SDK (`sdk/`)** | **~3,000 lines** across 26 files (incl. CrewAI + AutoGen adapters) |
 | Portal UI | **~5,200 lines** (React + HTML + CSS + JS) |
 | API endpoints | **~163** — authoritative count is the exported `docs/openapi.json` (incl. R1–R5 governed services, gcrumbs, assurance, `/stream` SSE, webhooks, SSO, SAML) |
@@ -37,6 +42,7 @@ The platform is built on **7 governance layers** stacked on top of the open-sour
 | Backend implementations | **4,681 lines** across 15 files |
 | Auth modes | **4** (none, token, **cloud**, **SSO/OIDC**) |
 | **Unit tests** | **112/112 ALL GREEN** (16 LLM provider + 23 adapter + 14 assurance + 15 replica + 44 existing) |
+| **Integration seam tests** | **26 tests** against real Postgres — RBAC, key rotation, loop detection, timeout, SSE, erasure, **scope enforcement** |
 | **Conformance validation** | **51/51 platform + 50/50 v3 + 12/12 gcrumbs = 113 gates ALL GREEN (mock/local)** — live runs per provider in §32 |
 | **SDK validation** | **32/33 ALL GREEN** (live sandbox server) |
 | **GMP self-conformance** | **M8 = 1.000** (7/7 capabilities, PostgresGMPBackend) |
@@ -123,7 +129,7 @@ Every service follows the same pattern:
 - `close()` called in reverse order during shutdown
 
 > [!NOTE]
-> As of Sprint 16, the pool passes `pool=pool` to all 24 service constructors (each accepts `pool=None` and falls back to lazy `psycopg.connect()`). As of Sprint 20 the pool is a `RoutingPool` — reads route to an optional replica (`GRAFOMEM_DB_READ_URL`) with automatic failover to primary; the swap is transparent to every service.
+> As of Sprint 16, the pool passes `pool=pool` to all 24 service constructors (each accepts `pool=None` and falls back to lazy `psycopg.connect()`). As of Sprint 20 the pool is a `RoutingPool` — reads route to an optional replica (`GRAFOMEM_DB_READ_URL`) with automatic failover to primary; the swap is transparent to every service. As of Sprint 22, `_PooledConnectionProxy` correctly delegates attribute writes (including `autocommit`) to the underlying `psycopg.Connection` via `__setattr__`, enabling transactional connections through the pool.
 
 ---
 
@@ -393,7 +399,7 @@ Each report contains:
 
 ## 8. Layer 6 — Agent Orchestrator
 
-**Files**: `orchestrator.py` (1,477 lines) + `orchestrator_routes.py` (440 lines) + `execution_receipts.py` (480 lines) + `memory_taxonomy.py` (380 lines) + `replay_engine.py` (430 lines)
+**Files**: `orchestrator.py` (2,146 lines) + `orchestrator_routes.py` (440 lines) + `execution_receipts.py` (480 lines) + `memory_taxonomy.py` (380 lines) + `replay_engine.py` (430 lines)
 **Tables**: `agent_definitions` + `workflow_definitions` + `workflow_steps` + `execution_receipts` + `workflow_context` + `replay_results`
 **Endpoints**: 19 under `/v1/orchestrator/`
 
@@ -519,6 +525,7 @@ Architecture:
 | **Max steps** | `agent.max_steps` per agent, `workflow.max_total_steps` per workflow |
 | **Timeout** | `workflow.timeout_seconds` with `time.monotonic()` check |
 | **Loop detection** | Hash of last N outputs; if repeated → terminate |
+| **Termination reason** | Typed `termination_reason` on Workflow: `loop_detected`, `deadline_exceeded`, `max_steps_reached`, `hitl_rejected`, `manual`. Surfaced on API JSON + SSE `workflow.complete` event. |
 | **Dead letter** | Failed steps logged, workflow can continue or halt |
 | **Supervisor restriction** | Supervisor can only route to agents in the workflow |
 
@@ -565,12 +572,64 @@ class LLMResponse:
 
 **Every provider normalizes to this interface** — the orchestrator doesn't know or care which provider is behind a model_id.
 
-### 9.3 API Key Storage
+### 9.3 API Key Storage & Scoped Access (Sprint 23)
 
-API keys are stored in PostgreSQL per-tenant. The `config_to_dict()` method **never exposes the raw key** — it returns `api_key_set: true/false` instead.
+API keys are stored in the `tenant_api_keys` PostgreSQL table per-tenant. The `config_to_dict()` method **never exposes the raw key** — it returns `api_key_set: true/false` instead.
 
 > [!NOTE]
 > **Pre-production hardening applied**: API keys are stored encrypted at rest using Fernet symmetric encryption via the `PROVIDER_ENCRYPTION_KEY`. All production plaintext keys have been migrated and purged. Additionally, BYOM inference is fail-closed: a missing tenant key explicitly aborts rather than falling back to platform environment variables.
+
+#### 9.3.1 Scope System
+
+Sprint 23 replaced flat single-key-per-tenant with **scoped, prefixed, least-privilege keys**.
+
+**Module**: [`scopes.py`](file:///Users/camiloayerbeposada/grafomem/src/aml/server/scopes.py)
+
+| Scope | Grants |
+|---|---|
+| `memory:read` | Read/retrieve from memory stores |
+| `memory:write` | Write/delete/flush/supersede |
+| `memory:admin` | Create/manage stores |
+| `orchestrator:run` | Run/resume/stream workflows, list agents |
+| `orchestrator:admin` | Create/update/delete agents and workflows |
+| `governance:read` | View policies and evaluation logs |
+| `governance:admin` | Create/update/delete policies |
+| `decisions:read` | View decision trail records |
+| `erasure:execute` | Issue/verify erasure certificates |
+| `gcrumbs:read` | View breadcrumbs, epochs, proofs |
+| `llm:admin` | Manage LLM provider configurations |
+| `webhooks:admin` | Manage webhook endpoints |
+| `keys:admin` | Manage API keys |
+| `*` | Superuser — all scopes |
+
+**Design decisions:**
+- **Flat scopes only** — no mid-level wildcards like `memory:*`. Only `*` superuser exists.
+- **Role defaults** — `admin` → `["*"]`, `agent` → `[memory:read, memory:write, orchestrator:run, decisions:read, gcrumbs:read]`, `read_only` → `[memory:read, decisions:read, gcrumbs:read]`. Explicit `scopes` override role defaults.
+- **Key prefixes** — `gfm_` (admin/agent), `gfm_ro_` (read-only), `gfm_sa_` (service account). Self-evident key type aids log review.
+- **Store restriction** — `allowed_stores: list[str]` limits a key to specific memory stores. Empty = all stores accessible.
+- **Expiry** — `expires_at: TIMESTAMPTZ` enforced by the auth middleware on every request. Expired keys return 403.
+- **Usage tracking** — `last_used_at` updated fire-and-forget on each request.
+
+#### 9.3.2 Key Schema (`tenant_api_keys`)
+
+| Column | Type | Purpose |
+|---|---|---|
+| `key_id` | `TEXT PK` | Immutable key identifier |
+| `tenant_id` | `TEXT` | Owning tenant |
+| `api_key` | `TEXT UNIQUE` | The secret key value (prefixed) |
+| `name` | `TEXT` | Human-readable label |
+| `role` | `TEXT` | Base role (admin/agent/read_only) |
+| `scopes` | `TEXT[]` | Effective scopes (overrides role default) |
+| `allowed_stores` | `TEXT[]` | Store-level restriction |
+| `expires_at` | `TIMESTAMPTZ` | Key expiry (NULL = never) |
+| `last_used_at` | `TIMESTAMPTZ` | Last successful auth |
+| `ip_allowlist` | `TEXT[]` | IP restriction (future) |
+| `is_service_account` | `BOOLEAN` | Service account flag |
+| `created_at` | `TIMESTAMPTZ` | Creation timestamp |
+
+#### 9.3.3 Enforcement
+
+`require_scope(request, scope)` and `require_store_access(request, store_id)` are wired into **all 6 route files** (30+ endpoints). In no-auth mode (single-tenant), all scopes are granted. The `*` superuser scope bypasses all checks.
 
 ---
 
@@ -853,6 +912,9 @@ httpx                          # Ollama HTTP + tool webhooks
 | Report tamper detection | BLAKE2b-256(report_content) + Ed25519(hash) | On report generation |
 | Corpus reproducibility | BLAKE2b-256(canonical_json, exclude non-deterministic) | On corpus build |
 
+> [!NOTE]
+> **Transaction safety (Sprint 22):** All gcrumbs transactional methods (`append_breadcrumb`, `seal_epoch`) issue `conn.rollback()` on exception before returning the connection to the pool, preventing `pg_advisory_xact_lock` leaks that would deadlock subsequent same-tenant breadcrumb operations.
+
 ---
 
 ## 16. Build Ledger
@@ -914,7 +976,14 @@ httpx                          # Ollama HTTP + tool webhooks
 | **19** | **Continuous Assurance** (`assurance.py`, `scheduler.py`, `assurance_routes.py` 11 endpoints, 14 tests) | — | ~700 |
 | **20** | **Horizontal Scaling** (`RoutingPool`, read-replica routing, 15 tests) | — | ~250 |
 | **21** | **Semantic Manifold (Visual Governance)** (`cloud-v2` Next.js/React UI, Hexagonal SOM, Level 1/2 Deep Zoom) | — | ~1,000 |
-| **Total** | **21 Sprints** | **10+ commits** | **~28,000** |
+| **22** | **Integration Seam Regression Net** | — | **~380** |
+| | 22a: Connection pool proxy `__setattr__` (`db_pool.py`) | | ~6 |
+| | 22b: Transaction rollback in gcrumbs (`gcrumbs.py`) | | ~4 |
+| | 22c: `termination_reason` field + DB + API + SSE (`orchestrator.py`) | | ~60 |
+| | 22d: `_run_round_robin` `FAILED_TIMEOUT` handler (`orchestrator.py`) | | ~6 |
+| | 22e: `stream_workflow` `timeout_seconds` query param (`orchestrator_routes.py`) | | ~2 |
+| | 22f: Integration seam test suite (`test_integration_seams.py` — 13 tests) | | ~320 |
+| **Total** | **22 Sprints** | **10+ commits** | **~28,400** |
 
 ---
 
@@ -948,6 +1017,8 @@ httpx                          # Ollama HTTP + tool webhooks
 | **Tool governance** | Disallowed tool denied AND safe tool executed | P1 | ✅ **VALIDATED** (two-sided, native `tool_deny`, resilience sealed run) |
 | **Workflow timeout** | Over-deadline workflow terminated AND in-budget workflow completes | P1 | ✅ **VALIDATED** (two-sided, resilience sealed run; between-step enforcement, intra-step abort not demonstrated) |
 | **Loop detection** | Repeated output auto-terminated AND legitimate progress not killed | P2 | ✅ **VALIDATED** (two-sided, resilience sealed run) |
+| **Loop detection (integration)** | Mock LLM → exact-repeat → status=terminated, reason=loop_detected | P0 | ✅ **VALIDATED** (9s, local Postgres, Sprint 22) |
+| **Deadline enforcement (integration)** | 0.001s timeout → terminated, reason=deadline_exceeded | P0 | ✅ **VALIDATED** (local Postgres, Sprint 22) |
 
 ### 17.2 Next Gates Before Production
 
@@ -973,7 +1044,7 @@ The architectural decision to migrate to Qdrant as the primary vector backend (P
 
 ## 18. File Inventory
 
-### Cloud Modules (~18,500 lines, 38 files)
+### Cloud Modules (~22,800 lines, 63 files)
 
 | File | Lines | Purpose |
 |---|---|---|

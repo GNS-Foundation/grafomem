@@ -17,6 +17,8 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
+from aml.server.scopes import require_scope
+
 logger = logging.getLogger("grafomem.cloud.regulatory_routes")
 
 from aml.cloud.schemas import (
@@ -63,6 +65,7 @@ def create_regulatory_router(report_service) -> APIRouter:
     async def report_stats(request: Request):
         """Summary statistics for regulatory reports."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "compliance:read")
         return report_service.get_stats(tenant_id)
 
     # ------------------------------------------------------------------
@@ -109,6 +112,7 @@ def create_regulatory_router(report_service) -> APIRouter:
     async def generate_report(req: GenerateReportRequest, request: Request):
         """Generate a new regulatory compliance report."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "compliance:admin")
 
         try:
             report = report_service.generate(
@@ -136,6 +140,7 @@ def create_regulatory_router(report_service) -> APIRouter:
     ):
         """List all regulatory reports for the tenant."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "compliance:read")
         reports = report_service.list_reports(tenant_id, limit=limit, offset=offset)
         return {
             "reports": [report_service.report_summary(r) for r in reports],
@@ -150,6 +155,7 @@ def create_regulatory_router(report_service) -> APIRouter:
     async def get_report(report_id: str, request: Request):
         """Retrieve a full regulatory report."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "compliance:read")
         report = report_service.get(report_id)
 
         if report is None or report.tenant_id != tenant_id:
@@ -165,6 +171,7 @@ def create_regulatory_router(report_service) -> APIRouter:
     async def download_report(report_id: str, request: Request):
         """Download the full report as a JSON file."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "compliance:read")
         report = report_service.get(report_id)
 
         if report is None or report.tenant_id != tenant_id:
@@ -190,6 +197,7 @@ def create_regulatory_router(report_service) -> APIRouter:
     async def download_report_pdf(report_id: str, request: Request):
         """Download the report as a styled PDF document."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "compliance:read")
         report = report_service.get(report_id)
 
         if report is None or report.tenant_id != tenant_id:
@@ -226,6 +234,7 @@ def create_regulatory_router(report_service) -> APIRouter:
     async def delete_report(report_id: str, request: Request):
         """Delete a regulatory report."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "compliance:admin")
         deleted = report_service.delete(report_id, tenant_id)
 
         if not deleted:

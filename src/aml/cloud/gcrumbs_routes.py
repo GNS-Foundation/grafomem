@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
+from aml.server.scopes import require_scope
+
 from aml.cloud.gcrumbs import GcrumbsError, GcrumbsService
 
 
@@ -37,6 +39,7 @@ def create_gcrumbs_router(svc: GcrumbsService) -> APIRouter:
     @router.post("/roll")
     def roll_epoch(request: Request):
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "gcrumbs:read")
         try:
             return svc.roll_epoch(tenant_id)
         except GcrumbsError as e:
@@ -49,16 +52,19 @@ def create_gcrumbs_router(svc: GcrumbsService) -> APIRouter:
         offset: int = Query(0, ge=0),
     ):
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "gcrumbs:read")
         return svc.get_breadcrumbs(tenant_id, limit=limit, offset=offset)
 
     @router.get("/epochs")
     def list_epochs(request: Request):
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "gcrumbs:read")
         return svc.get_epochs(tenant_id)
 
     @router.get("/epochs/{epoch_number}")
     def get_epoch(epoch_number: int, request: Request):
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "gcrumbs:read")
         ep = svc.get_epoch(tenant_id, epoch_number)
         if not ep:
             raise HTTPException(404, f"epoch {epoch_number} not found")
@@ -71,6 +77,7 @@ def create_gcrumbs_router(svc: GcrumbsService) -> APIRouter:
         seq: int = Query(..., description="breadcrumb seq to prove"),
     ):
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "gcrumbs:read")
         try:
             return svc.inclusion_proof(tenant_id, epoch_number, seq)
         except GcrumbsError as e:
@@ -79,11 +86,13 @@ def create_gcrumbs_router(svc: GcrumbsService) -> APIRouter:
     @router.get("/verify")
     def verify_chain(request: Request):
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "gcrumbs:read")
         return svc.verify_chain(tenant_id)
 
     @router.get("/stats")
     def stats(request: Request):
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "gcrumbs:read")
         return svc.get_stats(tenant_id)
 
     return router

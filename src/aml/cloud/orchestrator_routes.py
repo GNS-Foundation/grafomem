@@ -19,6 +19,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
+from aml.server.scopes import require_scope
+
 from aml.cloud.schemas import (
     AgentResponse,
     AgentListResponse,
@@ -129,6 +131,7 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
     async def get_stats(request: Request):
         """Dashboard statistics for the orchestrator."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "orchestrator:run")
         return orchestrator.get_stats(tenant_id)
 
     # ------------------------------------------------------------------
@@ -154,6 +157,7 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
     async def create_agent(req: CreateAgentRequest, request: Request):
         """Create a new agent definition."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "orchestrator:admin")
         try:
             unsafe_dev = os.environ.get("UNSAFE_LOCAL_DEV", "false").lower() == "true"
             
@@ -188,6 +192,7 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
     ):
         """List all agents for the tenant."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "orchestrator:run")
         agents = orchestrator.list_agents(tenant_id, enabled_only=enabled_only)
         return {
             "agents": [orchestrator.agent_to_dict(a) for a in agents],
@@ -198,6 +203,7 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
     async def get_agent(agent_id: str, request: Request):
         """Get a single agent by ID."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "orchestrator:run")
         agent = orchestrator.get_agent(agent_id)
         if agent is None or agent.tenant_id != tenant_id:
             raise HTTPException(404, f"Agent '{agent_id}' not found")
@@ -211,6 +217,7 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
     ):
         """Update an agent definition."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "orchestrator:admin")
         
         if req.fallback_models is not None:
             unsafe_dev = os.environ.get("UNSAFE_LOCAL_DEV", "false").lower() == "true"
@@ -228,6 +235,7 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
     async def delete_agent(agent_id: str, request: Request):
         """Delete an agent definition."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "orchestrator:admin")
         deleted = orchestrator.delete_agent(agent_id, tenant_id)
         if not deleted:
             raise HTTPException(404, f"Agent '{agent_id}' not found")
@@ -241,6 +249,7 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
     async def create_workflow(req: CreateWorkflowRequest, request: Request):
         """Create a new workflow."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "orchestrator:admin")
         try:
             workflow = orchestrator.create_workflow(
                 tenant_id=tenant_id,
@@ -267,6 +276,7 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
     ):
         """List workflows for the tenant."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "orchestrator:run")
         workflows = orchestrator.list_workflows(
             tenant_id, status=status, limit=limit, offset=offset,
         )
@@ -279,6 +289,7 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
     async def get_workflow(workflow_id: str, request: Request):
         """Get a workflow with all its steps."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "orchestrator:run")
         workflow = orchestrator.get_workflow(workflow_id)
         if workflow is None or workflow.tenant_id != tenant_id:
             raise HTTPException(404, f"Workflow '{workflow_id}' not found")
@@ -296,6 +307,7 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
     ):
         """Start a workflow execution with the given input."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "orchestrator:run")
 
         workflow = orchestrator.get_workflow(workflow_id)
         if workflow is None or workflow.tenant_id != tenant_id:
@@ -324,6 +336,7 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
         workflow_id: str,
         request: Request,
         input_text: str = Query(..., description="The initial input for the workflow"),
+        timeout_seconds: float = Query(300.0, description="Timeout in seconds for the workflow"),
     ):
         """Stream a workflow execution via Server-Sent Events.
 
@@ -352,6 +365,7 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
         from aml.cloud.streaming_events import StreamEmitter
 
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "orchestrator:run")
 
         workflow = orchestrator.get_workflow(workflow_id)
         if workflow is None or workflow.tenant_id != tenant_id:
@@ -373,7 +387,7 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
             try:
                 orchestrator.run_workflow(
                     workflow_id, input_text, emitter=emitter,
-                    timeout_seconds=req.timeout_seconds if req.timeout_seconds is not None else 300.0
+                    timeout_seconds=timeout_seconds
                 )
             except Exception as e:
                 logger.error("Streaming workflow failed: %s", e)
@@ -413,6 +427,7 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
     ):
         """Resume a workflow waiting for HITL approval."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "orchestrator:run")
 
         workflow = orchestrator.get_workflow(workflow_id)
         if workflow is None or workflow.tenant_id != tenant_id:
@@ -498,6 +513,7 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
     async def terminate_workflow(workflow_id: str, request: Request):
         """Force-terminate a running workflow."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "orchestrator:admin")
         success = orchestrator.terminate_workflow(workflow_id, tenant_id)
         if not success:
             raise HTTPException(404, f"Workflow '{workflow_id}' not found")
@@ -515,6 +531,7 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
         Useful for testing agents and one-shot queries.
         """
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "orchestrator:run")
         try:
             step = orchestrator.execute_adhoc_step(
                 tenant_id=tenant_id,
@@ -536,6 +553,7 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
     async def get_step(step_id: str, request: Request):
         """Get a single step by ID."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "orchestrator:run")
 
         conn = orchestrator._get_conn()
         row = conn.execute(
@@ -558,6 +576,7 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
     async def get_workflow_receipts(workflow_id: str, request: Request):
         """Get all execution receipts for a workflow."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "orchestrator:run")
         receipt_svc = getattr(request.app.state, "execution_receipts", None)
         if not receipt_svc:
             raise HTTPException(501, "Execution Receipt Service not available")
@@ -577,6 +596,7 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
     async def verify_receipt_chain(workflow_id: str, request: Request):
         """Verify the hash chain integrity of a workflow's receipts."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "orchestrator:run")
         receipt_svc = getattr(request.app.state, "execution_receipts", None)
         if not receipt_svc:
             raise HTTPException(501, "Execution Receipt Service not available")
@@ -592,6 +612,7 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
     async def get_receipt(receipt_id: str, request: Request):
         """Get a single execution receipt."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "orchestrator:run")
         receipt_svc = getattr(request.app.state, "execution_receipts", None)
         if not receipt_svc:
             raise HTTPException(501, "Execution Receipt Service not available")
@@ -613,6 +634,7 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
         WARNING: This calls the LLM provider and incurs costs.
         """
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "orchestrator:run")
         replay_svc = getattr(request.app.state, "replay_engine", None)
         if not replay_svc:
             raise HTTPException(501, "Replay Engine not available")

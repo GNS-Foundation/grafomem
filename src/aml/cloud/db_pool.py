@@ -50,11 +50,22 @@ class _PooledConnectionProxy:
     def __getattr__(self, item: str) -> Any:
         return getattr(self._conn, item)
 
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name in self.__slots__:
+            super().__setattr__(name, value)
+        else:
+            setattr(self._conn, name, value)
+
     def __enter__(self):
-        return self._conn.__enter__()
+        return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        return self._conn.__exit__(exc_type, exc_val, exc_tb)
+        if not getattr(self, "_returned", True):
+            try:
+                self._db_pool.putconn(self)
+            except Exception:
+                pass
+        return False
 
     def __del__(self):
         if not getattr(self, "_returned", True):

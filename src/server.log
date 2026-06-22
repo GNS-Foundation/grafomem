@@ -1,0 +1,574 @@
+GRAFOMEM_LEDGER_URL not set! Defaulting to local postgresql://grafomem:dev@localhost:5432/grafomem_ledger to ensure restore-independence.
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+DANGER: Sandboxed tamper endpoint /v1/_system/run_tamper_proof is ENABLED!
+INFO:     Started server process [51488]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8080 (Press CTRL+C to quit)
+Loading weights:   0%|          | 0/199 [00:00<?, ?it/s]Loading weights: 100%|██████████| 199/199 [00:00<00:00, 10013.63it/s]
+INFO:     127.0.0.1:62361 - "POST /v1/portal/signup HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:62361 - "POST /v1/portal/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "POST /v1/portal/signup HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:62361 - "POST /v1/portal/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "GET /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "DELETE /v1/governance/policies/72ddd55e8e7d4b8eb49e5de3 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "DELETE /v1/governance/policies/d14b828ce2d744e5869a8c1a HTTP/1.1" 200 OK
+Error saving manifold cache for 148e1a2504804e3ba0625ca4f352477e: unhashable type: 'dict'
+DEBUG _require_role admin {'admin'} 148e1a2504804e3ba0625ca4f352477e
+Loading weights:   0%|          | 0/199 [00:00<?, ?it/s]Loading weights: 100%|██████████| 199/199 [00:00<00:00, 17690.36it/s]
+INFO:     127.0.0.1:62361 - "POST /v1/stores HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin', 'agent'} 148e1a2504804e3ba0625ca4f352477e
+INFO:     127.0.0.1:62361 - "POST /v1/stores/dd74ed1a4e72/write HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin', 'agent'} 148e1a2504804e3ba0625ca4f352477e
+INFO:     127.0.0.1:62361 - "POST /v1/stores/dd74ed1a4e72/write HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin', 'agent'} 148e1a2504804e3ba0625ca4f352477e
+INFO:     127.0.0.1:62361 - "POST /v1/stores/dd74ed1a4e72/write HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin', 'agent'} 148e1a2504804e3ba0625ca4f352477e
+INFO:     127.0.0.1:62361 - "POST /v1/stores/dd74ed1a4e72/write HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin', 'agent'} 148e1a2504804e3ba0625ca4f352477e
+INFO:     127.0.0.1:62361 - "POST /v1/stores/dd74ed1a4e72/write HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "POST /v1/llm/providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "POST /v1/orchestrator/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "POST /v1/orchestrator/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "POST /v1/orchestrator/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "POST /v1/orchestrator/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "POST /v1/orchestrator/workflows/691fce5e8ff10dec4831dacfd96de078/run HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "GET /v1/orchestrator/workflows/691fce5e8ff10dec4831dacfd96de078/receipts HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "GET /v1/orchestrator/workflows/691fce5e8ff10dec4831dacfd96de078/verify-chain HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "GET /v1/decisions/?limit=10 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "POST /v1/orchestrator/replay/a97560d9469e0e5b8c42140e1ed8e569 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "DELETE /v1/governance/policies/bbfb11fa1dec442fa5cfe78c HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "POST /v1/stores/dd74ed1a4e72/retrieve HTTP/1.1" 403 Forbidden
+INFO:     127.0.0.1:62361 - "POST /v1/stores/dd74ed1a4e72/retrieve HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin', 'agent'} 148e1a2504804e3ba0625ca4f352477e
+INFO:     127.0.0.1:62361 - "POST /v1/stores/dd74ed1a4e72/delete HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "POST /v1/stores/dd74ed1a4e72/retrieve HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "POST /v1/erasure/issue HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "GET /v1/erasure/ece81e634121fb3cbea2db218366e426/verify HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "DELETE /v1/governance/policies/920f68be36ba4fc788efa3e1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "GET /v1/erasure/ece81e634121fb3cbea2db218366e426/verify HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "GET /v1/erasure/ece81e634121fb3cbea2db218366e426/verify HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "GET /v1/orchestrator/workflows/691fce5e8ff10dec4831dacfd96de078/verify-chain HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "POST /v1/orchestrator/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "POST /v1/orchestrator/workflows/85a4d395a38bd7f59d1d82f60d9932bc/run HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "DELETE /v1/governance/policies/de79b691aa1a4acdb03a94c3 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "POST /v1/orchestrator/workflows/85a4d395a38bd7f59d1d82f60d9932bc/resume HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "POST /v1/orchestrator/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "POST /v1/orchestrator/workflows/a7ffbc8f2a4c9817fba3b42f0bd37375/run HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "POST /v1/orchestrator/workflows/a7ffbc8f2a4c9817fba3b42f0bd37375/resume HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "DELETE /v1/governance/policies/3c3a059408cd4131a8d7952b HTTP/1.1" 200 OK
+Report generation failed: Object of type Decimal is not JSON serializable
+INFO:     127.0.0.1:62361 - "POST /v1/reports/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "GET /v1/governance/stats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "GET /v1/orchestrator/stats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "POST /v1/orchestrator/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "GET /v1/orchestrator/workflows/25080cc7f6ac30ee05c9a1a9f9046ea6/stream?input_text=SSE+streaming+conformance+test HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62361 - "GET /v1/orchestrator/workflows/nonexistent-workflow-id/stream?input_text=should+fail HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62423 - "POST /v1/webhooks/ HTTP/1.1" 201 Created
+INFO:     127.0.0.1:62423 - "GET /v1/webhooks/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62423 - "GET /v1/webhooks/events/types HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62423 - "GET /v1/webhooks/577fb1f42ca74a37954386ac HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62423 - "DELETE /v1/webhooks/577fb1f42ca74a37954386ac HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62423 - "GET /v1/reports/59f68fc71e684c2882cc3017/download/pdf HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62423 - "GET /v1/reports/nonexistent-report-id/download/pdf HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62423 - "GET /v1/portal/sso/providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62425 - "GET /healthz HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62427 - "GET /readyz HTTP/1.1" 200 OK
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+Error saving manifold cache for 148e1a2504804e3ba0625ca4f352477e: unhashable type: 'dict'
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+Error saving manifold cache for 148e1a2504804e3ba0625ca4f352477e: unhashable type: 'dict'
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+Error saving manifold cache for 148e1a2504804e3ba0625ca4f352477e: unhashable type: 'dict'
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+Error saving manifold cache for 148e1a2504804e3ba0625ca4f352477e: unhashable type: 'dict'
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+Error saving manifold cache for 148e1a2504804e3ba0625ca4f352477e: unhashable type: 'dict'
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+Error saving manifold cache for 148e1a2504804e3ba0625ca4f352477e: unhashable type: 'dict'
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+Error saving manifold cache for 148e1a2504804e3ba0625ca4f352477e: unhashable type: 'dict'
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+Error saving manifold cache for 148e1a2504804e3ba0625ca4f352477e: unhashable type: 'dict'
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+Error saving manifold cache for 148e1a2504804e3ba0625ca4f352477e: unhashable type: 'dict'
+INFO:     127.0.0.1:64090 - "POST /v1/portal/signup HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:64090 - "POST /v1/portal/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "POST /v1/portal/signup HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:64090 - "POST /v1/portal/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "GET /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "DELETE /v1/governance/policies/d678d614d9af40c5b493682f HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "DELETE /v1/governance/policies/3e41ad88e5dc4639ab178d72 HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin'} 148e1a2504804e3ba0625ca4f352477e
+Loading weights:   0%|          | 0/199 [00:00<?, ?it/s]Loading weights: 100%|██████████| 199/199 [00:00<00:00, 9298.66it/s]
+INFO:     127.0.0.1:64090 - "POST /v1/stores HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin', 'agent'} 148e1a2504804e3ba0625ca4f352477e
+INFO:     127.0.0.1:64090 - "POST /v1/stores/dcdd4515b8b6/write HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin', 'agent'} 148e1a2504804e3ba0625ca4f352477e
+INFO:     127.0.0.1:64090 - "POST /v1/stores/dcdd4515b8b6/write HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin', 'agent'} 148e1a2504804e3ba0625ca4f352477e
+INFO:     127.0.0.1:64090 - "POST /v1/stores/dcdd4515b8b6/write HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin', 'agent'} 148e1a2504804e3ba0625ca4f352477e
+INFO:     127.0.0.1:64090 - "POST /v1/stores/dcdd4515b8b6/write HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin', 'agent'} 148e1a2504804e3ba0625ca4f352477e
+INFO:     127.0.0.1:64090 - "POST /v1/stores/dcdd4515b8b6/write HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "POST /v1/llm/providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "POST /v1/orchestrator/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "POST /v1/orchestrator/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "POST /v1/orchestrator/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "POST /v1/orchestrator/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "POST /v1/orchestrator/workflows/33c3b615861c4197cd22a2e8cec2ff18/run HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "GET /v1/orchestrator/workflows/33c3b615861c4197cd22a2e8cec2ff18/receipts HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "GET /v1/orchestrator/workflows/33c3b615861c4197cd22a2e8cec2ff18/verify-chain HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "GET /v1/decisions/?limit=10 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "POST /v1/orchestrator/replay/47701fd7ad9d0fd24d817fa4056e64e8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "DELETE /v1/governance/policies/ad1c1cc0251b42cd8bd25e6e HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "POST /v1/stores/dcdd4515b8b6/retrieve HTTP/1.1" 403 Forbidden
+INFO:     127.0.0.1:64090 - "POST /v1/stores/dcdd4515b8b6/retrieve HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin', 'agent'} 148e1a2504804e3ba0625ca4f352477e
+INFO:     127.0.0.1:64090 - "POST /v1/stores/dcdd4515b8b6/delete HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "POST /v1/stores/dcdd4515b8b6/retrieve HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "POST /v1/erasure/issue HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "GET /v1/erasure/94d429b611cfa32644352590a01c59e3/verify HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "DELETE /v1/governance/policies/6d27a15917a343f9b17b925c HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "GET /v1/erasure/94d429b611cfa32644352590a01c59e3/verify HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "GET /v1/erasure/94d429b611cfa32644352590a01c59e3/verify HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "GET /v1/orchestrator/workflows/33c3b615861c4197cd22a2e8cec2ff18/verify-chain HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "POST /v1/orchestrator/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "POST /v1/orchestrator/workflows/7a4c931e924bd51e7d00983b51cee6e0/run HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "DELETE /v1/governance/policies/e1044bef698046edae8a1743 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "POST /v1/orchestrator/workflows/7a4c931e924bd51e7d00983b51cee6e0/resume HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "POST /v1/orchestrator/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "POST /v1/orchestrator/workflows/09ed13cc1f8649334df0c98eb6b06ce3/run HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "POST /v1/orchestrator/workflows/09ed13cc1f8649334df0c98eb6b06ce3/resume HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "DELETE /v1/governance/policies/c14fbf2308724f1299a49ab5 HTTP/1.1" 200 OK
+Report generation failed: Object of type Decimal is not JSON serializable
+INFO:     127.0.0.1:64090 - "POST /v1/reports/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "GET /v1/governance/stats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "GET /v1/orchestrator/stats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "POST /v1/orchestrator/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "GET /v1/orchestrator/workflows/43628b909385693deaad0c290758b597/stream?input_text=SSE+streaming+conformance+test HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "GET /v1/orchestrator/workflows/nonexistent-workflow-id/stream?input_text=should+fail HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64153 - "POST /v1/webhooks/ HTTP/1.1" 201 Created
+INFO:     127.0.0.1:64153 - "GET /v1/webhooks/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64153 - "GET /v1/webhooks/events/types HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64153 - "GET /v1/webhooks/0db249f3bdbb4b53a0b8a012 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64153 - "DELETE /v1/webhooks/0db249f3bdbb4b53a0b8a012 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64153 - "GET /v1/reports/e840638db95640098202d46d/download/pdf HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64153 - "GET /v1/reports/nonexistent-report-id/download/pdf HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64153 - "GET /v1/portal/sso/providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64155 - "GET /healthz HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64157 - "GET /readyz HTTP/1.1" 200 OK
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+Error saving manifold cache for 148e1a2504804e3ba0625ca4f352477e: unhashable type: 'dict'
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+Error saving manifold cache for 148e1a2504804e3ba0625ca4f352477e: unhashable type: 'dict'
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+Error saving manifold cache for 148e1a2504804e3ba0625ca4f352477e: unhashable type: 'dict'
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+Error saving manifold cache for 148e1a2504804e3ba0625ca4f352477e: unhashable type: 'dict'
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+Error saving manifold cache for 148e1a2504804e3ba0625ca4f352477e: unhashable type: 'dict'
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+Error saving manifold cache for 148e1a2504804e3ba0625ca4f352477e: unhashable type: 'dict'
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+Error saving manifold cache for 148e1a2504804e3ba0625ca4f352477e: unhashable type: 'dict'
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+Error saving manifold cache for 148e1a2504804e3ba0625ca4f352477e: unhashable type: 'dict'
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+Error saving manifold cache for 148e1a2504804e3ba0625ca4f352477e: unhashable type: 'dict'
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+Error saving manifold cache for 148e1a2504804e3ba0625ca4f352477e: unhashable type: 'dict'
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+Error saving manifold cache for 148e1a2504804e3ba0625ca4f352477e: unhashable type: 'dict'
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+Error saving manifold cache for 148e1a2504804e3ba0625ca4f352477e: unhashable type: 'dict'
+INFO:     127.0.0.1:49362 - "POST /v1/portal/signup HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:49362 - "POST /v1/portal/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "POST /v1/portal/signup HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:49362 - "POST /v1/portal/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "GET /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "DELETE /v1/governance/policies/5b9733f052eb44c68481ad43 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "DELETE /v1/governance/policies/7bf7e3fdc6934052ae274a1f HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin'} 148e1a2504804e3ba0625ca4f352477e
+Loading weights:   0%|          | 0/199 [00:00<?, ?it/s]Loading weights: 100%|██████████| 199/199 [00:00<00:00, 8157.01it/s]
+INFO:     127.0.0.1:49362 - "POST /v1/stores HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin', 'agent'} 148e1a2504804e3ba0625ca4f352477e
+INFO:     127.0.0.1:49362 - "POST /v1/stores/b9c3384ad251/write HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin', 'agent'} 148e1a2504804e3ba0625ca4f352477e
+INFO:     127.0.0.1:49362 - "POST /v1/stores/b9c3384ad251/write HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin', 'agent'} 148e1a2504804e3ba0625ca4f352477e
+INFO:     127.0.0.1:49362 - "POST /v1/stores/b9c3384ad251/write HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin', 'agent'} 148e1a2504804e3ba0625ca4f352477e
+INFO:     127.0.0.1:49362 - "POST /v1/stores/b9c3384ad251/write HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin', 'agent'} 148e1a2504804e3ba0625ca4f352477e
+INFO:     127.0.0.1:49362 - "POST /v1/stores/b9c3384ad251/write HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "POST /v1/llm/providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "POST /v1/orchestrator/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "POST /v1/orchestrator/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "POST /v1/orchestrator/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "POST /v1/orchestrator/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "POST /v1/orchestrator/workflows/095dd6b936cf5b125fc41626ecb74a8b/run HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "GET /v1/orchestrator/workflows/095dd6b936cf5b125fc41626ecb74a8b/receipts HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "GET /v1/orchestrator/workflows/095dd6b936cf5b125fc41626ecb74a8b/verify-chain HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "GET /v1/decisions/?limit=10 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "POST /v1/orchestrator/replay/465d2ef13fde481b58d71d3fbcd58e3d HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "DELETE /v1/governance/policies/1561ccfe6c8e444c9ca11b28 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "POST /v1/stores/b9c3384ad251/retrieve HTTP/1.1" 403 Forbidden
+INFO:     127.0.0.1:49362 - "POST /v1/stores/b9c3384ad251/retrieve HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin', 'agent'} 148e1a2504804e3ba0625ca4f352477e
+INFO:     127.0.0.1:49362 - "POST /v1/stores/b9c3384ad251/delete HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "POST /v1/stores/b9c3384ad251/retrieve HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "POST /v1/erasure/issue HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "GET /v1/erasure/de0c6566191fbd6e712a2a1392246822/verify HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "DELETE /v1/governance/policies/48172ea58673499c81481922 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "GET /v1/erasure/de0c6566191fbd6e712a2a1392246822/verify HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "GET /v1/erasure/de0c6566191fbd6e712a2a1392246822/verify HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "GET /v1/orchestrator/workflows/095dd6b936cf5b125fc41626ecb74a8b/verify-chain HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "POST /v1/orchestrator/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "POST /v1/orchestrator/workflows/d725fd774934083c644c4ba49bfe4eed/run HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "DELETE /v1/governance/policies/18e8b3c7884f49e09a38247c HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "POST /v1/orchestrator/workflows/d725fd774934083c644c4ba49bfe4eed/resume HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "POST /v1/orchestrator/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "POST /v1/orchestrator/workflows/0a77aba725e2376d7c95a78ab706d368/run HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "POST /v1/orchestrator/workflows/0a77aba725e2376d7c95a78ab706d368/resume HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "DELETE /v1/governance/policies/c8cfe8e018f2451c9a205cf6 HTTP/1.1" 200 OK
+Report generation failed: Object of type Decimal is not JSON serializable
+INFO:     127.0.0.1:49362 - "POST /v1/reports/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "GET /v1/governance/stats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "GET /v1/orchestrator/stats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "POST /v1/orchestrator/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "GET /v1/orchestrator/workflows/4af217cdf1d687c67e4d744347e59e8c/stream?input_text=SSE+streaming+conformance+test HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49362 - "GET /v1/orchestrator/workflows/nonexistent-workflow-id/stream?input_text=should+fail HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49427 - "POST /v1/webhooks/ HTTP/1.1" 201 Created
+INFO:     127.0.0.1:49427 - "GET /v1/webhooks/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49427 - "GET /v1/webhooks/events/types HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49427 - "GET /v1/webhooks/4403bb6d6bf24e3a8186860f HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49427 - "DELETE /v1/webhooks/4403bb6d6bf24e3a8186860f HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49427 - "GET /v1/reports/5d9405b53bfc4902bc552fb4/download/pdf HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49427 - "GET /v1/reports/nonexistent-report-id/download/pdf HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49427 - "GET /v1/portal/sso/providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49429 - "GET /healthz HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49431 - "GET /readyz HTTP/1.1" 200 OK
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+Error saving manifold cache for 148e1a2504804e3ba0625ca4f352477e: unhashable type: 'dict'
+INFO:     127.0.0.1:49464 - "POST /v1/portal/signup HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:49464 - "POST /v1/portal/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "POST /v1/portal/signup HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:49464 - "POST /v1/portal/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "GET /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "DELETE /v1/governance/policies/d41f1d6d7aad4f5dae1bfa93 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "DELETE /v1/governance/policies/8b5e551176684923bc6c1e70 HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin'} 148e1a2504804e3ba0625ca4f352477e
+Loading weights:   0%|          | 0/199 [00:00<?, ?it/s]Loading weights: 100%|██████████| 199/199 [00:00<00:00, 9291.31it/s]
+INFO:     127.0.0.1:49464 - "POST /v1/stores HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin', 'agent'} 148e1a2504804e3ba0625ca4f352477e
+INFO:     127.0.0.1:49464 - "POST /v1/stores/edeef6852aa4/write HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin', 'agent'} 148e1a2504804e3ba0625ca4f352477e
+INFO:     127.0.0.1:49464 - "POST /v1/stores/edeef6852aa4/write HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin', 'agent'} 148e1a2504804e3ba0625ca4f352477e
+INFO:     127.0.0.1:49464 - "POST /v1/stores/edeef6852aa4/write HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin', 'agent'} 148e1a2504804e3ba0625ca4f352477e
+INFO:     127.0.0.1:49464 - "POST /v1/stores/edeef6852aa4/write HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin', 'agent'} 148e1a2504804e3ba0625ca4f352477e
+INFO:     127.0.0.1:49464 - "POST /v1/stores/edeef6852aa4/write HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "POST /v1/llm/providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "POST /v1/orchestrator/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "POST /v1/orchestrator/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "POST /v1/orchestrator/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "POST /v1/orchestrator/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "POST /v1/orchestrator/workflows/2e87dfe30c3bdf5623befc628135694f/run HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "GET /v1/orchestrator/workflows/2e87dfe30c3bdf5623befc628135694f/receipts HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "GET /v1/orchestrator/workflows/2e87dfe30c3bdf5623befc628135694f/verify-chain HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "GET /v1/decisions/?limit=10 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "POST /v1/orchestrator/replay/e3f2e62b1740ce68a3d9347f81ae5d2d HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "DELETE /v1/governance/policies/eaea12bf7a9242fba40ecfa2 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "POST /v1/stores/edeef6852aa4/retrieve HTTP/1.1" 403 Forbidden
+INFO:     127.0.0.1:49464 - "POST /v1/stores/edeef6852aa4/retrieve HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin', 'agent'} 148e1a2504804e3ba0625ca4f352477e
+INFO:     127.0.0.1:49464 - "POST /v1/stores/edeef6852aa4/delete HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "POST /v1/stores/edeef6852aa4/retrieve HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "POST /v1/erasure/issue HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "GET /v1/erasure/e9214e087724b14bd228cd4ca58a0f07/verify HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "DELETE /v1/governance/policies/be78fb29d7244d74bf7d112d HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "GET /v1/erasure/e9214e087724b14bd228cd4ca58a0f07/verify HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "GET /v1/erasure/e9214e087724b14bd228cd4ca58a0f07/verify HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "GET /v1/orchestrator/workflows/2e87dfe30c3bdf5623befc628135694f/verify-chain HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "POST /v1/orchestrator/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "POST /v1/orchestrator/workflows/842c3889c2cabc8d393900d7ed250fcc/run HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "DELETE /v1/governance/policies/e9eb9ced34c14685b44c936c HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "POST /v1/orchestrator/workflows/842c3889c2cabc8d393900d7ed250fcc/resume HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "POST /v1/orchestrator/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "POST /v1/orchestrator/workflows/585b8e110caaf3c1ca6dae9c6328ed08/run HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "POST /v1/orchestrator/workflows/585b8e110caaf3c1ca6dae9c6328ed08/resume HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "DELETE /v1/governance/policies/e1ac86dbfd9a43358352b10b HTTP/1.1" 200 OK
+Report generation failed: Object of type Decimal is not JSON serializable
+INFO:     127.0.0.1:49464 - "POST /v1/reports/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "GET /v1/governance/stats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "GET /v1/orchestrator/stats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "POST /v1/orchestrator/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "GET /v1/orchestrator/workflows/78df770e2eb598078532de4f1b685991/stream?input_text=SSE+streaming+conformance+test HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49464 - "GET /v1/orchestrator/workflows/nonexistent-workflow-id/stream?input_text=should+fail HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49527 - "POST /v1/webhooks/ HTTP/1.1" 201 Created
+INFO:     127.0.0.1:49527 - "GET /v1/webhooks/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49527 - "GET /v1/webhooks/events/types HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49527 - "GET /v1/webhooks/c3637aa093c843318580f0f3 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49527 - "DELETE /v1/webhooks/c3637aa093c843318580f0f3 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49527 - "GET /v1/reports/c17b6f6e953841c2b5110222/download/pdf HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49527 - "GET /v1/reports/nonexistent-report-id/download/pdf HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49527 - "GET /v1/portal/sso/providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49529 - "GET /healthz HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49531 - "GET /readyz HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "POST /v1/portal/signup HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:49544 - "POST /v1/portal/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "POST /v1/portal/signup HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:49544 - "POST /v1/portal/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "GET /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "DELETE /v1/governance/policies/8a4f9faf2064468a9c64fdd4 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "DELETE /v1/governance/policies/74fa82c5223944ffa254fbef HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin'} 148e1a2504804e3ba0625ca4f352477e
+Loading weights:   0%|          | 0/199 [00:00<?, ?it/s]Loading weights: 100%|██████████| 199/199 [00:00<00:00, 9150.74it/s]
+INFO:     127.0.0.1:49544 - "POST /v1/stores HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin', 'agent'} 148e1a2504804e3ba0625ca4f352477e
+INFO:     127.0.0.1:49544 - "POST /v1/stores/d08c33553353/write HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin', 'agent'} 148e1a2504804e3ba0625ca4f352477e
+INFO:     127.0.0.1:49544 - "POST /v1/stores/d08c33553353/write HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin', 'agent'} 148e1a2504804e3ba0625ca4f352477e
+INFO:     127.0.0.1:49544 - "POST /v1/stores/d08c33553353/write HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin', 'agent'} 148e1a2504804e3ba0625ca4f352477e
+INFO:     127.0.0.1:49544 - "POST /v1/stores/d08c33553353/write HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin', 'agent'} 148e1a2504804e3ba0625ca4f352477e
+INFO:     127.0.0.1:49544 - "POST /v1/stores/d08c33553353/write HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "POST /v1/llm/providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "POST /v1/orchestrator/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "POST /v1/orchestrator/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "POST /v1/orchestrator/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "POST /v1/orchestrator/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "POST /v1/orchestrator/workflows/850f1ceed1909dfb01e0e0e64a7fc657/run HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "GET /v1/orchestrator/workflows/850f1ceed1909dfb01e0e0e64a7fc657/receipts HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "GET /v1/orchestrator/workflows/850f1ceed1909dfb01e0e0e64a7fc657/verify-chain HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "GET /v1/decisions/?limit=10 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "POST /v1/orchestrator/replay/8818e06b2cb02732711876aecc1b9d39 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "DELETE /v1/governance/policies/12c5424dac5f4459ac5bb64e HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "POST /v1/stores/d08c33553353/retrieve HTTP/1.1" 403 Forbidden
+INFO:     127.0.0.1:49544 - "POST /v1/stores/d08c33553353/retrieve HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin', 'agent'} 148e1a2504804e3ba0625ca4f352477e
+INFO:     127.0.0.1:49544 - "POST /v1/stores/d08c33553353/delete HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "POST /v1/stores/d08c33553353/retrieve HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "POST /v1/erasure/issue HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "GET /v1/erasure/e42e5de8f1b808f81bbf03045328018f/verify HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "DELETE /v1/governance/policies/6cdf222f72b34506a2ee201b HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "GET /v1/erasure/e42e5de8f1b808f81bbf03045328018f/verify HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "POST /v1/orchestrator/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "POST /v1/orchestrator/workflows/b3789858bfe3380eee39b170185cd091/run HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "DELETE /v1/governance/policies/437980bc7e71443eb2a30d79 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "POST /v1/orchestrator/workflows/b3789858bfe3380eee39b170185cd091/resume HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "POST /v1/orchestrator/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "POST /v1/orchestrator/workflows/583d349466e21be8e0978fc06873c51d/run HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "POST /v1/orchestrator/workflows/583d349466e21be8e0978fc06873c51d/resume HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "DELETE /v1/governance/policies/b14e1798f20e4c84a51c2bc8 HTTP/1.1" 200 OK
+Report generation failed: Object of type Decimal is not JSON serializable
+INFO:     127.0.0.1:49544 - "POST /v1/reports/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "GET /v1/governance/stats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "GET /v1/orchestrator/stats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "POST /v1/orchestrator/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "GET /v1/orchestrator/workflows/4a31d4591f54884e4f6c8fb139a97cac/stream?input_text=SSE+streaming+conformance+test HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49544 - "GET /v1/orchestrator/workflows/nonexistent-workflow-id/stream?input_text=should+fail HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49603 - "POST /v1/webhooks/ HTTP/1.1" 201 Created
+INFO:     127.0.0.1:49603 - "GET /v1/webhooks/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49603 - "GET /v1/webhooks/events/types HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49603 - "GET /v1/webhooks/6efff89f9f924899bef40719 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49603 - "DELETE /v1/webhooks/6efff89f9f924899bef40719 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49603 - "GET /v1/reports/8c6f0e594773462bb73c4f52/download/pdf HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49603 - "GET /v1/reports/nonexistent-report-id/download/pdf HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49603 - "GET /v1/portal/sso/providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49605 - "GET /healthz HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49607 - "GET /readyz HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "POST /v1/portal/signup HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:49614 - "POST /v1/portal/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "POST /v1/portal/signup HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:49614 - "POST /v1/portal/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "GET /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "DELETE /v1/governance/policies/8dffb9a85b1843e7bcedb0ef HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "DELETE /v1/governance/policies/e678b3a86c8a40ff8ae88eef HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin'} 148e1a2504804e3ba0625ca4f352477e
+Loading weights:   0%|          | 0/199 [00:00<?, ?it/s]Loading weights: 100%|██████████| 199/199 [00:00<00:00, 8436.43it/s]
+INFO:     127.0.0.1:49614 - "POST /v1/stores HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin', 'agent'} 148e1a2504804e3ba0625ca4f352477e
+INFO:     127.0.0.1:49614 - "POST /v1/stores/3f6070252db0/write HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin', 'agent'} 148e1a2504804e3ba0625ca4f352477e
+INFO:     127.0.0.1:49614 - "POST /v1/stores/3f6070252db0/write HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin', 'agent'} 148e1a2504804e3ba0625ca4f352477e
+INFO:     127.0.0.1:49614 - "POST /v1/stores/3f6070252db0/write HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin', 'agent'} 148e1a2504804e3ba0625ca4f352477e
+INFO:     127.0.0.1:49614 - "POST /v1/stores/3f6070252db0/write HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin', 'agent'} 148e1a2504804e3ba0625ca4f352477e
+INFO:     127.0.0.1:49614 - "POST /v1/stores/3f6070252db0/write HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "POST /v1/llm/providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "POST /v1/orchestrator/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "POST /v1/orchestrator/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "POST /v1/orchestrator/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "POST /v1/orchestrator/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "POST /v1/orchestrator/workflows/6407cc14876b511b0687b1de3aecd37d/run HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "GET /v1/orchestrator/workflows/6407cc14876b511b0687b1de3aecd37d/receipts HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "GET /v1/orchestrator/workflows/6407cc14876b511b0687b1de3aecd37d/verify-chain HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "GET /v1/decisions/?limit=10 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "POST /v1/orchestrator/replay/3c1f4b38f1f5e4252cdf829e74c8a5ee HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "DELETE /v1/governance/policies/68e5b14b0abd4c0da1e7b44e HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "POST /v1/stores/3f6070252db0/retrieve HTTP/1.1" 403 Forbidden
+INFO:     127.0.0.1:49614 - "POST /v1/stores/3f6070252db0/retrieve HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin', 'agent'} 148e1a2504804e3ba0625ca4f352477e
+INFO:     127.0.0.1:49614 - "POST /v1/stores/3f6070252db0/delete HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "POST /v1/stores/3f6070252db0/retrieve HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "POST /v1/erasure/issue HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "GET /v1/erasure/7b44212d0714bfd46af16fd0f3f597a4/verify HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "DELETE /v1/governance/policies/0fed0a54668a422abc6dc037 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "GET /v1/erasure/7b44212d0714bfd46af16fd0f3f597a4/verify HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "GET /v1/erasure/7b44212d0714bfd46af16fd0f3f597a4/verify HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "GET /v1/orchestrator/workflows/6407cc14876b511b0687b1de3aecd37d/verify-chain HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "POST /v1/orchestrator/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "POST /v1/orchestrator/workflows/16371d3fc7a015e4572c1635555dcbea/run HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "DELETE /v1/governance/policies/8abf555dc68142bba6dc5978 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "POST /v1/orchestrator/workflows/16371d3fc7a015e4572c1635555dcbea/resume HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "POST /v1/orchestrator/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "POST /v1/orchestrator/workflows/94bcc8afd5801a1e7b449810d60f3998/run HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "POST /v1/orchestrator/workflows/94bcc8afd5801a1e7b449810d60f3998/resume HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "DELETE /v1/governance/policies/686c05180fa547eb9404052f HTTP/1.1" 200 OK
+Report generation failed: Object of type Decimal is not JSON serializable
+INFO:     127.0.0.1:49614 - "POST /v1/reports/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "GET /v1/governance/stats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "GET /v1/orchestrator/stats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "POST /v1/orchestrator/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "GET /v1/orchestrator/workflows/edeed0ff8d80a8a1b34b0fb3cdfa4f59/stream?input_text=SSE+streaming+conformance+test HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49614 - "GET /v1/orchestrator/workflows/nonexistent-workflow-id/stream?input_text=should+fail HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49678 - "POST /v1/webhooks/ HTTP/1.1" 201 Created
+INFO:     127.0.0.1:49678 - "GET /v1/webhooks/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49678 - "GET /v1/webhooks/events/types HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49678 - "GET /v1/webhooks/e686359e7fac4ec29c73d2d4 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49678 - "DELETE /v1/webhooks/e686359e7fac4ec29c73d2d4 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49678 - "GET /v1/reports/51219f8451b948cc8fad5f68/download/pdf HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49678 - "GET /v1/reports/nonexistent-report-id/download/pdf HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49678 - "GET /v1/portal/sso/providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49680 - "GET /healthz HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49682 - "GET /readyz HTTP/1.1" 200 OK
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+Error saving manifold cache for 148e1a2504804e3ba0625ca4f352477e: unhashable type: 'dict'
+INFO:     127.0.0.1:49915 - "POST /v1/portal/signup HTTP/1.1" 201 Created
+INFO:     127.0.0.1:49917 - "POST /v1/portal/api-keys HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49920 - "GET /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49923 - "POST /v1/portal/api-keys HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49926 - "GET /v1/governance/policies HTTP/1.1" 200 OK
+/Users/camiloayerbeposada/grafomem/src/aml/cloud/manifold.py:426: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+Error saving manifold cache for 148e1a2504804e3ba0625ca4f352477e: unhashable type: 'dict'
+INFO:     127.0.0.1:49953 - "POST /v1/portal/signup HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:49972 - "POST /v1/portal/signup HTTP/1.1" 201 Created
+INFO:     127.0.0.1:49974 - "POST /v1/portal/api-keys HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49977 - "GET /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49980 - "POST /v1/portal/api-keys HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49983 - "GET /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49999 - "POST /v1/portal/signup HTTP/1.1" 201 Created
+INFO:     127.0.0.1:50001 - "POST /v1/portal/api-keys HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50004 - "GET /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50007 - "POST /v1/portal/api-keys HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50010 - "GET /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50035 - "POST /v1/portal/signup HTTP/1.1" 201 Created
+INFO:     127.0.0.1:50037 - "POST /v1/portal/api-keys HTTP/1.1" 200 OK
+/Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/multiprocessing/resource_tracker.py:254: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '

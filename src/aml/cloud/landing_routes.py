@@ -7,6 +7,8 @@ Factory: create_landing_router(landing_service) -> APIRouter, closing over the s
 from fastapi import APIRouter, Request, HTTPException, Query
 from pydantic import BaseModel
 
+from aml.server.scopes import require_scope
+
 from .landing_service import LandingDenied, LandingPendingHITL, LandingError, LandingIssueRequest
 
 
@@ -43,11 +45,13 @@ def create_landing_router(landing_service) -> APIRouter:
     @router.post("/conformance")
     async def run_conformance(req: ConformanceRequest, request: Request):
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "compliance:admin")
         return landing_service.run_conformance(tenant_id, req.artifact_ref, [], req.data_provenance)
 
     @router.post("/issue", status_code=201)
     async def issue(req: IssueRequest, request: Request):
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "compliance:admin")
         try:
             return landing_service.issue_certificate(tenant_id, LandingIssueRequest(**req.model_dump()))
         except LandingDenied as e:
@@ -59,11 +63,13 @@ def create_landing_router(landing_service) -> APIRouter:
 
     @router.get("/stats")
     async def stats(request: Request):
+        require_scope(request, "compliance:read")
         return landing_service.get_stats(_get_tenant_id(request))
 
     @router.get("/{certificate_id}")
     async def get_one(certificate_id: str, request: Request):
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "compliance:read")
         try:
             return landing_service.get_certificate(tenant_id, certificate_id)
         except LandingError:
@@ -71,18 +77,22 @@ def create_landing_router(landing_service) -> APIRouter:
 
     @router.get("/{certificate_id}/verify")
     async def verify(certificate_id: str, request: Request):
+        require_scope(request, "compliance:read")
         return landing_service.verify_certificate(_get_tenant_id(request), certificate_id)
 
     @router.get("")
     async def list_all(request: Request, limit: int = Query(50, le=200), offset: int = 0):
+        require_scope(request, "compliance:read")
         return landing_service.list_certificates(_get_tenant_id(request), limit=limit, offset=offset)
 
     @router.post("/{certificate_id}/approve")
     async def approve(certificate_id: str, req: ResumeRequest, request: Request):
+        require_scope(request, "compliance:admin")
         return landing_service.resume(_get_tenant_id(request), certificate_id, True, req.approver)
 
     @router.post("/{certificate_id}/reject")
     async def reject(certificate_id: str, req: ResumeRequest, request: Request):
+        require_scope(request, "compliance:admin")
         return landing_service.resume(_get_tenant_id(request), certificate_id, False, req.approver)
 
     return router

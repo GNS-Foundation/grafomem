@@ -38,6 +38,18 @@ from psycopg.types.json import Jsonb
 logger = logging.getLogger("grafomem.cloud.gcrumbs")
 
 # ============================================================================
+# Payload Content Guard
+# ============================================================================
+
+_FORBIDDEN_PAYLOAD_KEYS = {"content", "raw_output", "query", "input_text", "system_prompt"}
+
+def _validate_payload_no_content(payload: dict) -> None:
+    """Reject payloads that embed tenant content in the unencrypted audit trail."""
+    for key in _FORBIDDEN_PAYLOAD_KEYS:
+        if key in payload:
+            raise ValueError(f"Breadcrumb payload must not contain '{key}' — use fact_ref instead")
+
+# ============================================================================
 # Hashing primitives (identical to landing/src/grafomem_landing/hashing.py)
 # ============================================================================
 
@@ -282,6 +294,7 @@ class GcrumbsService:
         payload : dict
             The governance decision: {args, authorized, reasons, agent, tier}.
         """
+        _validate_payload_no_content(payload)
         payload_canon_bytes = canon(payload)
         payload_hash = b2_256(payload_canon_bytes)
 

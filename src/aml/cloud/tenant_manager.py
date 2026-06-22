@@ -21,6 +21,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
+from aml.server.scopes import ROLE_SCOPES, validate_scopes
+
 import psycopg
 from psycopg.rows import dict_row
 
@@ -103,6 +105,12 @@ CREATE TABLE IF NOT EXISTS tenant_api_keys (
     api_key     TEXT        NOT NULL UNIQUE,
     name        TEXT        NOT NULL,
     role        TEXT        NOT NULL DEFAULT 'admin',
+    scopes      TEXT[]      DEFAULT '{}',
+    allowed_stores TEXT[]   DEFAULT '{}',
+    expires_at  TIMESTAMPTZ,
+    last_used_at TIMESTAMPTZ,
+    ip_allowlist TEXT[]     DEFAULT '{}',
+    is_service_account BOOLEAN DEFAULT false,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_tenant_api_keys_key ON tenant_api_keys (api_key);
@@ -110,9 +118,15 @@ CREATE INDEX IF NOT EXISTS idx_tenant_api_keys_tenant ON tenant_api_keys (tenant
 """
 
 
-def _generate_api_key() -> str:
-    """Return a ``gfm_``-prefixed API key with 48 hex chars of entropy."""
-    return f"gfm_{secrets.token_hex(24)}"
+def _generate_api_key(role: str = "admin", is_service_account: bool = False) -> str:
+    """Return a prefixed API key with 48 hex chars of entropy."""
+    if is_service_account:
+        prefix = "gfm_sa_"
+    elif role == "read_only":
+        prefix = "gfm_ro_"
+    else:
+        prefix = "gfm_"
+    return f"{prefix}{secrets.token_hex(24)}"
 
 
 class TenantManager:
@@ -163,7 +177,7 @@ class TenantManager:
         """Create the ``tenants`` table if it does not exist."""
         conn = self._get_conn()
         conn.execute(_SCHEMA_SQL)
-        
+
         # Migrate existing API keys to tenant_api_keys
         conn.execute("""
             INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role, created_at)
@@ -214,9 +228,9 @@ class TenantManager:
             (tenant_id, name, api_key, plan, now),
         )
         conn.execute(
-            "INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role, created_at) "
-            "VALUES (gen_random_uuid()::text, %s, %s, 'Default Admin Key', 'admin', %s)",
-            (tenant_id, api_key, now),
+            "INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role, scopes, created_at) "
+            "VALUES (gen_random_uuid()::text, %s, %s, 'Default Admin Key', 'admin', %s, %s)",
+            (tenant_id, api_key, ["*"], now),
         )
         logger.info("Tenant created: %s (%s, plan=%s)", tenant_id, name, plan)
 
@@ -277,34 +291,103 @@ class TenantManager:
         ).fetchall()
         return [self._row_to_info(r) for r in rows]
 
-    def create_api_key(self, tenant_id: str, name: str, role: str = "admin") -> str:
+    def create_api_key(
+        self, tenant_id: str, name: str, role: str = "admin",
+        scopes: list[str] | None = None,
+        allowed_stores: list[str] | None = None,
+        expires_at: datetime | None = None,
+        ip_allowlist: list[str] | None = None,
+        is_service_account: bool = False,
+    ) -> dict:
         """Create a new scoped API key for a tenant."""
         if role not in ("admin", "agent", "read_only"):
             raise ValueError(f"Invalid role: {role}")
-            
-        new_key = _generate_api_key()
+
+        # Resolve scopes: explicit list wins, otherwise derive from role
+        if scopes is not None:
+            resolved_scopes = validate_scopes(scopes)
+        else:
+            resolved_scopes = list(ROLE_SCOPES.get(role, ROLE_SCOPES["admin"]))
+
+        new_key = _generate_api_key(role=role, is_service_account=is_service_account)
+        key_id = uuid.uuid4().hex
         now = datetime.now(tz=timezone.utc)
         conn = self._get_conn()
-        
+
         # Verify tenant exists
         if not conn.execute("SELECT id FROM tenants WHERE id = %s", (tenant_id,)).fetchone():
             raise KeyError(f"Tenant {tenant_id!r} not found")
-            
+
         conn.execute(
-            "INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role, created_at) "
-            "VALUES (gen_random_uuid()::text, %s, %s, %s, %s, %s)",
-            (tenant_id, new_key, name, role, now),
+            "INSERT INTO tenant_api_keys "
+            "(key_id, tenant_id, api_key, name, role, scopes, allowed_stores, "
+            " expires_at, ip_allowlist, is_service_account, created_at) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            (
+                key_id, tenant_id, new_key, name, role,
+                resolved_scopes,
+                allowed_stores or [],
+                expires_at,
+                ip_allowlist or [],
+                is_service_account,
+                now,
+            ),
         )
         logger.info("API key created for tenant %s (role=%s)", tenant_id, role)
-        return new_key
+        return {
+            "api_key": new_key,
+            "key_id": key_id,
+            "role": role,
+            "scopes": resolved_scopes,
+            "expires_at": expires_at.isoformat() if expires_at else None,
+        }
 
-    def revoke_key(self, api_key: str) -> None:
-        """Revoke a specific API key."""
+    def revoke_key(self, api_key: str) -> str:
+        """Revoke a specific API key. Returns the deleted key value (for cache invalidation)."""
         conn = self._get_conn()
-        cur = conn.execute("DELETE FROM tenant_api_keys WHERE api_key = %s", (api_key,))
-        if cur.rowcount == 0:
-            raise KeyError(f"API key not found")
+        cur = conn.execute("DELETE FROM tenant_api_keys WHERE api_key = %s RETURNING api_key", (api_key,))
+        row = cur.fetchone()
+        if not row:
+            raise KeyError("API key not found")
         logger.info("API key revoked")
+        return row[0] if isinstance(row, tuple) else row["api_key"]
+
+    def revoke_key_by_id(self, key_id: str, tenant_id: str) -> str:
+        """Revoke an API key by key_id (for portal/admin use). Returns the deleted api_key value."""
+        conn = self._get_conn()
+        cur = conn.execute(
+            "DELETE FROM tenant_api_keys WHERE key_id = %s AND tenant_id = %s RETURNING api_key",
+            (key_id, tenant_id),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise KeyError(f"Key '{key_id}' not found for tenant")
+        logger.info("API key revoked by key_id=%s", key_id)
+        return row[0] if isinstance(row, tuple) else row["api_key"]
+
+    def list_api_keys(self, tenant_id: str) -> list[dict[str, Any]]:
+        """Return all API keys for a tenant (without the raw key value)."""
+        conn = self._get_conn()
+        rows = conn.execute(
+            "SELECT key_id, name, role, scopes, created_at, "
+            "       last_used_at, expires_at "
+            "FROM tenant_api_keys WHERE tenant_id = %s "
+            "ORDER BY created_at",
+            (tenant_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def update_key_scopes(self, key_id: str, scopes: list[str]) -> None:
+        """Validate and update the scopes on an existing API key."""
+        resolved = validate_scopes(scopes)
+        conn = self._get_conn()
+        cur = conn.execute(
+            "UPDATE tenant_api_keys SET scopes = %s WHERE key_id = %s",
+            (resolved, key_id),
+        )
+        if cur.rowcount == 0:
+            raise KeyError(f"API key {key_id!r} not found")
+        logger.info("Scopes updated for key %s", key_id)
 
     def update_plan(self, tenant_id: str, plan: str) -> TenantInfo:
         """Change a tenant's plan tier.

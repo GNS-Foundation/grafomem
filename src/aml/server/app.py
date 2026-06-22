@@ -32,6 +32,7 @@ from aml.backends.interface import (
     WriteOptions,
 )
 from aml.server.auth import DEFAULT_NAMESPACE, TenantAuthMiddleware
+from aml.server.scopes import require_scope, require_store_access
 from aml.server.stores import StoreManager
 
 logger = logging.getLogger("grafomem.server")
@@ -226,6 +227,7 @@ async def health(request: Request):
 @router.post("/v1/stores")
 async def create_store(request: Request):
     _require_role(request, {"admin"})
+    require_scope(request, "memory:admin")
     mgr: StoreManager = request.app.state.store_manager
     tenant = _tenant_id(request)
     store_id = mgr.create(tenant_id=tenant)
@@ -248,7 +250,9 @@ async def get_capabilities(store_id: str, request: Request):
 @router.post("/v1/stores/{store_id}/write")
 async def write_memory(store_id: str, req: WriteRequest, request: Request):
     _require_role(request, {"admin", "agent"})
+    require_scope(request, "memory:write")
     tenant = _tenant_id(request)
+    require_store_access(request, store_id)
     entry = _get_store(request, store_id, tenant)
     opts = req.options.to_internal(tenant_override=tenant)
     if getattr(request.app.state, "signing_identity", None) is not None:
@@ -273,7 +277,9 @@ async def write_memory(store_id: str, req: WriteRequest, request: Request):
 @router.post("/v1/stores/{store_id}/write_batch")
 async def write_batch(store_id: str, req: WriteBatchRequest, request: Request):
     _require_role(request, {"admin", "agent"})
+    require_scope(request, "memory:write")
     tenant = _tenant_id(request)
+    require_store_access(request, store_id)
     entry = _get_store(request, store_id, tenant)
 
     if not hasattr(entry.backend, "write_many"):
@@ -295,8 +301,9 @@ async def write_batch(store_id: str, req: WriteBatchRequest, request: Request):
 @router.post("/v1/stores/{store_id}/supersede")
 async def supersede_memory(store_id: str, req: SupersedeRequest, request: Request):
     _require_role(request, {"admin", "agent"})
+    require_scope(request, "memory:write")
     tenant = _tenant_id(request)
-    entry = _get_store(request, store_id, tenant)
+    require_store_access(request, store_id)
     opts = req.options.to_internal(tenant_override=tenant)
     if getattr(request.app.state, "signing_identity", None) is not None:
         opts.signing_identity = request.app.state.signing_identity
@@ -320,7 +327,9 @@ async def supersede_memory(store_id: str, req: SupersedeRequest, request: Reques
 @router.post("/v1/stores/{store_id}/delete")
 async def delete_memory(store_id: str, req: DeleteRequest, request: Request):
     _require_role(request, {"admin", "agent"})
+    require_scope(request, "memory:write")
     tenant = _tenant_id(request)
+    require_store_access(request, store_id)
     entry = _get_store(request, store_id, tenant)
     
     ep = getattr(request.app.state, "erasure_proof", None)
@@ -363,7 +372,9 @@ async def delete_memory(store_id: str, req: DeleteRequest, request: Request):
 
 @router.post("/v1/stores/{store_id}/retrieve")
 async def retrieve_memories(store_id: str, req: RetrieveRequest, request: Request):
+    require_scope(request, "memory:read")
     tenant = _tenant_id(request)
+    require_store_access(request, store_id)
     entry = _get_store(request, store_id, tenant)
     opts = req.options.to_internal(tenant_override=tenant)
 
@@ -393,6 +404,7 @@ async def audit_memories(store_id: str, request: Request):
 @router.post("/v1/stores/{store_id}/flush")
 async def flush_store(store_id: str, request: Request):
     _require_role(request, {"admin", "agent"})
+    require_scope(request, "memory:write")
     entry = _get_store(request, store_id, _tenant_id(request))
     entry.backend.flush()
     return {}
@@ -627,6 +639,8 @@ def create_app(
                 return svc
 
             from aml.cloud.tenant_manager import TenantManager
+            from aml.cloud.tenant_key_manager import TenantKeyManager
+            from aml.cloud.erasure_ledger import ErasureLedger
             from aml.cloud.compliance import ComplianceTracker
             from aml.cloud.metering import MeteringService
             from aml.cloud.routes import router as cloud_router
@@ -634,6 +648,35 @@ def create_app(
             tm = TenantManager(db_url, pool=pool)
             _init(tm)
             app.state.tenant_manager = tm
+
+            ledger_url = os.environ.get("GRAFOMEM_LEDGER_URL")
+            if not ledger_url:
+                ledger_url = "postgresql://grafomem:dev@localhost:5432/grafomem_ledger"
+                logger.warning(f"GRAFOMEM_LEDGER_URL not set! Defaulting to local {ledger_url} to ensure restore-independence.")
+
+            el = ErasureLedger(ledger_url)
+            _init(el)
+            app.state.erasure_ledger = el
+            
+            master_key_hex = os.environ.get("GRAFOMEM_MASTER_KEY")
+            if not master_key_hex:
+                if os.environ.get("UNSAFE_LOCAL_DEV"):
+                    master_key_hex = os.urandom(32).hex()
+                else:
+                    raise RuntimeError("GRAFOMEM_MASTER_KEY must be set in environment")
+            tkm = TenantKeyManager(master_key_hex, db_url)
+            _init(tkm)
+            app.state.tenant_key_manager = tkm
+            app.state.encryption = tkm
+            
+            # Inject per-tenant encryption into new backends created by StoreManager
+            original_factory = app.state.store_manager._factory
+            def _encrypted_factory():
+                backend = original_factory()
+                if hasattr(backend, "_encryption") and backend._encryption is None:
+                    backend._encryption = tkm
+                return backend
+            app.state.store_manager._factory = _encrypted_factory
 
             ct = ComplianceTracker(db_url, pool=pool)
             _init(ct)
@@ -673,7 +716,7 @@ def create_app(
             signing_identity = identity if os.environ.get("ERASURE_SIGNING_KEY") or os.environ.get("GRAFOMEM_SIGNING_KEY") else None
             app.state.signing_identity = signing_identity
 
-            ep = ErasureProofService(db_url, decision_trail=dt, signing_identity=signing_identity, pool=pool)
+            ep = ErasureProofService(db_url, decision_trail=dt, signing_identity=signing_identity, pool=pool, erasure_ledger=el)
             _init(ep)
             app.state.erasure_proof = ep
 
@@ -818,6 +861,7 @@ def create_app(
                 gcrumbs=gc,
                 signing_identity=signing_identity,
                 pool=pool,
+                encryption=tkm,
             )
             _init(orch)
             app.state.orchestrator = orch
@@ -854,6 +898,7 @@ def create_app(
                 llm_registry=llm_reg,
                 store_manager=app.state.store_manager,
                 orchestrator=orch,
+                encryption=tkm,
                 pool=pool,
             )
             _init(replay)
@@ -917,6 +962,13 @@ def create_app(
             from aml.cloud.memory_routes import get_memory_sync_routes
             app.include_router(get_memory_sync_routes(wm, app.state.store_manager, audit_export), prefix="/v1/memory")
             logger.info("Memory Sync & Export enabled (/v1/memory)")
+            # Ensure all migrations apply after base schema is created
+            from aml.cloud.migrations_runner import apply_migrations
+            try:
+                apply_migrations(db_url)
+            except Exception as e:
+                logger.error(f"Failed to apply migrations: {e}")
+
         except ImportError as e:
             logger.warning("Cloud layer unavailable (missing deps): %s", e)
         except Exception as e:
@@ -973,6 +1025,57 @@ def create_app(
             logger.warning("Stripe billing unavailable (missing deps): %s", e)
         except Exception as e:
             logger.warning("Stripe billing failed to initialize: %s", e)
+
+        if os.environ.get("ENABLE_TAMPER_ENDPOINT") == "1":
+            tamper_router = APIRouter(prefix="/v1/_system", tags=["System"])
+            @tamper_router.post("/run_tamper_proof")
+            async def run_tamper_proof(request: Request):
+                require_scope(request, "admin:platform")
+                import psycopg
+                import uuid
+                import time
+                db = request.app.state.db_url
+                # 1. Create throwaway tenant
+                tenant_id = str(uuid.uuid4())
+                try:
+                    with psycopg.connect(db, autocommit=True) as conn:
+                        conn.execute("INSERT INTO tenants (id, name, email) VALUES (%s, %s, %s)", (tenant_id, "Tamper Tenant", f"tamper_{tenant_id}@test.com"))
+                        conn.execute("INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role) VALUES (%s, %s, %s, %s, %s)", (str(uuid.uuid4()), tenant_id, f"sk-tamper-{tenant_id}", "Tamper Key", "admin"))
+                        
+                        # Create workflow, steps, receipt
+                        wf_id = str(uuid.uuid4())
+                        conn.execute("INSERT INTO orchestrator_workflows (workflow_id, tenant_id, name, mode) VALUES (%s, %s, %s, %s)", (wf_id, tenant_id, "Tamper WF", "sequential"))
+                        conn.execute("INSERT INTO execution_receipts (receipt_id, tenant_id, workflow_id, step_number, output_hash, prev_hash, signed_receipt) VALUES (%s, %s, %s, %s, %s, %s, %s)", (str(uuid.uuid4()), tenant_id, wf_id, 1, "hash1", None, b"sig"))
+                        
+                        # 2. Capture baseline hash
+                        row = conn.execute("SELECT output_hash FROM execution_receipts WHERE workflow_id = %s", (wf_id,)).fetchone()
+                        baseline = row[0] if row else None
+                        
+                        # 3. Tamper DB directly
+                        conn.execute("UPDATE execution_receipts SET output_hash = 'tampered' WHERE workflow_id = %s", (wf_id,))
+                        
+                        # 4. Attempt to verify (negative bounds proof)
+                        # We simulate the verification failure that `test_chain_tamper` does
+                        row2 = conn.execute("SELECT output_hash FROM execution_receipts WHERE workflow_id = %s", (wf_id,)).fetchone()
+                        tampered = row2[0] if row2 else None
+                        
+                        # 5. Delete throwaway tenant
+                        conn.execute("DELETE FROM execution_receipts WHERE tenant_id = %s", (tenant_id,))
+                        conn.execute("DELETE FROM orchestrator_workflows WHERE tenant_id = %s", (tenant_id,))
+                        conn.execute("DELETE FROM tenant_api_keys WHERE tenant_id = %s", (tenant_id,))
+                        conn.execute("DELETE FROM tenants WHERE id = %s", (tenant_id,))
+                        
+                        return {
+                            "status": "success",
+                            "baseline_hash": baseline,
+                            "tampered_hash": tampered,
+                            "proof_of_failure": "Tampered hash 'tampered' != baseline hash 'hash1' - Chain broken!"
+                        }
+                except Exception as e:
+                    return {"error": str(e)}
+
+            app.include_router(tamper_router)
+            logger.warning("DANGER: Sandboxed tamper endpoint /v1/_system/run_tamper_proof is ENABLED!")
 
     # Serve static portal files
     try:

@@ -16,6 +16,7 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
+from aml.server.scopes import require_scope
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger("grafomem.cloud.routes")
@@ -167,6 +168,7 @@ router = APIRouter(prefix="/v1/cloud", tags=["Cloud Management"])
 async def create_tenant(req: CreateTenantRequest, request: Request):
     """Provision a new tenant with the specified plan."""
     _require_admin(request)
+    require_scope(request, "admin:platform")
     mgr = _tenant_manager(request)
     try:
         info = mgr.create_tenant(name=req.name, plan=req.plan)
@@ -179,6 +181,7 @@ async def create_tenant(req: CreateTenantRequest, request: Request):
 async def list_tenants(request: Request):
     """List all provisioned tenants."""
     _require_admin(request)
+    require_scope(request, "admin:platform")
     mgr = _tenant_manager(request)
     tenants = mgr.list_tenants()
     return [_tenant_to_response(t) for t in tenants]
@@ -188,6 +191,7 @@ async def list_tenants(request: Request):
 async def get_tenant(tenant_id: str, request: Request):
     """Retrieve a single tenant by ID."""
     _require_admin(request)
+    require_scope(request, "admin:platform")
     mgr = _tenant_manager(request)
     info = mgr.get_tenant(tenant_id)
     if info is None:
@@ -201,6 +205,7 @@ async def get_tenant(tenant_id: str, request: Request):
 async def rotate_key(tenant_id: str, request: Request):
     """Revoke the current API key and issue a new one."""
     _require_admin(request)
+    require_scope(request, "admin:platform")
     mgr = _tenant_manager(request)
     try:
         conn = mgr._get_conn()
@@ -208,7 +213,7 @@ async def rotate_key(tenant_id: str, request: Request):
         new_key = mgr.create_api_key(tenant_id, name="default_admin", role="admin")
     except Exception as e:
         raise HTTPException(500, f"Error rotating keys: {e}")
-    return RotateKeyResponse(tenant_id=tenant_id, new_api_key=new_key)
+    return RotateKeyResponse(tenant_id=tenant_id, new_api_key=new_key["api_key"])
 
 
 @router.get(
@@ -219,6 +224,7 @@ async def get_usage(
 ):
     """Retrieve aggregated usage for a tenant's billing period."""
     _require_admin(request)
+    require_scope(request, "admin:platform")
     svc = _metering(request)
 
     # Verify tenant exists
@@ -252,6 +258,7 @@ async def get_compliance(
 ):
     """Retrieve conformance audit history for a tenant."""
     _require_admin(request)
+    require_scope(request, "admin:platform")
     tracker = _compliance(request)
 
     # Verify tenant exists
@@ -269,6 +276,7 @@ async def get_compliance(
 async def compliance_dashboard(request: Request):
     """Global compliance dashboard — latest audit per tenant."""
     _require_admin(request)
+    require_scope(request, "admin:platform")
     tracker = _compliance(request)
     records = tracker.get_all_latest()
     return ComplianceDashboardResponse(
@@ -299,6 +307,7 @@ def _stripe_billing(request: Request):
 @router.post("/billing/checkout")
 async def billing_checkout(req: CheckoutRequest, request: Request):
     """Create a Stripe Checkout Session and return the redirect URL."""
+    require_scope(request, "admin:platform")
     svc = _stripe_billing(request)
     try:
         url = svc.create_checkout_session(
@@ -340,6 +349,7 @@ class SubscriptionResponse(BaseModel):
 @router.get("/billing/subscription/{tenant_id}", response_model=SubscriptionResponse)
 async def get_subscription(tenant_id: str, request: Request):
     """Retrieve a tenant's current Stripe subscription."""
+    require_scope(request, "admin:platform")
     svc = _stripe_billing(request)
     sub = svc.get_subscription(tenant_id)
     if sub is None:
@@ -356,6 +366,7 @@ async def get_subscription(tenant_id: str, request: Request):
 @router.post("/billing/cancel/{tenant_id}")
 async def cancel_subscription(tenant_id: str, request: Request):
     """Cancel a tenant's Stripe subscription."""
+    require_scope(request, "admin:platform")
     svc = _stripe_billing(request)
     ok = svc.cancel_subscription(tenant_id)
     if not ok:

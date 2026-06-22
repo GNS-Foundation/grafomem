@@ -16,6 +16,8 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
+
+from aml.server.scopes import require_scope
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger("grafomem.cloud.erasure_routes")
@@ -125,6 +127,7 @@ def create_erasure_router(erasure_service) -> APIRouter:
         Returns the signed erasure certificate.
         """
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "erasure:execute")
 
         signing_identity = None
         if req.signing_key:
@@ -162,6 +165,7 @@ def create_erasure_router(erasure_service) -> APIRouter:
     async def erasure_stats(request: Request):
         """Summary statistics for erasure certificates."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "erasure:execute")
         return erasure_service.get_stats(tenant_id)
 
     # ------------------------------------------------------------------
@@ -172,6 +176,7 @@ def create_erasure_router(erasure_service) -> APIRouter:
     async def get_certificate(certificate_id: str, request: Request):
         """Retrieve a single erasure certificate by its ID."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "erasure:execute")
         cert = erasure_service.get(certificate_id)
 
         if cert is None:
@@ -192,6 +197,7 @@ def create_erasure_router(erasure_service) -> APIRouter:
         Returns whether the certificate is authentic and untampered.
         """
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "erasure:execute")
 
         # Check ownership first
         cert = erasure_service.get(certificate_id)
@@ -209,6 +215,7 @@ def create_erasure_router(erasure_service) -> APIRouter:
     async def get_by_fact(fact_ref: int, request: Request):
         """Find the erasure certificate for a specific fact ref."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "erasure:execute")
         cert = erasure_service.get_by_fact(tenant_id, fact_ref)
 
         if cert is None:
@@ -228,6 +235,7 @@ def create_erasure_router(erasure_service) -> APIRouter:
     ):
         """List all erasure certificates for the tenant."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "erasure:execute")
 
         certs = erasure_service.list_certificates(
             tenant_id, limit=limit, offset=offset,

@@ -1,0 +1,294 @@
+{
+  "content_hash": "b0b1886f4d38089b90292431852769ebdcfd6ef78d9e7c097dbc7abd328c7867",
+  "mode": "live",
+  "provider": "anthropic",
+  "report_type": "grafomem_conformance",
+  "results": [
+    {
+      "detail": "re-used existing account",
+      "live_only": false,
+      "name": "Signup (Tenant A)",
+      "state": "pass"
+    },
+    {
+      "detail": "re-used existing account",
+      "live_only": false,
+      "name": "Signup (Tenant B)",
+      "state": "pass"
+    },
+    {
+      "detail": "store_id=f9f9d2620d24",
+      "live_only": false,
+      "name": "Create Store",
+      "state": "pass"
+    },
+    {
+      "detail": "5/5 written, refs=[1177, 1178, 1179]...",
+      "live_only": false,
+      "name": "Seed 5 Facts",
+      "state": "pass"
+    },
+    {
+      "detail": "0/2 (rate_limit + pii_guard)",
+      "live_only": false,
+      "name": "Create 2 Policies",
+      "state": "fail"
+    },
+    {
+      "detail": "a651dd64bae9...",
+      "live_only": false,
+      "name": "Register LLM (claude-opus-4-20250514)",
+      "state": "pass"
+    },
+    {
+      "detail": "3/3 \u2014 dffbc16c, 56385993, bcda4f87",
+      "live_only": false,
+      "name": "Create 3 Agents",
+      "state": "pass"
+    },
+    {
+      "detail": "workflow_id=cc68eb45ebc6...",
+      "live_only": false,
+      "name": "Create Workflow",
+      "state": "pass"
+    },
+    {
+      "detail": "status=completed steps=6 tokens=0",
+      "live_only": false,
+      "name": "Run 3-Agent Workflow",
+      "state": "pass"
+    },
+    {
+      "detail": "expected=3 actual=3",
+      "live_only": false,
+      "name": "Receipt Count == Step Count",
+      "state": "pass"
+    },
+    {
+      "detail": "prev_hash=None",
+      "live_only": false,
+      "name": "Genesis Receipt Has Null Parent",
+      "state": "pass"
+    },
+    {
+      "detail": "step=1 prev_hash=set",
+      "live_only": false,
+      "name": "Receipt 1 Has Parent Hash",
+      "state": "pass"
+    },
+    {
+      "detail": "step=2 prev_hash=set",
+      "live_only": false,
+      "name": "Receipt 2 Has Parent Hash",
+      "state": "pass"
+    },
+    {
+      "detail": "status=intact steps_verified=3",
+      "live_only": false,
+      "name": "Hash Chain INTACT",
+      "state": "pass"
+    },
+    {
+      "detail": "10 decisions found",
+      "live_only": false,
+      "name": "Decision Trail Has Records",
+      "state": "pass"
+    },
+    {
+      "detail": "input_reconstructed=True",
+      "live_only": false,
+      "name": "Replay Input Reconstructed",
+      "state": "pass"
+    },
+    {
+      "detail": "model_available=True",
+      "live_only": false,
+      "name": "Replay Model Available",
+      "state": "pass"
+    },
+    {
+      "detail": "status=error confidence=0.00",
+      "live_only": false,
+      "name": "Replay Executes",
+      "state": "fail"
+    },
+    {
+      "detail": "status=500",
+      "live_only": false,
+      "name": "P0-1: Create Allowlist Policy",
+      "state": "fail"
+    },
+    {
+      "detail": "allowed=False",
+      "live_only": false,
+      "name": "P0-2a: PII IS Caught",
+      "state": "pass"
+    },
+    {
+      "detail": "allowed=True",
+      "live_only": false,
+      "name": "P0-2b: Clean Input NOT Falsely Flagged",
+      "state": "pass"
+    },
+    {
+      "detail": "status=403",
+      "live_only": false,
+      "name": "P0-3a: Cross-Tenant Access IS Blocked",
+      "state": "pass"
+    },
+    {
+      "detail": "",
+      "live_only": false,
+      "name": "P0-3b: Same-Tenant Access IS Allowed",
+      "state": "fail"
+    },
+    {
+      "detail": "ref=1177",
+      "live_only": false,
+      "name": "Erasure Leg 1: Fact Deleted From Memory",
+      "state": "pass"
+    },
+    {
+      "detail": "expected=6346e282ae040062... got=6346e282ae040062...",
+      "live_only": false,
+      "name": "Erasure Leg 2: Cert Content Hash Matches",
+      "state": "pass"
+    },
+    {
+      "detail": "valid=True detail=Ed25519 signature verified \u2014 certificate is authentic",
+      "live_only": false,
+      "name": "Erasure Leg 3: Certificate Ed25519 Signed",
+      "state": "pass"
+    },
+    {
+      "detail": "status=500",
+      "live_only": false,
+      "name": "P0-4: Create HITL Policy",
+      "state": "fail"
+    },
+    {
+      "detail": "valid=True detail=Ed25519 signature verified \u2014 certificate is authen",
+      "live_only": false,
+      "name": "P0-6a: Valid Signature Verifies",
+      "state": "pass"
+    },
+    {
+      "detail": "DB error: connection failed: connection to server at \"127.0.0.1\", port 5433 failed: could not receive data from server: Connection refused\nMultiple connection attempts failed. All failures were:\n- host: 'localhost', port: '5433', hostaddr: '::1': connection failed: connection to server at \"::1\", port 5433 failed: could not receive data from server: Connection refused\n- host: 'localhost', port: '5433', hostaddr: '127.0.0.1': connection failed: connection to server at \"127.0.0.1\", port 5433 failed: could not receive data from server: Connection refused",
+      "live_only": false,
+      "name": "P0-6b: Tampered Signature IS Rejected",
+      "state": "fail"
+    },
+    {
+      "detail": "DB error: connection failed: connection to server at \"127.0.0.1\", port 5433 failed: could not receive data from server: Connection refused\nMultiple connection attempts failed. All failures were:\n- host: 'localhost', port: '5433', hostaddr: '::1': connection failed: connection to server at \"::1\", port 5433 failed: could not receive data from server: Connection refused\n- host: 'localhost', port: '5433', hostaddr: '127.0.0.1': connection failed: connection to server at \"127.0.0.1\", port 5433 failed: could not receive data from server: Connection refused",
+      "live_only": false,
+      "name": "Chain Tamper: Detect Mutation",
+      "state": "fail"
+    },
+    {
+      "detail": "status=500",
+      "live_only": false,
+      "name": "HITL Resume: Create Policy",
+      "state": "fail"
+    },
+    {
+      "detail": "report_id=d63513f6c055...",
+      "live_only": false,
+      "name": "Generate EU AI Act Report",
+      "state": "pass"
+    },
+    {
+      "detail": "823 evaluations, 7 active policies",
+      "live_only": false,
+      "name": "Governance Stats",
+      "state": "pass"
+    },
+    {
+      "detail": "agents=33 workflows=37 steps=66",
+      "live_only": false,
+      "name": "Orchestrator Stats",
+      "state": "pass"
+    },
+    {
+      "detail": "status=405: {\"detail\":\"Method Not Allowed\"}",
+      "live_only": false,
+      "name": "Stream Workflow Receives Events",
+      "state": "fail"
+    },
+    {
+      "detail": "status=405",
+      "live_only": false,
+      "name": "Stream Non-Existent Workflow 404",
+      "state": "fail"
+    },
+    {
+      "detail": "webhook_id=7b18c710ebb0... secret=present",
+      "live_only": false,
+      "name": "Register Webhook",
+      "state": "pass"
+    },
+    {
+      "detail": "count=1",
+      "live_only": false,
+      "name": "List Webhooks",
+      "state": "pass"
+    },
+    {
+      "detail": "types=['erasure.issued', 'governance.denied', 'governance.escalated', 'workflow.completed', 'workflow.error']",
+      "live_only": false,
+      "name": "Webhook Event Types",
+      "state": "pass"
+    },
+    {
+      "detail": "status=404",
+      "live_only": false,
+      "name": "Cross-Tenant Webhook Blocked",
+      "state": "pass"
+    },
+    {
+      "detail": "webhook_id=7b18c710ebb0...",
+      "live_only": false,
+      "name": "Delete Webhook",
+      "state": "pass"
+    },
+    {
+      "detail": "content-type=application/pdf size=2301 magic=%PDF-",
+      "live_only": false,
+      "name": "PDF Download Succeeds",
+      "state": "pass"
+    },
+    {
+      "detail": "status=404",
+      "live_only": false,
+      "name": "PDF Download Missing Report 404",
+      "state": "pass"
+    },
+    {
+      "detail": "providers=3 items",
+      "live_only": false,
+      "name": "SSO Provider List",
+      "state": "pass"
+    },
+    {
+      "detail": "status=ok, uptime=448761.8s",
+      "live_only": false,
+      "name": "Health Liveness",
+      "state": "pass"
+    },
+    {
+      "detail": "status=ok, checks=['database', 'pool', 'store_manager', 'decision_trail', 'governance_gateway', 'orchestrator', 'erasure_proof', 'regulatory_reports']",
+      "live_only": false,
+      "name": "Health Readiness",
+      "state": "pass"
+    }
+  ],
+  "server": "https://grafomem-production.up.railway.app",
+  "summary": {
+    "degraded": 0,
+    "failed": 10,
+    "passed": 36,
+    "skipped": 0,
+    "total": 46
+  },
+  "timestamp": "2026-06-22T13:28:43.986060+00:00",
+  "version": "2.0"
+}

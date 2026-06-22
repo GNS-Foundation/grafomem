@@ -20,6 +20,8 @@ from typing import Any
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import Response
 
+from aml.server.scopes import require_scope
+
 logger = logging.getLogger("grafomem.cloud.audit_export_routes")
 
 router = APIRouter(tags=["Audit Export"])
@@ -60,6 +62,7 @@ async def export_decisions(
     Response includes BLAKE2b-256 content hash in the
     ``X-Content-Hash`` header for tamper detection.
     """
+    require_scope(request, "compliance:read")
     svc = _export_service(request)
     if not svc:
         return Response(
@@ -84,6 +87,7 @@ async def export_governance(
     tenant_id: str = Depends(_require_auth),
 ):
     """Export governance evaluation logs as CSV or JSON."""
+    require_scope(request, "compliance:read")
     svc = _export_service(request)
     if not svc:
         return Response(
@@ -107,6 +111,7 @@ async def export_gcrumbs(
     tenant_id: str = Depends(_require_auth),
 ):
     """Export the gcrumbs breadcrumb chain + epoch summary as JSON."""
+    require_scope(request, "compliance:read")
     svc = _export_service(request)
     if not svc:
         return Response(
@@ -133,6 +138,7 @@ async def export_full(
     Contains decisions.json, governance.json, gcrumbs.json, and manifest.json
     with per-file BLAKE2b content hashes.
     """
+    require_scope(request, "compliance:read")
     svc = _export_service(request)
     if not svc:
         return Response(
@@ -157,6 +163,7 @@ async def export_pdf(
     Renders the combined regulatory report (EU AI Act, GDPR, DORA)
     with governance logs, decision trail summary, and gcrumbs chain status.
     """
+    require_scope(request, "compliance:read")
     # Use the existing compliance report + PDF renderer
     compliance = getattr(request.app.state, "compliance_reporter", None)
     if not compliance:

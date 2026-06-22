@@ -14,6 +14,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from aml.server.scopes import require_scope
+
 logger = logging.getLogger("grafomem.cloud.assurance_routes")
 
 router = APIRouter(prefix="/v1/assurance", tags=["assurance"])
@@ -48,6 +50,7 @@ def _get_tenant(request: Request) -> str:
 def create_schedule(body: CreateScheduleRequest, request: Request):
     svc = _get_assurance(request)
     tenant = _get_tenant(request)
+    require_scope(request, "compliance:admin")
     schedule = svc.create_schedule(
         tenant, interval_min=body.interval_min,
         checks=body.checks, alert_webhook=body.alert_webhook,
@@ -59,6 +62,7 @@ def create_schedule(body: CreateScheduleRequest, request: Request):
 def list_schedules(request: Request):
     svc = _get_assurance(request)
     tenant = _get_tenant(request)
+    require_scope(request, "compliance:read")
     schedules = svc.list_schedules(tenant)
     return {"schedules": [{
         "schedule_id": s.schedule_id, "interval_min": s.interval_min,
@@ -69,6 +73,7 @@ def list_schedules(request: Request):
 @router.put("/schedules/{schedule_id}")
 def update_schedule(schedule_id: str, body: UpdateScheduleRequest, request: Request):
     svc = _get_assurance(request)
+    require_scope(request, "compliance:admin")
     updates = body.model_dump(exclude_none=True)
     schedule = svc.update_schedule(schedule_id, **updates)
     if not schedule:
@@ -79,6 +84,7 @@ def update_schedule(schedule_id: str, body: UpdateScheduleRequest, request: Requ
 @router.delete("/schedules/{schedule_id}")
 def delete_schedule(schedule_id: str, request: Request):
     svc = _get_assurance(request)
+    require_scope(request, "compliance:admin")
     deleted = svc.delete_schedule(schedule_id)
     if not deleted:
         raise HTTPException(404, "Schedule not found")
@@ -88,6 +94,7 @@ def delete_schedule(schedule_id: str, request: Request):
 def trigger_run(request: Request):
     svc = _get_assurance(request)
     tenant = _get_tenant(request)
+    require_scope(request, "compliance:admin")
     run = svc.run_check(tenant)
     return {
         "run_id": run.run_id, "status": run.status,
@@ -99,6 +106,7 @@ def trigger_run(request: Request):
 def list_runs(request: Request, limit: int = 20):
     svc = _get_assurance(request)
     tenant = _get_tenant(request)
+    require_scope(request, "compliance:read")
     runs = svc.list_runs(tenant, limit=limit)
     return {"runs": [{
         "run_id": r.run_id, "status": r.status,
@@ -109,6 +117,7 @@ def list_runs(request: Request, limit: int = 20):
 @router.get("/runs/{run_id}")
 def get_run(run_id: str, request: Request):
     svc = _get_assurance(request)
+    require_scope(request, "compliance:read")
     run = svc.get_run(run_id)
     if not run:
         raise HTTPException(404, "Run not found")
@@ -124,6 +133,7 @@ def get_run(run_id: str, request: Request):
 def capture_baseline(request: Request):
     svc = _get_assurance(request)
     tenant = _get_tenant(request)
+    require_scope(request, "compliance:admin")
     baseline = svc.set_baseline(tenant)
     return {
         "baseline_id": baseline.baseline_id,
@@ -135,6 +145,7 @@ def capture_baseline(request: Request):
 def get_baseline(request: Request):
     svc = _get_assurance(request)
     tenant = _get_tenant(request)
+    require_scope(request, "compliance:read")
     baseline = svc.get_baseline(tenant)
     if not baseline:
         raise HTTPException(404, "No baseline captured")
@@ -148,6 +159,7 @@ def get_baseline(request: Request):
 def get_drift_events(request: Request, limit: int = 50):
     svc = _get_assurance(request)
     tenant = _get_tenant(request)
+    require_scope(request, "compliance:read")
     events = svc.get_drift_events(tenant, limit=limit)
     return {"drift_events": events, "count": len(events)}
 
@@ -155,4 +167,5 @@ def get_drift_events(request: Request, limit: int = 50):
 def get_stats(request: Request):
     svc = _get_assurance(request)
     tenant = _get_tenant(request)
+    require_scope(request, "compliance:read")
     return svc.get_stats(tenant)

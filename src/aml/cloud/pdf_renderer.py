@@ -39,7 +39,7 @@ _FINDING_COLORS = {
 
 def _sanitize(text: str) -> str:
     """Replace Unicode characters unsupported by Helvetica (latin-1 only)."""
-    return (
+    text = (
         text
         .replace("\u2014", "--")   # em-dash
         .replace("\u2013", "-")    # en-dash
@@ -50,7 +50,10 @@ def _sanitize(text: str) -> str:
         .replace("\u2019", "'")    # right single quote
         .replace("\u201c", '"')    # left double quote
         .replace("\u201d", '"')    # right double quote
+        .replace("—", "--")
+        .replace("–", "-")
     )
+    return text.encode("latin-1", "replace").decode("latin-1")
 
 
 def render_report_pdf(report) -> bytes:

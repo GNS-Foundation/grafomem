@@ -15,6 +15,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
+from aml.server.scopes import require_scope
+
 from aml.cloud.schemas import (
     EvaluationResultResponse,
     GovernanceLogResponse,
@@ -97,6 +99,7 @@ def create_governance_router(gateway) -> APIRouter:
     async def governance_stats(request: Request):
         """Summary statistics for governance policies and evaluations."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "governance:read")
         return gateway.get_stats(tenant_id)
 
     # ------------------------------------------------------------------
@@ -159,9 +162,10 @@ def create_governance_router(gateway) -> APIRouter:
     async def create_policy(req: CreatePolicyRequest, request: Request):
         """Create a new governance policy."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "governance:admin")
 
         try:
-            policy_id = gateway.create_policy(
+            policy = gateway.create_policy(
                 tenant_id=tenant_id,
                 name=req.name,
                 description=req.description,
@@ -171,6 +175,7 @@ def create_governance_router(gateway) -> APIRouter:
                 enabled=req.enabled,
                 priority=req.priority,
             )
+            policy_id = policy.policy_id
 
             audit = _audit_logger(request)
             if audit:
@@ -201,6 +206,7 @@ def create_governance_router(gateway) -> APIRouter:
     ):
         """List all governance policies for the tenant."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "governance:read")
         policies = gateway.list_policies(tenant_id, enabled_only=enabled_only)
         return {
             "policies": [gateway.policy_to_dict(p) for p in policies],
@@ -215,6 +221,7 @@ def create_governance_router(gateway) -> APIRouter:
     async def get_policy(policy_id: str, request: Request):
         """Get a single governance policy by ID."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "governance:read")
         policy = gateway.get_policy(policy_id)
 
         if policy is None or policy.tenant_id != tenant_id:
@@ -232,6 +239,7 @@ def create_governance_router(gateway) -> APIRouter:
     ):
         """Update an existing governance policy."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "governance:admin")
 
         updated = gateway.update_policy(
             policy_id=policy_id,
@@ -266,6 +274,7 @@ def create_governance_router(gateway) -> APIRouter:
     async def delete_policy(policy_id: str, request: Request):
         """Delete a governance policy."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "governance:admin")
         deleted = gateway.delete_policy(policy_id, tenant_id)
 
         if not deleted:
@@ -294,6 +303,7 @@ def create_governance_router(gateway) -> APIRouter:
         the request is allowed overall.
         """
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "governance:read")
 
         allowed, logs = gateway.evaluate_and_gate(
             tenant_id=tenant_id,
@@ -321,6 +331,7 @@ def create_governance_router(gateway) -> APIRouter:
     async def seed_defaults(request: Request):
         """Create default governance policies for the tenant."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "governance:admin")
         count = gateway.seed_defaults(tenant_id)
         return {"seeded": count}
 
@@ -338,6 +349,7 @@ def create_governance_router(gateway) -> APIRouter:
     ):
         """List policy evaluation logs."""
         tenant_id = _get_tenant_id(request)
+        require_scope(request, "governance:read")
         logs = gateway.get_logs(
             tenant_id, policy_id=policy_id, result=result,
             limit=limit, offset=offset,

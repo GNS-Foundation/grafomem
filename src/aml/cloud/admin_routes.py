@@ -21,6 +21,7 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from aml.server.scopes import require_scope
 from pydantic import BaseModel
 
 logger = logging.getLogger("grafomem.cloud.admin_routes")
@@ -40,6 +41,10 @@ class UpdateTenantRequest(BaseModel):
 class InviteMemberRequest(BaseModel):
     email: str
     role: str = "member"
+
+
+class DestroyKeyRequest(BaseModel):
+    confirmation: str
 
 
 class UpdateRoleRequest(BaseModel):
@@ -90,6 +95,7 @@ async def list_tenants(
 ):
     """List all tenants. Super-admin only in production;
     currently returns the authenticated user's tenant."""
+    require_scope(request, "admin:platform")
     tm = _tenant_manager(request)
     tenant_id = user.get("tenant_id", "")
 
@@ -117,6 +123,7 @@ async def get_tenant(
     user: dict = Depends(_require_admin),
 ):
     """Get detailed tenant information."""
+    require_scope(request, "admin:platform")
     _verify_tenant_access(user, tenant_id)
     tm = _tenant_manager(request)
 
@@ -149,6 +156,7 @@ async def update_tenant(
     user: dict = Depends(_require_admin),
 ):
     """Update tenant name or plan. Requires owner/admin role."""
+    require_scope(request, "admin:platform")
     _verify_tenant_access(user, tenant_id)
     tm = _tenant_manager(request)
 
@@ -173,6 +181,61 @@ async def update_tenant(
         raise HTTPException(status_code=404, detail=str(e))
 
 
+@router.post("/tenants/{tenant_id}/destroy-key")
+async def destroy_tenant_key(
+    tenant_id: str,
+    req: DestroyKeyRequest,
+    request: Request,
+    user: dict = Depends(_require_admin),
+):
+    """Crypto-erase a tenant by destroying its DEK. Irreversible."""
+    require_scope(request, "admin:platform")
+    _verify_tenant_access(user, tenant_id)
+
+    if req.confirmation != "I understand this is irreversible":
+        raise HTTPException(status_code=400, detail="Invalid confirmation string. Must be: 'I understand this is irreversible'")
+
+    tkm = getattr(request.app.state, "tenant_key_manager", None)
+    el = getattr(request.app.state, "erasure_ledger", None)
+    if not tkm or not el:
+        raise HTTPException(status_code=503, detail="Crypto-erasure services not configured")
+
+    signing_identity = getattr(request.app.state, "signing_identity", None)
+    if not signing_identity:
+        raise HTTPException(status_code=503, detail="Signing identity not configured")
+
+    from datetime import datetime, timezone
+    now = datetime.now(tz=timezone.utc)
+    
+    # Issue certificate
+    cert_data = {
+        "tenant_id": tenant_id,
+        "timestamp": now.isoformat(),
+        "action": "DESTROY_DEK"
+    }
+    
+    from aml.cloud.erasure_proof import compute_certificate_digest
+    digest = compute_certificate_digest(cert_data)
+    
+    from aml.provenance import sign_provenance
+    signature, public_key = sign_provenance(signing_identity, digest)
+    
+    cert_data["signature"] = signature.hex()
+    cert_data["public_key"] = public_key.hex()
+    
+    import uuid
+    entry_id = str(uuid.uuid4())
+    
+    # 1. Write to ledger
+    el.record_tenant_destruction(entry_id, tenant_id, cert_data)
+    
+    # 2. Delete the DEK
+    tkm.destroy_tenant_key(tenant_id)
+    
+    # Remove from TenantManager (or set a status flag, we just return success for now)
+    return {"destroyed": True, "tenant_id": tenant_id, "certificate_id": entry_id}
+
+
 @router.post("/tenants/{tenant_id}/members")
 async def invite_member(
     tenant_id: str,
@@ -181,6 +244,7 @@ async def invite_member(
     user: dict = Depends(_require_admin),
 ):
     """Invite a team member to the tenant."""
+    require_scope(request, "admin:platform")
     _verify_tenant_access(user, tenant_id)
     tm = _tenant_manager(request)
 
@@ -203,6 +267,7 @@ async def list_members(
     user: dict = Depends(_require_admin),
 ):
     """List all members of a tenant."""
+    require_scope(request, "admin:platform")
     _verify_tenant_access(user, tenant_id)
     tm = _tenant_manager(request)
     members = tm.list_members(tenant_id)
@@ -218,6 +283,7 @@ async def update_member_role(
     user: dict = Depends(_require_admin),
 ):
     """Update a team member's role."""
+    require_scope(request, "admin:platform")
     _verify_tenant_access(user, tenant_id)
     tm = _tenant_manager(request)
 
@@ -238,6 +304,7 @@ async def remove_member(
     user: dict = Depends(_require_admin),
 ):
     """Remove a team member from the tenant."""
+    require_scope(request, "admin:platform")
     _verify_tenant_access(user, tenant_id)
     tm = _tenant_manager(request)
 
@@ -258,6 +325,7 @@ async def get_usage(
     Aggregates memory count, store count, decision count, and
     API request metrics from the metering service.
     """
+    require_scope(request, "admin:platform")
     _verify_tenant_access(user, tenant_id)
     tm = _tenant_manager(request)
 

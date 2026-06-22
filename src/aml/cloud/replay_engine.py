@@ -146,6 +146,7 @@ class ReplayEngine:
         store_manager: Any = None,
         orchestrator: Any = None,
         pool=None,
+        encryption: Any = None,
     ) -> None:
         self._db_url = db_url
         self._pool = pool
@@ -154,6 +155,7 @@ class ReplayEngine:
         self._llm_registry = llm_registry
         self._store_manager = store_manager
         self._orchestrator = orchestrator
+        self._encryption = encryption
 
     # ------------------------------------------------------------------
     # Connection
@@ -208,7 +210,7 @@ class ReplayEngine:
                 now, 0,
             )
 
-        decision = self._decision_trail.get(decision_id)
+        decision = self._decision_trail.get(decision_id, encryption=self._encryption)
         if decision is None:
             return self._make_verdict(
                 replay_id, decision_id, tenant_id,
@@ -303,23 +305,24 @@ class ReplayEngine:
         except Exception as e:
             logger.warning("Replay: could not reconstruct system_prompt: %s", e)
 
-        # Fall back to generic prompt only if reconstruction failed
-        system_prompt = original_system_prompt or (
-            "You are replaying a previous decision. Answer identically."
-        )
-        if original_system_prompt is None:
-            logger.warning(
-                "Replay: using fallback system_prompt (agent lookup failed)"
-            )
+        if decision.parameters and "system_prompt" in decision.parameters:
+            system_prompt = decision.parameters["system_prompt"]
+        else:
+            system_prompt = original_system_prompt or "You are replaying a previous decision. Answer identically."
 
-        # 6. Re-execute with temperature=0
+        if decision.parameters and "temperature" in decision.parameters:
+            temperature = decision.parameters["temperature"]
+        else:
+            temperature = 0.0
+
+        # 6. Re-execute with reconstructed parameters
         try:
             # Build messages matching the orchestrator's _build_messages format exactly
             messages = []
             if orchestrator_facts:
                 # Use the full facts (with store_id) for exact format match
                 fact_text = "\n".join(
-                    f"- [{f.get('store_id', '?')}] {f.get('content', '')}"
+                    f"- {f.get('content', '')}"
                     for f in orchestrator_facts
                 )
                 messages.append({
@@ -352,7 +355,7 @@ class ReplayEngine:
                 system_prompt=system_prompt,
                 messages=messages,
                 tools=None,
-                temperature=0.0,
+                temperature=temperature,
                 max_tokens=getattr(decision, "output_tokens", 4096) or 4096,
             )
 
@@ -615,3 +618,11 @@ class ReplayEngine:
             "replay_latency_ms": v.replay_latency_ms,
             "replayed_at": v.replayed_at.isoformat(),
         }
+
+# Inject debug hook into replay engine
+def _debug_hook(original, replayed):
+    with open("replay_debug.txt", "a") as f:
+        f.write("====== REPLAY ENGINE DEBUG ======\n")
+        f.write(f"ORIGINAL_OUTPUT:\n{repr(original)}\n")
+        f.write(f"REPLAYED_OUTPUT:\n{repr(replayed)}\n")
+        f.write("=================================\n")

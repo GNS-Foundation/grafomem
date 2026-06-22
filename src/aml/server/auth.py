@@ -14,7 +14,8 @@ from __future__ import annotations
 import json
 import logging
 import os
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
@@ -41,6 +42,9 @@ class TenantContext:
     tenant_id: str
     authenticated: bool
     role: str = "admin"
+    scopes: list[str] = field(default_factory=list)
+    allowed_stores: list[str] = field(default_factory=list)
+    key_id: str | None = None
 
 
 class TenantAuthMiddleware(BaseHTTPMiddleware):
@@ -61,8 +65,9 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
         self.auth_mode = auth_mode or os.environ.get("GRAFOMEM_AUTH_MODE", "none")
         self.tokens = tokens or self._load_tokens()
         self._db_url = db_url
-        # In-memory cache for API key → (tenant_id, role) lookups (populated lazily)
-        self._api_key_cache: dict[str, tuple[str, str]] = {}
+        # TTL cache for API key lookups: key → (tenant_id, role, scopes, allowed_stores, key_id, ip_allowlist, cached_at)
+        self._api_key_cache: dict[str, tuple] = {}
+        self._cache_ttl = 60  # seconds
         if self.auth_mode == "token":
             logger.info("Token auth enabled (%d tokens loaded)", len(self.tokens))
         elif self.auth_mode == "cloud":
@@ -79,10 +84,22 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
             logger.warning("GRAFOMEM_TOKENS is not valid JSON — no tokens loaded")
             return {}
 
-    def _resolve_api_key(self, api_key: str) -> tuple[str, str] | None:
-        """Resolve an API key to (tenant_id, role) using the DB. Caches results."""
-        if api_key in self._api_key_cache:
-            return self._api_key_cache[api_key]
+    def invalidate_cache(self, api_key: str) -> None:
+        """Remove a key from the TTL cache (e.g. on revocation)."""
+        self._api_key_cache.pop(api_key, None)
+
+    def _resolve_api_key(self, api_key: str) -> tuple[str, str, list[str], list[str], str | None, list[str]] | None:
+        """Resolve an API key to (tenant_id, role, scopes, allowed_stores, key_id, ip_allowlist) using the DB.
+
+        Results are cached with a 60-second TTL.
+        """
+        cached = self._api_key_cache.get(api_key)
+        if cached is not None:
+            tenant_id, role, scopes, allowed_stores, key_id, ip_allowlist, cached_at = cached
+            if time.monotonic() - cached_at < self._cache_ttl:
+                return tenant_id, role, scopes, allowed_stores, key_id, ip_allowlist
+            # Stale — remove and re-resolve
+            del self._api_key_cache[api_key]
 
         if not self._db_url:
             return None
@@ -93,28 +110,80 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
             conn = psycopg.connect(self._db_url, row_factory=dict_row,
                                    autocommit=True)
             row = conn.execute(
-                "SELECT tenant_id, role FROM tenant_api_keys WHERE api_key = %s",
+                "SELECT key_id, tenant_id, role, scopes, allowed_stores, expires_at, ip_allowlist "
+                "FROM tenant_api_keys WHERE api_key = %s",
                 (api_key,),
             ).fetchone()
-            
+
+            is_legacy = False
             # Fallback for legacy schema
             if not row:
                 row = conn.execute(
                     "SELECT id as tenant_id, 'admin' as role FROM tenants WHERE api_key = %s",
                     (api_key,),
                 ).fetchone()
-                
-            conn.close()
+                is_legacy = True
+
             if row:
+                # Check expiry (column may not exist yet)
+                from datetime import datetime, timezone
+                expires_at = row.get("expires_at")
+                if expires_at is not None and expires_at < datetime.now(timezone.utc):
+                    conn.close()
+                    return None
+
+                # Fire-and-forget last_used_at update
+                key_id_val = row.get("key_id")
+                if key_id_val:
+                    try:
+                        conn.execute(
+                            "UPDATE tenant_api_keys SET last_used_at = NOW() WHERE key_id = %s",
+                            (key_id_val,),
+                        )
+                    except Exception:
+                        pass  # best-effort, don't block auth
+
+                conn.close()
+
                 tenant_id = row["tenant_id"]
-                role = row["role"]
-                self._api_key_cache[api_key] = (tenant_id, role)
-                return tenant_id, role
+                role = row.get("role", "admin")
+
+                if is_legacy:
+                    scopes: list[str] = ["*"]
+                    allowed_stores: list[str] = []
+                    key_id_out: str | None = None
+                    ip_allowlist: list[str] = []
+                else:
+                    # scopes / allowed_stores columns may not exist pre-migration
+                    db_scopes = row.get("scopes")
+                    if db_scopes:
+                        scopes = db_scopes if isinstance(db_scopes, list) else json.loads(db_scopes)
+                    else:
+                        from aml.server.scopes import ROLE_SCOPES
+                        scopes = ROLE_SCOPES.get(role, ["*"])
+                    db_stores = row.get("allowed_stores")
+                    if db_stores:
+                        allowed_stores = db_stores if isinstance(db_stores, list) else json.loads(db_stores)
+                    else:
+                        allowed_stores = []
+                    key_id_out = row.get("key_id")
+                    db_ip = row.get("ip_allowlist")
+                    if db_ip:
+                        ip_allowlist = db_ip if isinstance(db_ip, list) else json.loads(db_ip)
+                    else:
+                        ip_allowlist = []
+
+                self._api_key_cache[api_key] = (
+                    tenant_id, role, scopes, allowed_stores, key_id_out, ip_allowlist, time.monotonic(),
+                )
+                return tenant_id, role, scopes, allowed_stores, key_id_out, ip_allowlist
+            else:
+                conn.close()
         except Exception as e:
             logger.warning("API key lookup failed: %s", e)
         return None
 
-    def _resolve_jwt(self, token: str) -> tuple[str, str] | None:
+    def _resolve_jwt(self, token: str) -> tuple[str, str, list[str], list[str], str | None, list[str]] | None:
         """Try to resolve a portal JWT (Supabase or legacy) to a tenant_id.
 
         Uses the PortalAuth instance already on app.state (which shares the
@@ -134,9 +203,14 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
             if info and info.get("tenant_id"):
                 tenant_id = info["tenant_id"]
                 role = info.get("role", "admin")
+                scopes = ["*"]  # portal JWTs get full access
+                allowed_stores: list[str] = []
+                ip_allowlist: list[str] = []
                 # Cache so subsequent calls with the same JWT are fast
-                self._api_key_cache[token] = (tenant_id, role)
-                return tenant_id, role
+                self._api_key_cache[token] = (
+                    tenant_id, role, scopes, allowed_stores, None, ip_allowlist, time.monotonic(),
+                )
+                return tenant_id, role, scopes, allowed_stores, None, ip_allowlist
         except Exception as e:
             logger.debug("JWT resolution failed: %s", e)
         return None
@@ -190,10 +264,20 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
                     content={"detail": "Invalid API key."},
                 )
 
-            tenant_id, role = resolved
+            tenant_id, role, scopes, allowed_stores, key_id, ip_allowlist = resolved
+
+            # IP allowlist enforcement
+            if ip_allowlist:
+                client_ip = request.client.host if request.client else None
+                if client_ip and client_ip not in ip_allowlist:
+                    return JSONResponse(
+                        status_code=403,
+                        content={"detail": f"IP {client_ip} not in allowlist."},
+                    )
 
             request.state.tenant = TenantContext(
-                tenant_id=tenant_id, authenticated=True, role=role
+                tenant_id=tenant_id, authenticated=True, role=role,
+                scopes=scopes, allowed_stores=allowed_stores, key_id=key_id,
             )
             return await call_next(request)
 
@@ -229,7 +313,7 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
         tenant_id = self.tokens.get(token)
         role = "admin"
         if tenant_id:
-            resolved = (tenant_id, role)
+            resolved = (tenant_id, role, ["*"], [], None, [])
 
         # Fallback: try resolving as a DB API key (portal-issued keys)
         if resolved is None and self._db_url:
@@ -245,9 +329,19 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
                 content={"detail": "Invalid token. Not mapped to any tenant."},
             )
 
-        tenant_id, role = resolved
+        tenant_id, role, scopes, allowed_stores, key_id, ip_allowlist = resolved
+
+        # IP allowlist enforcement (token mode)
+        if ip_allowlist:
+            client_ip = request.client.host if request.client else None
+            if client_ip and client_ip not in ip_allowlist:
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": f"IP {client_ip} not in allowlist."},
+                )
 
         request.state.tenant = TenantContext(
-            tenant_id=tenant_id, authenticated=True, role=role
+            tenant_id=tenant_id, authenticated=True, role=role,
+            scopes=scopes, allowed_stores=allowed_stores, key_id=key_id,
         )
         return await call_next(request)

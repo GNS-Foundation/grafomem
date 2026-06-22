@@ -271,14 +271,16 @@ class ManifoldService:
                     cur.execute("SAVEPOINT manifold_update1")
                     cur.execute("ALTER TABLE manifold_cache ADD COLUMN som_version TEXT;")
                     cur.execute("RELEASE SAVEPOINT manifold_update1")
-                except Exception:
+                except Exception as e:
+                    logger.warning(f"Could not add som_version: {e}")
                     cur.execute("ROLLBACK TO SAVEPOINT manifold_update1")
                     
                 try:
                     cur.execute("SAVEPOINT manifold_update2")
                     cur.execute("ALTER TABLE manifold_cache ADD COLUMN som_weights BYTEA;")
                     cur.execute("RELEASE SAVEPOINT manifold_update2")
-                except Exception:
+                except Exception as e:
+                    logger.warning(f"Could not add som_weights: {e}")
                     cur.execute("ROLLBACK TO SAVEPOINT manifold_update2")
             conn.commit()
         except Exception as e:

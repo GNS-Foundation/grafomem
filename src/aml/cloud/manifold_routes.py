@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Request
 from aml.cloud.manifold import ManifoldService
+from aml.server.scopes import require_scope
 
 def create_manifold_router(manifold_svc: ManifoldService) -> APIRouter:
     router = APIRouter()
@@ -8,6 +9,7 @@ def create_manifold_router(manifold_svc: ManifoldService) -> APIRouter:
     async def export_manifold(request: Request):
         ctx = getattr(request.state, "tenant", None)
         tenant = ctx.tenant_id if ctx else "default"
+        require_scope(request, "manifold:read")
         
         # This executes synchronously (blocking) for now per Sprint 30 design.
         # MiniSom and Pandas read_sql takes a few seconds. 
@@ -23,6 +25,7 @@ def create_manifold_router(manifold_svc: ManifoldService) -> APIRouter:
     async def locate_manifold_step(step_id: str, request: Request):
         ctx = getattr(request.state, "tenant", None)
         tenant = ctx.tenant_id if ctx else "default"
+        require_scope(request, "manifold:read")
         try:
             res = manifold_svc.locate_step(step_id, tenant)
             if "error" in res:
@@ -37,6 +40,7 @@ def create_manifold_router(manifold_svc: ManifoldService) -> APIRouter:
     async def clear_cache(request: Request):
         ctx = getattr(request.state, "tenant", None)
         tenant = ctx.tenant_id if ctx else "default"
+        require_scope(request, "manifold:read")
         try:
             import psycopg2
             conn = psycopg2.connect(manifold_svc.db_url)

@@ -168,12 +168,14 @@ class ErasureProofService:
         signing_identity=None,
         gcrumbs=None,
         pool=None,
+        erasure_ledger=None,
     ) -> None:
         self._db_url = db_url
         self._decision_trail = decision_trail
         self._signing_identity = signing_identity
         self._gcrumbs = gcrumbs
         self._pool = pool
+        self._erasure_ledger = erasure_ledger
         self._conn: psycopg.Connection[dict[str, Any]] | None = None
 
     # ------------------------------------------------------------------
@@ -337,6 +339,15 @@ class ErasureProofService:
                 "Ed25519-signed at issuance" if signature else None,
             ),
         )
+
+        if self._erasure_ledger and signature is not None:
+            self._erasure_ledger.record_subject_erasure(
+                entry_id=certificate_id,
+                tenant_id=tenant_id,
+                fact_ref=fact_ref,
+                content_hash=content_hash,
+                certificate=cert_data
+            )
 
         logger.info(
             "Erasure certificate issued: cert=%s tenant=%s fact_ref=%s scrubbed=%d",

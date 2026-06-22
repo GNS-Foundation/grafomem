@@ -1,5 +1,6 @@
 import logging
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+from aml.server.scopes import require_scope
 from pydantic import BaseModel
 
 from aml.cloud.world_model import WorldModelService
@@ -16,13 +17,15 @@ def get_template_routes(world_model: WorldModelService) -> APIRouter:
         template_id: str
 
     @router.get("/")
-    def list_templates():
+    def list_templates(request: Request):
         """List all available canonical templates."""
+        require_scope(request, "manifold:read")
         return {"templates": registry.list_templates()}
 
     @router.post("/install")
-    def install_template(req: InstallTemplateRequest):
+    def install_template(req: InstallTemplateRequest, request: Request):
         """Install a template into the tenant's World Model."""
+        require_scope(request, "artifacts:admin")
         # For simplicity, using a hardcoded tenant for now, 
         # normally extracted from auth context.
         tenant_id = "tenant_001" 
