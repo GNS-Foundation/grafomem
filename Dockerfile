@@ -27,7 +27,7 @@ COPY corpus/ corpus/
 COPY tests/ tests/
 
 # Install the package with all production extras (includes cloud: stripe, bcrypt, PyJWT)
-ARG CACHEBUST=2
+ARG CACHEBUST=3
 RUN pip install --no-cache-dir ".[all]"
 
 # Pre-download the BGE embedding model so it's baked into the image
