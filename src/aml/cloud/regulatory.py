@@ -182,7 +182,7 @@ class RegulatoryReportService:
 
         try:
             content = gen_fn(tenant_id, period_start, now)
-            content_json = json.dumps(content, sort_keys=True, separators=(",", ":"))
+            content_json = json.dumps(content, sort_keys=True, separators=(",", ":"), default=str)
             content_hash = hashlib.blake2b(
                 content_json.encode(), digest_size=32,
             ).hexdigest()

@@ -612,6 +612,26 @@ class ConformanceSuite:
             )
 
             if not self.live:
+                # Assert that the decision record actually contains ciphertext in the database.
+                db_url = os.environ.get("GRAFOMEM_DB_URL", "postgresql://grafomem:dev@localhost:5432/grafomem")
+                import psycopg
+                try:
+                    with psycopg.connect(db_url) as conn:
+                        row = conn.execute(
+                            "SELECT raw_output, raw_output_enc FROM decision_records WHERE decision_id = %s",
+                            (decision_id,)
+                        ).fetchone()
+                        if row:
+                            raw_out, raw_enc = row
+                            is_plaintext_hidden = raw_out == "[ENCRYPTED]"
+                            self._assert(
+                                "Replay Source Record is Encrypted",
+                                bool(raw_enc) and is_plaintext_hidden,
+                                f"raw_output={is_plaintext_hidden}, raw_output_enc={bool(raw_enc)}"
+                            )
+                except Exception as e:
+                    print(f"Skipping local DB assertion: {e}")
+
                 # MOCK mode with faithful system_prompt: MUST be IDENTICAL
                 # If diverged, the replay engine failed to reconstruct the prompt
                 self._assert(
@@ -953,8 +973,8 @@ class ConformanceSuite:
         # (b) NEGATIVE: tampered certificate fails verification
         import psycopg
         db_url = os.environ.get(
-            "DATABASE_URL",
-            "postgresql://grafomem:grafomem@localhost:5433/grafomem",
+            "GRAFOMEM_DB_URL",
+            "postgresql://grafomem:dev@localhost:5432/grafomem",
         )
         try:
             conn = psycopg.connect(db_url, autocommit=True)
@@ -1008,8 +1028,8 @@ class ConformanceSuite:
 
         import psycopg
         db_url = os.environ.get(
-            "DATABASE_URL",
-            "postgresql://grafomem:grafomem@localhost:5433/grafomem",
+            "GRAFOMEM_DB_URL",
+            "postgresql://grafomem:dev@localhost:5432/grafomem",
         )
         try:
             conn = psycopg.connect(db_url, autocommit=True)
@@ -1315,9 +1335,9 @@ class ConformanceSuite:
 
         # Stream the workflow — use httpx streaming
         request = self.client.build_request(
-            "POST",
+            "GET",
             f"/v1/orchestrator/workflows/{stream_wf_id}/stream",
-            json={"input_text": "SSE streaming conformance test"},
+            params={"input_text": "SSE streaming conformance test"},
             headers={
                 **self._h(),
                 "Accept": "text/event-stream",
@@ -1345,8 +1365,20 @@ class ConformanceSuite:
             for line in resp.iter_lines():
                 if line.startswith("event:"):
                     current_event = line[len("event:"):].strip()
-                elif line.startswith("data:") and current_event:
-                    event_types.append(current_event)
+                elif line.startswith("data:"):
+                    if current_event == "message":
+                        # Attempt to extract 'type' from JSON payload
+                        try:
+                            import json
+                            payload = json.loads(line[len("data:"):].strip())
+                            if "type" in payload:
+                                event_types.append(payload["type"])
+                            else:
+                                event_types.append("message")
+                        except Exception:
+                            event_types.append("message")
+                    elif current_event:
+                        event_types.append(current_event)
                     current_event = ""
         except Exception as e:
             # Timeout or connection closed — still check what we got
@@ -1366,9 +1398,9 @@ class ConformanceSuite:
     def test_stream_nonexistent_404(self) -> None:
         """Streaming a nonexistent workflow returns 404."""
         request = self.client.build_request(
-            "POST",
+            "GET",
             "/v1/orchestrator/workflows/nonexistent-workflow-id/stream",
-            json={"input_text": "should fail"},
+            params={"input_text": "should fail"},
             headers=self._h(),
         )
         try:
