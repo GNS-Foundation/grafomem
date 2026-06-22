@@ -1045,8 +1045,14 @@ def create_app(
                         
                         # Create workflow, steps, receipt
                         wf_id = str(uuid.uuid4())
+                        step_id = str(uuid.uuid4())
+                        from datetime import datetime, timezone
+                        now = datetime.now(timezone.utc)
                         conn.execute("INSERT INTO orchestrator_workflows (workflow_id, tenant_id, name, mode) VALUES (%s, %s, %s, %s)", (wf_id, tenant_id, "Tamper WF", "sequential"))
-                        conn.execute("INSERT INTO execution_receipts (receipt_id, tenant_id, workflow_id, step_number, output_hash, prev_hash, signed_receipt) VALUES (%s, %s, %s, %s, %s, %s, %s)", (str(uuid.uuid4()), tenant_id, wf_id, 1, "hash1", None, b"sig"))
+                        conn.execute(
+                            "INSERT INTO execution_receipts (receipt_id, step_id, workflow_id, tenant_id, step_number, input_hash, memory_snapshot_hash, policy_evaluation_hash, model_id, output_hash, started_at, completed_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)", 
+                            (str(uuid.uuid4()), step_id, wf_id, tenant_id, 1, "in", "mem", "pol", "mod", "hash1", now, now)
+                        )
                         
                         # 2. Capture baseline hash
                         row = conn.execute("SELECT output_hash FROM execution_receipts WHERE workflow_id = %s", (wf_id,)).fetchone()
