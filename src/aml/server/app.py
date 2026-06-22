@@ -1034,7 +1034,8 @@ def create_app(
                 import psycopg
                 import uuid
                 import time
-                db = request.app.state.db_url
+                import os
+                db = os.environ.get("GRAFOMEM_LEDGER_URL")
                 # 1. Create throwaway tenant
                 tenant_id = str(uuid.uuid4())
                 try:
