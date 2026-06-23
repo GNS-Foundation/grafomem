@@ -1,0 +1,52 @@
+groups:
+  - name: grafomem_slo_alerts
+    rules:
+      
+      # 1. Availability: High API Error Rate
+      - alert: HighAPIErrorRate
+        expr: |
+          sum(rate(grafomem_http_requests_total{status=~"5.."}[5m])) 
+          / 
+          sum(rate(grafomem_http_requests_total[5m])) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High API 5xx Error Rate"
+          description: "More than 1% of all API requests are failing with 5xx errors over the last 5 minutes. This threatens the 99.9% Uptime SLO."
+
+      # 2. Latency: p95 Spike
+      - alert: APILatencySpike
+        expr: |
+          histogram_quantile(0.95, sum(rate(grafomem_http_request_duration_seconds_bucket[10m])) by (le)) > 0.250
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API p95 Latency > 250ms"
+          description: "The p95 latency for API requests has exceeded the 250ms SLO threshold for 10 consecutive minutes."
+
+      # 3. Compliance: Erasure Sweep Failure (ZERO TOLERANCE)
+      - alert: ErasureSweepFailed
+        expr: |
+          increase(grafomem_erasure_sweep_errors_total[1m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          pager: true
+        annotations:
+          summary: "GDPR/W9 Erasure Pipeline Failure"
+          description: "The background ErasureSweeper encountered a fatal error. Right-to-be-Forgotten pipeline is blocked! Immediate action required."
+
+      # 4. Background Workflow Reliability
+      - alert: HighWorkflowErrorRate
+        expr: |
+          sum(rate(grafomem_workflows_total{status="failed"}[30m]))
+          /
+          sum(rate(grafomem_workflows_total[30m])) > 0.01
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Background Workflows failing > 1%"
+          description: "More than 1% of orchestrator/inference workflows have failed over the last 30 minutes."

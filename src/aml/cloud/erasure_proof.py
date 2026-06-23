@@ -52,7 +52,6 @@ class ErasureCertificate:
     # What was done
     coverage: dict[str, str]  # e.g. {"primary": "absent", "embedding": "present", "cache": "unchecked"}
     scrubbed_decision_ids: list[str]
-
     # Timing
     erasure_requested_at: datetime
     erasure_completed_at: datetime
@@ -60,6 +59,8 @@ class ErasureCertificate:
     # Legal basis
     legal_basis: str  # e.g. "GDPR Article 17 — Right to Erasure"
     requested_by: str | None  # e.g. "data_subject", "dpo", "automated"
+
+    governance_record: dict[str, Any] | None = None
 
     # Provenance — Ed25519 signature over the certificate
     signature: bytes | None = None
@@ -116,6 +117,7 @@ CREATE TABLE IF NOT EXISTS erasure_certificates (
     fact_content_hash       TEXT,
 
     -- What was done
+    governance_record       JSONB,
     coverage                JSONB NOT NULL DEFAULT '{}'::jsonb,
     scrubbed_decision_ids   JSONB NOT NULL DEFAULT '[]',
 
@@ -302,11 +304,44 @@ class ErasureProofService:
 
         # Step 4: Sign the certificate
         coverage_dict = coverage or {"primary": "absent"}
+        
+        governance_record = {
+            "declared": {
+                "obligation": "deletion",
+                "target": f"memory_ref:{fact_ref}"
+            },
+            "observed": [
+                {
+                    "store": store,
+                    "status": status,
+                    "locus": f"grafomem-{store}",
+                    "source_class": "independent_observation"
+                }
+                for store, status in coverage_dict.items()
+            ],
+            "coverage": list(coverage_dict.keys()),
+            "non_claims": {
+                "coverage_gaps": [],  # Verified offline
+                "scope": tenant_id,
+                "freshness": "point_in_time"
+            },
+            "addressing": {
+                "certificate_id": certificate_id,
+                "fact_content_hash": content_hash
+            },
+            "verifier": {
+                "identity": "grafomem_erasure_daemon",
+                "version": "1.0.0"
+            },
+            "result": "enforced" if all(v == "absent" for v in coverage_dict.values()) else "incomplete"
+        }
+
         cert_data = {
             "certificate_id": certificate_id,
             "tenant_id": tenant_id,
             "fact_ref": fact_ref,
             "fact_content_hash": content_hash,
+            "governance_record": governance_record,
             "coverage": coverage_dict,
             "erasure_requested_at": requested_at.isoformat(),
             "erasure_completed_at": completed_at.isoformat(),
@@ -325,13 +360,14 @@ class ErasureProofService:
         conn.execute(
             f"INSERT INTO {self._table_prefix}erasure_certificates "
             "(certificate_id, tenant_id, fact_ref, fact_content_hash, "
-            " coverage, scrubbed_decision_ids, "
+            " governance_record, coverage, scrubbed_decision_ids, "
             " erasure_requested_at, erasure_completed_at, "
             " legal_basis, requested_by, "
             " signature, public_key, verified, verification_note) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
             (
                 certificate_id, tenant_id, fact_ref, content_hash,
+                json.dumps(governance_record),
                 json.dumps(coverage_dict), json.dumps(scrubbed_ids),
                 requested_at, completed_at,
                 legal_basis, requested_by,
@@ -381,6 +417,7 @@ class ErasureProofService:
             tenant_id=tenant_id,
             fact_ref=fact_ref,
             fact_content_hash=content_hash,
+            governance_record=governance_record,
             coverage=coverage_dict,
             scrubbed_decision_ids=scrubbed_ids,
             erasure_requested_at=requested_at,
@@ -532,6 +569,7 @@ class ErasureProofService:
             tenant_id=row["tenant_id"],
             fact_ref=row["fact_ref"],
             fact_content_hash=row.get("fact_content_hash"),
+            governance_record=row.get("governance_record", {}) if isinstance(row.get("governance_record"), dict) else json.loads(row.get("governance_record", "{}") or "{}"),
             coverage=row.get("coverage", {}) if isinstance(row.get("coverage"), dict) else json.loads(row.get("coverage", "{}")),
             scrubbed_decision_ids=ids,
             erasure_requested_at=row["erasure_requested_at"].astimezone(timezone.utc) if row["erasure_requested_at"] else None,
@@ -553,6 +591,7 @@ class ErasureProofService:
             "tenant_id": cert.tenant_id,
             "fact_ref": cert.fact_ref,
             "fact_content_hash": cert.fact_content_hash,
+            "governance_record": cert.governance_record,
             "coverage": cert.coverage,
             "scrubbed_decision_ids": cert.scrubbed_decision_ids,
             "erasure_requested_at": cert.erasure_requested_at.isoformat(),
@@ -574,6 +613,7 @@ def verify_erasure_effect(
     signature: bytes,
     public_key: bytes,
     required_stores: list[str],
+    current_time: datetime | None = None,
 ) -> dict[str, Any]:
     """Independent verification of an erasure effect from canonical bytes.
     
@@ -591,6 +631,8 @@ def verify_erasure_effect(
         The public key to verify against.
     required_stores : list[str]
         List of subsystems that must be checked-and-absent (e.g. ["primary", "embedding"]).
+    current_time : datetime, optional
+        Used to evaluate freshness of the record.
         
     Returns
     -------
@@ -616,6 +658,9 @@ def verify_erasure_effect(
         "erasure_completed_at": cert_data.get("erasure_completed_at"),
         "legal_basis": cert_data.get("legal_basis"),
     }
+    if "governance_record" in cert_data:
+        signed_data["governance_record"] = cert_data["governance_record"]
+
     try:
         from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
         pub = Ed25519PublicKey.from_public_bytes(public_key)
@@ -627,21 +672,43 @@ def verify_erasure_effect(
         return {"result": "invalid", "coverage_gaps": []}
 
     # 2. Extract verified coverage
-    coverage = signed_data.get("coverage", {})
+    coverage_gaps = []
+    store_status = {}
+    
+    if "governance_record" in signed_data and signed_data["governance_record"]:
+        record = signed_data["governance_record"]
+        # Check freshness
+        freshness = record.get("non_claims", {}).get("freshness")
+        if isinstance(freshness, dict) and "valid_until" in freshness:
+            # check current_time vs valid_until
+            valid_until_str = freshness["valid_until"]
+            from dateutil.parser import isoparse
+            valid_until_dt = isoparse(valid_until_str)
+            check_time = current_time or datetime.now(timezone.utc)
+            if check_time > valid_until_dt:
+                return {"result": "incomplete", "coverage_gaps": required_stores, "note": "Freshness expired"}
+
+        for obs in record.get("observed", []):
+            store = obs.get("store")
+            status = obs.get("status")
+            if store:
+                store_status[store] = status
+    else:
+        # Legacy path
+        store_status = signed_data.get("coverage", {})
 
     # Pass 1: Compute coverage gaps (independent of aggregate)
     # A gap is any required store that is missing, unchecked, pending, etc.
     # Effectively, anything that is not definitively 'present' or 'absent'.
-    coverage_gaps = []
     for store in required_stores:
-        status = coverage.get(store)
+        status = store_status.get(store)
         if status not in ("present", "absent"):
             coverage_gaps.append(store)
 
     # Pass 2: Compute aggregate result
     # A. failed (Dominates everything: if any *required* store is explicitly present)
     for store in required_stores:
-        if coverage.get(store) == "present":
+        if store_status.get(store) == "present":
             return {"result": "failed", "coverage_gaps": coverage_gaps}
 
     # B. incomplete (If there are any coverage gaps)

@@ -2081,6 +2081,28 @@ conn = pool.getconn(readonly=True)                # → replica (failover → pr
 
 `test_read_replica.py`: 15 DB-free tests covering routing logic, failover, env-var activation, statistics, and lifecycle.
 
+## 36. Phase 5 — Compliance & Enterprise Operations
+
+> [!NOTE]
+> Phase 5 bridges the gap between academic cryptographic guarantees and production enterprise requirements, focusing heavily on GDPR/DORA compliance, Right-to-be-Forgotten (W9), observability, and automated disaster recovery.
+
+### 36.1 The Right-to-be-Forgotten Pipeline (Sprint 26)
+To satisfy W9 Erasure without blocking the hot path:
+- **Decoupled Deletions:** `ON DELETE CASCADE` was dropped. Deletions flag records as `erasure_pending`.
+- **ErasureSweeper Daemon:** A background `APScheduler` job continuously scrubs orphaned vectors, maintaining strict erasure SLAs.
+- **Protocol 3.4 Normative Contract:** Recomputable states (`declared`, `observed`) are cleanly separated from the trust layer.
+- **Offline Verification:** Two-pass verification strictly enforces `failed` > `incomplete` > `enforced` precedence.
+
+### 36.2 Enterprise Observability & SLAs
+- **SLO Commitments:** Formally defined 99.9% uptime and p95 latency < 250ms boundaries.
+- **Prometheus Telemetry:** Hardened the observability stack with `grafomem_erasure_sweep_errors_total` — a zero-tolerance metric that triggers critical PagerDuty alerts to prevent silent GDPR violations.
+- **Runbooks:** Standard Operating Procedures (SOPs) written for on-call engineers.
+
+### 36.3 Backup, DR, and Log Retention
+- **W6 Restore Probe:** An automated script (`verify_restore_probe.py`) that audits restored databases to ensure snapshots do not accidentally resurrect legally erased data.
+- **SIEM Exporter:** A resilient background daemon (`siem_exporter.py`) that safely streams immutable `gcrumbs` and `decision_records` to an enterprise SIEM (e.g. Datadog, Splunk) with exact-once delivery semantics via database cursors.
+- **180-Day Retention:** To prevent unbounded database growth, the exporter prunes archived logs older than 180 days, but *only* if they have been successfully verified as exported.
+
 ## Appendix: Live Status
 
 > [!NOTE]
@@ -2093,4 +2115,4 @@ conn = pool.getconn(readonly=True)                # → replica (failover → pr
 | **Action extraction** | LIVE | Extracts `action_name` and `params` via strict schema forcing. |
 | **Declarative governance PEP** | LIVE | PEP enforces DB-defined policies (e.g. `require_params`, `sandbox_financial_rules`); resilience mechanisms (failover, tool-deny, timeout, loop) validated two-sided in the sealed run (§17.1). |
 | **Tamper-evident receipts** | LIVE | Ed25519 signatures generated and independently verifiable with bound production keys; tamper detection proven via negative tests. |
-| **Erasure / gcrumbs** | LIVE (Sprint 15) | Production `GcrumbsService` — breadcrumb chain + Merkle epoch anchor — plus signed erasure certificates (§5). B0 reproduces the pinned crypto artifact; B1–B10 validate the DB service; 12/12 gcrumbs gates green (mock/local). |
+| **Erasure / gcrumbs** | LIVE (Phase 5) | Production `GcrumbsService` + `ErasureSweeper` background daemon. W9 pipeline active, W6 restore probes online, SIEM Exporter archiving to external sinks with 180-day DB retention. |

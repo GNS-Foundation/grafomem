@@ -51,6 +51,13 @@ def run_sweep_job(db_url: str):
         logger.error(f"Sweep job failed: {e}", exc_info=True)
         grafomem_erasure_sweep_errors_total.inc()
 
+from aml.cloud.siem_exporter import SiemExporter
+
+def run_siem_export_job(db_url: str):
+    logger.info("Starting scheduled SIEM export job...")
+    exporter = SiemExporter(db_url)
+    exporter.run_sweep()
+
 def start_daemon(db_url: str, interval_minutes: int = 1):
     """Start the APScheduler daemon."""
     logger.info(f"Starting APScheduler, interval={interval_minutes} minutes")
@@ -63,7 +70,21 @@ def start_daemon(db_url: str, interval_minutes: int = 1):
         args=[db_url], 
         id='erasure_sweeper_job',
         replace_existing=True,
+        next_run_time=datetime.now()
     )
+    
+    # SIEM Exporter: Run every 5 minutes (or configurable)
+    siem_interval = int(os.environ.get("SIEM_EXPORT_INTERVAL_MINUTES", "5"))
+    scheduler.add_job(
+        run_siem_export_job,
+        'interval',
+        minutes=siem_interval,
+        args=[db_url],
+        id='siem_export_job',
+        replace_existing=True,
+        next_run_time=datetime.now()
+    )
+    
     scheduler.start()
     
     return scheduler
