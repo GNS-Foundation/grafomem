@@ -50,8 +50,7 @@ class ErasureCertificate:
     fact_content_hash: str | None  # BLAKE2b hash of the deleted content (not the content itself)
 
     # What was done
-    memory_deleted: bool
-    decision_records_scrubbed: int
+    coverage: dict[str, str]  # e.g. {"primary": "absent", "embedding": "present", "cache": "unchecked"}
     scrubbed_decision_ids: list[str]
 
     # Timing
@@ -117,8 +116,7 @@ CREATE TABLE IF NOT EXISTS erasure_certificates (
     fact_content_hash       TEXT,
 
     -- What was done
-    memory_deleted          BOOLEAN NOT NULL DEFAULT TRUE,
-    decision_records_scrubbed INTEGER NOT NULL DEFAULT 0,
+    coverage                JSONB NOT NULL DEFAULT '{}'::jsonb,
     scrubbed_decision_ids   JSONB NOT NULL DEFAULT '[]',
 
     -- Timing
@@ -169,6 +167,7 @@ class ErasureProofService:
         gcrumbs=None,
         pool=None,
         erasure_ledger=None,
+        table_prefix: str = "",
     ) -> None:
         self._db_url = db_url
         self._decision_trail = decision_trail
@@ -176,6 +175,7 @@ class ErasureProofService:
         self._gcrumbs = gcrumbs
         self._pool = pool
         self._erasure_ledger = erasure_ledger
+        self._table_prefix = table_prefix
         self._conn: psycopg.Connection[dict[str, Any]] | None = None
 
     # ------------------------------------------------------------------
@@ -207,7 +207,8 @@ class ErasureProofService:
     def ensure_schema(self) -> None:
         """Create the ``erasure_certificates`` table if it does not exist."""
         conn = self._get_conn()
-        conn.execute(_SCHEMA_SQL)
+        schema_sql = _SCHEMA_SQL.replace("erasure_certificates", f"{self._table_prefix}erasure_certificates")
+        conn.execute(schema_sql)
         logger.info("Erasure Proof schema ensured")
 
     # ------------------------------------------------------------------
@@ -237,7 +238,7 @@ class ErasureProofService:
         fact_ref: int,
         *,
         fact_content: str | None = None,
-        memory_deleted: bool = True,
+        coverage: dict[str, str] | None = None,
         legal_basis: str = "GDPR Article 17 — Right to Erasure",
         requested_by: str | None = "data_subject",
         signing_identity=None,
@@ -258,8 +259,8 @@ class ErasureProofService:
             The memory ref that was deleted.
         fact_content : str, optional
             The content of the deleted fact (used to compute hash, NOT stored).
-        memory_deleted : bool
-            Whether the fact was actually deleted from the memory store.
+        coverage : dict[str, str], optional
+            Per-subsystem erasure findings (e.g. {"primary": "absent", "embedding": "present"}).
         legal_basis : str
             Legal basis for the erasure (default: GDPR Article 17).
         requested_by : str, optional
@@ -300,13 +301,13 @@ class ErasureProofService:
         certificate_id = compute_certificate_id(tenant_id, fact_ref, completed_at)
 
         # Step 4: Sign the certificate
+        coverage_dict = coverage or {"primary": "absent"}
         cert_data = {
             "certificate_id": certificate_id,
             "tenant_id": tenant_id,
             "fact_ref": fact_ref,
             "fact_content_hash": content_hash,
-            "memory_deleted": memory_deleted,
-            "decision_records_scrubbed": scrubbed_count,
+            "coverage": coverage_dict,
             "erasure_requested_at": requested_at.isoformat(),
             "erasure_completed_at": completed_at.isoformat(),
             "legal_basis": legal_basis,
@@ -322,16 +323,16 @@ class ErasureProofService:
         # Step 5: Persist
         conn = self._get_conn()
         conn.execute(
-            "INSERT INTO erasure_certificates "
+            f"INSERT INTO {self._table_prefix}erasure_certificates "
             "(certificate_id, tenant_id, fact_ref, fact_content_hash, "
-            " memory_deleted, decision_records_scrubbed, scrubbed_decision_ids, "
+            " coverage, scrubbed_decision_ids, "
             " erasure_requested_at, erasure_completed_at, "
             " legal_basis, requested_by, "
             " signature, public_key, verified, verification_note) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
             (
                 certificate_id, tenant_id, fact_ref, content_hash,
-                memory_deleted, scrubbed_count, json.dumps(scrubbed_ids),
+                json.dumps(coverage_dict), json.dumps(scrubbed_ids),
                 requested_at, completed_at,
                 legal_basis, requested_by,
                 signature, public_key,
@@ -380,8 +381,7 @@ class ErasureProofService:
             tenant_id=tenant_id,
             fact_ref=fact_ref,
             fact_content_hash=content_hash,
-            memory_deleted=memory_deleted,
-            decision_records_scrubbed=scrubbed_count,
+            coverage=coverage_dict,
             scrubbed_decision_ids=scrubbed_ids,
             erasure_requested_at=requested_at,
             erasure_completed_at=completed_at,
@@ -401,7 +401,7 @@ class ErasureProofService:
         """Retrieve a single erasure certificate by ID."""
         conn = self._get_conn()
         row = conn.execute(
-            "SELECT * FROM erasure_certificates WHERE certificate_id = %s",
+            f"SELECT * FROM {self._table_prefix}erasure_certificates WHERE certificate_id = %s",
             (certificate_id,),
         ).fetchone()
         return self._row_to_cert(row) if row else None
@@ -410,7 +410,7 @@ class ErasureProofService:
         """Retrieve the erasure certificate for a specific fact."""
         conn = self._get_conn()
         row = conn.execute(
-            "SELECT * FROM erasure_certificates "
+            f"SELECT * FROM {self._table_prefix}erasure_certificates "
             "WHERE tenant_id = %s AND fact_ref = %s "
             "ORDER BY erasure_completed_at DESC LIMIT 1",
             (tenant_id, fact_ref),
@@ -426,7 +426,7 @@ class ErasureProofService:
         """List all erasure certificates for a tenant."""
         conn = self._get_conn()
         rows = conn.execute(
-            "SELECT * FROM erasure_certificates "
+            f"SELECT * FROM {self._table_prefix}erasure_certificates "
             "WHERE tenant_id = %s "
             "ORDER BY erasure_completed_at DESC "
             "LIMIT %s OFFSET %s",
@@ -440,11 +440,10 @@ class ErasureProofService:
         row = conn.execute(
             "SELECT "
             "  COUNT(*) AS total, "
-            "  SUM(decision_records_scrubbed) AS total_scrubbed, "
             "  COUNT(CASE WHEN verified THEN 1 END) AS signed_count, "
             "  MIN(erasure_completed_at) AS first_erasure, "
             "  MAX(erasure_completed_at) AS last_erasure "
-            "FROM erasure_certificates "
+            f"FROM {self._table_prefix}erasure_certificates "
             "WHERE tenant_id = %s",
             (tenant_id,),
         ).fetchone()
@@ -454,7 +453,6 @@ class ErasureProofService:
 
         return {
             "total": row["total"],
-            "total_scrubbed": row["total_scrubbed"] or 0,
             "signed_count": row["signed_count"] or 0,
             "first_erasure": row["first_erasure"].isoformat() if row["first_erasure"] else None,
             "last_erasure": row["last_erasure"].isoformat() if row["last_erasure"] else None,
@@ -490,8 +488,7 @@ class ErasureProofService:
             "tenant_id": cert.tenant_id,
             "fact_ref": cert.fact_ref,
             "fact_content_hash": cert.fact_content_hash,
-            "memory_deleted": cert.memory_deleted,
-            "decision_records_scrubbed": cert.decision_records_scrubbed,
+            "coverage": cert.coverage,
             "erasure_requested_at": cert.erasure_requested_at.isoformat(),
             "erasure_completed_at": cert.erasure_completed_at.isoformat(),
             "legal_basis": cert.legal_basis,
@@ -535,8 +532,7 @@ class ErasureProofService:
             tenant_id=row["tenant_id"],
             fact_ref=row["fact_ref"],
             fact_content_hash=row.get("fact_content_hash"),
-            memory_deleted=row["memory_deleted"],
-            decision_records_scrubbed=row["decision_records_scrubbed"],
+            coverage=row.get("coverage", {}) if isinstance(row.get("coverage"), dict) else json.loads(row.get("coverage", "{}")),
             scrubbed_decision_ids=ids,
             erasure_requested_at=row["erasure_requested_at"].astimezone(timezone.utc) if row["erasure_requested_at"] else None,
             erasure_completed_at=row["erasure_completed_at"].astimezone(timezone.utc) if row["erasure_completed_at"] else None,
@@ -557,8 +553,7 @@ class ErasureProofService:
             "tenant_id": cert.tenant_id,
             "fact_ref": cert.fact_ref,
             "fact_content_hash": cert.fact_content_hash,
-            "memory_deleted": cert.memory_deleted,
-            "decision_records_scrubbed": cert.decision_records_scrubbed,
+            "coverage": cert.coverage,
             "scrubbed_decision_ids": cert.scrubbed_decision_ids,
             "erasure_requested_at": cert.erasure_requested_at.isoformat(),
             "erasure_completed_at": cert.erasure_completed_at.isoformat(),
@@ -569,3 +564,91 @@ class ErasureProofService:
             "verified": cert.verified,
             "verification_note": cert.verification_note,
         }
+
+# ============================================================================
+# Independent Erasure Verifier (Increment 3)
+# ============================================================================
+
+def verify_erasure_effect(
+    cert_bytes: bytes,
+    signature: bytes,
+    public_key: bytes,
+    required_stores: list[str],
+) -> dict[str, Any]:
+    """Independent verification of an erasure effect from canonical bytes.
+    
+    1. Reconstructs canonical bytes and verifies Ed25519 signature.
+    2. Enforces precedence logic on the verified coverage dictionary:
+       - `failed` > `incomplete` > `enforced`.
+       
+    Parameters
+    ----------
+    cert_bytes : bytes
+        The exact JSON bytes of the data that was signed.
+    signature : bytes
+        The Ed25519 signature to verify.
+    public_key : bytes
+        The public key to verify against.
+    required_stores : list[str]
+        List of subsystems that must be checked-and-absent (e.g. ["primary", "embedding"]).
+        
+    Returns
+    -------
+    dict
+        {"result": str, "coverage_gaps": list[str]}
+        Where result is 'invalid', 'failed', 'incomplete', or 'enforced'.
+    """
+    import json
+    import hashlib
+    try:
+        cert_data = json.loads(cert_bytes)
+    except Exception:
+        return {"result": "invalid", "coverage_gaps": []}
+        
+    # 1. Verify signature BEFORE trusting coverage
+    signed_data = {
+        "certificate_id": cert_data.get("certificate_id"),
+        "tenant_id": cert_data.get("tenant_id"),
+        "fact_ref": cert_data.get("fact_ref"),
+        "fact_content_hash": cert_data.get("fact_content_hash"),
+        "coverage": cert_data.get("coverage", {}),
+        "erasure_requested_at": cert_data.get("erasure_requested_at"),
+        "erasure_completed_at": cert_data.get("erasure_completed_at"),
+        "legal_basis": cert_data.get("legal_basis"),
+    }
+    try:
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+        pub = Ed25519PublicKey.from_public_bytes(public_key)
+        # Recreate canonical json and hash it
+        canonical = json.dumps(signed_data, sort_keys=True, separators=(",", ":"))
+        digest = hashlib.blake2b(canonical.encode("utf-8"), digest_size=32).digest()
+        pub.verify(signature, digest)
+    except Exception:
+        return {"result": "invalid", "coverage_gaps": []}
+
+    # 2. Extract verified coverage
+    coverage = signed_data.get("coverage", {})
+
+    # Pass 1: Compute coverage gaps (independent of aggregate)
+    # A gap is any required store that is missing, unchecked, pending, etc.
+    # Effectively, anything that is not definitively 'present' or 'absent'.
+    coverage_gaps = []
+    for store in required_stores:
+        status = coverage.get(store)
+        if status not in ("present", "absent"):
+            coverage_gaps.append(store)
+
+    # Pass 2: Compute aggregate result
+    # A. failed (Dominates everything: if any *required* store is explicitly present)
+    for store in required_stores:
+        if coverage.get(store) == "present":
+            return {"result": "failed", "coverage_gaps": coverage_gaps}
+
+    # B. incomplete (If there are any coverage gaps)
+    if coverage_gaps:
+        return {"result": "incomplete", "coverage_gaps": coverage_gaps}
+
+    # C. enforced (All required stores present and explicitly absent)
+    # At this point, no required store is present, and there are no gaps.
+    # So every required store must be 'absent'.
+    return {"result": "enforced", "coverage_gaps": coverage_gaps}

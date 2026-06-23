@@ -71,11 +71,12 @@ CREATE TABLE IF NOT EXISTS memories (
 
 _SCHEMA_EMBEDDINGS = """
 CREATE TABLE IF NOT EXISTS memory_embeddings (
-    ref           BIGINT PRIMARY KEY REFERENCES memories(ref) ON DELETE CASCADE,
+    ref           BIGINT PRIMARY KEY,
     embedding     vector({dim}),
     tenant_id     TEXT NOT NULL DEFAULT '',
     valid_from    TIMESTAMPTZ NOT NULL DEFAULT '1970-01-01T00:00:00Z',
-    valid_until   TIMESTAMPTZ NOT NULL DEFAULT '9999-12-31T23:59:59Z'
+    valid_until   TIMESTAMPTZ NOT NULL DEFAULT '9999-12-31T23:59:59Z',
+    erasure_pending TIMESTAMPTZ
 );
 """
 
@@ -372,7 +373,8 @@ class PostgresGMPBackend:
 
     def delete(self, ref: Any) -> bool:
         with self._tenant_conn("admin") as (conn, cur):
-            # CASCADE deletes memory_embeddings row automatically
+            # Mark embedding for background erasure sweep before deleting primary memory
+            cur.execute("UPDATE memory_embeddings SET erasure_pending = now() WHERE ref = %s", (ref,))
             cur.execute("DELETE FROM memories WHERE ref = %s", (ref,))
             return cur.rowcount > 0
 
