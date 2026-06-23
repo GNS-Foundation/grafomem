@@ -51,14 +51,8 @@ def run_sweep_job(db_url: str):
         logger.error(f"Sweep job failed: {e}", exc_info=True)
         grafomem_erasure_sweep_errors_total.inc()
 
-def start_daemon(db_url: str, metrics_port: int = 9091, interval_minutes: int = 1):
-    """Start the APScheduler daemon and metrics server."""
-    logger.info(f"Starting Prometheus metrics server on port {metrics_port}")
-    try:
-        start_http_server(metrics_port)
-    except OSError as e:
-        logger.warning(f"Failed to start metrics server on {metrics_port} (likely running in tests): {e}")
-    
+def start_daemon(db_url: str, interval_minutes: int = 1):
+    """Start the APScheduler daemon."""
     logger.info(f"Starting APScheduler, interval={interval_minutes} minutes")
     scheduler = BackgroundScheduler()
     # Trigger immediately on start, then every interval
@@ -69,13 +63,23 @@ def start_daemon(db_url: str, metrics_port: int = 9091, interval_minutes: int = 
         args=[db_url], 
         id='erasure_sweeper_job',
         replace_existing=True,
-        # Avoid running immediately in tests if we just want to start the daemon
-        # But for production it's good to run on startup.
-        # We will let the scheduler handle the next run time according to the interval.
     )
     scheduler.start()
     
     return scheduler
+
+# Set up FastAPI for healthchecks and metrics
+from fastapi import FastAPI
+from prometheus_client import make_asgi_app
+import uvicorn
+
+app = FastAPI(title="Erasure Daemon")
+metrics_app = make_asgi_app()
+app.mount("/metrics", metrics_app)
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok", "daemon": "running"}
 
 if __name__ == "__main__":
     db_url = os.environ.get("DATABASE_URL")
@@ -83,11 +87,14 @@ if __name__ == "__main__":
         logger.error("DATABASE_URL environment variable is required")
         exit(1)
         
+    # Start the background sweeper
     scheduler = start_daemon(db_url)
+    
     try:
-        # Keep the main thread alive
-        while True:
-            time.sleep(60)
+        # Bind to PORT for Railway healthchecks and metrics scraping
+        port = int(os.environ.get("PORT", "9091"))
+        logger.info(f"Starting daemon web server on port {port}")
+        uvicorn.run(app, host="0.0.0.0", port=port, log_level="warning")
     except (KeyboardInterrupt, SystemExit):
         scheduler.shutdown()
         logger.info("Erasure daemon shut down.")
