@@ -2089,19 +2089,19 @@ conn = pool.getconn(readonly=True)                # → replica (failover → pr
 ### 36.1 The Right-to-be-Forgotten Pipeline (Sprint 26)
 To satisfy W9 Erasure without blocking the hot path:
 - **Decoupled Deletions:** `ON DELETE CASCADE` was dropped. Deletions flag records as `erasure_pending`.
-- **ErasureSweeper Daemon:** A background `APScheduler` job continuously scrubs orphaned vectors, maintaining strict erasure SLAs.
+- **ErasureSweeper Daemon:** Schema decoupled and sweeper built and unit-tested; daemon pending production deployment; loop closes once the worker is live and a sweep is verified.
 - **Protocol 3.4 Normative Contract:** Recomputable states (`declared`, `observed`) are cleanly separated from the trust layer.
 - **Offline Verification:** Two-pass verification strictly enforces `failed` > `incomplete` > `enforced` precedence.
 
 ### 36.2 Enterprise Observability & SLAs
-- **SLO Commitments:** Formally defined 99.9% uptime and p95 latency < 250ms boundaries.
-- **Prometheus Telemetry:** Hardened the observability stack with `grafomem_erasure_sweep_errors_total` — a zero-tolerance metric that triggers critical PagerDuty alerts to prevent silent GDPR violations.
+- **SLO Commitments:** Formally defined 99.9% uptime and p95 latency < 250ms boundaries. (Built/Defined, pending active alerting)
+- **Prometheus Telemetry:** Hardened the observability stack with `grafomem_erasure_sweep_errors_total`. (Built/Defined, pending active alerting)
 - **Runbooks:** Standard Operating Procedures (SOPs) written for on-call engineers.
 
 ### 36.3 Backup, DR, and Log Retention
-- **W6 Restore Probe:** An automated script (`verify_restore_probe.py`) that audits restored databases to ensure snapshots do not accidentally resurrect legally erased data.
-- **SIEM Exporter:** A resilient background daemon (`siem_exporter.py`) that safely streams immutable `gcrumbs` and `decision_records` to an enterprise SIEM (e.g. Datadog, Splunk) with exact-once delivery semantics via database cursors.
-- **180-Day Retention:** To prevent unbounded database growth, the exporter prunes archived logs older than 180 days, but *only* if they have been successfully verified as exported.
+- **W6 Restore Probe:** An automated script (`verify_restore_probe.py`) that audits restored databases. (Built but unverified against real snapshot)
+- **SIEM Exporter:** A resilient background daemon (`siem_exporter.py`) that streams immutable `gcrumbs` to an enterprise SIEM. (Built, pending production deployment)
+- **180-Day Retention:** Exporter prunes archived logs older than 180 days after verification. (Built, pending production deployment)
 
 ## Appendix: Live Status
 
@@ -2115,4 +2115,4 @@ To satisfy W9 Erasure without blocking the hot path:
 | **Action extraction** | LIVE | Extracts `action_name` and `params` via strict schema forcing. |
 | **Declarative governance PEP** | LIVE | PEP enforces DB-defined policies (e.g. `require_params`, `sandbox_financial_rules`); resilience mechanisms (failover, tool-deny, timeout, loop) validated two-sided in the sealed run (§17.1). |
 | **Tamper-evident receipts** | LIVE | Ed25519 signatures generated and independently verifiable with bound production keys; tamper detection proven via negative tests. |
-| **Erasure / gcrumbs** | LIVE (Phase 5) | Production `GcrumbsService` + `ErasureSweeper` background daemon. W9 pipeline active, W6 restore probes online, SIEM Exporter archiving to external sinks with 180-day DB retention. |
+| **Erasure / gcrumbs** | PENDING | Schema decoupled and sweeper built and unit-tested; daemon pending production deployment. W6 restore probes built but unverified. SIEM Exporter built but pending deployment. |

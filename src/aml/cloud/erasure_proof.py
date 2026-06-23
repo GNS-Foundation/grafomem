@@ -332,8 +332,7 @@ class ErasureProofService:
             "verifier": {
                 "identity": "grafomem_erasure_daemon",
                 "version": "1.0.0"
-            },
-            "result": "enforced" if all(v == "absent" for v in coverage_dict.values()) else "incomplete"
+            }
         }
 
         cert_data = {
@@ -530,6 +529,8 @@ class ErasureProofService:
             "erasure_completed_at": cert.erasure_completed_at.isoformat(),
             "legal_basis": cert.legal_basis,
         }
+        if cert.governance_record:
+            cert_data["governance_record"] = cert.governance_record
 
         digest = compute_certificate_digest(cert_data)
 
@@ -682,8 +683,7 @@ def verify_erasure_effect(
         if isinstance(freshness, dict) and "valid_until" in freshness:
             # check current_time vs valid_until
             valid_until_str = freshness["valid_until"]
-            from dateutil.parser import isoparse
-            valid_until_dt = isoparse(valid_until_str)
+            valid_until_dt = datetime.fromisoformat(valid_until_str.replace("Z", "+00:00"))
             check_time = current_time or datetime.now(timezone.utc)
             if check_time > valid_until_dt:
                 return {"result": "incomplete", "coverage_gaps": required_stores, "note": "Freshness expired"}
