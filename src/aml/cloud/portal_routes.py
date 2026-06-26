@@ -379,3 +379,25 @@ async def upgrade(req: UpgradeRequest, request: Request):
 
     return {"checkout_url": url}
 
+
+@router.post("/portal")
+async def portal(request: Request):
+    """Initiate Stripe Customer Portal session."""
+    tenant = _require_portal_auth(request)
+    sb = _stripe_billing(request)
+
+    if sb is None:
+        raise HTTPException(503, "Billing not configured")
+
+    try:
+        url = sb.create_portal_session(
+            tenant_id=tenant["tenant_id"],
+            return_url="https://cloud.grafomem.com/portal.html",
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except Exception as exc:
+        raise HTTPException(502, f"Stripe portal failed: {exc}")
+
+    return {"portal_url": url}
+

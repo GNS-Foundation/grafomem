@@ -219,6 +219,20 @@ class StripeBillingService:
         )
         return session.url
 
+    def create_portal_session(self, tenant_id: str, return_url: str) -> str:
+        """Create a Customer Portal session URL for managing subscriptions."""
+        stripe = _get_stripe()
+        if not stripe:
+            raise RuntimeError("Stripe SDK not available")
+
+        customer_id = self._get_or_create_customer(tenant_id)
+        
+        session = stripe.billing_portal.Session.create(
+            customer=customer_id,
+            return_url=return_url,
+        )
+        return session.url
+
     # ------------------------------------------------------------------
     # Webhook
     # ------------------------------------------------------------------
