@@ -140,15 +140,21 @@ CREATE TABLE IF NOT EXISTS decision_records (
     -- Output
     raw_output          TEXT NOT NULL,
     parsed_output       JSONB,
-    output_tokens       INTEGER,
-    latency_ms          INTEGER,
+    output_tokens       INTEGER NOT NULL DEFAULT 0,
+    latency_ms          INTEGER NOT NULL DEFAULT 0,
 
     -- Provenance
     signature           BYTEA,
     public_key          BYTEA,
 
     -- Lineage
-    parent_decision_id  TEXT REFERENCES decision_records(decision_id)
+    parent_decision_id  TEXT REFERENCES decision_records(decision_id),
+    
+    -- Encrypted copies
+    query_enc               TEXT,
+    retrieved_contents_enc  TEXT,
+    raw_output_enc          TEXT,
+    parsed_output_enc       TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_dr_tenant_time
     ON decision_records(tenant_id, created_at DESC);

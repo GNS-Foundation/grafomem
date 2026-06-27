@@ -654,7 +654,7 @@ def create_app(
                 ledger_url = "postgresql://grafomem:dev@localhost:5432/grafomem_ledger"
                 logger.warning(f"GRAFOMEM_LEDGER_URL not set! Defaulting to local {ledger_url} to ensure restore-independence.")
 
-            el = ErasureLedger(ledger_url)
+            el = ErasureLedger(ledger_url, open=not spec_only)
             _init(el)
             app.state.erasure_ledger = el
             
@@ -664,7 +664,7 @@ def create_app(
                     master_key_hex = os.urandom(32).hex()
                 else:
                     raise RuntimeError("GRAFOMEM_MASTER_KEY must be set in environment")
-            tkm = TenantKeyManager(master_key_hex, db_url)
+            tkm = TenantKeyManager(master_key_hex, db_url, open=not spec_only)
             _init(tkm)
             app.state.tenant_key_manager = tkm
             app.state.encryption = tkm

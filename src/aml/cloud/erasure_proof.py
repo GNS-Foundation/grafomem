@@ -24,13 +24,15 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any, Iterator
 
 import psycopg
 from psycopg.rows import dict_row
 
 logger = logging.getLogger("grafomem.cloud.erasure_proof")
+
+FRESHNESS_WINDOW_DAYS = 180
 
 # BLAKE2b-128 for certificate IDs — matches provenance.py
 _CERT_ID_BYTES = 16
@@ -322,8 +324,15 @@ class ErasureProofService:
             "coverage": list(coverage_dict.keys()),
             "non_claims": {
                 "coverage_gaps": [],  # Verified offline
-                "scope": tenant_id,
-                "freshness": "point_in_time"
+                "scope": {
+                    "tenant": tenant_id,
+                    "covers": list(coverage_dict.keys()),
+                    "excludes": [],
+                },
+                "freshness": {
+                    "asserted_at": completed_at.isoformat(),
+                    "valid_until": (completed_at + timedelta(days=FRESHNESS_WINDOW_DAYS)).isoformat(),
+                }
             },
             "addressing": {
                 "certificate_id": certificate_id,

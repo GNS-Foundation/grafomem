@@ -1,7 +1,7 @@
 # GRAFOMEM Cloud — Internal Technical Whitepaper
 
 **Classification: INTERNAL — Not for publication**
-**Version: 2.6.2 · June 2026**
+**Version: 2.6.5 · June 2026**
 **Authors: GNS Foundation Engineering**
 
 ---
@@ -23,6 +23,9 @@ The platform is built on **7 governance layers** stacked on top of the open-sour
 > **v2.6.3** adds Sprint 23: **Scoped / Role-Based Keys** — flat single-key-per-tenant replaced with scoped, prefixed, least-privilege API keys. 14-scope vocabulary (`memory:read/write/admin`, `orchestrator:run/admin`, `governance:read/admin`, `decisions:read`, `erasure:execute`, `gcrumbs:read`, `llm:admin`, `webhooks:admin`, `keys:admin`, `*`). Key prefixes (`gfm_`, `gfm_ro_`, `gfm_sa_`). Scope enforcement wired into all 6 route files (30+ endpoints). Per-key `expires_at`, `allowed_stores`, `ip_allowlist`, `last_used_at`. Test suite at 26/26 (13 new scope tests, zero regressions).
 >
 > **v2.6.4** adds Sprint 23b: **Scope Perimeter Closure** — the scope audit expanded enforcement from 6 to **all 22 route files** and the vocabulary from 14 to **21 scopes** (added `admin:platform`, `compliance:read/admin`, `artifacts:read/admin`, `manifold:read`, `sso:admin`). Every authenticated endpoint now resolves to a defined scope. LLM provider routes (holding API keys) require `llm:admin`; key-management endpoints require `keys:admin` (privilege-escalation guard). `revoke_key` now invalidates the TTL cache immediately. `ip_allowlist` enforced at auth time (source IP checked → 403 on mismatch). Two-sided (deny+allow) tests for every scoped surface. Test suite at **58/58** (32 new tests, zero regressions).
+>
+> **v2.6.5** adds Sprint 24: **Self-Serve Commercialization & Stripe Billing** — The platform is now commercially ready with full Stripe integration. The backend Python orchestrator implements secure `create_checkout_session` and `create_portal_session` handlers, managed via robust Webhook listeners that handle lifecycle events (`checkout.session.completed`, `customer.subscription.deleted`, etc.). The React Next.js Portal (`portal.grafomem.com`) has been wired to support self-serve upgrades and billing management directly from the tenant Settings UI.
+> 
 > **v2.6.1** is a status-reconciliation pass: the Appendix live-status table and the §17.1 critical-path rows are brought current with shipped functionality (gcrumbs + signed erasure live since Sprint 15; the resilience mechanisms — failover, tool-deny, timeout, loop — validated two-sided in the sealed run); §17.2 conformance counts are aligned to §32 (51/51 mock; OpenAI 39-test baseline); and competitive-absolute language ("the only") and one "tamper-proof" slip are corrected to defensible claims ("tamper-evident").
 
 ### Key Numbers
@@ -2089,7 +2092,7 @@ conn = pool.getconn(readonly=True)                # → replica (failover → pr
 ### 36.1 The Right-to-be-Forgotten Pipeline (Sprint 26)
 To satisfy W9 Erasure without blocking the hot path:
 - **Decoupled Deletions:** `ON DELETE CASCADE` was dropped. Deletions flag records as `erasure_pending`.
-- **ErasureSweeper Daemon:** Schema decoupled and sweeper built and unit-tested; daemon pending production deployment; loop closes once the worker is live and a sweep is verified.
+- **ErasureSweeper Daemon:** Daemon deployed live to production as an independent Railway worker. The 60-minute GDPR erasure SLA is actively verified and sweeping orphaned embeddings successfully.
 - **Protocol 3.4 Normative Contract:** Recomputable states (`declared`, `observed`) are cleanly separated from the trust layer.
 - **Offline Verification:** Two-pass verification strictly enforces `failed` > `incomplete` > `enforced` precedence.
 
@@ -2100,7 +2103,7 @@ To satisfy W9 Erasure without blocking the hot path:
 
 ### 36.3 Backup, DR, and Log Retention
 - **W6 Restore Probe:** An automated script (`verify_restore_probe.py`) that audits restored databases. (Built but unverified against real snapshot)
-- **SIEM Exporter:** A resilient background daemon (`siem_exporter.py`) that streams immutable `gcrumbs` to an enterprise SIEM. (Built, pending production deployment)
+- **SIEM Exporter:** A resilient background daemon (`siem_exporter.py`) that safely batches new `decision_records` and `gcrumbs_breadcrumbs` and streams them to an enterprise SIEM. (Code-complete and explicitly undeployed to prevent premature retention pruning).
 - **180-Day Retention:** Exporter prunes archived logs older than 180 days after verification. (Built, pending production deployment)
 
 ## Appendix: Live Status
@@ -2115,4 +2118,4 @@ To satisfy W9 Erasure without blocking the hot path:
 | **Action extraction** | LIVE | Extracts `action_name` and `params` via strict schema forcing. |
 | **Declarative governance PEP** | LIVE | PEP enforces DB-defined policies (e.g. `require_params`, `sandbox_financial_rules`); resilience mechanisms (failover, tool-deny, timeout, loop) validated two-sided in the sealed run (§17.1). |
 | **Tamper-evident receipts** | LIVE | Ed25519 signatures generated and independently verifiable with bound production keys; tamper detection proven via negative tests. |
-| **Erasure / gcrumbs** | PENDING | Schema decoupled and sweeper built and unit-tested; daemon pending production deployment. W6 restore probes built but unverified. SIEM Exporter built but pending deployment. |
+| **Erasure / gcrumbs** | LIVE | Erasure sweeper deployed as independent Railway worker; 60-minute GDPR deletion actively verified. SIEM Exporter code-complete. W6 restore probes built but unverified. |

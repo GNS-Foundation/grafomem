@@ -7,7 +7,7 @@ class ErasureLedger:
     Records tenant-level crypto-erasures and subject-level Article 17 erasures.
     Authoritative log used to re-scrub revived data on backup restore.
     """
-    def __init__(self, key_store_url: str):
+    def __init__(self, key_store_url: str, open: bool = True):
         self._key_store_url = key_store_url
         
         try:
@@ -16,8 +16,7 @@ class ErasureLedger:
         except ImportError as e:
             raise RuntimeError("ErasureLedger requires psycopg and psycopg_pool") from e
 
-        self._pool = ConnectionPool(self._key_store_url, min_size=1, max_size=10)
-        self.ensure_schema()
+        self._pool = ConnectionPool(self._key_store_url, min_size=1, max_size=10, open=open)
 
     def ensure_schema(self):
         with self._pool.connection() as conn:

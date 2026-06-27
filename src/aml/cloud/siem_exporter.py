@@ -30,9 +30,8 @@ class SiemExporter:
                 self._export_table(conn, "decision_records")
                 self._export_table(conn, "gcrumbs_breadcrumbs")
                 
-                # Run the retention sweep
-                self._apply_retention_policy(conn, "decision_records", "timestamp")
-                self._apply_retention_policy(conn, "gcrumbs_breadcrumbs", "created_at")
+                # Run the retention sweep (excluding gcrumbs_breadcrumbs as it is an append-only ledger)
+                self._apply_retention_policy(conn, "decision_records", "created_at")
         except Exception as e:
             logger.error("SIEM export sweep failed: %s", e, exc_info=True)
 
@@ -40,18 +39,34 @@ class SiemExporter:
         """Export new records for a specific table."""
         with conn.cursor() as cur:
             # Get cursor
-            cur.execute("SELECT last_exported_id FROM siem_export_cursors WHERE table_name = %s", (table_name,))
+            cur.execute("SELECT last_exported_time, last_exported_ref FROM siem_export_cursors WHERE table_name = %s", (table_name,))
             row = cur.fetchone()
             if not row:
                 logger.warning(f"No SIEM cursor found for {table_name}")
                 return
-            last_id = row[0]
+            last_time, last_ref = row
 
             # Fetch batch
             if table_name == "decision_records":
-                cur.execute(f"SELECT id, tenant_id, timestamp, decision, rationale, context_snapshot, policy_version FROM {table_name} WHERE id > %s ORDER BY id ASC LIMIT %s", (last_id, self.batch_size))
+                # decision_records.created_at is TIMESTAMPTZ, primary key is decision_id
+                cur.execute(f"""
+                    SELECT decision_id as id, tenant_id, store_id, session_id, created_at as timestamp, 
+                           query, retrieved_refs, model_id, raw_output 
+                    FROM {table_name} 
+                    WHERE (created_at, decision_id) > (%s, %s)
+                    ORDER BY created_at ASC, decision_id ASC LIMIT %s
+                """, (last_time, last_ref, self.batch_size))
             else:
-                cur.execute(f"SELECT id, tenant_id, crumb_hash, prev_hash, epoch_hash, record_type, record_id, created_at FROM {table_name} WHERE id > %s ORDER BY id ASC LIMIT %s", (last_id, self.batch_size))
+                # gcrumbs_breadcrumbs.created_at is DOUBLE PRECISION, primary key is breadcrumb_id
+                # Convert last_time back to float for comparison if needed, or cast created_at to timestamp
+                cur.execute(f"""
+                    SELECT breadcrumb_id as id, tenant_id, seq, event_type, payload, payload_hash, 
+                           payload_canon, prev_id, signature, signer_pubkey, source_type, source_ref, 
+                           to_timestamp(created_at) as timestamp 
+                    FROM {table_name} 
+                    WHERE (to_timestamp(created_at), breadcrumb_id) > (%s, %s)
+                    ORDER BY created_at ASC, breadcrumb_id ASC LIMIT %s
+                """, (last_time, last_ref, self.batch_size))
             
             records = cur.fetchall()
             if not records:
@@ -60,19 +75,29 @@ class SiemExporter:
             # Format for SIEM
             columns = [desc[0] for desc in cur.description]
             payload = []
-            max_id = last_id
+            max_time = last_time
+            max_ref = last_ref
+            
             for r in records:
                 record_dict = dict(zip(columns, r))
-                # Convert datetimes to isoformat for JSON serialization
+                # Convert datetimes, jsonb, bytes for JSON serialization
                 for k, v in record_dict.items():
                     if isinstance(v, datetime):
                         record_dict[k] = v.isoformat()
+                    elif isinstance(v, bytes) or isinstance(v, memoryview):
+                        record_dict[k] = bytes(v).hex()
                 
                 payload.append({
                     "event_type": table_name,
                     "data": record_dict
                 })
-                max_id = max(max_id, record_dict["id"])
+                # Cursor tracks the highest tuple (timestamp, id)
+                rec_time = r[columns.index('timestamp')]
+                rec_id = r[columns.index('id')]
+                
+                if rec_time > max_time or (rec_time == max_time and rec_id > max_ref):
+                    max_time = rec_time
+                    max_ref = rec_id
 
             # Send to SIEM
             try:
@@ -81,11 +106,11 @@ class SiemExporter:
                 
                 # Update cursor
                 cur.execute(
-                    "UPDATE siem_export_cursors SET last_exported_id = %s, last_exported_at = %s WHERE table_name = %s",
-                    (max_id, datetime.now(timezone.utc), table_name)
+                    "UPDATE siem_export_cursors SET last_exported_time = %s, last_exported_ref = %s, updated_at = %s WHERE table_name = %s",
+                    (max_time, max_ref, datetime.now(timezone.utc), table_name)
                 )
                 conn.commit()
-                logger.info(f"Successfully exported {len(records)} records from {table_name} to SIEM. New cursor: {max_id}")
+                logger.info(f"Successfully exported {len(records)} records from {table_name} to SIEM. New cursor: {max_time} | {max_ref}")
             except httpx.RequestError as e:
                 logger.error(f"Failed to send logs to SIEM webhook: {e}")
                 conn.rollback()
@@ -99,20 +124,29 @@ class SiemExporter:
         
         with conn.cursor() as cur:
             # Get safe cursor limit
-            cur.execute("SELECT last_exported_id FROM siem_export_cursors WHERE table_name = %s", (table_name,))
+            cur.execute("SELECT last_exported_time, last_exported_ref FROM siem_export_cursors WHERE table_name = %s", (table_name,))
             row = cur.fetchone()
-            if not row:
+            if not row or row[0] is None or row[0] == datetime(1970, 1, 1, tzinfo=timezone.utc):
+                logger.debug(f"Retention skipped: No valid export cursor found for {table_name}")
                 return
-            last_exported_id = row[0]
+            last_exported_time, last_exported_ref = row
 
             # Delete old records that have safely been exported
+            # We can only delete records that are older than both cutoff_date AND last_exported_time.
+            # We strictly enforce that time_col < last_exported_time or (time_col = last_exported_time and id <= last_exported_ref)
+            
+            id_col = "decision_id" if table_name == "decision_records" else "breadcrumb_id"
+            
+            # Since gcrumbs_breadcrumbs is excluded from retention we don't need to cast double precision here, 
+            # but we keep it generic in case it's added back.
+            
             cur.execute(f"""
                 DELETE FROM {table_name} 
                 WHERE {time_col} < %s 
-                AND id <= %s
-            """, (cutoff_date, last_exported_id))
+                AND ({time_col}, {id_col}) <= (%s, %s)
+            """, (cutoff_date, last_exported_time, last_exported_ref))
             
             deleted_count = cur.rowcount
             if deleted_count > 0:
-                logger.info(f"Retention policy applied: Deleted {deleted_count} old records from {table_name}")
-            conn.commit()
+                conn.commit()
+                logger.info(f"Pruned {deleted_count} records from {table_name} older than {self.retention_days} days.")

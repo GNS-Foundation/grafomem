@@ -26,7 +26,7 @@ class TenantKeyManager:
     Manages per-tenant random Data Encryption Keys (DEKs) wrapped under a master KEK.
     Stores wrapped DEKs in an external key store DB, separate from the primary data DB.
     """
-    def __init__(self, master_key_hex: str, key_store_url: str):
+    def __init__(self, master_key_hex: str, key_store_url: str, open: bool = True):
         if not master_key_hex or len(master_key_hex) < 64:
             raise ValueError("GRAFOMEM_MASTER_KEY must be at least 32 bytes (64 hex chars)")
             
@@ -42,8 +42,7 @@ class TenantKeyManager:
         except ImportError as e:
             raise RuntimeError("TenantKeyManager requires psycopg and psycopg_pool") from e
 
-        self._pool = ConnectionPool(self._key_store_url, min_size=1, max_size=10)
-        self.ensure_schema()
+        self._pool = ConnectionPool(self._key_store_url, min_size=1, max_size=10, open=open)
 
     def ensure_schema(self):
         with self._pool.connection() as conn:

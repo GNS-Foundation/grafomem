@@ -367,8 +367,8 @@ async def upgrade(req: UpgradeRequest, request: Request):
         url = sb.create_checkout_session(
             tenant_id=tenant["tenant_id"],
             plan=req.plan,
-            success_url="https://cloud.grafomem.com/portal.html?upgraded=true",
-            cancel_url="https://cloud.grafomem.com/portal.html",
+            success_url="https://cloud.grafomem.com/dashboard/settings?upgraded=true",
+            cancel_url="https://cloud.grafomem.com/dashboard/settings",
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc))
@@ -392,7 +392,7 @@ async def portal(request: Request):
     try:
         url = sb.create_portal_session(
             tenant_id=tenant["tenant_id"],
-            return_url="https://cloud.grafomem.com/portal.html",
+            return_url="https://cloud.grafomem.com/dashboard/settings",
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc))

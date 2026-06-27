@@ -11,3 +11,4 @@ build/
 .~lock.*
 .env.prod
 .env*
+env.txt

@@ -173,6 +173,9 @@ v0.1 normative subset: `{AUDIT, SUPERSESSION_CHAIN, BI_TEMPORAL, HARD_DELETE, MU
   into v0.2.0; W8 is held out pending the summarise/merge retention variant. These home the last
   two reserved flags — `CONFLICT_DETECTION` (W7) and `CROSS_SESSION_PROPAGATION` (W9), now
   **un-reserved** in gmp-spec §7.4.
+- **GDPR Right-to-be-Forgotten & SIEM Exporter — deployed.** To support compliant scaling, a background
+  `erasure_daemon` was built, tested, and actively deployed to production to ensure pending deletions
+  comply with the 60-minute SLA. The `siem_exporter` is code-complete and awaiting a verified SIEM endpoint.
 - **W10 — Operational Concurrency & Isolation — built and corpus-locked.** Trace-schema v0.2
   carries set-valued ground truth; `interface.py` adds `submit_concurrent` (gated by
   `CONCURRENCY_CONTROL`, the 10th flag), `IsolationPolicy`, and a `declared_policy`

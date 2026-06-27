@@ -292,8 +292,8 @@ class CheckoutRequest(BaseModel):
     """Request body for creating a Stripe Checkout session."""
     tenant_id: str
     plan: str = "pro"
-    success_url: str = "https://cloud.grafomem.com/portal.html?upgraded=true"
-    cancel_url: str = "https://cloud.grafomem.com/portal.html"
+    success_url: str = "https://cloud.grafomem.com/dashboard/settings?upgraded=true"
+    cancel_url: str = "https://cloud.grafomem.com/dashboard/settings"
 
 
 def _stripe_billing(request: Request):
