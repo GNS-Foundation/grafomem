@@ -55,6 +55,12 @@ def create_schedule(body: CreateScheduleRequest, request: Request):
         tenant, interval_min=body.interval_min,
         checks=body.checks, alert_webhook=body.alert_webhook,
     )
+    
+    # Notify scheduler
+    scheduler = getattr(request.app.state, "assurance_scheduler", None)
+    if scheduler:
+        scheduler.schedule(schedule.schedule_id, tenant, schedule.interval_min)
+        
     return {"schedule_id": schedule.schedule_id, "interval_min": schedule.interval_min,
             "checks": schedule.checks, "enabled": schedule.enabled}
 
@@ -78,6 +84,15 @@ def update_schedule(schedule_id: str, body: UpdateScheduleRequest, request: Requ
     schedule = svc.update_schedule(schedule_id, **updates)
     if not schedule:
         raise HTTPException(404, "Schedule not found")
+        
+    # Notify scheduler
+    scheduler = getattr(request.app.state, "assurance_scheduler", None)
+    if scheduler:
+        if schedule.enabled:
+            scheduler.schedule(schedule.schedule_id, schedule.tenant_id, schedule.interval_min)
+        else:
+            scheduler.unschedule(schedule.schedule_id)
+            
     return {"schedule_id": schedule.schedule_id, "interval_min": schedule.interval_min,
             "checks": schedule.checks, "enabled": schedule.enabled}
 
@@ -88,6 +103,12 @@ def delete_schedule(schedule_id: str, request: Request):
     deleted = svc.delete_schedule(schedule_id)
     if not deleted:
         raise HTTPException(404, "Schedule not found")
+        
+    # Notify scheduler
+    scheduler = getattr(request.app.state, "assurance_scheduler", None)
+    if scheduler:
+        scheduler.unschedule(schedule_id)
+        
     return {"deleted": True}
 
 @router.post("/run")

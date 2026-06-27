@@ -484,6 +484,12 @@ def create_app(
                 app.state.db_pool = None
         else:
             app.state.db_pool = None
+            
+        # Start Assurance Scheduler
+        assurance_scheduler = getattr(app.state, "assurance_scheduler", None)
+        if assurance_scheduler:
+            await assurance_scheduler.start()
+            
         yield
         # Shutdown: stop all ingestion queues
         for q in getattr(app.state, "ingestion_queues", {}).values():
@@ -497,6 +503,11 @@ def create_app(
             svc = getattr(app.state, svc_name, None)
             if svc is not None and hasattr(svc, "close"):
                 svc.close()
+        
+        # Stop assurance scheduler
+        assurance_scheduler = getattr(app.state, "assurance_scheduler", None)
+        if assurance_scheduler is not None:
+            await assurance_scheduler.stop()
         
         manifold_svc = getattr(app.state, "manifold_service", None)
         if manifold_svc is not None and hasattr(manifold_svc, "stop_background_worker"):
@@ -924,6 +935,7 @@ def create_app(
             # Sprint 19: Continuous Assurance
             from aml.cloud.assurance import AssuranceService
             from aml.cloud.assurance_routes import router as assurance_router
+            from aml.cloud.scheduler import AssuranceScheduler
 
             assurance_svc = AssuranceService(
                 db_url, pool=pool,
@@ -932,6 +944,10 @@ def create_app(
             _init(assurance_svc)
             app.state.assurance_service = assurance_svc
             app.include_router(assurance_router)
+            
+            # Register Assurance Scheduler (started in lifespan)
+            app.state.assurance_scheduler = AssuranceScheduler(assurance_svc, webhook_service=wh)
+            
             logger.info("Continuous Assurance enabled (/v1/assurance)")
 
             # Sprint 22: Tenant Admin — member management + RBAC

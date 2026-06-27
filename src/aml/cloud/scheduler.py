@@ -32,8 +32,12 @@ class AssuranceScheduler:
         """Start the scheduler. Loads all enabled schedules and creates tasks."""
         self._running = True
         logger.info("Assurance scheduler starting")
-        # Note: schedule loading happens lazily per-tenant on first API call,
-        # or can be bulk-loaded by calling refresh()
+        
+        schedules = self._assurance.get_all_active_schedules()
+        for s in schedules:
+            self.schedule(s.schedule_id, s.tenant_id, s.interval_min)
+        
+        logger.info(f"Loaded {len(schedules)} active schedules")
 
     async def stop(self) -> None:
         """Stop all scheduled tasks gracefully."""
