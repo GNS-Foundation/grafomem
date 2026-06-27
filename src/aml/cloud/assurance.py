@@ -138,13 +138,13 @@ class AssuranceService:
 
     def get_all_active_schedules(self) -> list[AssuranceSchedule]:
         """Fetch all enabled schedules across all tenants."""
-        with self.pool.cursor() as conn:
-            rows = conn.execute("SELECT * FROM assurance_schedules WHERE enabled = TRUE").fetchall()
-            return [
-                AssuranceSchedule(r["schedule_id"], r["tenant_id"], r["interval_min"],
-                                  r["checks"], r["alert_webhook"], r["enabled"], r["created_at"])
-                for r in rows
-            ]
+        conn = self._get_conn()
+        rows = conn.execute("SELECT * FROM assurance_schedules WHERE enabled = TRUE").fetchall()
+        return [
+            AssuranceSchedule(r["schedule_id"], r["tenant_id"], r["interval_min"],
+                              r["checks"], r["alert_webhook"], r["enabled"], r["created_at"])
+            for r in rows
+        ]
 
     def get_schedule(self, schedule_id) -> AssuranceSchedule | None:
         conn = self._get_conn()
