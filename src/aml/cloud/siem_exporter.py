@@ -29,9 +29,11 @@ class SiemExporter:
             with psycopg.connect(self.db_url) as conn:
                 self._export_table(conn, "decision_records")
                 self._export_table(conn, "gcrumbs_breadcrumbs")
+                self._export_table(conn, "audit_logs")
                 
                 # Run the retention sweep (excluding gcrumbs_breadcrumbs as it is an append-only ledger)
                 self._apply_retention_policy(conn, "decision_records", "created_at")
+                self._apply_retention_policy(conn, "audit_logs", "timestamp")
         except Exception as e:
             logger.error("SIEM export sweep failed: %s", e, exc_info=True)
 
@@ -55,6 +57,13 @@ class SiemExporter:
                     FROM {table_name} 
                     WHERE (created_at, decision_id) > (%s, %s)
                     ORDER BY created_at ASC, decision_id ASC LIMIT %s
+                """, (last_time, last_ref, self.batch_size))
+            elif table_name == "audit_logs":
+                cur.execute(f"""
+                    SELECT id, tenant_id, actor, action, resource, metadata, timestamp 
+                    FROM {table_name} 
+                    WHERE (timestamp, id) > (%s, %s)
+                    ORDER BY timestamp ASC, id ASC LIMIT %s
                 """, (last_time, last_ref, self.batch_size))
             else:
                 # gcrumbs_breadcrumbs.created_at is DOUBLE PRECISION, primary key is breadcrumb_id
@@ -135,7 +144,12 @@ class SiemExporter:
             # We can only delete records that are older than both cutoff_date AND last_exported_time.
             # We strictly enforce that time_col < last_exported_time or (time_col = last_exported_time and id <= last_exported_ref)
             
-            id_col = "decision_id" if table_name == "decision_records" else "breadcrumb_id"
+            if table_name == "decision_records":
+                id_col = "decision_id"
+            elif table_name == "audit_logs":
+                id_col = "id"
+            else:
+                id_col = "breadcrumb_id"
             
             # Since gcrumbs_breadcrumbs is excluded from retention we don't need to cast double precision here, 
             # but we keep it generic in case it's added back.

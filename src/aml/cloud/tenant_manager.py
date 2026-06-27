@@ -80,6 +80,7 @@ class TenantInfo:
     created_at: datetime
     limits: TenantLimits
     role: str = "admin"
+    home_region: str = "global"
 
 
 # ============================================================================
@@ -96,7 +97,8 @@ CREATE TABLE IF NOT EXISTS tenants (
     supabase_uid TEXT       UNIQUE,
     password_hash TEXT,
     status      TEXT        NOT NULL DEFAULT 'active',
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    home_region TEXT        DEFAULT 'global'
 );
 
 CREATE TABLE IF NOT EXISTS tenant_api_keys (
@@ -186,13 +188,16 @@ class TenantManager:
             ON CONFLICT (api_key) DO NOTHING;
         """)
         
+        # Add home_region column
+        conn.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS home_region TEXT DEFAULT 'global';")
+        
         logger.info("Tenant schema ensured")
 
     # ------------------------------------------------------------------
     # CRUD
     # ------------------------------------------------------------------
 
-    def create_tenant(self, name: str, plan: str = "starter") -> TenantInfo:
+    def create_tenant(self, name: str, plan: str = "starter", home_region: str = "global") -> TenantInfo:
         """Provision a new tenant and return its :class:`TenantInfo`.
 
         Parameters
@@ -223,9 +228,9 @@ class TenantManager:
 
         conn = self._get_conn()
         conn.execute(
-            "INSERT INTO tenants (id, name, api_key, plan, created_at) "
-            "VALUES (%s, %s, %s, %s, %s)",
-            (tenant_id, name, api_key, plan, now),
+            "INSERT INTO tenants (id, name, api_key, plan, created_at, home_region) "
+            "VALUES (%s, %s, %s, %s, %s, %s)",
+            (tenant_id, name, api_key, plan, now, home_region),
         )
         conn.execute(
             "INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role, scopes, created_at) "
@@ -241,13 +246,14 @@ class TenantManager:
             plan=plan,
             created_at=now,
             limits=PLAN_LIMITS[plan],
+            home_region=home_region,
         )
 
     def get_tenant(self, tenant_id: str) -> TenantInfo | None:
         """Look up a tenant by ID.  Returns ``None`` if not found."""
         conn = self._get_conn()
         row = conn.execute(
-            "SELECT id, name, api_key, plan, created_at FROM tenants WHERE id = %s",
+            "SELECT id, name, api_key, plan, created_at, home_region FROM tenants WHERE id = %s",
             (tenant_id,),
         ).fetchone()
         return self._row_to_info(row) if row else None
@@ -277,7 +283,7 @@ class TenantManager:
             
         # Fallback to legacy column if not migrated
         row = conn.execute(
-            "SELECT id, name, api_key, plan, created_at FROM tenants WHERE api_key = %s",
+            "SELECT id, name, api_key, plan, created_at, home_region FROM tenants WHERE api_key = %s",
             (api_key,),
         ).fetchone()
         return self._row_to_info(row) if row else None
@@ -286,7 +292,7 @@ class TenantManager:
         """Return every provisioned tenant, ordered by creation time."""
         conn = self._get_conn()
         rows = conn.execute(
-            "SELECT id, name, api_key, plan, created_at FROM tenants "
+            "SELECT id, name, api_key, plan, created_at, home_region FROM tenants "
             "ORDER BY created_at",
         ).fetchall()
         return [self._row_to_info(r) for r in rows]
@@ -431,6 +437,7 @@ class TenantManager:
             created_at=row["created_at"],
             limits=PLAN_LIMITS.get(plan, PLAN_LIMITS["starter"]),
             role=row.get("role", "admin"),
+            home_region=row.get("home_region", "global"),
         )
 
     # ------------------------------------------------------------------

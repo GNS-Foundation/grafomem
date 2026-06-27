@@ -26,12 +26,23 @@ def clean_db(db_url):
                     last_exported_ref TEXT DEFAULT '',
                     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
                 );
+                CREATE TABLE IF NOT EXISTS audit_logs (
+                    id TEXT PRIMARY KEY,
+                    tenant_id TEXT NOT NULL,
+                    actor TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    resource TEXT NOT NULL,
+                    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    timestamp TIMESTAMPTZ NOT NULL DEFAULT now()
+                );
             """)
             
             cur.execute("TRUNCATE TABLE decision_records CASCADE")
+            cur.execute("TRUNCATE TABLE audit_logs CASCADE")
             cur.execute("TRUNCATE TABLE siem_export_cursors CASCADE")
             
             cur.execute("INSERT INTO siem_export_cursors (table_name, last_exported_time, last_exported_ref) VALUES ('decision_records', '1970-01-01 00:00:00+00', '')")
+            cur.execute("INSERT INTO siem_export_cursors (table_name, last_exported_time, last_exported_ref) VALUES ('audit_logs', '1970-01-01 00:00:00+00', '')")
             conn.commit()
     return db_url
 

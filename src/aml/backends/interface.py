@@ -90,6 +90,7 @@ class Memory:
     tenant_id: str | None = None            # if MULTI_TENANT
     superseded_by: Any | None = None        # if SUPERSESSION_CHAIN
     source: SourceMeta | None = None        # if PROVENANCE / CRYPTOGRAPHIC_PROVENANCE
+    region: str | None = None               # if DATA_RESIDENCY
 
 
 from aml.cloud.identity import SigningIdentity
@@ -98,6 +99,7 @@ from aml.cloud.identity import SigningIdentity
 class WriteOptions:
     valid_from: datetime | None = None      # honored if BI_TEMPORAL
     tenant_id: str | None = None            # honored if MULTI_TENANT
+    region: str | None = None               # honored if DATA_RESIDENCY
     signing_identity: SigningIdentity | None = None  # if set, backend MUST sign (§4.1)
     metadata: dict = field(default_factory=dict)
 
@@ -112,6 +114,7 @@ class RetrieveOptions:
     as_of: datetime | None = None           # honored if BI_TEMPORAL; default = now
     tenant_id: str | None = None            # honored if MULTI_TENANT
     top_k: int | None = None                # non-contractual hint
+    region: str | None = None               # honored if DATA_RESIDENCY
 
 
 # ============================================================================

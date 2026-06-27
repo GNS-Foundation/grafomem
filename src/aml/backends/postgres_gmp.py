@@ -65,7 +65,8 @@ CREATE TABLE IF NOT EXISTS memories (
     superseded_by BIGINT REFERENCES memories(ref),
     written_by    TEXT,
     signature     BYTEA,
-    public_key    BYTEA
+    public_key    BYTEA,
+    region        TEXT DEFAULT 'global'
 );
 """
 
@@ -76,7 +77,8 @@ CREATE TABLE IF NOT EXISTS memory_embeddings (
     tenant_id     TEXT NOT NULL DEFAULT '',
     valid_from    TIMESTAMPTZ NOT NULL DEFAULT '1970-01-01T00:00:00Z',
     valid_until   TIMESTAMPTZ NOT NULL DEFAULT '9999-12-31T23:59:59Z',
-    erasure_pending TIMESTAMPTZ
+    erasure_pending TIMESTAMPTZ,
+    region        TEXT DEFAULT 'global'
 );
 """
 
@@ -89,7 +91,7 @@ CREATE INDEX IF NOT EXISTS idx_emb_hnsw
 
 _TENANT_FILTER_INDEX = """
 CREATE INDEX IF NOT EXISTS idx_emb_tenant
-    ON memory_embeddings(tenant_id, valid_until, valid_from);
+    ON memory_embeddings(tenant_id, region, valid_until, valid_from);
 """
 
 
@@ -159,7 +161,12 @@ class PostgresGMPBackend:
         # Connect — create the pgvector extension FIRST, then register types
         with self._pool.connection() as conn:
             with conn.cursor() as cur:
-                cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+                import psycopg
+                try:
+                    cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+                except psycopg.errors.InsufficientPrivilege:
+                    # Ignore if the user isn't superuser (assume vector is already created by admin)
+                    conn.rollback()
             register_vector(conn)
         self._ensure_schema()
 
@@ -199,6 +206,13 @@ class PostgresGMPBackend:
                     cur.execute("ALTER TABLE memories ADD COLUMN IF NOT EXISTS metadata_enc TEXT;")
                 except Exception as e:
                     logger.warning(f"Could not alter memories table for encryption columns: {e}")
+
+                # Migration for region columns
+                try:
+                    cur.execute("ALTER TABLE memories ADD COLUMN IF NOT EXISTS region TEXT DEFAULT 'global';")
+                    cur.execute("ALTER TABLE memory_embeddings ADD COLUMN IF NOT EXISTS region TEXT DEFAULT 'global';")
+                except Exception as e:
+                    logger.warning(f"Could not alter tables for region columns: {e}")
 
                 # Enable Postgres RLS
                 cur.execute("ALTER TABLE memories ENABLE ROW LEVEL SECURITY")
@@ -330,25 +344,26 @@ class PostgresGMPBackend:
                     """INSERT INTO memories
                        (content, written_at, metadata, valid_from, valid_until,
                         tenant_id, superseded_by, written_by, signature, public_key,
-                        content_enc, metadata_enc)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        content_enc, metadata_enc, region)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                        RETURNING ref""",
                     (db_content, now, db_meta,
                      options.valid_from, None,
                      options.tenant_id, None,
                      written_by, signature, public_key,
-                     enc_content, enc_meta),
+                     enc_content, enc_meta, options.region or 'global'),
                 )
                 ref = cur.fetchone()[0]
 
                 cur.execute(
                     """INSERT INTO memory_embeddings
-                       (ref, embedding, tenant_id, valid_from, valid_until)
-                       VALUES (%s, %s::vector, %s, %s, %s)""",
+                       (ref, embedding, tenant_id, valid_from, valid_until, region)
+                       VALUES (%s, %s::vector, %s, %s, %s, %s)""",
                     (ref, emb.tolist(),
                      _vec_tenant(options.tenant_id),
                      _vec_from(options.valid_from),
-                     OPEN_UNTIL_TS),
+                     OPEN_UNTIL_TS,
+                     options.region or 'global'),
                 )
                 refs.append(ref)
         return refs
@@ -411,6 +426,10 @@ class PostgresGMPBackend:
             conditions.append("e.valid_until > %s")
             params.append(options.as_of)
 
+        if options.region:
+            conditions.append("e.region = %s")
+            params.append(options.region)
+
         where = " AND ".join(conditions)
         params.append(qvec.tolist())  # for the ORDER BY
         params.append(k)
@@ -436,7 +455,7 @@ class PostgresGMPBackend:
                 cur.execute(
                     """SELECT ref, content, written_at, metadata,
                               valid_from, valid_until, tenant_id,
-                              superseded_by, written_by, signature, public_key
+                              superseded_by, written_by, signature, public_key, region
                        FROM memories WHERE ref = %s""",
                     (ref,),
                 )
@@ -461,7 +480,7 @@ class PostgresGMPBackend:
             cur.execute(
                 """SELECT ref, content, written_at, metadata,
                           valid_from, valid_until, tenant_id,
-                          superseded_by, written_by, signature, public_key
+                          superseded_by, written_by, signature, public_key, region
                    FROM memories ORDER BY ref"""
             )
             rows = cur.fetchall()
@@ -478,7 +497,7 @@ class PostgresGMPBackend:
 
     def _row_to_memory(self, row, content_override: str | None = None) -> Memory:
         (ref, content, written_at, metadata,
-         vf, vu, tenant, sby, written_by, sig, pub) = row
+         vf, vu, tenant, sby, written_by, sig, pub, region) = row
 
         if content_override is not None:
             content = content_override
@@ -504,7 +523,8 @@ class PostgresGMPBackend:
                 write_id=str(ref), written_at=written_at, written_by=written_by,
                 signature=bytes(sig) if sig is not None else None,
                 public_key=bytes(pub) if pub is not None else None,
-            ),
+            ) if written_by is not None else None,
+            region=region,
         )
 
 
