@@ -1,7 +1,11 @@
 import os
 import base64
+import asyncio
+import logging
 from typing import Optional
 from cryptography.fernet import Fernet, InvalidToken
+
+logger = logging.getLogger(__name__)
 
 class TenantKeyDestroyed(Exception):
     """Raised when attempting to access a key for a tenant that has been crypto-erased."""
@@ -104,5 +108,30 @@ class TenantKeyManager:
                 "ON CONFLICT (tenant_id) DO UPDATE SET destroyed_at = now()",
                 (tenant_id, "DESTROYED")
             )
+            
+            # Broadcast to all other nodes to drop their DEK caches
+            conn.execute("SELECT pg_notify('dek_invalidations', %s)", (tenant_id,))
 
         return tenant_id
+
+    async def start_invalidation_listener(self):
+        """
+        Runs continuously in the background to receive DEK invalidations from other nodes.
+        Uses an AsyncConnection to avoid blocking the event loop.
+        """
+        import psycopg
+        while True:
+            try:
+                async with await psycopg.AsyncConnection.connect(self._key_store_url, autocommit=True) as aconn:
+                    await aconn.execute("LISTEN dek_invalidations")
+                    logger.info("Listening for cross-node DEK invalidations.")
+                    async for notify in aconn.notifies():
+                        tenant_id = notify.payload
+                        if tenant_id in self._cache:
+                            del self._cache[tenant_id]
+                            logger.info(f"Node dropped DEK cache for tenant {tenant_id} via notification")
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"DEK invalidation listener error: {e}. Reconnecting in 5s...")
+                await asyncio.sleep(5)

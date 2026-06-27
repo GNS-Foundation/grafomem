@@ -18,8 +18,10 @@ def create_manifold_router(manifold_svc: ManifoldService) -> APIRouter:
             manifold_data = manifold_svc.generate_manifold(tenant)
             return manifold_data
         except Exception as e:
+            import logging
+            logging.getLogger(__name__).exception("Manifold export error")
             from fastapi import HTTPException
-            raise HTTPException(status_code=500, detail=str(e))
+            raise HTTPException(status_code=500, detail="Internal server error")
 
     @router.get("/locate/{step_id}")
     async def locate_manifold_step(step_id: str, request: Request):
@@ -33,8 +35,10 @@ def create_manifold_router(manifold_svc: ManifoldService) -> APIRouter:
                 raise HTTPException(status_code=400, detail=res["error"])
             return res
         except Exception as e:
+            import logging
+            logging.getLogger(__name__).exception("Manifold locate error")
             from fastapi import HTTPException
-            raise HTTPException(status_code=500, detail=str(e))
+            raise HTTPException(status_code=500, detail="Internal server error")
 
     @router.post("/clear_cache")
     async def clear_cache(request: Request):
@@ -50,7 +54,9 @@ def create_manifold_router(manifold_svc: ManifoldService) -> APIRouter:
             conn.close()
             return {"status": "ok"}
         except Exception as e:
+            import logging
+            logging.getLogger(__name__).exception("Manifold cache error")
             from fastapi import HTTPException
-            raise HTTPException(status_code=500, detail=str(e))
+            raise HTTPException(status_code=500, detail="Internal server error")
 
     return router

@@ -490,6 +490,13 @@ def create_app(
         if assurance_scheduler:
             await assurance_scheduler.start()
             
+        # Start DEK Invalidation Listener
+        tkm = getattr(app.state, "tenant_key_manager", None)
+        invalidation_task = None
+        if tkm:
+            import asyncio
+            invalidation_task = asyncio.create_task(tkm.start_invalidation_listener())
+            
         yield
         # Shutdown: stop all ingestion queues
         for q in getattr(app.state, "ingestion_queues", {}).values():
@@ -512,6 +519,15 @@ def create_app(
         manifold_svc = getattr(app.state, "manifold_service", None)
         if manifold_svc is not None and hasattr(manifold_svc, "stop_background_worker"):
             manifold_svc.stop_background_worker()
+            
+        # Stop DEK invalidation listener
+        if invalidation_task:
+            invalidation_task.cancel()
+            import asyncio
+            try:
+                await invalidation_task
+            except asyncio.CancelledError:
+                pass
         # Close database pool last
         pool = getattr(app.state, "db_pool", None)
         if pool is not None:

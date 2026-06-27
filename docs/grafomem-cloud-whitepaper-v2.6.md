@@ -1,7 +1,7 @@
 # GRAFOMEM Cloud — Internal Technical Whitepaper
 
 **Classification: INTERNAL — Not for publication**
-**Version: 2.6.5 · June 2026**
+**Version: 2.6.6 · June 2026**
 **Authors: GNS Foundation Engineering**
 
 ---
@@ -26,6 +26,7 @@ The platform is built on **7 governance layers** stacked on top of the open-sour
 >
 > **v2.6.5** adds Sprint 24: **Self-Serve Commercialization & Stripe Billing** — The platform is now commercially ready with full Stripe integration. The backend Python orchestrator implements secure `create_checkout_session` and `create_portal_session` handlers, managed via robust Webhook listeners that handle lifecycle events (`checkout.session.completed`, `customer.subscription.deleted`, etc.). The React Next.js Portal (`portal.grafomem.com`) has been wired to support self-serve upgrades and billing management directly from the tenant Settings UI.
 > 
+> **v2.6.6** adds Phase 7: **Scale, Security, and Sync** — Deployed cross-node DEK cache invalidation using Postgres `pg_notify` for sub-500ms multi-node sync. Swept all API boundaries for HTTP 500 state leakage, sanitizing internal server errors. Verified full Enterprise Event Webhooks deployment (HMAC-SHA256 signatures, asynchronous dispatch) guaranteeing immediate, secure downstream compliance propagation. Completed the formal vault penetration test and generated the enterprise security checklist.
 > **v2.6.1** is a status-reconciliation pass: the Appendix live-status table and the §17.1 critical-path rows are brought current with shipped functionality (gcrumbs + signed erasure live since Sprint 15; the resilience mechanisms — failover, tool-deny, timeout, loop — validated two-sided in the sealed run); §17.2 conformance counts are aligned to §32 (51/51 mock; OpenAI 39-test baseline); and competitive-absolute language ("the only") and one "tamper-proof" slip are corrected to defensible claims ("tamper-evident").
 
 ### Key Numbers
