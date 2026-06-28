@@ -40,6 +40,10 @@ def openapi_spec() -> dict[str, Any]:
     """
     from aml.server.app import create_app
 
+    import os
+    os.environ["GRAFOMEM_MASTER_KEY"] = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    os.environ["UNSAFE_LOCAL_DEV"] = "true"
+    
     app = create_app(
         db_url="postgresql://spec:spec@localhost:5432/spec",
         auth_mode="none",
@@ -112,6 +116,7 @@ class TestOpenAPISpec:
             "/test", "/replay", "/rotate-key", "/flush",
             "/seed-defaults", "/seed-builtins", "/terminate",
             "/roll", "/webhook", "/cancel", "/acs", "/clear_cache",
+            "/stores", "/baseline", "/pdf", "/portal", "/configure",
         }
         missing = []
         for path, methods in spec_paths.items():

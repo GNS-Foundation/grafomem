@@ -56,7 +56,8 @@ import httpx
 # ============================================================================
 
 BASE_URL = os.environ.get("GRAFOMEM_URL", "http://localhost:8080")
-TEST_EMAIL = "conformance@grafomem.test"
+import uuid
+TEST_EMAIL = f"conformance_a_{uuid.uuid4().hex[:8]}@grafomem.test"
 TEST_PASSWORD = "ConformanceTest2026!"
 OPENAI_KEY = os.environ.get("OPENAI_API_KEY", "")
 ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
@@ -205,6 +206,7 @@ class ConformanceSuite:
             "plan": "starter",
         })
         if r.status_code in (400, 409):
+            print(f"Signup failed with {r.status_code}: {r.text}")
             # Already exists — login instead
             r2 = self.client.post("/v1/portal/login", json={
                 "email": TEST_EMAIL,
@@ -227,7 +229,7 @@ class ConformanceSuite:
 
     def test_signup_tenant_b(self) -> None:
         """Create secondary tenant for isolation tests."""
-        email_b = "conformance_b@grafomem.test"
+        email_b = f"conformance_b_{uuid.uuid4().hex[:8]}@grafomem.test"
         r = self.client.post("/v1/portal/signup", json={
             "name": "Conformance Tenant B",
             "email": email_b,
@@ -876,7 +878,7 @@ class ConformanceSuite:
         )
         self._assert("P0-3b: Same-Tenant Access IS Allowed",
                       same_allowed,
-                      f"status={r_same.status_code} memories={len(r_same.json().get('memories', []))}" if r_same.status_code == 200 else "")
+                      f"status={r_same.status_code} " + (f"memories={len(r_same.json().get('memories', []))}" if r_same.status_code == 200 else r_same.text[:200]))
 
     # ==================================================================
     # P0-4: HITL Escalation (two-sided)

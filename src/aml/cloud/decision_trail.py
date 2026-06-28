@@ -305,7 +305,7 @@ class DecisionTrailService:
                 _CANON(ret_opts),
                 model_id, prompt_hash, _CANON(params),
                 db_raw_output, db_parsed,
-                output_tokens, latency_ms,
+                output_tokens or 0, latency_ms or 0,
                 signature, public_key,
                 parent_decision_id,
                 enc_query, enc_contents, enc_raw_output, enc_parsed

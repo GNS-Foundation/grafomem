@@ -43,8 +43,7 @@ class CertificateResponse(BaseModel):
     tenant_id: str
     fact_ref: int
     fact_content_hash: str | None = None
-    memory_deleted: bool
-    decision_records_scrubbed: int
+    coverage: dict[str, str]
     scrubbed_decision_ids: list[str] = Field(default_factory=list)
     erasure_requested_at: str
     erasure_completed_at: str
@@ -74,8 +73,7 @@ def _cert_to_response(cert) -> CertificateResponse:
         tenant_id=cert.tenant_id,
         fact_ref=cert.fact_ref,
         fact_content_hash=cert.fact_content_hash,
-        memory_deleted=cert.memory_deleted,
-        decision_records_scrubbed=cert.decision_records_scrubbed,
+        coverage=cert.coverage,
         scrubbed_decision_ids=cert.scrubbed_decision_ids,
         erasure_requested_at=cert.erasure_requested_at.isoformat(),
         erasure_completed_at=cert.erasure_completed_at.isoformat(),
@@ -146,7 +144,6 @@ def create_erasure_router(erasure_service) -> APIRouter:
                 tenant_id=tenant_id,
                 fact_ref=req.fact_ref,
                 fact_content=req.fact_content,
-                memory_deleted=req.memory_deleted,
                 legal_basis=req.legal_basis,
                 requested_by=req.requested_by,
                 signing_identity=signing_identity,

@@ -52,6 +52,7 @@ def test_rest_erasure_fail_closed(temp_db_url, monkeypatch):
     
     # 1. Create app without an ERASURE_SIGNING_KEY in environment
     monkeypatch.delenv("ERASURE_SIGNING_KEY", raising=False)
+    monkeypatch.delenv("UNSAFE_LOCAL_DEV", raising=False)
         
     def _test_factory():
         from aml.backends.postgres_gmp import PostgresGMPBackend

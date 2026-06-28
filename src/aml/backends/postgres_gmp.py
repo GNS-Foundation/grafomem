@@ -191,14 +191,6 @@ class PostgresGMPBackend:
                 # Embeddings table (dimension injected)
                 cur.execute(_SCHEMA_EMBEDDINGS.format(dim=self._dim))
 
-                # Indexes
-                cur.execute(
-                    "CREATE INDEX IF NOT EXISTS idx_mem_tenant_valid "
-                    "ON memories(tenant_id, valid_until, valid_from)"
-                )
-                cur.execute(_HNSW_INDEX.strip())
-                cur.execute(_TENANT_FILTER_INDEX.strip())
-
 
                 # Migration for encryption columns
                 try:
@@ -213,6 +205,14 @@ class PostgresGMPBackend:
                     cur.execute("ALTER TABLE memory_embeddings ADD COLUMN IF NOT EXISTS region TEXT DEFAULT 'global';")
                 except Exception as e:
                     logger.warning(f"Could not alter tables for region columns: {e}")
+
+                # Indexes (must run after migrations to ensure columns exist)
+                cur.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_mem_tenant_valid "
+                    "ON memories(tenant_id, valid_until, valid_from)"
+                )
+                cur.execute(_HNSW_INDEX.strip())
+                cur.execute(_TENANT_FILTER_INDEX.strip())
 
                 # Enable Postgres RLS
                 cur.execute("ALTER TABLE memories ENABLE ROW LEVEL SECURITY")
@@ -280,36 +280,33 @@ class PostgresGMPBackend:
 
         written_by, signature, public_key = self._provenance(content, options)
         
-        encryptor = self._encryption
-        if self._encryption and options.tenant_id and hasattr(self._encryption, "get_encryptor"):
-            encryptor = self._encryption.get_encryptor(options.tenant_id)
-            
-        enc_content = encryptor.encrypt(content) if encryptor else content
+        db_content, enc_content, db_meta, enc_meta = self._encrypt_memory(content, options.metadata, options.tenant_id)
 
         with self._tenant_conn(options.tenant_id) as (conn, cur):
             cur.execute(
                 """INSERT INTO memories
                    (content, written_at, metadata, valid_from, valid_until,
-                    tenant_id, superseded_by, written_by, signature, public_key)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    tenant_id, superseded_by, written_by, signature, public_key,
+                    content_enc, metadata_enc, region)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                    RETURNING ref""",
-                (enc_content, datetime.now(timezone.utc),
-                 json.dumps(options.metadata or {}),
+                (db_content, datetime.now(timezone.utc), db_meta,
                  options.valid_from, None,
                  options.tenant_id, None,
-                 written_by, signature, public_key),
+                 written_by, signature, public_key,
+                 enc_content, enc_meta, options.region or 'global'),
             )
             ref = cur.fetchone()[0]
 
             # Insert embedding with sentinel-encoded metadata
             cur.execute(
                 """INSERT INTO memory_embeddings
-                   (ref, embedding, tenant_id, valid_from, valid_until)
-                   VALUES (%s, %s::vector, %s, %s, %s)""",
+                   (ref, embedding, tenant_id, valid_from, valid_until, region)
+                   VALUES (%s, %s::vector, %s, %s, %s, %s)""",
                 (ref, emb.tolist(),
                  _vec_tenant(options.tenant_id),
                  _vec_from(options.valid_from),
-                 OPEN_UNTIL_TS),
+                 OPEN_UNTIL_TS, options.region or 'global'),
             )
         return ref
 
@@ -372,17 +369,46 @@ class PostgresGMPBackend:
         db_content, enc_content, db_meta, enc_meta = self._encrypt_memory(content, metadata, options.tenant_id)
 
         close_at = options.valid_from or datetime.now(timezone.utc)
+        
+        emb = _normalize(self._embed(content))
+        written_by, signature, public_key = self._provenance(content, options)
 
         with self._tenant_conn(options.tenant_id) as (conn, cur):
+            # Insert the new memory
+            cur.execute(
+                """INSERT INTO memories
+                   (content, written_at, metadata, valid_from, valid_until,
+                    tenant_id, superseded_by, written_by, signature, public_key,
+                    content_enc, metadata_enc, region)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                   RETURNING ref""",
+                (db_content, datetime.now(timezone.utc), db_meta,
+                 options.valid_from, None,
+                 options.tenant_id, None,
+                 written_by, signature, public_key,
+                 enc_content, enc_meta, options.region or 'global'),
+            )
+            new_ref = cur.fetchone()[0]
+
+            cur.execute(
+                """INSERT INTO memory_embeddings
+                   (ref, embedding, tenant_id, valid_from, valid_until, region)
+                   VALUES (%s, %s::vector, %s, %s, %s, %s)""",
+                (new_ref, emb.tolist(),
+                 _vec_tenant(options.tenant_id),
+                 _vec_from(options.valid_from),
+                 OPEN_UNTIL_TS, options.region or 'global'),
+            )
+
             # Close predecessor's interval in memories table
             cur.execute(
                 "UPDATE memories SET valid_until = %s, superseded_by = %s WHERE ref = %s",
-                (close_at, new_ref, old_ref),
+                (close_at, new_ref, ref),
             )
             # Mirror close into embedding index for filtered retrieval
             cur.execute(
                 "UPDATE memory_embeddings SET valid_until = %s WHERE ref = %s",
-                (close_at, old_ref),
+                (close_at, ref),
             )
         return new_ref
 
@@ -455,24 +481,20 @@ class PostgresGMPBackend:
                 cur.execute(
                     """SELECT ref, content, written_at, metadata,
                               valid_from, valid_until, tenant_id,
-                              superseded_by, written_by, signature, public_key, region
+                              superseded_by, written_by, signature, public_key, region,
+                              content_enc, metadata_enc
                        FROM memories WHERE ref = %s""",
                     (ref,),
                 )
                 row = cur.fetchone()
             if row is None:
                 continue
-            content = row[1]
-            if self._encryption:
-                encryptor = self._encryption
-                if options.tenant_id and hasattr(encryptor, "get_encryptor"):
-                    encryptor = encryptor.get_encryptor(options.tenant_id)
-                content = encryptor.decrypt(content)
-                
-            if used + len(content) > budget:
+            
+            mem = self._row_to_memory(row)
+            if used + len(mem.content) > budget:
                 break
-            out.append(self._row_to_memory(row, content_override=content))
-            used += len(content)
+            out.append(mem)
+            used += len(mem.content)
         return out
 
     def audit(self) -> Iterator[Memory]:
@@ -480,7 +502,8 @@ class PostgresGMPBackend:
             cur.execute(
                 """SELECT ref, content, written_at, metadata,
                           valid_from, valid_until, tenant_id,
-                          superseded_by, written_by, signature, public_key, region
+                          superseded_by, written_by, signature, public_key, region,
+                          content_enc, metadata_enc
                    FROM memories ORDER BY ref"""
             )
             rows = cur.fetchall()
@@ -497,18 +520,24 @@ class PostgresGMPBackend:
 
     def _row_to_memory(self, row, content_override: str | None = None) -> Memory:
         (ref, content, written_at, metadata,
-         vf, vu, tenant, sby, written_by, sig, pub, region) = row
+         vf, vu, tenant, sby, written_by, sig, pub, region,
+         content_enc, metadata_enc) = row
 
         if content_override is not None:
             content = content_override
-        elif self._encryption:
+        elif self._encryption and content_enc:
             encryptor = self._encryption
-            if options.tenant_id and hasattr(encryptor, "get_encryptor"):
-                encryptor = encryptor.get_encryptor(options.tenant_id)
-            content = encryptor.decrypt(content)
+            if tenant and hasattr(encryptor, "get_encryptor"):
+                encryptor = encryptor.get_encryptor(tenant)
+            content = encryptor.decrypt(content_enc)
 
         # Handle metadata: could be dict (JSONB auto-parsed) or string
         if isinstance(metadata, str):
+            if self._encryption and metadata_enc:
+                encryptor = self._encryption
+                if tenant and hasattr(encryptor, "get_encryptor"):
+                    encryptor = encryptor.get_encryptor(tenant)
+                metadata = encryptor.decrypt(metadata_enc)
             metadata = json.loads(metadata)
 
         # Normalize valid_until: sentinel means None (open interval)

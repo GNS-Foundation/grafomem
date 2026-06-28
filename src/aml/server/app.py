@@ -468,23 +468,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         logger.info("GRAFOMEM server starting")
-        # Initialize connection pool if db_url is provided
-        if db_url and not spec_only:
-            try:
-                from aml.cloud.db_pool import RoutingPool
-                pool = RoutingPool(db_url)
-                pool.open()
-                app.state.db_pool = pool
-                logger.info(
-                    "Database pool initialized (replica=%s)",
-                    pool.has_replica,
-                )
-            except Exception as e:
-                logger.warning("Connection pool unavailable: %s", e)
-                app.state.db_pool = None
-        else:
-            app.state.db_pool = None
-            
+        
         # Start Assurance Scheduler
         assurance_scheduler = getattr(app.state, "assurance_scheduler", None)
         if assurance_scheduler:
@@ -562,6 +546,20 @@ def create_app(
         ],
         lifespan=lifespan,
     )
+
+    # Initialize connection pool synchronously BEFORE instantiating services
+    if db_url and not spec_only:
+        try:
+            from aml.cloud.db_pool import RoutingPool
+            pool = RoutingPool(db_url)
+            pool.open()
+            app.state.db_pool = pool
+            logger.info("Database pool initialized (replica=%s)", pool.has_replica)
+        except Exception as e:
+            logger.warning("Connection pool unavailable: %s", e)
+            app.state.db_pool = None
+    else:
+        app.state.db_pool = None
 
     # ------------------------------------------------------------------
     # Sprint 13: Prometheus metrics middleware (innermost layer)

@@ -561,7 +561,7 @@ class RegulatoryReportService:
                 report.report_id, report.tenant_id, report.report_type.value,
                 report.title, report.status.value,
                 report.period_start, report.period_end,
-                json.dumps(report.content), report.content_hash,
+                json.dumps(report.content, default=str), report.content_hash,
                 report.created_at, report.file_size_bytes,
             ),
         )
