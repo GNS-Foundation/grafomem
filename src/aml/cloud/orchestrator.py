@@ -589,12 +589,12 @@ class OrchestratorService:
                 "SELECT * FROM orchestrator_workflows WHERE workflow_id = %s",
                 (workflow_id,),
             ).fetchone()
-            if row is None:
-                return None
-            workflow = self._row_to_workflow(row)
-            # Attach steps
-            workflow.steps = self.get_workflow_steps(workflow_id)
-            return workflow
+        if row is None:
+            return None
+        workflow = self._row_to_workflow(row)
+        # Attach steps
+        workflow.steps = self.get_workflow_steps(workflow_id)
+        return workflow
 
     def list_workflows(
         self,
@@ -603,31 +603,31 @@ class OrchestratorService:
         limit: int = 50,
         offset: int = 0,
     ) -> list[Workflow]:
-        conn = self._get_conn()
-        conditions = ["tenant_id = %s"]
-        params: list[Any] = [tenant_id]
+        with self._get_conn() as conn:
+            conditions = ["tenant_id = %s"]
+            params: list[Any] = [tenant_id]
 
-        if status:
-            conditions.append("status = %s")
-            params.append(status)
+            if status:
+                conditions.append("status = %s")
+                params.append(status)
 
-        where = " AND ".join(conditions)
-        params.extend([limit, offset])
+            where = " AND ".join(conditions)
+            params.extend([limit, offset])
 
-        rows = conn.execute(
-            f"SELECT * FROM orchestrator_workflows "
-            f"WHERE {where} ORDER BY created_at DESC LIMIT %s OFFSET %s",
-            params,
-        ).fetchall()
+            rows = conn.execute(
+                f"SELECT * FROM orchestrator_workflows "
+                f"WHERE {where} ORDER BY created_at DESC LIMIT %s OFFSET %s",
+                params,
+            ).fetchall()
         return [self._row_to_workflow(r) for r in rows]
 
     def get_workflow_steps(self, workflow_id: str, encryption: Any | None = None) -> list[StepRecord]:
-        conn = self._get_conn()
-        rows = conn.execute(
-            "SELECT * FROM orchestrator_steps "
-            "WHERE workflow_id = %s ORDER BY step_number ASC",
-            (workflow_id,),
-        ).fetchall()
+        with self._get_conn() as conn:
+            rows = conn.execute(
+                "SELECT * FROM orchestrator_steps "
+                "WHERE workflow_id = %s ORDER BY step_number ASC",
+                (workflow_id,),
+            ).fetchall()
         return [self._row_to_step(r, encryption) for r in rows]
 
     # ------------------------------------------------------------------
@@ -1760,33 +1760,32 @@ class OrchestratorService:
     # ------------------------------------------------------------------
 
     def get_stats(self, tenant_id: str) -> dict[str, Any]:
-        conn = self._get_conn()
+        with self._get_conn() as conn:
+            agent_row = conn.execute(
+                "SELECT COUNT(*) AS total, "
+                "  COUNT(CASE WHEN enabled THEN 1 END) AS active "
+                "FROM orchestrator_agents WHERE tenant_id = %s",
+                (tenant_id,),
+            ).fetchone()
 
-        agent_row = conn.execute(
-            "SELECT COUNT(*) AS total, "
-            "  COUNT(CASE WHEN enabled THEN 1 END) AS active "
-            "FROM orchestrator_agents WHERE tenant_id = %s",
-            (tenant_id,),
-        ).fetchone()
+            wf_row = conn.execute(
+                "SELECT COUNT(*) AS total, "
+                "  COUNT(CASE WHEN status = 'running' THEN 1 END) AS running, "
+                "  COUNT(CASE WHEN status = 'completed' THEN 1 END) AS completed, "
+                "  COUNT(CASE WHEN status = 'failed' THEN 1 END) AS failed "
+                "FROM orchestrator_workflows WHERE tenant_id = %s",
+                (tenant_id,),
+            ).fetchone()
 
-        wf_row = conn.execute(
-            "SELECT COUNT(*) AS total, "
-            "  COUNT(CASE WHEN status = 'running' THEN 1 END) AS running, "
-            "  COUNT(CASE WHEN status = 'completed' THEN 1 END) AS completed, "
-            "  COUNT(CASE WHEN status = 'failed' THEN 1 END) AS failed "
-            "FROM orchestrator_workflows WHERE tenant_id = %s",
-            (tenant_id,),
-        ).fetchone()
-
-        step_row = conn.execute(
-            "SELECT COUNT(*) AS total, "
-            "  COALESCE(SUM(tokens_used), 0) AS total_tokens, "
-            "  COALESCE(AVG(latency_ms), 0) AS avg_latency, "
-            "  COUNT(CASE WHEN status = 'denied' THEN 1 END) AS denied, "
-            "  COUNT(CASE WHEN status = 'escalated' THEN 1 END) AS escalated "
-            "FROM orchestrator_steps WHERE tenant_id = %s",
-            (tenant_id,),
-        ).fetchone()
+            step_row = conn.execute(
+                "SELECT COUNT(*) AS total, "
+                "  COALESCE(SUM(tokens_used), 0) AS total_tokens, "
+                "  COALESCE(AVG(latency_ms), 0) AS avg_latency, "
+                "  COUNT(CASE WHEN status = 'denied' THEN 1 END) AS denied, "
+                "  COUNT(CASE WHEN status = 'escalated' THEN 1 END) AS escalated "
+                "FROM orchestrator_steps WHERE tenant_id = %s",
+                (tenant_id,),
+            ).fetchone()
 
         return {
             "agents_total": agent_row["total"] if agent_row else 0,
@@ -1882,48 +1881,48 @@ class OrchestratorService:
         enc_results = encryption.encrypt(res_canon) if encryption else None
         db_results = "[]" if encryption else res_canon
 
-        conn = self._get_conn()
-        conn.execute(
-            "INSERT INTO orchestrator_steps "
-            "(step_id, workflow_id, agent_id, tenant_id, step_number, "
-            " input_text, retrieved_facts, governance_allowed, governance_logs, "
-            " model_id, raw_output, tool_calls, tool_results, "
-            " tokens_used, latency_ms, latency_governance_ms, latency_memory_ms, "
-            " latency_llm_ms, latency_tools_ms, decision_id, parent_decision_id, signature, public_key, "
-            " status, created_at, "
-            " input_text_enc, retrieved_facts_enc, governance_logs_enc, raw_output_enc, tool_calls_enc, tool_results_enc) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s::jsonb, %s, "
-            "        %s, %s::jsonb, %s::jsonb, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, "
-            "        %s, %s, %s, %s, %s, %s)",
-            (
-                kwargs["step_id"],
-                kwargs["workflow_id"],
-                kwargs["agent_id"],
-                kwargs["tenant_id"],
-                kwargs["step_number"],
-                db_input,
-                db_facts,
-                kwargs["governance_allowed"],
-                db_logs,
-                kwargs["model_id"],
-                db_raw,
-                db_calls,
-                db_results,
-                kwargs["tokens_used"],
-                kwargs["latency_ms"],
-                kwargs.get("latency_governance_ms", 0),
-                kwargs.get("latency_memory_ms", 0),
-                kwargs.get("latency_llm_ms", 0),
-                kwargs.get("latency_tools_ms", 0),
-                kwargs["decision_id"],
-                kwargs.get("parent_decision_id"),
-                kwargs["signature"],
-                kwargs["public_key"],
-                kwargs["status"].value,
-                kwargs["created_at"],
-                enc_input, enc_facts, enc_logs, enc_raw, enc_calls, enc_results
-            ),
-        )
+        with self._get_conn() as conn:
+            conn.execute(
+                "INSERT INTO orchestrator_steps "
+                "(step_id, workflow_id, agent_id, tenant_id, step_number, "
+                " input_text, retrieved_facts, governance_allowed, governance_logs, "
+                " model_id, raw_output, tool_calls, tool_results, "
+                " tokens_used, latency_ms, latency_governance_ms, latency_memory_ms, "
+                " latency_llm_ms, latency_tools_ms, decision_id, parent_decision_id, signature, public_key, "
+                " status, created_at, "
+                " input_text_enc, retrieved_facts_enc, governance_logs_enc, raw_output_enc, tool_calls_enc, tool_results_enc) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s::jsonb, %s, "
+                "        %s, %s::jsonb, %s::jsonb, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, "
+                "        %s, %s, %s, %s, %s, %s)",
+                (
+                    kwargs["step_id"],
+                    kwargs["workflow_id"],
+                    kwargs["agent_id"],
+                    kwargs["tenant_id"],
+                    kwargs["step_number"],
+                    db_input,
+                    db_facts,
+                    kwargs["governance_allowed"],
+                    db_logs,
+                    kwargs["model_id"],
+                    db_raw,
+                    db_calls,
+                    db_results,
+                    kwargs["tokens_used"],
+                    kwargs["latency_ms"],
+                    kwargs.get("latency_governance_ms", 0),
+                    kwargs.get("latency_memory_ms", 0),
+                    kwargs.get("latency_llm_ms", 0),
+                    kwargs.get("latency_tools_ms", 0),
+                    kwargs["decision_id"],
+                    kwargs.get("parent_decision_id"),
+                    kwargs["signature"],
+                    kwargs["public_key"],
+                    kwargs["status"].value,
+                    kwargs["created_at"],
+                    enc_input, enc_facts, enc_logs, enc_raw, enc_calls, enc_results
+                ),
+            )
 
         return StepRecord(
             step_id=kwargs["step_id"],
@@ -1957,37 +1956,37 @@ class OrchestratorService:
         self, workflow_id: str, status: WorkflowStatus,
         termination_reason: str | None = None,
     ) -> None:
-        conn = self._get_conn()
-        conn.execute(
-            "UPDATE orchestrator_workflows SET status = %s, termination_reason = %s WHERE workflow_id = %s",
-            (status.value, termination_reason, workflow_id),
-        )
+        with self._get_conn() as conn:
+            conn.execute(
+                "UPDATE orchestrator_workflows SET status = %s, termination_reason = %s WHERE workflow_id = %s",
+                (status.value, termination_reason, workflow_id),
+            )
 
     def _set_workflow_started(self, workflow_id: str) -> None:
-        conn = self._get_conn()
-        conn.execute(
-            "UPDATE orchestrator_workflows SET started_at = now() "
-            "WHERE workflow_id = %s",
-            (workflow_id,),
-        )
+        with self._get_conn() as conn:
+            conn.execute(
+                "UPDATE orchestrator_workflows SET started_at = now() "
+                "WHERE workflow_id = %s",
+                (workflow_id,),
+            )
 
     def _set_workflow_completed(self, workflow_id: str) -> None:
-        conn = self._get_conn()
-        conn.execute(
-            "UPDATE orchestrator_workflows SET completed_at = now() "
-            "WHERE workflow_id = %s",
-            (workflow_id,),
-        )
+        with self._get_conn() as conn:
+            conn.execute(
+                "UPDATE orchestrator_workflows SET completed_at = now() "
+                "WHERE workflow_id = %s",
+                (workflow_id,),
+            )
 
     def _increment_workflow(self, workflow_id: str, tokens: int) -> None:
-        conn = self._get_conn()
-        conn.execute(
-            "UPDATE orchestrator_workflows "
-            "SET current_step = current_step + 1, "
-            "    total_tokens = total_tokens + %s "
-            "WHERE workflow_id = %s",
-            (tokens, workflow_id),
-        )
+        with self._get_conn() as conn:
+            conn.execute(
+                "UPDATE orchestrator_workflows "
+                "SET current_step = current_step + 1, "
+                "    total_tokens = total_tokens + %s "
+                "WHERE workflow_id = %s",
+                (tokens, workflow_id),
+            )
 
     # ------------------------------------------------------------------
     # Row converters
