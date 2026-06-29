@@ -56,6 +56,8 @@ class MemoryRecord(BaseModel):
     similarity: Optional[float] = None
     created_at: Optional[str] = None
     superseded_by: Optional[int] = None
+    token_count: Optional[int] = None
+    tokenizer_id: Optional[str] = None
 
 
 class RetrieveResponse(BaseModel):

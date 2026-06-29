@@ -78,7 +78,9 @@ CREATE TABLE IF NOT EXISTS memory_embeddings (
     valid_from    TIMESTAMPTZ NOT NULL DEFAULT '1970-01-01T00:00:00Z',
     valid_until   TIMESTAMPTZ NOT NULL DEFAULT '9999-12-31T23:59:59Z',
     erasure_pending TIMESTAMPTZ,
-    region        TEXT DEFAULT 'global'
+    region        TEXT DEFAULT 'global',
+    token_count   INTEGER,
+    tokenizer_id  TEXT
 );
 """
 
@@ -298,15 +300,18 @@ class PostgresGMPBackend:
             )
             ref = cur.fetchone()[0]
 
+            token_count = len(_tokenizer.encode(content))
+            tokenizer_id = "tiktoken/cl100k_base"
             # Insert embedding with sentinel-encoded metadata
             cur.execute(
                 """INSERT INTO memory_embeddings
-                   (ref, embedding, tenant_id, valid_from, valid_until, region)
-                   VALUES (%s, %s::vector, %s, %s, %s, %s)""",
+                   (ref, embedding, tenant_id, valid_from, valid_until, region, token_count, tokenizer_id)
+                   VALUES (%s, %s::vector, %s, %s, %s, %s, %s, %s)""",
                 (ref, emb.tolist(),
                  _vec_tenant(options.tenant_id),
                  _vec_from(options.valid_from),
-                 OPEN_UNTIL_TS, options.region or 'global'),
+                 OPEN_UNTIL_TS, options.region or 'global',
+                 token_count, tokenizer_id),
             )
         return ref
 
@@ -352,15 +357,19 @@ class PostgresGMPBackend:
                 )
                 ref = cur.fetchone()[0]
 
+                token_count = len(_tokenizer.encode(content))
+                tokenizer_id = "tiktoken/cl100k_base"
+
                 cur.execute(
                     """INSERT INTO memory_embeddings
-                       (ref, embedding, tenant_id, valid_from, valid_until, region)
-                       VALUES (%s, %s::vector, %s, %s, %s, %s)""",
+                       (ref, embedding, tenant_id, valid_from, valid_until, region, token_count, tokenizer_id)
+                       VALUES (%s, %s::vector, %s, %s, %s, %s, %s, %s)""",
                     (ref, emb.tolist(),
                      _vec_tenant(options.tenant_id),
                      _vec_from(options.valid_from),
                      OPEN_UNTIL_TS,
-                     options.region or 'global'),
+                     options.region or 'global',
+                     token_count, tokenizer_id),
                 )
                 refs.append(ref)
         return refs
@@ -390,14 +399,18 @@ class PostgresGMPBackend:
             )
             new_ref = cur.fetchone()[0]
 
+            token_count = len(_tokenizer.encode(content))
+            tokenizer_id = "tiktoken/cl100k_base"
+
             cur.execute(
                 """INSERT INTO memory_embeddings
-                   (ref, embedding, tenant_id, valid_from, valid_until, region)
-                   VALUES (%s, %s::vector, %s, %s, %s, %s)""",
+                   (ref, embedding, tenant_id, valid_from, valid_until, region, token_count, tokenizer_id)
+                   VALUES (%s, %s::vector, %s, %s, %s, %s, %s, %s)""",
                 (new_ref, emb.tolist(),
                  _vec_tenant(options.tenant_id),
                  _vec_from(options.valid_from),
-                 OPEN_UNTIL_TS, options.region or 'global'),
+                 OPEN_UNTIL_TS, options.region or 'global',
+                 token_count, tokenizer_id),
             )
 
             # Close predecessor's interval in memories table
@@ -464,7 +477,7 @@ class PostgresGMPBackend:
             # pgvector cosine distance: 1 - cosine_similarity
             # ORDER BY embedding <=> query_vector gives nearest neighbors
             cur.execute(
-                f"""SELECT e.ref
+                f"""SELECT e.ref, e.token_count, e.tokenizer_id
                     FROM memory_embeddings e
                     WHERE {where}
                     ORDER BY e.embedding <=> %s::vector
@@ -476,7 +489,7 @@ class PostgresGMPBackend:
         # Greedy char budget over candidates in similarity order
         out: list[Memory] = []
         used = 0
-        for (ref,) in ranked:
+        for ref, token_count, tokenizer_id in ranked:
             with self._tenant_conn(options.tenant_id) as (conn, cur):
                 cur.execute(
                     """SELECT ref, content, written_at, metadata,
@@ -490,7 +503,7 @@ class PostgresGMPBackend:
             if row is None:
                 continue
             
-            mem = self._row_to_memory(row)
+            mem = self._row_to_memory(row, token_count=token_count, tokenizer_id=tokenizer_id)
             if used + len(mem.content) > budget:
                 break
             out.append(mem)
@@ -518,7 +531,7 @@ class PostgresGMPBackend:
 
     # -- internals --------------------------------------------------------
 
-    def _row_to_memory(self, row, content_override: str | None = None) -> Memory:
+    def _row_to_memory(self, row, content_override: str | None = None, token_count: int | None = None, tokenizer_id: str | None = None) -> Memory:
         (ref, content, written_at, metadata,
          vf, vu, tenant, sby, written_by, sig, pub, region,
          content_enc, metadata_enc) = row
@@ -554,6 +567,8 @@ class PostgresGMPBackend:
                 public_key=bytes(pub) if pub is not None else None,
             ) if written_by is not None else None,
             region=region,
+            token_count=token_count,
+            tokenizer_id=tokenizer_id,
         )
 
 

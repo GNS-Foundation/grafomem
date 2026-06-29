@@ -91,7 +91,8 @@ class Memory:
     superseded_by: Any | None = None        # if SUPERSESSION_CHAIN
     source: SourceMeta | None = None        # if PROVENANCE / CRYPTOGRAPHIC_PROVENANCE
     region: str | None = None               # if DATA_RESIDENCY
-
+    token_count: int | None = None          # Sprint 27 Context packing optimization
+    tokenizer_id: str | None = None         # Sprint 27 Context packing optimization
 
 from aml.cloud.identity import SigningIdentity
 

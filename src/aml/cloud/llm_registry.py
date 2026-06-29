@@ -89,6 +89,8 @@ class LLMResponse:
     model_id: str
     latency_ms: int
     raw_response: dict  # Provider-specific raw data
+    tokens_cached_read: int = 0
+    tokens_cached_create: int = 0
 
 
 # ============================================================================
@@ -300,10 +302,12 @@ class LLMRegistry:
 
         response.latency_ms = int((time.monotonic() - t0) * 1000)
 
+        response.latency_ms = int((time.monotonic() - t0) * 1000)
+
         logger.info(
-            "LLM inference: model=%s provider=%s tokens=%d latency=%dms",
+            "LLM inference: model=%s provider=%s tokens=%d (cache_read=%d cache_create=%d) latency=%dms",
             request.model_id, config.provider.value,
-            response.tokens_output, response.latency_ms,
+            response.tokens_output, response.tokens_cached_read, response.tokens_cached_create, response.latency_ms,
         )
 
         return response
@@ -400,9 +404,14 @@ class LLMRegistry:
         # Floor max_tokens at 1024 — Anthropic can truncate short budgets
         effective_max = max(request.max_tokens, 1024)
 
+        system_block: dict[str, Any] = {
+            "type": "text",
+            "text": request.system_prompt,
+        }
+
         kwargs: dict[str, Any] = {
             "model": config.model_id,
-            "system": request.system_prompt,
+            "system": [system_block],
             "messages": request.messages,
             "temperature": request.temperature,
             "max_tokens": effective_max,
@@ -417,6 +426,9 @@ class LLMRegistry:
                 }
                 for t in request.tools
             ]
+            kwargs["tools"][-1]["cache_control"] = {"type": "ephemeral"}
+        else:
+            system_block["cache_control"] = {"type": "ephemeral"}
 
         response = client.messages.create(**kwargs)
 
@@ -437,11 +449,19 @@ class LLMRegistry:
         if not content and tool_calls:
             content = f"[tool_use: {', '.join(tc['name'] for tc in tool_calls)}]"
 
+        cache_read = 0
+        cache_create = 0
+        if hasattr(response, "usage") and response.usage:
+            cache_read = getattr(response.usage, "cache_read_input_tokens", 0)
+            cache_create = getattr(response.usage, "cache_creation_input_tokens", 0)
+
         return LLMResponse(
             content=content,
             tool_calls=tool_calls,
             tokens_input=response.usage.input_tokens,
             tokens_output=response.usage.output_tokens,
+            tokens_cached_read=cache_read,
+            tokens_cached_create=cache_create,
             model_id=config.model_id,
             latency_ms=0,
             raw_response={"id": response.id, "model": response.model},

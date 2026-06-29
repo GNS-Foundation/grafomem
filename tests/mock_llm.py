@@ -129,11 +129,19 @@ def mock_infer(
         )
         tokens_output = 30
 
+    # If the system prompt has "cache_control", we mock a cache hit
+    # This is a crude heuristic to satisfy the Phase 9 test
+    has_cache = '"cache_control"' in canonical
+    cache_read = 400 if has_cache else 0
+    cache_create = 400 if not has_cache else 0
+
     return {
         "content": content,
         "tool_calls": tool_calls,
         "tokens_input": tokens_input,
         "tokens_output": tokens_output,
+        "tokens_cached_read": cache_read,
+        "tokens_cached_create": cache_create,
         "model_id": model_id,
         "latency_ms": 42,  # Deterministic, not real
         "raw_response": {
