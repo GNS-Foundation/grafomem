@@ -1352,8 +1352,10 @@ class OrchestratorService:
                 emitter.close()
 
         except Exception as e:
-            logger.error("Workflow %s failed: %s", workflow_id, e)
-            self._update_workflow_status(workflow_id, WorkflowStatus.FAILED)
+            import traceback
+            tb = traceback.format_exc()
+            logger.error("Workflow %s failed: %s\n%s", workflow_id, e, tb)
+            self._update_workflow_status(workflow_id, WorkflowStatus.FAILED, termination_reason=f"{e}\n{tb}")
 
             try:
                 from aml.cloud.metrics import WORKFLOWS_TOTAL
