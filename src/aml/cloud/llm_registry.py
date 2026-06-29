@@ -788,11 +788,17 @@ class LLMRegistry:
             )
             tokens_output = 30
 
+        has_cache = "cache_control" in request.system_prompt
+        cache_read = 400 if has_cache else 0
+        cache_create = 400 if not has_cache else 0
+
         return LLMResponse(
             content=content,
             tool_calls=tool_calls,
             tokens_input=tokens_input,
             tokens_output=tokens_output,
+            tokens_cached_read=cache_read,
+            tokens_cached_create=cache_create,
             model_id=config.model_id,
             latency_ms=42,
             raw_response={

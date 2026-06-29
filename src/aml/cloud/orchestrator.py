@@ -1817,9 +1817,10 @@ class OrchestratorService:
 
         # Add memory context if facts were retrieved
         if retrieved_facts:
+            sorted_facts = sorted(retrieved_facts, key=lambda x: str(x.get("ref", x.get("content", ""))))
             fact_text = "\n".join(
                 f"- {f.get('content', '')}"
-                for f in retrieved_facts
+                for f in sorted_facts
             )
             messages.append({
                 "role": "user",
