@@ -42,7 +42,7 @@ backends = ["sentence-transformers>=2.2", "numpy>=1.24"]
 store = ["sqlite-vec", "apsw"]
 crypto = ["cryptography>=41"]
 # PostgreSQL + pgvector backend (GRAFOMEM Cloud).
-postgres = ["psycopg[binary]>=3.1", "psycopg_pool>=3.2", "pgvector>=0.3", "numpy>=1.24"]
+postgres = ["psycopg[binary]>=3.1", "psycopg_pool>=3.2", "pgvector>=0.3", "numpy>=1.24", "tiktoken>=0.7.0"]
 # Production server: FastAPI + MCP + batched ingestion.
 server = ["fastapi>=0.110", "uvicorn[standard]>=0.29", "mcp>=1.0", "pydantic>=2.0", "sse-starlette>=2.0", "fpdf2>=2.8"]
 # GRAFOMEM Cloud: managed service with tenant provisioning + metering.
