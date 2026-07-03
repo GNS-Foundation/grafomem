@@ -18,7 +18,7 @@ jobs:
         image: pgvector/pgvector:pg15
         env:
           POSTGRES_USER: grafomem
-          POSTGRES_PASSWORD: grafomem_dev
+          POSTGRES_PASSWORD: dev
           POSTGRES_DB: grafomem
         ports:
           - 5432:5432
@@ -47,7 +47,7 @@ jobs:
 
       - name: Run tests
         env:
-          GRAFOMEM_DB_URL: postgresql://grafomem:grafomem_dev@localhost:5432/grafomem
+          GRAFOMEM_DB_URL: postgresql://grafomem:dev@localhost:5432/grafomem
           PROVIDER_ENCRYPTION_KEY: ${{ secrets.PROVIDER_ENCRYPTION_KEY || 'fake_ci_encryption_key_for_tests' }}
         run: pytest tests/ --ignore=tests/runtime --ignore=tests/conformance --ignore=tests/verifier-ts -v --tb=short
 
