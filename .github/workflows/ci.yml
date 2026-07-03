@@ -49,7 +49,7 @@ jobs:
         env:
           GRAFOMEM_DB_URL: postgresql://grafomem:grafomem_dev@localhost:5432/grafomem
           PROVIDER_ENCRYPTION_KEY: ${{ secrets.PROVIDER_ENCRYPTION_KEY || 'fake_ci_encryption_key_for_tests' }}
-        run: pytest tests/ -v --tb=short
+        run: pytest tests/ --ignore=tests/runtime --ignore=tests/conformance --ignore=tests/verifier-ts -v --tb=short
 
       - name: Interface smoke
         run: python -m aml.backends.interface
@@ -64,3 +64,63 @@ jobs:
 
       - name: W10 concurrency runner smoke
         run: python -m aml.eval.concurrency_runner
+
+  test-runtime:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[runtime,dev]"
+          pip install -e "adapters/langgraph-checkpoint-grafomem[dev]"
+
+      - name: Generate test vectors
+        run: python examples/generate_vectors.py || python tests/runtime/examples/generate_vectors.py || true
+
+      - name: Run Runtime tests
+        run: pytest --confcutdir=tests/runtime tests/runtime/ -v --tb=short
+
+      - name: Run Adapter tests
+        run: pytest adapters/langgraph-checkpoint-grafomem/tests/ -v --tb=short
+
+      - name: Run TypeScript Verifier tests
+        working-directory: tests/verifier-ts
+        run: |
+          npm ci
+          npm test
+
+      - name: Run CSO SPEC-1.0 Conformance Suite
+        run: python tests/conformance/checker.py
+
+      - name: Fair-Source Linting
+        run: |
+          if grep -i "open source" src/grafomem/ -r; then
+            echo "FAILED: Found 'open source' in runtime FSL codebase"
+            exit 1
+          fi
+          python -c "
+          import sys, re
+          with open('README.md', 'r') as f:
+              for i, line in enumerate(f, 1):
+                  line_lower = line.lower()
+                  if 'open source' in line_lower or 'open-source' in line_lower:
+                      if 'runtime' in line_lower or 'cso' in line_lower:
+                          print(f'FAILED: README.md line {i} calls the runtime open source: {line.strip()}')
+                          sys.exit(1)
+          "
+          echo "Lint passed: FSL codebase clean"

@@ -1,0 +1,10 @@
+Metadata-Version: 2.4
+Name: langgraph-checkpoint-letha
+Version: 1.0.0
+Summary: Letha (Fair Source) adapter for LangGraph Checkpointers
+License: Apache-2.0
+Requires-Dist: langgraph-checkpoint
+Requires-Dist: letha
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: langgraph; extra == "dev"

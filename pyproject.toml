@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "grafomem"
-version = "0.3.0"
+version = "0.4.0"
 description = "GRAFOMEM — agent-memory conformance benchmark and compliance toolkit"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -41,6 +41,7 @@ grafomem = "aml.cli:main"
 backends = ["sentence-transformers>=2.2", "numpy>=1.24"]
 store = ["sqlite-vec", "apsw"]
 crypto = ["cryptography>=41"]
+runtime = ["numpy>=1.24", "cryptography>=41", "structlog>=23.1.0", "mcp>=0.1.0"]
 # PostgreSQL + pgvector backend (GRAFOMEM Cloud).
 postgres = ["psycopg[binary]>=3.1", "psycopg_pool>=3.2", "pgvector>=0.3", "numpy>=1.24", "tiktoken>=0.7.0"]
 # Production server: FastAPI + MCP + batched ingestion.

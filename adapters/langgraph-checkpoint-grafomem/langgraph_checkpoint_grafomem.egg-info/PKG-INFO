@@ -1,0 +1,15 @@
+Metadata-Version: 2.4
+Name: langgraph-checkpoint-grafomem
+Version: 1.0.0
+Summary: Grafomem (Fair Source) adapter for LangGraph Checkpointers
+Author-email: "Ulissy s.r.l." <hello@grafomem.com>
+License: Apache-2.0
+Project-URL: Homepage, https://grafomem.com
+Project-URL: Repository, https://github.com/cayerbe/grafomem
+Keywords: agent-memory,langgraph,checkpointer,governance,erasure,fair-source
+Requires-Dist: langgraph-checkpoint
+Requires-Dist: grafomem[runtime]>=0.4.0
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: langgraph; extra == "dev"
+Requires-Dist: trio; extra == "dev"

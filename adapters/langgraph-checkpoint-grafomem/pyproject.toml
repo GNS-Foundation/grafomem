@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "langgraph-checkpoint-grafomem"
+version = "1.0.0"
+description = "Grafomem (Fair Source) adapter for LangGraph Checkpointers"
+dependencies = [
+    "langgraph-checkpoint",
+    "grafomem[runtime]>=0.4.0"
+]
+license = { text = "Apache-2.0" }
+authors = [
+    { name = "Ulissy s.r.l.", email = "hello@grafomem.com" }
+]
+keywords = ["agent-memory", "langgraph", "checkpointer", "governance", "erasure", "fair-source"]
+
+[project.urls]
+Homepage = "https://grafomem.com"
+Repository = "https://github.com/cayerbe/grafomem"
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "langgraph"
+]
