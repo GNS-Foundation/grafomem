@@ -629,12 +629,14 @@ def create_app(
     ]
     if os.environ.get("GRAFOMEM_CORS_ORIGINS"):
         cors_origins.extend([o.strip() for o in os.environ["GRAFOMEM_CORS_ORIGINS"].split(",") if o.strip()])
+    if os.environ.get("GRAFOMEM_FRONTEND_URL"):
+        cors_origins.append(os.environ["GRAFOMEM_FRONTEND_URL"].strip())
 
     app.add_middleware(
         CORSMiddleware,
         allow_origins=cors_origins,
         allow_origin_regex=r"https://.*\.pages\.dev",
-        allow_methods=["GET", "POST", "OPTIONS", "PUT", "PATCH", "DELETE"],
+        allow_methods=["*"],
         allow_headers=["*"],
         allow_credentials=True,
     )
