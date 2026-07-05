@@ -21,7 +21,7 @@ def create_manifold_router(manifold_svc: ManifoldService) -> APIRouter:
             import logging
             logging.getLogger(__name__).exception("Manifold export error")
             from fastapi import HTTPException
-            raise HTTPException(status_code=500, detail=f"Internal server error: {repr(e)}")
+            raise HTTPException(status_code=500, detail="Internal server error")
 
     @router.get("/locate/{step_id}")
     async def locate_manifold_step(step_id: str, request: Request):
