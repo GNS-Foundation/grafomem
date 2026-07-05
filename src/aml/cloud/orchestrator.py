@@ -469,7 +469,7 @@ class OrchestratorService:
                 "WHERE tenant_id = %s ORDER BY created_at DESC",
                 (tenant_id,),
             ).fetchall()
-        return [self._row_to_agent(r, encryption) for r in rows]
+        return [self._row_to_agent(r, self._encryption) for r in rows]
 
     def update_agent(
         self,
