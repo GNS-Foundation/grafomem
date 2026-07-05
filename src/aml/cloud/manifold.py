@@ -404,6 +404,7 @@ class ManifoldService:
             else:
                 conn = psycopg2.connect(self.db_url)
             with conn.cursor() as cur:
+                import psycopg2
                 cur.execute("""
                     INSERT INTO manifold_cache (tenant_id, payload, updated_at, som_version, som_weights)
                     VALUES (%s, %s, NOW(), %s, %s)
@@ -412,7 +413,7 @@ class ManifoldService:
                     updated_at = NOW(),
                     som_version = EXCLUDED.som_version,
                     som_weights = EXCLUDED.som_weights
-                """, (tenant_id, json.dumps(payload), som_version, psycopg2.Binary(som_weights)))
+                """, (tenant_id, json.dumps(payload), som_version, som_weights if self.pool else psycopg2.Binary(som_weights)))
             conn.commit()
         except Exception as e:
             logger.error(f"Failed to save fallback cache: {e}")
@@ -428,51 +429,69 @@ class ManifoldService:
 
     def _compute_manifold_sync(self, tenant_id: str) -> tuple[dict[str, Any], str, bytes]:
         """Fetch data from PostgreSQL, train SOM, and return (payload, som_version, som_weights)."""
-        # Using a direct psycopg2 connection for pandas.read_sql
         import psycopg2
+        
+        df = None
+        if self.pool:
+            conn = self.pool.getconn()
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(EXTRACTION_SQL, (tenant_id,))
+                    rows = cur.fetchall()
+                df = pd.DataFrame(rows)
+            except Exception as e:
+                logger.error(f"Failed to extract manifold data: {e}")
+                raise
+            finally:
+                self.pool.putconn(conn)
+        else:
+            conn = psycopg2.connect(self.db_url)
+            try:
+                df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
+            finally:
+                conn.close()
+                
+        if df is None or len(df) == 0:
+            som_version = dt.datetime.utcnow().isoformat() + "Z"
+            empty_df = pd.DataFrame(columns=["step_id", "agent_role", "workflow_id", "model_id", "governance_allowed", "tool_calls", "governance_logs", "retrieved_facts", "tokens_used", "latency_ms", "step_number", "created_at", "input_text", "raw_output", "parent_decision_id", "status", "is_synthetic"])
+            payload = serialize_manifold(empty_df, np.zeros((0, 2)), 6, source="live", som_version=som_version)
+            return payload, som_version, b""
+            
+        # We need a new connection for embeddings because the first one is already closed/returned
         if self.pool:
             conn = self.pool.getconn()
         else:
             conn = psycopg2.connect(self.db_url)
             
         try:
-            df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
-            
-            if len(df) == 0:
-                # Return empty manifold if no data
-                som_version = dt.datetime.utcnow().isoformat() + "Z"
-                empty_df = pd.DataFrame(columns=["step_id", "agent_role", "workflow_id", "model_id", "governance_allowed", "tool_calls", "governance_logs", "retrieved_facts", "tokens_used", "latency_ms", "step_number", "created_at", "input_text", "raw_output", "parent_decision_id", "status", "is_synthetic"])
-                payload = serialize_manifold(empty_df, np.zeros((0, 2)), 6, source="live", som_version=som_version)
-                return payload, som_version, b""
-            
-            # Fetch embeddings for facts
             refs = sorted({r for fs in df.retrieved_facts for r in (fs or []) if isinstance(r, str)})
             lookup = {}
             if refs:
                 cur = conn.cursor()
-                # Use correct table - assume memory_embeddings exists based on probe
                 try:
                     cur.execute("select fact_ref, embedding::text from memory_embeddings where fact_ref = any(%s)", (refs,))
-                    for k, v in cur.fetchall():
+                    for row in cur.fetchall():
+                        # Handle both dict_row and tuple row
+                        k = row["fact_ref"] if isinstance(row, dict) else row[0]
+                        v = row["embedding"] if isinstance(row, dict) else row[1]
                         vec_list = [float(x) for x in str(v).strip("[]").split(",")]
                         lookup[k] = np.asarray(vec_list, float)
                 except Exception as e:
                     logger.warning(f"Failed to load fact embeddings: {e}. Falling back to text-only.")
-                    conn.rollback() # Rollback the failed transaction block
-            
-            about = make_about_vectors(df, lookup, self.embedder)
-            X = build_features(df, about)
-            
-            som, side, bmu, som_weights = train_som(X)
-            som_version = dt.datetime.utcnow().isoformat() + "Z"
-            payload = serialize_manifold(df, bmu, side, source="live", som_version=som_version)
-            return payload, som_version, som_weights.tobytes()
-            
+                    if hasattr(conn, "rollback"): conn.rollback()
         finally:
             if self.pool:
                 self.pool.putconn(conn)
             else:
                 conn.close()
+                
+        about = make_about_vectors(df, lookup, self.embedder)
+        X = build_features(df, about)
+        
+        som, side, bmu, som_weights = train_som(X)
+        som_version = dt.datetime.utcnow().isoformat() + "Z"
+        payload = serialize_manifold(df, bmu, side, source="live", som_version=som_version)
+        return payload, som_version, som_weights.tobytes()
 
     def locate_step(self, step_id: str, tenant_id: str) -> dict[str, Any]:
         """Dynamically compute the SOM cell placement for a given step using cached weights."""
