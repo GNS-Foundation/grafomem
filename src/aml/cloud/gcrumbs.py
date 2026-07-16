@@ -279,6 +279,7 @@ class GcrumbsService:
         *,
         source_type: str | None = None,
         source_ref: str | None = None,
+        conn: psycopg.Connection[dict[str, Any]] | None = None,
     ) -> dict:
         """Append one breadcrumb to the tenant's chain.
 
@@ -298,7 +299,11 @@ class GcrumbsService:
         payload_canon_bytes = canon(payload)
         payload_hash = b2_256(payload_canon_bytes)
 
-        conn = self._tx_conn()
+        managed_conn = False
+        if conn is None:
+            conn = self._tx_conn()
+            managed_conn = True
+
         try:
             with conn.cursor() as cur:
                 # Per-tenant advisory lock — prevents concurrent seq collision
@@ -337,9 +342,11 @@ class GcrumbsService:
                         source_type, source_ref, created_at,
                     ),
                 )
-                conn.commit()
+                if managed_conn:
+                    conn.commit()
         finally:
-            self._put_conn(conn)
+            if managed_conn:
+                self._put_conn(conn)
 
         logger.info(
             "gcrumbs: breadcrumb seq=%d type=%s tenant=%s",

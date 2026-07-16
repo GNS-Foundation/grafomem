@@ -228,7 +228,8 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
             or path.startswith("/portal")
             or path.startswith("/v1/portal")
             or path.startswith("/v1/cloud/billing/webhook")
-            or path.startswith("/v1/cloud/compliance/badge")):
+            or path.startswith("/v1/cloud/compliance/badge")
+            or path.startswith("/v1/hitl/requests/")):
             request.state.tenant = TenantContext(
                 tenant_id=DEFAULT_NAMESPACE, authenticated=False
             )

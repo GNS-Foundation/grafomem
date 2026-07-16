@@ -764,11 +764,13 @@ class OrchestratorService:
                 created_at=now,
             )
 
-            # Update workflow status if escalated
             if escalated:
                 self._update_workflow_status(
                     workflow_id, WorkflowStatus.WAITING_HITL,
                 )
+                request_id = self._create_hitl_request(workflow_id, step)
+                setattr(step, "hitl_request_id", request_id)
+
 
             logger.info(
                 "Step %s: governance %s for agent=%s workflow=%s",
@@ -1454,7 +1456,15 @@ class OrchestratorService:
 
             if step.status in (StepStatus.DENIED, StepStatus.ESCALATED):
                 if emitter and step.status == StepStatus.ESCALATED:
-                    emitter.emit("workflow.waiting_hitl", {"message": "Escalated to human"})
+                    request_id = getattr(step, "hitl_request_id", None)
+                    if request_id:
+                        emitter.emit("workflow.waiting_hitl", {
+                            "message": "Escalated to human",
+                            "request_id": request_id,
+                            "qr_string": f"grafomem:hitl:{request_id}"
+                        })
+                    else:
+                        emitter.emit("workflow.waiting_hitl", {"message": "Escalated to human"})
                 return
 
             # Chain output to next agent
@@ -1951,6 +1961,44 @@ class OrchestratorService:
             status=kwargs["status"],
             created_at=kwargs["created_at"],
         )
+
+    def _create_hitl_request(self, workflow_id: str, step: WorkflowStep) -> str:
+        import uuid
+        import datetime
+        request_id = uuid.uuid4().hex
+        nonce = uuid.uuid4().hex
+        expires_at = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=24)
+        context_json = {
+            "request_id": request_id,
+            "tenant_id": step.tenant_id,
+            "workflow_id": workflow_id,
+            "step_id": step.step_id,
+            "action": "execute_step",
+            "resource": step.agent_id,
+            "issued_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "expires_at": expires_at.isoformat(),
+            "nonce": nonce
+        }
+        
+        canonical_str = _CANON(context_json)
+        context_bytes = canonical_str.encode("utf-8")
+        
+        with self._get_conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO hitl_approval_requests
+                (request_id, tenant_id, workflow_id, step_id, action, resource, context_json, context_bytes, nonce, expires_at, status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'pending')
+                """,
+                (
+                    request_id, step.tenant_id, workflow_id, step.step_id, 
+                    "execute_step", step.agent_id, json.dumps(context_json), 
+                    context_bytes, nonce, expires_at
+                )
+            )
+            
+        logger.info("HITL request %s created for workflow %s — grafomem:hitl:%s", request_id, workflow_id, request_id)
+        return request_id
 
     def _update_workflow_status(
         self, workflow_id: str, status: WorkflowStatus,

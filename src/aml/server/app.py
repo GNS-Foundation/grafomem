@@ -897,6 +897,11 @@ def create_app(
             app.include_router(orch_router)
             logger.info("Agent Orchestrator enabled (/v1/orchestrator)")
 
+            from aml.cloud.hitl_routes import create_hitl_router
+            hitl_router = create_hitl_router(pool, orch, gc)
+            app.include_router(hitl_router)
+            logger.info("HITL Router enabled (/v1/hitl)")
+
             # Sprint 7a: Policy Engine + Evidence Collector
             # (Automatically wired via GovernanceGateway constructor)
             logger.info("Policy Engine + Evidence Collector active (via GovernanceGateway)")
