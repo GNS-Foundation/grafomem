@@ -143,7 +143,7 @@ def create_hitl_router(db_pool: DatabasePool, orchestrator: OrchestratorService,
                     # device so a fresh test key can attest. Gated by
                     # _unsafe_dev_enabled() — see its docstring.
                     conn.execute(
-                        "INSERT INTO hitl_approvers (tenant_id, approver_id, public_key, active) VALUES (%s, %s, %s, TRUE)",
+                        "INSERT INTO hitl_approvers (tenant_id, approver_id, public_key, active) VALUES (%s, %s, %s, TRUE) ON CONFLICT DO NOTHING",
                         (row["tenant_id"], body.signer_id, body.signer_id)
                     )
                     pub_key_hex = body.signer_id
@@ -209,6 +209,76 @@ def create_hitl_router(db_pool: DatabasePool, orchestrator: OrchestratorService,
         if resume_failed:
             response_data["warning"] = "workflow_resume_failed"
         return response_data
+
+    @router.get("/approvers/{approver_id}/requests")
+    def list_approver_requests(approver_id: str, request: Request):
+        signature = request.headers.get("X-GNS-Signature")
+        timestamp_str = request.headers.get("X-GNS-Timestamp")
+
+        if not signature or not timestamp_str:
+            raise HTTPException(401, "Missing signature or timestamp headers")
+
+        try:
+            timestamp = int(timestamp_str)
+        except ValueError:
+            raise HTTPException(400, "Invalid timestamp")
+
+        now_ts = int(datetime.now(timezone.utc).timestamp() * 1000)
+        if abs(now_ts - timestamp) > 60000:
+            raise HTTPException(401, "Stale or future timestamp")
+
+        challenge_str = f"grafomem.hitl.inbox.v1:{approver_id}:{timestamp_str}"
+        challenge_bytes = challenge_str.encode("utf-8")
+
+        try:
+            pub = Ed25519PublicKey.from_public_bytes(bytes.fromhex(approver_id))
+            pub.verify(bytes.fromhex(signature), challenge_bytes)
+        except Exception:
+            raise HTTPException(401, "Invalid signature")
+
+        with db_pool.connection() as conn:
+            approver_rows = conn.execute(
+                """
+                SELECT tenant_id FROM hitl_approvers
+                WHERE approver_id = %s AND active = TRUE
+                """,
+                (approver_id,),
+            ).fetchall()
+
+            # A cryptographically valid signature from a key that is NOT an
+            # active approver is authenticated but not authorized. Return 403 so
+            # a revoked/unknown approver gets a clear signal instead of a
+            # silently-empty inbox (which would read as "nothing pending").
+            if not approver_rows:
+                raise HTTPException(403, "Not an active approver")
+
+            tenant_ids = [row["tenant_id"] for row in approver_rows]
+
+            rows = conn.execute(
+                """
+                SELECT request_id, action, resource, expires_at, tenant_id
+                FROM hitl_approval_requests
+                WHERE status = 'pending'
+                  AND expires_at > %s
+                  AND tenant_id = ANY(%s)
+                ORDER BY issued_at DESC
+                LIMIT 50
+                """,
+                (datetime.now(timezone.utc), tenant_ids),
+            ).fetchall()
+
+        return {
+            "requests": [
+                {
+                    "request_id": row["request_id"],
+                    "action": row["action"],
+                    "resource": row["resource"],
+                    "expires_at": row["expires_at"].isoformat() if row["expires_at"] else None,
+                    "tenant_id": row["tenant_id"],
+                }
+                for row in rows
+            ]
+        }
 
     @router.get("/requests/{request_id}/verify")
     def verify_request(request_id: str, request: Request):
