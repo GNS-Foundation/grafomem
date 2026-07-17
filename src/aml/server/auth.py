@@ -224,12 +224,16 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
 
         # Skip auth for health/docs/portal/webhook/badge endpoints
         path = request.url.path
+        # Note: Bypassing auth for prefixes silently unprotects any future
+        # routes added under them. This bypass is necessary for self-authenticated
+        # endpoints like /attest and the Inbox, but sensitive routes (like /verify)
+        # must be explicitly carved out to enforce API-key scopes.
         if (path in _SKIP_AUTH_PATHS
             or path.startswith("/portal")
             or path.startswith("/v1/portal")
             or path.startswith("/v1/cloud/billing/webhook")
             or path.startswith("/v1/cloud/compliance/badge")
-            or path.startswith("/v1/hitl/requests/")
+            or (path.startswith("/v1/hitl/requests/") and not path.endswith("/verify"))
             or path.startswith("/v1/hitl/approvers/")):
             request.state.tenant = TenantContext(
                 tenant_id=DEFAULT_NAMESPACE, authenticated=False
