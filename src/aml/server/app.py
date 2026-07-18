@@ -906,11 +906,14 @@ def create_app(
             app.include_router(push_router)
             logger.info("Push Router enabled (/v1/push)")
 
-            from aml.cloud.push_service import PushDispatchService
-            push_svc = PushDispatchService(db_pool=pool)
-            app.state.push_dispatch = push_svc
-            orch._push_dispatch = push_svc
-            logger.info("Push Dispatch Service enabled")
+            try:
+                from aml.cloud.push_service import PushDispatchService
+                push_svc = PushDispatchService(db_pool=pool)
+                app.state.push_dispatch = push_svc
+                orch._push_dispatch = push_svc
+                logger.info("Push Dispatch Service enabled")
+            except Exception as e:
+                logger.warning("Push Dispatch Service disabled: %s", e)
 
             # Sprint 7a: Policy Engine + Evidence Collector
             # (Automatically wired via GovernanceGateway constructor)
