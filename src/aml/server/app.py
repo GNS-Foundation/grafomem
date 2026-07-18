@@ -217,10 +217,12 @@ router = APIRouter()
 @router.get("/health")
 async def health(request: Request):
     mgr: StoreManager = request.app.state.store_manager
+    push_svc = getattr(request.app.state, "push_dispatch", None)
     return {
         "status": "ok",
         "version": "0.2.0",
         "stores": mgr.count,
+        "push": "enabled" if push_svc is not None else "disabled",
     }
 
 
