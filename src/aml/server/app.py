@@ -490,7 +490,7 @@ def create_app(
                          "decision_trail", "erasure_proof", "governance_gateway",
                          "regulatory_reports", "llm_registry", "tool_registry",
                          "orchestrator", "portal_auth", "stripe_billing",
-                         "webhook_service", "assurance_service"):
+                         "webhook_service", "assurance_service", "push_dispatch"):
             svc = getattr(app.state, svc_name, None)
             if svc is not None and hasattr(svc, "close"):
                 svc.close()
@@ -901,6 +901,16 @@ def create_app(
             hitl_router = create_hitl_router(pool, orch, gc)
             app.include_router(hitl_router)
             logger.info("HITL Router enabled (/v1/hitl)")
+
+            from aml.cloud.push_routes import router as push_router
+            app.include_router(push_router)
+            logger.info("Push Router enabled (/v1/push)")
+
+            from aml.cloud.push_service import PushDispatchService
+            push_svc = PushDispatchService(db_pool=pool)
+            app.state.push_dispatch = push_svc
+            orch._push_dispatch = push_svc
+            logger.info("Push Dispatch Service enabled")
 
             # Sprint 7a: Policy Engine + Evidence Collector
             # (Automatically wired via GovernanceGateway constructor)

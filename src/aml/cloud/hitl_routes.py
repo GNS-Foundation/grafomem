@@ -83,12 +83,34 @@ def create_hitl_router(db_pool: DatabasePool, orchestrator: OrchestratorService,
 
     @router.get("/requests/{request_id}")
     def get_request(request_id: str, request: Request):
-        # NOTE: Using a simple tenant check or assuming this is a public lookup 
-        # since it's scanned from a QR code, but keeping it secure if needed.
-        # For this proof, we will allow fetching the request by ID.
+        signature = request.headers.get("X-GNS-Signature")
+        timestamp_str = request.headers.get("X-GNS-Timestamp")
+        signer_id = request.headers.get("X-GNS-Signer")
+
+        if not signature or not timestamp_str or not signer_id:
+            raise HTTPException(401, "Missing signature, timestamp, or signer headers")
+
+        try:
+            timestamp = int(timestamp_str)
+        except ValueError:
+            raise HTTPException(400, "Invalid timestamp")
+
+        now_ts = int(datetime.now(timezone.utc).timestamp() * 1000)
+        if abs(now_ts - timestamp) > 60000:
+            raise HTTPException(401, "Stale or future timestamp")
+
+        challenge_str = f"grafomem.hitl.fetch.v1:{request_id}:{timestamp_str}"
+        challenge_bytes = challenge_str.encode("utf-8")
+
+        try:
+            pub = Ed25519PublicKey.from_public_bytes(bytes.fromhex(signer_id))
+            pub.verify(bytes.fromhex(signature), challenge_bytes)
+        except Exception:
+            raise HTTPException(401, "Invalid signature")
+
         with db_pool.connection() as conn:
             row = conn.execute(
-                "SELECT context_json, context_bytes, expires_at, status FROM hitl_approval_requests WHERE request_id = %s",
+                "SELECT context_json, context_bytes, expires_at, status, tenant_id FROM hitl_approval_requests WHERE request_id = %s",
                 (request_id,)
             ).fetchone()
         
@@ -97,6 +119,16 @@ def create_hitl_router(db_pool: DatabasePool, orchestrator: OrchestratorService,
         
         if row["status"] != "pending":
             raise HTTPException(400, f"Request is no longer pending (status: {row['status']})")
+
+        # Verify the signer is an active approver for this tenant
+        with db_pool.connection() as conn:
+            approver = conn.execute(
+                "SELECT 1 FROM hitl_approvers WHERE approver_id = %s AND tenant_id = %s AND active = TRUE",
+                (signer_id, row["tenant_id"])
+            ).fetchone()
+            
+            if not approver and not _unsafe_dev_enabled():
+                raise HTTPException(403, "Not an active approver for this request")
 
         return {
             "request_id": request_id,

@@ -153,6 +153,7 @@ class StepRecord:
     # Status
     status: StepStatus
     created_at: datetime
+    hitl_request_id: str | None = None
 
 
 @dataclass(slots=True)
@@ -769,7 +770,7 @@ class OrchestratorService:
                     workflow_id, WorkflowStatus.WAITING_HITL,
                 )
                 request_id = self._create_hitl_request(workflow_id, step)
-                setattr(step, "hitl_request_id", request_id)
+                step.hitl_request_id = request_id
 
 
             logger.info(
@@ -1997,7 +1998,15 @@ class OrchestratorService:
                 )
             )
             
-        logger.info("HITL request %s created for workflow %s — grafomem:hitl:%s", request_id, workflow_id, request_id)
+        logger.info("HITL request %s created — grafomem:hitl:%s", request_id, request_id)
+
+        push_svc = getattr(self, "_push_dispatch", None)
+        if push_svc:
+            try:
+                push_svc.dispatch_background(step.tenant_id, request_id, expires_at)
+            except Exception as e:
+                logger.error("Failed to trigger push dispatch for %s: %s", request_id, e)
+
         return request_id
 
     def _update_workflow_status(
