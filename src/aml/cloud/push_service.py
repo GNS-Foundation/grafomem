@@ -136,12 +136,41 @@ class PushDispatchService:
         try:
             resp = self.client.post(url, headers=headers, json=payload, timeout=5.0)
             if resp.status_code == 200:
-                logger.debug(f"Push successful to {token}")
-            elif resp.status_code in (410, 400):
-                logger.warning(f"APNs token invalid ({resp.status_code}) env={self.env}. Pruning token.")
-                with self.db_pool.connection() as conn:
-                    conn.execute("DELETE FROM approver_push_tokens WHERE push_token = %s", (token,))
+                logger.debug("Push delivered to %s", token[:12])
             else:
-                logger.warning(f"APNs push failed: {resp.status_code} {resp.text}")
+                # Parse the APNs failure reason (JSON body) — never key a
+                # destructive DELETE off the bare status code.
+                try:
+                    reason = resp.json().get("reason", "")
+                except Exception:
+                    reason = ""
+
+                if resp.status_code == 410 or reason == "Unregistered":
+                    # 410 / Unregistered is authoritative (app uninstalled /
+                    # token dead). This is the ONLY case that prunes.
+                    logger.info(
+                        "APNs token Unregistered (410) env=%s token=%s — pruning",
+                        self.env, token[:12],
+                    )
+                    with self.db_pool.connection() as conn:
+                        conn.execute(
+                            "DELETE FROM approver_push_tokens WHERE push_token = %s",
+                            (token,),
+                        )
+                elif resp.status_code == 400:
+                    # 400 covers BadDeviceToken, DeviceTokenNotForTopic,
+                    # BadCollapseId, PayloadTooLarge, BadExpirationDate — several
+                    # are request-side or env-mismatch bugs, NOT proof the token
+                    # is dead. Do NOT prune (a wrong APNS_ENV or bad collapse-id
+                    # would otherwise wipe valid registrations).
+                    logger.warning(
+                        "APNs 400 reason=%s env=%s token=%s — NOT pruning "
+                        "(request/env issue, not a dead token)",
+                        reason or "unknown", self.env, token[:12],
+                    )
+                else:
+                    logger.warning(
+                        "APNs push failed: %s %s", resp.status_code, resp.text
+                    )
         except Exception as e:
             logger.error(f"Error sending APNs push to {token}: {e}")
