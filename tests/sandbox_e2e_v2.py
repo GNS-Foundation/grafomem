@@ -486,6 +486,11 @@ class ConformanceSuite:
                     self.decision_ids.append(did)
         else:
             detail = f"status={r.status_code}: {r.text[:200]}"
+            print("ERROR workflow payload:", r.json() if ok else r.text)
+        
+        if ok and wf.get("status") == "failed":
+            print("WORKFLOW FAILED:", wf)
+
 
         self._assert("Run 3-Agent Workflow", ok and len(self.decision_ids) >= 1,
                       detail)

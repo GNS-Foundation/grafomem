@@ -358,8 +358,9 @@ class OrchestratorService:
     # ------------------------------------------------------------------
 
     def ensure_schema(self) -> None:
-        conn = self._get_conn()
-        conn.execute(_SCHEMA_SQL)
+        with self._get_conn() as conn:
+            conn.execute(_SCHEMA_SQL)
+            conn.commit()
 
         logger.info("Orchestrator schema ensured")
 
@@ -403,21 +404,22 @@ class OrchestratorService:
         enc_prompt = encryption.encrypt(system_prompt) if encryption else None
         db_prompt = "[ENCRYPTED]" if encryption else system_prompt
 
-        conn = self._get_conn()
-        conn.execute(
-            "INSERT INTO orchestrator_agents "
-            "(agent_id, tenant_id, name, role, description, model_id, fallback_models, "
-            " system_prompt, system_prompt_enc, memory_stores, tools, max_steps, max_tokens, "
-            " temperature, enabled, created_at, updated_at) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-            (
-                agent_id, tenant_id, name, role.value, description,
-                model_id, json.dumps(fallbacks), db_prompt, enc_prompt,
-                json.dumps(stores), json.dumps(tool_list),
-                max_steps, max_tokens_per_step, temperature,
-                enabled, now, now,
-            ),
-        )
+        with self._get_conn() as conn:
+            conn.execute(
+                "INSERT INTO orchestrator_agents "
+                "(agent_id, tenant_id, name, role, description, model_id, fallback_models, "
+                " system_prompt, system_prompt_enc, memory_stores, tools, max_steps, max_tokens, "
+                " temperature, enabled, created_at, updated_at) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                (
+                    agent_id, tenant_id, name, role.value, description,
+                    model_id, json.dumps(fallbacks), db_prompt, enc_prompt,
+                    json.dumps(stores), json.dumps(tool_list),
+                    max_steps, max_tokens_per_step, temperature,
+                    enabled, now, now,
+                ),
+            )
+            conn.commit()
 
         logger.info(
             "Agent created: %s (%s) model=%s tenant=%s",
@@ -505,21 +507,23 @@ class OrchestratorService:
         set_clause += ", updated_at = now()"
         values = list(updates.values()) + [agent_id, tenant_id]
 
-        conn = self._get_conn()
-        conn.execute(
-            f"UPDATE orchestrator_agents SET {set_clause} "
-            "WHERE agent_id = %s AND tenant_id = %s",
-            values,
-        )
+        with self._get_conn() as conn:
+            conn.execute(
+                f"UPDATE orchestrator_agents SET {set_clause} "
+                "WHERE agent_id = %s AND tenant_id = %s",
+                values,
+            )
+            conn.commit()
         return self.get_agent(agent_id)
 
     def delete_agent(self, agent_id: str, tenant_id: str) -> bool:
-        conn = self._get_conn()
-        result = conn.execute(
-            "DELETE FROM orchestrator_agents "
-            "WHERE agent_id = %s AND tenant_id = %s",
-            (agent_id, tenant_id),
-        )
+        with self._get_conn() as conn:
+            result = conn.execute(
+                "DELETE FROM orchestrator_agents "
+                "WHERE agent_id = %s AND tenant_id = %s",
+                (agent_id, tenant_id),
+            )
+            conn.commit()
         return result.rowcount > 0
 
     # ------------------------------------------------------------------
@@ -548,19 +552,20 @@ class OrchestratorService:
         if mode == WorkflowMode.SUPERVISOR and not supervisor_agent_id:
             raise ValueError("Supervisor mode requires supervisor_agent_id")
 
-        conn = self._get_conn()
-        conn.execute(
-            "INSERT INTO orchestrator_workflows "
-            "(workflow_id, tenant_id, name, description, agent_ids, mode, "
-            " supervisor_agent_id, max_total_steps, status, created_at) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-            (
-                workflow_id, tenant_id, name, description,
-                json.dumps(agent_ids), mode.value,
-                supervisor_agent_id, max_total_steps,
-                WorkflowStatus.CREATED.value, now,
-            ),
-        )
+        with self._get_conn() as conn:
+            conn.execute(
+                "INSERT INTO orchestrator_workflows "
+                "(workflow_id, tenant_id, name, description, agent_ids, mode, "
+                " supervisor_agent_id, max_total_steps, status, created_at) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                (
+                    workflow_id, tenant_id, name, description,
+                    json.dumps(agent_ids), mode.value,
+                    supervisor_agent_id, max_total_steps,
+                    WorkflowStatus.CREATED.value, now,
+                ),
+            )
+            conn.commit()
 
         logger.info(
             "Workflow created: %s mode=%s agents=%d tenant=%s",
@@ -1931,9 +1936,10 @@ class OrchestratorService:
                     kwargs["public_key"],
                     kwargs["status"].value,
                     kwargs["created_at"],
-                    enc_input, enc_facts, enc_logs, enc_raw, enc_calls, enc_results
+                    enc_input, enc_facts, enc_logs, enc_raw, enc_calls, enc_results,
                 ),
             )
+            conn.commit()
 
         return StepRecord(
             step_id=kwargs["step_id"],
@@ -2018,6 +2024,7 @@ class OrchestratorService:
                 "UPDATE orchestrator_workflows SET status = %s, termination_reason = %s WHERE workflow_id = %s",
                 (status.value, termination_reason, workflow_id),
             )
+            conn.commit()
 
     def _set_workflow_started(self, workflow_id: str) -> None:
         with self._get_conn() as conn:
@@ -2026,6 +2033,7 @@ class OrchestratorService:
                 "WHERE workflow_id = %s",
                 (workflow_id,),
             )
+            conn.commit()
 
     def _set_workflow_completed(self, workflow_id: str) -> None:
         with self._get_conn() as conn:
@@ -2034,6 +2042,7 @@ class OrchestratorService:
                 "WHERE workflow_id = %s",
                 (workflow_id,),
             )
+            conn.commit()
 
     def _increment_workflow(self, workflow_id: str, tokens: int) -> None:
         with self._get_conn() as conn:
@@ -2044,6 +2053,7 @@ class OrchestratorService:
                 "WHERE workflow_id = %s",
                 (tokens, workflow_id),
             )
+            conn.commit()
 
     # ------------------------------------------------------------------
     # Row converters

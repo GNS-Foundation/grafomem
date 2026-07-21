@@ -236,8 +236,9 @@ class GovernanceGateway:
     # ------------------------------------------------------------------
 
     def ensure_schema(self) -> None:
-        conn = self._get_conn()
-        conn.execute(_SCHEMA_SQL)
+        with self._get_conn() as conn:
+            conn.execute(_SCHEMA_SQL)
+            conn.commit()
         self._evidence.ensure_schema()
         logger.info("Governance Gateway schema ensured")
 
@@ -265,18 +266,19 @@ class GovernanceGateway:
         if isinstance(action, str):
             action = PolicyAction(action)
 
-        conn = self._get_conn()
-        conn.execute(
-            "INSERT INTO governance_policies "
-            "(policy_id, tenant_id, name, description, policy_type, action, "
-            " config, enabled, priority, created_at, updated_at) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-            (
-                policy_id, tenant_id, name, description,
-                policy_type.value, action.value,
-                json.dumps(config), enabled, priority, now, now,
-            ),
-        )
+        with self._get_conn() as conn:
+            conn.execute(
+                "INSERT INTO governance_policies "
+                "(policy_id, tenant_id, name, description, policy_type, action, "
+                " config, enabled, priority, created_at, updated_at) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                (
+                    policy_id, tenant_id, name, description,
+                    policy_type.value, action.value,
+                    json.dumps(config), enabled, priority, now, now,
+                ),
+            )
+            conn.commit()
 
         logger.info("Policy created: %s (%s) for tenant %s", name, policy_type.value, tenant_id)
 
@@ -295,11 +297,11 @@ class GovernanceGateway:
         )
 
     def get_policy(self, policy_id: str) -> Policy | None:
-        conn = self._get_conn()
-        row = conn.execute(
-            "SELECT * FROM governance_policies WHERE policy_id = %s",
-            (policy_id,),
-        ).fetchone()
+        with self._get_conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM governance_policies WHERE policy_id = %s",
+                (policy_id,),
+            ).fetchone()
         return self._row_to_policy(row) if row else None
 
     def list_policies(
@@ -307,20 +309,20 @@ class GovernanceGateway:
         tenant_id: str,
         enabled_only: bool = False,
     ) -> list[Policy]:
-        conn = self._get_conn()
-        if enabled_only:
-            rows = conn.execute(
-                "SELECT * FROM governance_policies "
-                "WHERE tenant_id = %s AND enabled = TRUE "
-                "ORDER BY priority ASC, created_at ASC",
-                (tenant_id,),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT * FROM governance_policies "
-                "WHERE tenant_id = %s ORDER BY priority ASC, created_at ASC",
-                (tenant_id,),
-            ).fetchall()
+        with self._get_conn() as conn:
+            if enabled_only:
+                rows = conn.execute(
+                    "SELECT * FROM governance_policies "
+                    "WHERE tenant_id = %s AND enabled = TRUE "
+                    "ORDER BY priority ASC, created_at ASC",
+                    (tenant_id,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM governance_policies "
+                    "WHERE tenant_id = %s ORDER BY priority ASC, created_at ASC",
+                    (tenant_id,),
+                ).fetchall()
         return [self._row_to_policy(r) for r in rows]
 
     def redact(self, tenant_id: str, text: str) -> str:
@@ -370,22 +372,24 @@ class GovernanceGateway:
         set_clause += ", updated_at = now()"
         values = list(updates.values()) + [policy_id, tenant_id]
 
-        conn = self._get_conn()
-        conn.execute(
-            f"UPDATE governance_policies SET {set_clause} "
-            "WHERE policy_id = %s AND tenant_id = %s",
-            values,
-        )
+        with self._get_conn() as conn:
+            conn.execute(
+                f"UPDATE governance_policies SET {set_clause} "
+                "WHERE policy_id = %s AND tenant_id = %s",
+                values,
+            )
+            conn.commit()
 
         return self.get_policy(policy_id)
 
     def delete_policy(self, policy_id: str, tenant_id: str) -> bool:
-        conn = self._get_conn()
-        result = conn.execute(
-            "DELETE FROM governance_policies "
-            "WHERE policy_id = %s AND tenant_id = %s",
-            (policy_id, tenant_id),
-        )
+        with self._get_conn() as conn:
+            result = conn.execute(
+                "DELETE FROM governance_policies "
+                "WHERE policy_id = %s AND tenant_id = %s",
+                (policy_id, tenant_id),
+            )
+            conn.commit()
         return result.rowcount > 0
 
     # ------------------------------------------------------------------
@@ -506,14 +510,13 @@ class GovernanceGateway:
 
     def get_stats(self, tenant_id: str) -> dict[str, Any]:
         """Combines policy stats (local) with evaluation stats (evidence)."""
-        conn = self._get_conn()
-
-        pol_row = conn.execute(
-            "SELECT COUNT(*) AS total, "
-            "  COUNT(CASE WHEN enabled THEN 1 END) AS active "
-            "FROM governance_policies WHERE tenant_id = %s",
-            (tenant_id,),
-        ).fetchone()
+        with self._get_conn() as conn:
+            pol_row = conn.execute(
+                "SELECT COUNT(*) AS total, "
+                "  COUNT(CASE WHEN enabled THEN 1 END) AS active "
+                "FROM governance_policies WHERE tenant_id = %s",
+                (tenant_id,),
+            ).fetchone()
 
         eval_stats = self._evidence.get_stats(tenant_id)
 

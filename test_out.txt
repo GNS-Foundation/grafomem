@@ -1,0 +1,118 @@
+
+======================================================================
+  GRAFOMEM Cloud — Conformance Test Suite v2.1
+  Server:   https://grafomem-staging-staging.up.railway.app
+  Mode:     🔷 MOCK (Deterministic)
+  Provider: mock
+  Time:     2026-06-29 20:32:26
+======================================================================
+
+📦 Phase 1: Account Setup
+  ✅ Signup (Tenant A) — tenant=e075c29ccf55...
+  ✅ Signup (Tenant B) — tenant_b=b0c88cc06331...
+
+💾 Phase 2: Memory Store
+  ✅ Create Store — store_id=3e2df6e66fa9
+  ✅ Seed 5 Facts — 5/5 written, refs=[26, 27, 28]...
+
+🛡️  Phase 3: Governance Policies
+  ✅ Create 2 Policies — 2/2 (rate_limit + pii_guard)
+
+🤖 Phase 4: LLM Provider
+  ✅ Register LLM (mock-model) — 65c760fbaf5d...
+
+👥 Phase 5: Agent Definitions
+  ✅ Create 3 Agents — 3/3 — 83e732f6, f22ab299, b3ec6f18
+
+🔄 Phase 6: Workflow Execution
+  ✅ Create Workflow — workflow_id=c28b5e3d69ed...
+WORKFLOW FAILED: {'workflow_id': 'c28b5e3d69ed13e4da03fd1e30bbe85c', 'tenant_id': 'e075c29ccf5549cb910dd5d523552f87', 'name': 'Compliance Research Pipeline', 'description': 'Research → Write → Review', 'agent_ids': ['83e732f666a7b8dfc6cdbcaa5981ffdf', 'f22ab29973204549368b91f833c1411a', 'b3ec6f184df87a9b0b3e0aed65dc19e9'], 'mode': 'sequential', 'supervisor_agent_id': None, 'max_total_steps': 10, 'status': 'failed', 'current_step': 0, 'total_tokens': 0, 'started_at': '2026-06-29T18:32:30.363558+00:00', 'completed_at': None, 'created_at': '2026-06-29T18:32:30.203569+00:00', 'steps': [{'step_id': '37d8daa207da8dfa5fed18e614e8dfcd', 'workflow_id': 'c28b5e3d69ed13e4da03fd1e30bbe85c', 'agent_id': '83e732f666a7b8dfc6cdbcaa5981ffdf', 'tenant_id': 'e075c29ccf5549cb910dd5d523552f87', 'step_number': 1, 'input_text': 'What are the key logging and record-keeping requirements for AI systems under the EU AI Act and GDPR? How do they interact with DORA requirements for financial institutions?', 'retrieved_facts': [{'ref': 26, 'content': 'The EU AI Act (Regulation 2024/1689) requires high-risk AI systems to maintain detailed logs of all decisions made during operation, per Article 12.', 'store_id': '3e2df6e66fa9', 'written_at': '2026-06-29T18:32:28.093596+00:00'}, {'ref': 28, 'content': 'DORA (Digital Operational Resilience Act) requires financial entities to implement comprehensive ICT risk management frameworks, per Article 6.', 'store_id': '3e2df6e66fa9', 'written_at': '2026-06-29T18:32:28.586238+00:00'}, {'ref': 27, 'content': 'GDPR Article 17 establishes the Right to Erasure, requiring data controllers to delete personal data upon request without undue delay.', 'store_id': '3e2df6e66fa9', 'written_at': '2026-06-29T18:32:28.348763+00:00'}], 'governance_allowed': True, 'governance_logs': [{'detail': 'Rate OK: 1/100', 'log_id': '6d8f29755dc748369074634b', 'result': 'allowed', 'operation': 'inference', 'policy_id': '770ab895477f49b4a395a782', 'tenant_id': 'e075c29ccf5549cb910dd5d523552f87', 'created_at': '2026-06-29T18:32:30.371944+00:00', 'policy_name': 'Rate Limit', 'request_summary': 'op=inference model=mock-model store=3e2df6e66fa9 query="What are the key logging and record-keeping requir…"'}, {'detail': 'No PII detected', 'log_id': 'db3ac03660104217b8b1ff80', 'result': 'allowed', 'operation': 'inference', 'policy_id': '1e368f76198744ada5534133', 'tenant_id': 'e075c29ccf5549cb910dd5d523552f87', 'created_at': '2026-06-29T18:32:30.374924+00:00', 'policy_name': 'PII Guard', 'request_summary': 'op=inference model=mock-model store=3e2df6e66fa9 query="What are the key logging and record-keeping requir…"'}], 'model_id': 'mock-model', 'raw_output': '[MockLLM|researcher|6e826bb617c258738ac92b35f221450c] Based on the retrieved compliance data, the key findings are: 1) GDPR Article 17 requires right to erasure with cryptographic proof. 2) EU AI Act Article 12 mandates logging of all AI decisions. 3) Rate limiting prevents abuse of agent resources. Input fingerprint: 6e826bb617c258738ac92b35f221450c. Analysis complete.', 'tool_calls': [], 'tool_results': [], 'tokens_used': 85, 'latency_ms': 39, 'latency_governance_ms': 6, 'latency_memory_ms': 21, 'latency_llm_ms': 1, 'latency_tools_ms': 0, 'decision_id': '3ef11459785b28a4d8914a2101701c8c', 'parent_decision_id': None, 'signature': None, 'public_key': None, 'status': 'completed', 'created_at': '2026-06-29T18:32:30.370112+00:00'}]}
+  ✅ Run 3-Agent Workflow — status=failed steps=1 tokens=0
+
+🔗 Phase 7: Execution Receipts + Hash Chain
+  ❌ Receipt Count == Step Count — expected=3 actual=0
+  ❌ Hash Chain INTACT — status=empty steps_verified=0
+
+📋 Phase 8: Decision Trail + Replay
+  ❌ Decision Trail Has Records — 1 decisions found
+  ✅ Replay Input Reconstructed — input_reconstructed=True
+  ✅ Replay Model Available — model_available=True
+  ✅ Replay Deterministic IDENTICAL — status=identical confidence=1.00
+
+🛡️  Phase 9: P0 Conformance — Governance DENY (Two-Sided)
+  ✅ P0-1a: Disallowed Model IS Denied — allowed=False logs=0
+  ✅ P0-1b: Allowed Model IS Permitted — allowed=True
+
+🔍 Phase 10: P0 Conformance — PII Guard (Two-Sided)
+  ✅ P0-2a: PII IS Caught — allowed=False
+  ✅ P0-2b: Clean Input NOT Falsely Flagged — allowed=True
+
+🔒 Phase 11: P0 Conformance — Multi-Tenant Isolation (Two-Sided)
+  ✅ P0-3a: Cross-Tenant Access IS Blocked — status=403
+  ✅ P0-3b: Same-Tenant Access IS Allowed — status=200 memories=3
+
+🗑️  Phase 12: Erasure Cascade (3-Leg)
+  ✅ Erasure Leg 1: Fact Deleted From Memory — ref=26
+  ✅ Erasure Leg 1b: Deleted Fact Not Retrievable — found_deleted=False results=3
+  ✅ Erasure Leg 2: Cert Content Hash Matches — expected=6346e282ae040062... got=6346e282ae040062...
+  ❌ Erasure Leg 3: Certificate Ed25519 Signed — valid=False detail=Certificate is not signed
+
+🛡️  Phase 13: P0 Conformance — HITL Escalation (Two-Sided)
+  ✅ P0-4a: Deploy Operation IS Escalated — allowed=False escalated=True
+  ✅ P0-4b: Inference Operation NOT Escalated — allowed=True
+
+🔏 Phase 14: P0 Conformance — Ed25519 Signing (Two-Sided)
+  ❌ P0-6a: Valid Signature Verifies — valid=False detail=Certificate is not signed
+  ❌ P0-6b: Tampered Signature IS Rejected — No signature found — signing key not configured?
+
+🔗 Phase 15: Hash Chain Tamper Detection (Negative)
+  ❌ Chain Tamper: Detect Mutation — No receipts found
+
+🔄 Phase 16: HITL Resume Lifecycle (Two-Sided)
+  ❌ HITL Resume (a): Workflow Enters WAITING_HITL — status=failed
+  ❌ HITL Resume (a): Approved → Workflow Completes — resume status=400
+  ❌ HITL Resume (b): Rejected → Workflow Terminated — workflow didn't escalate: status=failed
+
+📊 Phase 17: Reports + Stats
+  ✅ Generate EU AI Act Report — report_id=e935da23e1a2...
+  ✅ Governance Stats — 26 evaluations, 2 active policies
+  ✅ Orchestrator Stats — agents=3 workflows=3 steps=3
+
+📡 Phase 18: SSE Streaming (Sprint 10)
+  ✅ Stream Workflow Receives Events — events=6 types=['workflow.started', 'step.started', 'step.memory_retrieve', 'step.llm_start', 'step.llm_complete', 'workflow.error']
+  ✅ Stream Non-Existent Workflow 404 — status=404
+
+🔔 Phase 19: Webhook CRUD + Isolation (Sprint 11)
+  ✅ Register Webhook — webhook_id=49572e67dc42... secret=present
+  ✅ List Webhooks — count=1
+  ✅ Webhook Event Types — types=['erasure.issued', 'governance.denied', 'governance.escalated', 'workflow.completed', 'workflow.error']
+  ✅ Cross-Tenant Webhook Blocked — status=404
+  ✅ Delete Webhook — webhook_id=49572e67dc42...
+
+📄 Phase 20: PDF Report Export (Sprint 11)
+  ✅ PDF Download Succeeds — content-type=application/pdf size=2300 magic=%PDF-
+  ✅ PDF Download Missing Report 404 — status=404
+
+🔐 Phase 21: SSO Providers (Sprint 11)
+  ✅ SSO Provider List — providers=3 items
+
+🏥 Phase 22: Health Checks (Sprint 13)
+  ✅ Health Liveness — status=ok, uptime=2204111.7s
+  ✅ Health Readiness — status=ok, checks=['database', 'pool', 'store_manager', 'decision_trail', 'governance_gateway', 'orchestrator', 'erasure_proof', 'regulatory_reports']
+
+======================================================================
+  Results: 38 passed · 10 failed
+======================================================================
+
+  Failed tests:
+    ❌ Receipt Count == Step Count: expected=3 actual=0
+    ❌ Hash Chain INTACT: status=empty steps_verified=0
+    ❌ Decision Trail Has Records: 1 decisions found
+    ❌ Erasure Leg 3: Certificate Ed25519 Signed: valid=False detail=Certificate is not signed
+    ❌ P0-6a: Valid Signature Verifies: valid=False detail=Certificate is not signed
+    ❌ P0-6b: Tampered Signature IS Rejected: No signature found — signing key not configured?
+    ❌ Chain Tamper: Detect Mutation: No receipts found
+    ❌ HITL Resume (a): Workflow Enters WAITING_HITL: status=failed
+    ❌ HITL Resume (a): Approved → Workflow Completes: resume status=400
+    ❌ HITL Resume (b): Rejected → Workflow Terminated: workflow didn't escalate: status=failed
+

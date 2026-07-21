@@ -29,12 +29,16 @@ Requires: `pip install grafomem[postgres]`
 from __future__ import annotations
 
 import json
+import logging
+import tiktoken
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any
 
 import numpy as np
+
+_tokenizer = tiktoken.get_encoding("cl100k_base")
 
 from aml.backends.gmp_reference import GMP_V02_PROFILE
 from aml.backends.interface import (
@@ -207,6 +211,13 @@ class PostgresGMPBackend:
                     cur.execute("ALTER TABLE memory_embeddings ADD COLUMN IF NOT EXISTS region TEXT DEFAULT 'global';")
                 except Exception as e:
                     logger.warning(f"Could not alter tables for region columns: {e}")
+
+                # Migration for tokenizer columns
+                try:
+                    cur.execute("ALTER TABLE memory_embeddings ADD COLUMN IF NOT EXISTS token_count INTEGER;")
+                    cur.execute("ALTER TABLE memory_embeddings ADD COLUMN IF NOT EXISTS tokenizer_id TEXT;")
+                except Exception as e:
+                    logger.warning(f"Could not alter tables for tokenizer columns: {e}")
 
                 # Indexes (must run after migrations to ensure columns exist)
                 cur.execute(
