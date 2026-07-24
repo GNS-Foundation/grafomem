@@ -316,7 +316,7 @@ class ManifoldService:
                     try:
                         with conn.cursor() as cur:
                             cur.execute("SELECT DISTINCT tenant_id FROM orchestrator_steps")
-                            tenants = [row[0] for row in cur.fetchall()]
+                            tenants = [row[0] if isinstance(row, tuple) else row["tenant_id"] for row in cur.fetchall()]
                     except Exception as e:
                         logger.error(f"Failed to fetch active tenants: {e}")
                         conn.rollback()
@@ -333,7 +333,7 @@ class ManifoldService:
                                     updated_at = NOW(),
                                     som_version = EXCLUDED.som_version,
                                     som_weights = EXCLUDED.som_weights
-                                """, (tenant_id, json.dumps(payload), som_version, psycopg2.Binary(som_weights)))
+                                """, (tenant_id, json.dumps(payload), som_version, som_weights if self.pool else psycopg2.Binary(som_weights)))
                             conn.commit()
                             logger.info(f"Manifold background cache updated for {tenant_id}.")
                         except Exception as e:

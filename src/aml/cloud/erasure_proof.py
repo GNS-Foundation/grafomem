@@ -384,6 +384,7 @@ class ErasureProofService:
                 "Ed25519-signed at issuance" if signature else None,
             ),
         )
+        conn.commit()
 
         if self._erasure_ledger and signature is not None:
             self._erasure_ledger.record_subject_erasure(

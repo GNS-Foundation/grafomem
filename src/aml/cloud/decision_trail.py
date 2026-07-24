@@ -311,6 +311,7 @@ class DecisionTrailService:
                 enc_query, enc_contents, enc_raw_output, enc_parsed
             ),
         )
+        conn.commit()
         logger.info(
             "Decision logged: id=%s tenant=%s model=%s",
             decision_id, tenant_id, model_id,
@@ -532,6 +533,7 @@ class DecisionTrailService:
                 affected += 1
 
         if affected:
+            conn.commit()
             logger.info(
                 "GDPR scrub: fact_ref=%s tenant=%s affected=%d decisions",
                 fact_ref, tenant_id, affected,

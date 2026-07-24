@@ -565,6 +565,7 @@ class RegulatoryReportService:
                 report.created_at, report.file_size_bytes,
             ),
         )
+        conn.commit()
 
     # ------------------------------------------------------------------
     # Queries
@@ -611,6 +612,7 @@ class RegulatoryReportService:
             "WHERE report_id = %s AND tenant_id = %s",
             (report_id, tenant_id),
         )
+        conn.commit()
         return result.rowcount > 0
 
     # ------------------------------------------------------------------

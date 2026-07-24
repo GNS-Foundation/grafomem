@@ -321,9 +321,10 @@ class ReplayEngine:
             messages = []
             if orchestrator_facts:
                 # Use the full facts (with store_id) for exact format match
+                sorted_facts = sorted(orchestrator_facts, key=lambda x: str(x.get("ref", x.get("content", ""))))
                 fact_text = "\n".join(
                     f"- {f.get('content', '')}"
-                    for f in orchestrator_facts
+                    for f in sorted_facts
                 )
                 messages.append({
                     "role": "user",
@@ -335,8 +336,9 @@ class ReplayEngine:
                 })
             elif retrieved_contents:
                 # Fallback: use flat contents without store_id
+                sorted_contents = sorted(retrieved_contents)
                 fact_text = "\n".join(
-                    f"- {c}" for c in retrieved_contents
+                    f"- {c}" for c in sorted_contents
                 )
                 messages.append({
                     "role": "user",
@@ -574,6 +576,7 @@ class ReplayEngine:
                 v.replayed_at,
             ),
         )
+        conn.commit()
 
     # ------------------------------------------------------------------
     # Row converters
@@ -619,10 +622,4 @@ class ReplayEngine:
             "replayed_at": v.replayed_at.isoformat(),
         }
 
-# Inject debug hook into replay engine
-def _debug_hook(original, replayed):
-    with open("replay_debug.txt", "a") as f:
-        f.write("====== REPLAY ENGINE DEBUG ======\n")
-        f.write(f"ORIGINAL_OUTPUT:\n{repr(original)}\n")
-        f.write(f"REPLAYED_OUTPUT:\n{repr(replayed)}\n")
-        f.write("=================================\n")
+

@@ -494,27 +494,33 @@ class ExecutionReceiptService:
         return self._row_to_receipt(row) if row else None
 
     def _persist_receipt(self, r: ExecutionReceipt) -> None:
-        conn = self._get_conn()
-        conn.execute(
-            "INSERT INTO execution_receipts "
-            "(receipt_id, step_id, workflow_id, tenant_id, step_number, "
-            " previous_receipt_hash, input_hash, memory_snapshot_hash, "
-            " policy_evaluation_hash, model_id, model_version, "
-            " tool_call_hashes, output_hash, decision_id, "
-            " started_at, completed_at, signature, public_key) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-            (
-                r.receipt_id, r.step_id, r.workflow_id, r.tenant_id,
-                r.step_number, r.previous_receipt_hash,
-                r.input_hash, r.memory_snapshot_hash,
-                r.policy_evaluation_hash,
-                r.model_id, r.model_version,
-                json.dumps(r.tool_call_hashes),
-                r.output_hash, r.decision_id,
-                r.started_at, r.completed_at,
-                r.signature, r.public_key,
-            ),
-        )
+        try:
+            conn = self._get_conn()
+            conn.execute(
+                "INSERT INTO execution_receipts "
+                "(receipt_id, step_id, workflow_id, tenant_id, step_number, "
+                " previous_receipt_hash, input_hash, memory_snapshot_hash, "
+                " policy_evaluation_hash, model_id, model_version, "
+                " tool_call_hashes, output_hash, decision_id, "
+                " started_at, completed_at, signature, public_key) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                (
+                    r.receipt_id, r.step_id, r.workflow_id, r.tenant_id,
+                    r.step_number, r.previous_receipt_hash,
+                    r.input_hash, r.memory_snapshot_hash,
+                    r.policy_evaluation_hash,
+                    r.model_id, r.model_version,
+                    json.dumps(r.tool_call_hashes),
+                    r.output_hash, r.decision_id,
+                    r.started_at, r.completed_at,
+                    r.signature, r.public_key,
+                ),
+            )
+            conn.commit()
+        except Exception as e:
+            import sys
+            print(f"Error persisting receipt: {e}", file=sys.stderr)
+            raise
 
     # ------------------------------------------------------------------
     # Row converters

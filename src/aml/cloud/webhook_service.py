@@ -223,6 +223,7 @@ class WebhookService:
             (webhook_id, tenant_id, url, json.dumps(events), secret,
              description, now),
         )
+        conn.commit()
         logger.info("Webhook registered: %s → %s (%s)", webhook_id, url, events)
 
         return WebhookConfig(
@@ -302,6 +303,7 @@ class WebhookService:
             "WHERE webhook_id = %s AND tenant_id = %s",
             (webhook_id, tenant_id),
         )
+        conn.commit()
         return result.rowcount > 0
 
     # ------------------------------------------------------------------
@@ -522,6 +524,7 @@ class WebhookService:
                  event_type, json.dumps(payload, default=str),
                  DeliveryStatus.PENDING.value),
             )
+            conn.commit()
         except Exception as e:
             logger.warning("Failed to persist delivery record: %s", e)
 
