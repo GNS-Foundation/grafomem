@@ -12,230 +12,234 @@ GRAFOMEM server v1.0.0
   Listening: http://0.0.0.0:8080
   Docs:      http://0.0.0.0:8080/docs
 
-INFO:     Started server process [6703]
+INFO:     Started server process [10222]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://0.0.0.0:8080 (Press CTRL+C to quit)
-INFO:     127.0.0.1:55212 - "POST /v1/portal/signup HTTP/1.1" 201 Created
-INFO:     127.0.0.1:55212 - "POST /v1/portal/signup HTTP/1.1" 201 Created
-INFO:     127.0.0.1:55212 - "GET /v1/governance/policies HTTP/1.1" 200 OK
-DEBUG _require_role admin {'admin'} 5eb338e48d454c56aa1daa9b7feee7a4
-Loading weights:   0%|          | 0/199 [00:00<?, ?it/s]Loading weights: 100%|██████████| 199/199 [00:00<00:00, 9062.02it/s]
-Loading weights:   0%|          | 0/199 [00:00<?, ?it/s]Loading weights: 100%|██████████| 199/199 [00:00<00:00, 17155.15it/s]
-Error saving manifold cache for c0c8d453f542409b9f215433259a3d10: unhashable type: 'dict'
-Error saving manifold cache for 8e54371c3d864bf0b641a624c4b195ca: unhashable type: 'dict'
-Error saving manifold cache for 39989312f8f5427587931de80e2e1002: unhashable type: 'dict'
-Error saving manifold cache for 355d445e00ae4d26b329fff93d517d50: unhashable type: 'dict'
-INFO:     127.0.0.1:55212 - "POST /v1/stores HTTP/1.1" 200 OK
-DEBUG _require_role admin {'agent', 'admin'} 5eb338e48d454c56aa1daa9b7feee7a4
-INFO:     127.0.0.1:55212 - "POST /v1/stores/87b800bea3c8/write HTTP/1.1" 200 OK
-DEBUG _require_role admin {'agent', 'admin'} 5eb338e48d454c56aa1daa9b7feee7a4
-INFO:     127.0.0.1:55212 - "POST /v1/stores/87b800bea3c8/write HTTP/1.1" 200 OK
-DEBUG _require_role admin {'agent', 'admin'} 5eb338e48d454c56aa1daa9b7feee7a4
-INFO:     127.0.0.1:55212 - "POST /v1/stores/87b800bea3c8/write HTTP/1.1" 200 OK
-DEBUG _require_role admin {'agent', 'admin'} 5eb338e48d454c56aa1daa9b7feee7a4
-INFO:     127.0.0.1:55212 - "POST /v1/stores/87b800bea3c8/write HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58427 - "POST /v1/portal/signup HTTP/1.1" 201 Created
+INFO:     127.0.0.1:58427 - "POST /v1/portal/signup HTTP/1.1" 201 Created
+INFO:     127.0.0.1:58427 - "GET /v1/governance/policies HTTP/1.1" 200 OK
+DEBUG _require_role admin {'admin'} c600f53d7d7d4a268d2b47002c6fd586
+Loading weights:   0%|          | 0/199 [00:00<?, ?it/s]Loading weights: 100%|██████████| 199/199 [00:00<00:00, 9254.53it/s]
+Loading weights:   0%|          | 0/199 [00:00<?, ?it/s]Loading weights: 100%|██████████| 199/199 [00:00<00:00, 24825.01it/s]
+INFO:     127.0.0.1:58427 - "POST /v1/stores HTTP/1.1" 200 OK
 Error saving manifold cache for b9c3d2b9e6564d55aea498f82e5a77f3: unhashable type: 'dict'
-DEBUG _require_role admin {'agent', 'admin'} 5eb338e48d454c56aa1daa9b7feee7a4
-INFO:     127.0.0.1:55212 - "POST /v1/stores/87b800bea3c8/write HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55212 - "POST /v1/governance/policies HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55212 - "POST /v1/governance/policies HTTP/1.1" 200 OK
-Error saving manifold cache for 691a8c24ee5c43c4b4c403ca9d77727c: unhashable type: 'dict'
-INFO:     127.0.0.1:55212 - "POST /v1/llm/providers HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55212 - "POST /v1/orchestrator/agents HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55212 - "POST /v1/orchestrator/agents HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55212 - "POST /v1/orchestrator/agents HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55212 - "POST /v1/orchestrator/workflows HTTP/1.1" 200 OK
-DEBUG: execute_step reached section 8! self._execution_receipts=<aml.cloud.execution_receipts.ExecutionReceiptService object at 0x113d414f0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-DEBUG: execute_step reached section 8! self._execution_receipts=<aml.cloud.execution_receipts.ExecutionReceiptService object at 0x113d414f0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-DEBUG: execute_step reached section 8! self._execution_receipts=<aml.cloud.execution_receipts.ExecutionReceiptService object at 0x113d414f0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049056a0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049056a0>
-INFO:     127.0.0.1:55212 - "POST /v1/orchestrator/workflows/ffa0b83ea595210415eb3c5c39a99943/run HTTP/1.1" 200 OK
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-INFO:     127.0.0.1:55212 - "GET /v1/orchestrator/workflows/ffa0b83ea595210415eb3c5c39a99943/receipts HTTP/1.1" 200 OK
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049056a0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-INFO:     127.0.0.1:55212 - "GET /v1/orchestrator/workflows/ffa0b83ea595210415eb3c5c39a99943/verify-chain HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55212 - "GET /v1/decisions/?limit=10 HTTP/1.1" 200 OK
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049056a0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-INFO:     127.0.0.1:55212 - "POST /v1/orchestrator/replay/0d565fa9437147fa9497947c8ff8e836 HTTP/1.1" 200 OK
-Error saving manifold cache for cfa8bd7f9ac9431abcf6586a6e546c11: unhashable type: 'dict'
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-INFO:     127.0.0.1:55212 - "POST /v1/governance/policies HTTP/1.1" 200 OK
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049056a0>
-INFO:     127.0.0.1:55212 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-INFO:     127.0.0.1:55212 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55212 - "DELETE /v1/governance/policies/70f06a79282740ee866f9b46 HTTP/1.1" 200 OK
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049056a0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-INFO:     127.0.0.1:55212 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-INFO:     127.0.0.1:55212 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55212 - "POST /v1/stores/87b800bea3c8/retrieve HTTP/1.1" 403 Forbidden
-INFO:     127.0.0.1:55212 - "POST /v1/stores/87b800bea3c8/retrieve HTTP/1.1" 200 OK
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-DEBUG _require_role admin {'agent', 'admin'} 5eb338e48d454c56aa1daa9b7feee7a4
-INFO:     127.0.0.1:55212 - "POST /v1/stores/87b800bea3c8/delete HTTP/1.1" 200 OK
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-INFO:     127.0.0.1:55212 - "POST /v1/stores/87b800bea3c8/retrieve HTTP/1.1" 200 OK
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049056a0>
-INFO:     127.0.0.1:55212 - "POST /v1/erasure/issue HTTP/1.1" 200 OK
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049056a0>
-INFO:     127.0.0.1:55212 - "GET /v1/erasure/9a3d15b0782a7b0f7651fff3a2b0fda0/verify HTTP/1.1" 200 OK
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-INFO:     127.0.0.1:55212 - "POST /v1/governance/policies HTTP/1.1" 200 OK
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049056a0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-INFO:     127.0.0.1:55212 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-INFO:     127.0.0.1:55212 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049056a0>
-INFO:     127.0.0.1:55212 - "DELETE /v1/governance/policies/8755d11f52fd4d648e4e96c8 HTTP/1.1" 200 OK
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-INFO:     127.0.0.1:55212 - "GET /v1/erasure/9a3d15b0782a7b0f7651fff3a2b0fda0/verify HTTP/1.1" 200 OK
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049056a0>
-INFO:     127.0.0.1:55212 - "GET /v1/erasure/9a3d15b0782a7b0f7651fff3a2b0fda0/verify HTTP/1.1" 200 OK
+DEBUG _require_role admin {'agent', 'admin'} c600f53d7d7d4a268d2b47002c6fd586
+INFO:     127.0.0.1:58427 - "POST /v1/stores/c8e8f54e6321/write HTTP/1.1" 200 OK
+DEBUG _require_role admin {'agent', 'admin'} c600f53d7d7d4a268d2b47002c6fd586
+INFO:     127.0.0.1:58427 - "POST /v1/stores/c8e8f54e6321/write HTTP/1.1" 200 OK
 Error saving manifold cache for 867473cf4c224f139e6c0115a75d8201: unhashable type: 'dict'
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049056a0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-INFO:     127.0.0.1:55212 - "GET /v1/orchestrator/workflows/ffa0b83ea595210415eb3c5c39a99943/verify-chain HTTP/1.1" 200 OK
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049056a0>
-INFO:     127.0.0.1:55212 - "POST /v1/governance/policies HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55212 - "POST /v1/orchestrator/workflows HTTP/1.1" 200 OK
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049056a0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049056a0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049056a0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-APNS credentials missing; push dispatch aborted
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049056a0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-INFO:     127.0.0.1:55212 - "POST /v1/orchestrator/workflows/0076607efd76e3d2d7c293cde8043ffb/run HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55212 - "DELETE /v1/governance/policies/ca815057e2fe471090133853 HTTP/1.1" 200 OK
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049056a0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-Error saving manifold cache for 0f481d56336041e185048bb9aa815225: unhashable type: 'dict'
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049056a0>
+DEBUG _require_role admin {'agent', 'admin'} c600f53d7d7d4a268d2b47002c6fd586
+INFO:     127.0.0.1:58427 - "POST /v1/stores/c8e8f54e6321/write HTTP/1.1" 200 OK
 Error saving manifold cache for db30d230b69b4ea5877a7fe4f05f05d4: unhashable type: 'dict'
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049056a0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-DEBUG: execute_step reached section 8! self._execution_receipts=<aml.cloud.execution_receipts.ExecutionReceiptService object at 0x113d414f0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049056a0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-INFO:     127.0.0.1:55212 - "POST /v1/orchestrator/workflows/0076607efd76e3d2d7c293cde8043ffb/resume HTTP/1.1" 200 OK
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-INFO:     127.0.0.1:55212 - "POST /v1/governance/policies HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55212 - "POST /v1/orchestrator/workflows HTTP/1.1" 200 OK
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049056a0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049056a0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049056a0>
-APNS credentials missing; push dispatch aborted
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049056a0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-INFO:     127.0.0.1:55212 - "POST /v1/orchestrator/workflows/5850133888614f87fbfbd0f1e70d474f/run HTTP/1.1" 200 OK
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049056a0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-INFO:     127.0.0.1:55212 - "POST /v1/orchestrator/workflows/5850133888614f87fbfbd0f1e70d474f/resume HTTP/1.1" 200 OK
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049056a0>
-INFO:     127.0.0.1:55212 - "DELETE /v1/governance/policies/367a8bea34de473bb414d595 HTTP/1.1" 200 OK
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-rolling back returned connection: <psycopg.Connection [INERROR] (host=localhost database=grafomem) at 0x1049056a0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049056a0>
-INFO:     127.0.0.1:55212 - "POST /v1/reports/generate HTTP/1.1" 200 OK
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-INFO:     127.0.0.1:55212 - "GET /v1/governance/stats HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55212 - "GET /v1/orchestrator/stats HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55212 - "POST /v1/orchestrator/workflows HTTP/1.1" 200 OK
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-INFO:     127.0.0.1:55212 - "GET /v1/orchestrator/workflows/e0d2f83ae6928046a643c50e5d3a9c5a/stream?input_text=SSE+streaming+conformance+test HTTP/1.1" 200 OK
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049056a0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049056a0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049056a0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
+DEBUG _require_role admin {'agent', 'admin'} c600f53d7d7d4a268d2b47002c6fd586
+INFO:     127.0.0.1:58427 - "POST /v1/stores/c8e8f54e6321/write HTTP/1.1" 200 OK
+DEBUG _require_role admin {'agent', 'admin'} c600f53d7d7d4a268d2b47002c6fd586
+INFO:     127.0.0.1:58427 - "POST /v1/stores/c8e8f54e6321/write HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58427 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58427 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58427 - "POST /v1/llm/providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58427 - "POST /v1/orchestrator/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58427 - "POST /v1/orchestrator/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58427 - "POST /v1/orchestrator/agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58427 - "POST /v1/orchestrator/workflows HTTP/1.1" 200 OK
 Error saving manifold cache for 338090c2ab7d4828941cbcbdaf64bc44: unhashable type: 'dict'
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049056a0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-DEBUG: execute_step reached section 8! self._execution_receipts=<aml.cloud.execution_receipts.ExecutionReceiptService object at 0x113d414f0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049056a0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049056a0>
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-INFO:     127.0.0.1:55212 - "GET /v1/orchestrator/workflows/nonexistent-workflow-id/stream?input_text=should+fail HTTP/1.1" 404 Not Found
-INFO:     127.0.0.1:55228 - "POST /v1/webhooks/ HTTP/1.1" 201 Created
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-INFO:     127.0.0.1:55228 - "GET /v1/webhooks/ HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55228 - "GET /v1/webhooks/events/types HTTP/1.1" 200 OK
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049056a0>
-INFO:     127.0.0.1:55228 - "GET /v1/webhooks/7b3a2b5d4b154304af779787 HTTP/1.1" 404 Not Found
-INFO:     127.0.0.1:55228 - "DELETE /v1/webhooks/7b3a2b5d4b154304af779787 HTTP/1.1" 200 OK
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x11220ade0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x11220ade0>
+INFO:     127.0.0.1:58427 - "POST /v1/orchestrator/workflows/d701d7b33f9e3c5c5eecb1064c72a18d/run HTTP/1.1" 200 OK
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
 Error saving manifold cache for 74da52b1a76c447b81348cad804a1743: unhashable type: 'dict'
-INFO:     127.0.0.1:55228 - "GET /v1/reports/b7bbcc5916b2400c905e8836/download/pdf HTTP/1.1" 200 OK
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x104223500>
-INFO:     127.0.0.1:55228 - "GET /v1/reports/nonexistent-report-id/download/pdf HTTP/1.1" 404 Not Found
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049056a0>
-INFO:     127.0.0.1:55228 - "GET /v1/portal/sso/providers HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55230 - "GET /healthz HTTP/1.1" 200 OK
-rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1049aa2d0>
-INFO:     127.0.0.1:55232 - "GET /readyz HTTP/1.1" 200 OK
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x11220ade0>
+INFO:     127.0.0.1:58427 - "GET /v1/orchestrator/workflows/d701d7b33f9e3c5c5eecb1064c72a18d/receipts HTTP/1.1" 200 OK
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+INFO:     127.0.0.1:58427 - "GET /v1/orchestrator/workflows/d701d7b33f9e3c5c5eecb1064c72a18d/verify-chain HTTP/1.1" 200 OK
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x11220ade0>
+INFO:     127.0.0.1:58427 - "GET /v1/decisions/?limit=10 HTTP/1.1" 200 OK
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x11220ade0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+INFO:     127.0.0.1:58427 - "POST /v1/orchestrator/replay/8c049a2a8f78cc8b287c40cb90b9a5c5 HTTP/1.1" 200 OK
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+INFO:     127.0.0.1:58427 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x11220ade0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+INFO:     127.0.0.1:58427 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+INFO:     127.0.0.1:58427 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x11220ade0>
+INFO:     127.0.0.1:58427 - "DELETE /v1/governance/policies/1f45d5317a184f5998cba7df HTTP/1.1" 200 OK
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+INFO:     127.0.0.1:58427 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58427 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58427 - "POST /v1/stores/c8e8f54e6321/retrieve HTTP/1.1" 403 Forbidden
+INFO:     127.0.0.1:58427 - "POST /v1/stores/c8e8f54e6321/retrieve HTTP/1.1" 200 OK
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x11220ade0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+DEBUG _require_role admin {'agent', 'admin'} c600f53d7d7d4a268d2b47002c6fd586
+INFO:     127.0.0.1:58427 - "POST /v1/stores/c8e8f54e6321/delete HTTP/1.1" 200 OK
+Error saving manifold cache for 355d445e00ae4d26b329fff93d517d50: unhashable type: 'dict'
+INFO:     127.0.0.1:58427 - "POST /v1/stores/c8e8f54e6321/retrieve HTTP/1.1" 200 OK
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+INFO:     127.0.0.1:58427 - "POST /v1/erasure/issue HTTP/1.1" 200 OK
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+INFO:     127.0.0.1:58427 - "GET /v1/erasure/25553dcd8d5f6e2f8dee0ae3cda138ea/verify HTTP/1.1" 200 OK
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+INFO:     127.0.0.1:58427 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x11220ade0>
+INFO:     127.0.0.1:58427 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58427 - "POST /v1/governance/evaluate HTTP/1.1" 200 OK
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+INFO:     127.0.0.1:58427 - "DELETE /v1/governance/policies/ef1fda4e2c0e45ceaa8bc3e1 HTTP/1.1" 200 OK
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x11220ade0>
+INFO:     127.0.0.1:58427 - "GET /v1/erasure/25553dcd8d5f6e2f8dee0ae3cda138ea/verify HTTP/1.1" 200 OK
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+INFO:     127.0.0.1:58427 - "GET /v1/erasure/25553dcd8d5f6e2f8dee0ae3cda138ea/verify HTTP/1.1" 200 OK
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x11220ade0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+INFO:     127.0.0.1:58427 - "GET /v1/orchestrator/workflows/d701d7b33f9e3c5c5eecb1064c72a18d/verify-chain HTTP/1.1" 200 OK
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x11220ade0>
+INFO:     127.0.0.1:58427 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58427 - "POST /v1/orchestrator/workflows HTTP/1.1" 200 OK
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x11220ade0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x11220ade0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+APNS credentials missing; push dispatch aborted
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x11220ade0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+INFO:     127.0.0.1:58427 - "POST /v1/orchestrator/workflows/2d5a9c812d6e91eb433ae54c1cafd64f/run HTTP/1.1" 200 OK
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x11220ade0>
+INFO:     127.0.0.1:58427 - "DELETE /v1/governance/policies/ec2549728ae74e14af67f7a8 HTTP/1.1" 200 OK
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x11220ade0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x11220ade0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x11220ade0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x11220ade0>
+INFO:     127.0.0.1:58427 - "POST /v1/orchestrator/workflows/2d5a9c812d6e91eb433ae54c1cafd64f/resume HTTP/1.1" 200 OK
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x11220ade0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+INFO:     127.0.0.1:58427 - "POST /v1/governance/policies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58427 - "POST /v1/orchestrator/workflows HTTP/1.1" 200 OK
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x11220ade0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x11220ade0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+APNS credentials missing; push dispatch aborted
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x11220ade0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+INFO:     127.0.0.1:58427 - "POST /v1/orchestrator/workflows/465d58528f092cf5c7f087ac3fd40fdd/run HTTP/1.1" 200 OK
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x11220ade0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x11220ade0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+INFO:     127.0.0.1:58427 - "POST /v1/orchestrator/workflows/465d58528f092cf5c7f087ac3fd40fdd/resume HTTP/1.1" 200 OK
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+INFO:     127.0.0.1:58427 - "DELETE /v1/governance/policies/23b92082b3ef45ccba5d82d6 HTTP/1.1" 200 OK
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x11220ade0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+rolling back returned connection: <psycopg.Connection [INERROR] (host=localhost database=grafomem) at 0x1122a4290>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x11220ade0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+INFO:     127.0.0.1:58427 - "POST /v1/reports/generate HTTP/1.1" 200 OK
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+INFO:     127.0.0.1:58427 - "GET /v1/governance/stats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58427 - "GET /v1/orchestrator/stats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58427 - "POST /v1/orchestrator/workflows HTTP/1.1" 200 OK
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x11220ade0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+INFO:     127.0.0.1:58427 - "GET /v1/orchestrator/workflows/7955fb2f8621626fcf4832cb749ce239/stream?input_text=SSE+streaming+conformance+test HTTP/1.1" 200 OK
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x11220ade0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x11220ade0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x11220ade0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x11220ade0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x11220ade0>
+INFO:     127.0.0.1:58427 - "GET /v1/orchestrator/workflows/nonexistent-workflow-id/stream?input_text=should+fail HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58472 - "POST /v1/webhooks/ HTTP/1.1" 201 Created
+INFO:     127.0.0.1:58472 - "GET /v1/webhooks/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58472 - "GET /v1/webhooks/events/types HTTP/1.1" 200 OK
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+INFO:     127.0.0.1:58472 - "GET /v1/webhooks/bfd190534447439cb72939d4 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58472 - "DELETE /v1/webhooks/bfd190534447439cb72939d4 HTTP/1.1" 200 OK
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+INFO:     127.0.0.1:58472 - "GET /v1/reports/eda87109343140f0920ff549/download/pdf HTTP/1.1" 200 OK
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x11220ade0>
+INFO:     127.0.0.1:58472 - "GET /v1/reports/nonexistent-report-id/download/pdf HTTP/1.1" 404 Not Found
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+INFO:     127.0.0.1:58472 - "GET /v1/portal/sso/providers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58481 - "GET /healthz HTTP/1.1" 200 OK
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x11220ade0>
+INFO:     127.0.0.1:58483 - "GET /readyz HTTP/1.1" 200 OK
+Error saving manifold cache for 691a8c24ee5c43c4b4c403ca9d77727c: unhashable type: 'dict'
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
 INFO:     Shutting down
+Error saving manifold cache for cfa8bd7f9ac9431abcf6586a6e546c11: unhashable type: 'dict'
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
 INFO:     Waiting for application shutdown.
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+Error saving manifold cache for 0f481d56336041e185048bb9aa815225: unhashable type: 'dict'
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+Error saving manifold cache for c0c8d453f542409b9f215433259a3d10: unhashable type: 'dict'
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+Error saving manifold cache for 8e54371c3d864bf0b641a624c4b195ca: unhashable type: 'dict'
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122a4290>
+Error saving manifold cache for 5eb338e48d454c56aa1daa9b7feee7a4: unhashable type: 'dict'
+rolling back returned connection: <psycopg.Connection [INTRANS] (host=localhost database=grafomem) at 0x1122d60f0>
+Error saving manifold cache for 39989312f8f5427587931de80e2e1002: unhashable type: 'dict'
 INFO:     Application shutdown complete.
-INFO:     Finished server process [6703]
+INFO:     Finished server process [10222]
 /Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/multiprocessing/resource_tracker.py:254: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
   warnings.warn('resource_tracker: There appear to be %d '

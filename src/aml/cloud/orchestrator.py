@@ -146,7 +146,7 @@ class StepRecord:
     latency_tools_ms: int
     # Decision Trail link
     decision_id: str | None
-    parent_decision_id: str | None
+    parent_decision_id: str | None = None
     # Provenance
     signature: bytes | None
     public_key: bytes | None
