@@ -32,11 +32,16 @@ class AssuranceScheduler:
         """Start the scheduler. Loads all enabled schedules and creates tasks."""
         self._running = True
         logger.info("Assurance scheduler starting")
-        
-        schedules = self._assurance.get_all_active_schedules()
+
+        # Offload the synchronous DB read to a worker thread so it cannot block
+        # the event loop (and therefore port binding) during startup. The caller
+        # wraps this in asyncio.wait_for(); keeping the DB work off-loop is what
+        # lets that timeout actually fire instead of the loop stalling.
+        loop = asyncio.get_running_loop()
+        schedules = await loop.run_in_executor(None, self._assurance.get_all_active_schedules)
         for s in schedules:
             self.schedule(s.schedule_id, s.tenant_id, s.interval_min)
-        
+
         logger.info(f"Loaded {len(schedules)} active schedules")
 
     async def stop(self) -> None:

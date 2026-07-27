@@ -1,4 +1,5 @@
 import json
+import os
 from typing import Optional
 
 class ErasureLedger:
@@ -16,7 +17,11 @@ class ErasureLedger:
         except ImportError as e:
             raise RuntimeError("ErasureLedger requires psycopg and psycopg_pool") from e
 
-        self._pool = ConnectionPool(self._key_store_url, min_size=1, max_size=10, open=open)
+        self._pool = ConnectionPool(
+            self._key_store_url, min_size=1, max_size=10, open=open,
+            timeout=float(os.environ.get("GRAFOMEM_DB_POOL_TIMEOUT", "10")),
+            kwargs={"connect_timeout": int(os.environ.get("GRAFOMEM_DB_CONNECT_TIMEOUT", "5"))},
+        )
 
     def ensure_schema(self):
         with self._pool.connection() as conn:

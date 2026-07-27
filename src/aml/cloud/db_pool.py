@@ -33,6 +33,17 @@ from psycopg.rows import dict_row
 
 logger = logging.getLogger("grafomem.cloud.db_pool")
 
+# libpq connect_timeout (seconds) applied to every pooled connection so a
+# stalled TCP/auth handshake — e.g. an unreachable internal host or a stale
+# password after a DB rotation — fails fast instead of blocking indefinitely.
+_CONNECT_TIMEOUT = int(os.environ.get("GRAFOMEM_DB_CONNECT_TIMEOUT", "5"))
+
+# Pool-checkout wait cap (seconds).  ``pool.connection()``/``getconn()`` retries
+# failed connection creation for up to this long before raising PoolTimeout, so
+# a low value means a call against a dead DB fails fast instead of stalling on
+# the psycopg_pool default (30s).
+_POOL_TIMEOUT = float(os.environ.get("GRAFOMEM_DB_POOL_TIMEOUT", "10"))
+
 
 class _PooledConnectionProxy:
     """Wraps a psycopg Connection to auto-return to the pool on GC.
@@ -141,7 +152,9 @@ class DatabasePool:
                 self._db_url,
                 min_size=self._min_size,
                 max_size=self._max_size,
-                kwargs={"row_factory": dict_row, "autocommit": True},
+                timeout=_POOL_TIMEOUT,
+                kwargs={"row_factory": dict_row, "autocommit": True,
+                        "connect_timeout": _CONNECT_TIMEOUT},
                 configure=_configure_autocommit,
                 reset=_reset_autocommit,
             )
@@ -180,6 +193,7 @@ class DatabasePool:
         else:
             conn = psycopg.connect(
                 self._db_url, row_factory=dict_row, autocommit=True,
+                connect_timeout=_CONNECT_TIMEOUT,
             )
             try:
                 yield conn
@@ -203,6 +217,7 @@ class DatabasePool:
         else:
             conn = psycopg.connect(
                 self._db_url, row_factory=dict_row, autocommit=True,
+                connect_timeout=_CONNECT_TIMEOUT,
             )
         return _PooledConnectionProxy(self, conn)
 

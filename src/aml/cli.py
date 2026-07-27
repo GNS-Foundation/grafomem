@@ -632,6 +632,20 @@ def serve(host, port, backend, db, embedder, mcp, mcp_port, auth, batch, batch_s
         )
         sys.exit(1)
 
+    # Ensure GRAFOMEM's own INFO logs (pool init, schema/migration startup
+    # markers) reach stdout. uvicorn only configures its OWN loggers, so without
+    # this the app's before/after startup markers are silently dropped — which
+    # is exactly what made the last startup hang so hard to diagnose.
+    import logging as _logging
+    if not _logging.getLogger().handlers:
+        _logging.basicConfig(
+            level=_logging.INFO,
+            format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        )
+    _logging.getLogger("grafomem").setLevel(
+        os.environ.get("GRAFOMEM_LOG_LEVEL", "INFO").upper()
+    )
+
     app = create_app(
         backend_factory=_factory,
         auth_mode=auth,

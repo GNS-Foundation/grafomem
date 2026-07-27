@@ -46,7 +46,11 @@ class TenantKeyManager:
         except ImportError as e:
             raise RuntimeError("TenantKeyManager requires psycopg and psycopg_pool") from e
 
-        self._pool = ConnectionPool(self._key_store_url, min_size=1, max_size=10, open=open)
+        self._pool = ConnectionPool(
+            self._key_store_url, min_size=1, max_size=10, open=open,
+            timeout=float(os.environ.get("GRAFOMEM_DB_POOL_TIMEOUT", "10")),
+            kwargs={"connect_timeout": int(os.environ.get("GRAFOMEM_DB_CONNECT_TIMEOUT", "5"))},
+        )
 
     def ensure_schema(self):
         with self._pool.connection() as conn:
@@ -122,7 +126,10 @@ class TenantKeyManager:
         import psycopg
         while True:
             try:
-                async with await psycopg.AsyncConnection.connect(self._key_store_url, autocommit=True) as aconn:
+                async with await psycopg.AsyncConnection.connect(
+                    self._key_store_url, autocommit=True,
+                    connect_timeout=int(os.environ.get("GRAFOMEM_DB_CONNECT_TIMEOUT", "5")),
+                ) as aconn:
                     await aconn.execute("LISTEN dek_invalidations")
                     logger.info("Listening for cross-node DEK invalidations.")
                     async for notify in aconn.notifies():

@@ -425,6 +425,66 @@ async def ingestion_stats(store_id: str, request: Request):
 # App factory
 # ============================================================================
 
+async def _run_startup_step(label: str, fn, timeout: float) -> bool:
+    """Run one blocking (synchronous) startup step in a worker thread under a
+    hard timeout.
+
+    Logs immediately BEFORE and AFTER the step.  On timeout or error it logs
+    and returns ``False`` *without raising*, so a stalled schema/migration step
+    (e.g. an unreachable DB during a password rotation) can never wedge
+    application startup or port binding — the server still binds :8080 and the
+    log names exactly which step stalled.
+    """
+    import asyncio
+    loop = asyncio.get_running_loop()
+    logger.info("startup ▶ BEGIN %s (timeout=%.0fs)", label, timeout)
+    try:
+        await asyncio.wait_for(loop.run_in_executor(None, fn), timeout=timeout)
+        logger.info("startup ✔ DONE  %s", label)
+        return True
+    except asyncio.TimeoutError:
+        logger.error(
+            "startup ✖ TIMEOUT %s after %.0fs — continuing so the port still binds "
+            "(check DB reachability and GRAFOMEM_DB_URL credentials)",
+            label, timeout,
+        )
+        return False
+    except Exception as e:
+        logger.error(
+            "startup ✖ ERROR %s: %s — continuing so the port still binds",
+            label, e,
+        )
+        return False
+
+
+async def _db_preflight(db_url: str, timeout: float) -> bool:
+    """One fast connection probe before running the schema/migration steps.
+
+    ``asyncio.wait_for`` cannot interrupt a blocked driver call, and a pooled
+    checkout retries for the whole pool timeout — so firing 20+ blocking steps
+    at a dead DB would delay port binding for minutes.  Instead we probe ONCE
+    with a raw ``psycopg.connect`` (self-bounded by libpq ``connect_timeout``,
+    so it returns fast even against a black-holed host).  Returns True if the DB
+    accepts a connection, else logs and returns False so the caller can skip the
+    steps and bind the port anyway.
+    """
+    import asyncio
+    import os
+    import psycopg
+    loop = asyncio.get_running_loop()
+    ct = int(os.environ.get("GRAFOMEM_DB_CONNECT_TIMEOUT", "5"))
+
+    def _probe():
+        psycopg.connect(db_url, connect_timeout=ct).close()
+
+    try:
+        await asyncio.wait_for(loop.run_in_executor(None, _probe), timeout=timeout)
+        return True
+    except Exception as e:
+        logger.error("startup ✖ DB preflight failed: %s", e)
+        return False
+
+
 def create_app(
     backend_factory=None,
     *,
@@ -467,22 +527,79 @@ def create_app(
         spec without requiring a live database.
     """
 
+    # Blocking DB init (each service's ensure_schema + migrations) is COLLECTED
+    # here during create_app() and EXECUTED later inside the lifespan, off the
+    # event loop and under a per-step timeout.  Previously these ran
+    # synchronously in create_app(); a single stalled connection blocked before
+    # the port ever bound, so Railway saw a 502.  Populated by _init() below.
+    startup_db_steps: list[tuple[str, Any]] = []
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        import asyncio
+        import os
         logger.info("GRAFOMEM server starting")
-        
-        # Start Assurance Scheduler
+
+        # ------------------------------------------------------------------
+        # Run the collected blocking DB init (schema + migrations) HERE, each
+        # step in a worker thread under a hard timeout with log-and-continue.
+        # The port binds even if a step times out or fails — a stalled
+        # migration can no longer wedge startup.  Set GRAFOMEM_SKIP_DB_INIT=1
+        # to skip entirely; GRAFOMEM_STARTUP_DB_TIMEOUT to tune the per-step cap.
+        # ------------------------------------------------------------------
+        step_timeout = float(os.environ.get("GRAFOMEM_STARTUP_DB_TIMEOUT", "30"))
+        if os.environ.get("GRAFOMEM_SKIP_DB_INIT", "").lower() in ("1", "true", "yes"):
+            logger.warning(
+                "startup ⚠ GRAFOMEM_SKIP_DB_INIT set — skipping %d schema/migration step(s)",
+                len(startup_db_steps),
+            )
+        elif not startup_db_steps or not db_url:
+            logger.info("startup ▶ no DB init steps to run")
+        else:
+            # Preflight: probe the DB ONCE (fast, self-bounded by connect_timeout).
+            # If it is unreachable — the classic "DB restarting / stale password
+            # after rotation" case — SKIP all schema/migration steps and bind the
+            # port anyway, rather than firing 20+ blocking steps that would each
+            # stall on their pool-checkout timeout and delay binding by minutes.
+            probe_timeout = float(os.environ.get("GRAFOMEM_DB_CONNECT_TIMEOUT", "5")) + 2
+            logger.info("startup ▶ BEGIN db-preflight (timeout=%.0fs)", probe_timeout)
+            reachable = await _db_preflight(db_url, probe_timeout)
+            if not reachable:
+                logger.error(
+                    "startup ✖ DB unreachable — SKIPPING %d schema/migration step(s) and "
+                    "binding the port anyway. Fix DB reachability / GRAFOMEM_DB_URL "
+                    "credentials, then restart to complete schema init.",
+                    len(startup_db_steps),
+                )
+            else:
+                logger.info(
+                    "startup ✔ db-preflight OK — running %d DB init step(s) (per-step timeout=%.0fs)",
+                    len(startup_db_steps), step_timeout,
+                )
+                for _label, _fn in startup_db_steps:
+                    await _run_startup_step(_label, _fn, step_timeout)
+                logger.info("startup ✔ DB init phase complete")
+
+        # Start Assurance Scheduler (its schedule load is offloaded to a thread;
+        # guarded here so a stalled DB read cannot block startup either).
         assurance_scheduler = getattr(app.state, "assurance_scheduler", None)
         if assurance_scheduler:
-            await assurance_scheduler.start()
-            
-        # Start DEK Invalidation Listener
+            logger.info("startup ▶ BEGIN assurance_scheduler.start (timeout=%.0fs)", step_timeout)
+            try:
+                await asyncio.wait_for(assurance_scheduler.start(), timeout=step_timeout)
+                logger.info("startup ✔ DONE  assurance_scheduler.start")
+            except Exception as e:
+                logger.error(
+                    "startup ✖ assurance_scheduler.start failed/timed out: %s — continuing", e,
+                )
+
+        # Start DEK Invalidation Listener (background task; never blocks startup)
         tkm = getattr(app.state, "tenant_key_manager", None)
         invalidation_task = None
         if tkm:
-            import asyncio
             invalidation_task = asyncio.create_task(tkm.start_invalidation_listener())
-            
+
+        logger.info("startup ✔ application ready — binding port")
         yield
         # Shutdown: stop all ingestion queues
         for q in getattr(app.state, "ingestion_queues", {}).values():
@@ -660,11 +777,14 @@ def create_app(
         try:
             # In spec_only mode we skip ensure_schema() — routes still mount
             def _init(svc):
+                # Defer the blocking ensure_schema() to the guarded lifespan
+                # step (executor + timeout + log-and-continue) instead of
+                # running it synchronously here, where a stalled connection
+                # would wedge create_app() before the port could bind.
                 if not spec_only:
-                    try:
-                        svc.ensure_schema()
-                    except Exception as e:
-                        logger.warning(f"Schema initialization failed for {svc.__class__.__name__}: {e}")
+                    startup_db_steps.append(
+                        (f"ensure_schema:{svc.__class__.__name__}", svc.ensure_schema)
+                    )
                 return svc
 
             from aml.cloud.tenant_manager import TenantManager
@@ -989,10 +1109,9 @@ def create_app(
             # Sprint 22: Tenant Admin — member management + RBAC
             from aml.cloud.admin_routes import router as admin_router
             if not spec_only:
-                try:
-                    tm.ensure_members_schema()
-                except Exception as e:
-                    logger.warning(f"Schema initialization failed for TenantManager members: {e}")
+                startup_db_steps.append(
+                    ("ensure_schema:TenantManager.members", tm.ensure_members_schema)
+                )
             app.include_router(admin_router, prefix="/v1/admin")
             logger.info("Tenant Admin enabled (/v1/admin)")
 
@@ -1014,12 +1133,14 @@ def create_app(
             from aml.cloud.memory_routes import get_memory_sync_routes
             app.include_router(get_memory_sync_routes(wm, app.state.store_manager, audit_export), prefix="/v1/memory")
             logger.info("Memory Sync & Export enabled (/v1/memory)")
-            # Ensure all migrations apply after base schema is created
+            # Ensure all migrations apply after base schema is created —
+            # enqueued LAST so it runs after every ensure_schema step, inside
+            # the guarded (executor + timeout + log-and-continue) lifespan phase.
             from aml.cloud.migrations_runner import apply_migrations
-            try:
-                apply_migrations(db_url)
-            except Exception as e:
-                logger.error(f"Failed to apply migrations: {e}")
+            if not spec_only:
+                startup_db_steps.append(
+                    ("apply_migrations", lambda: apply_migrations(db_url))
+                )
 
         except ImportError as e:
             logger.warning("Cloud layer unavailable (missing deps): %s", e)

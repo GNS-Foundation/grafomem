@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import tiktoken
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -178,7 +179,9 @@ class PostgresGMPBackend:
             db_url,
             min_size=1,
             max_size=20,
-            kwargs={"autocommit": True},
+            timeout=float(os.environ.get("GRAFOMEM_DB_POOL_TIMEOUT", "10")),
+            kwargs={"autocommit": True,
+                    "connect_timeout": int(os.environ.get("GRAFOMEM_DB_CONNECT_TIMEOUT", "5"))},
             configure=_configure_autocommit,
         )
 

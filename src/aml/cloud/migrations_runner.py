@@ -16,7 +16,10 @@ def apply_migrations(db_url: str) -> None:
     if not sql_files:
         return
 
-    with psycopg.connect(db_url, autocommit=True) as conn:
+    with psycopg.connect(
+        db_url, autocommit=True,
+        connect_timeout=int(os.environ.get("GRAFOMEM_DB_CONNECT_TIMEOUT", "5")),
+    ) as conn:
         # Ensure migrations table exists
         conn.execute("""
             CREATE TABLE IF NOT EXISTS schema_migrations (
