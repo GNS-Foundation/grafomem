@@ -107,14 +107,46 @@ class DatabasePool:
         try:
             from psycopg_pool import ConnectionPool
 
+            def _configure_autocommit(conn: psycopg.Connection) -> None:
+                """Enforce autocommit when a connection is first created.
+
+                psycopg_pool only applies kwargs at connection *creation*, so
+                this pins the initial state.  It is NOT sufficient on its own:
+                a service may flip ``conn.autocommit = False`` mid-use (e.g.
+                gcrumbs' transactional write path) and return the connection
+                without restoring it — ``configure`` never runs again, so the
+                connection stays poisoned in implicit-transaction mode for the
+                rest of its life.  See ``_reset_autocommit`` below.
+                """
+                conn.autocommit = True
+
+            def _reset_autocommit(conn: psycopg.Connection) -> None:
+                """Restore autocommit on EVERY return to the pool.
+
+                psycopg_pool calls ``reset`` after it has already rolled back
+                any open transaction, so the connection is IDLE here and
+                setting autocommit is safe.  This is the real structural
+                guarantee: no connection is ever handed back out in
+                implicit-transaction mode, no matter what a borrower did to
+                it.  Without this, one service flipping autocommit=False
+                cascades into "rolling back returned connection [INTRANS]"
+                on every subsequent borrower's bare read — and, worse, a
+                borrower that forgets to commit loses its write silently
+                while the API returns success.
+                """
+                if conn.autocommit is not True:
+                    conn.autocommit = True
+
             self._pool = ConnectionPool(
                 self._db_url,
                 min_size=self._min_size,
                 max_size=self._max_size,
                 kwargs={"row_factory": dict_row, "autocommit": True},
+                configure=_configure_autocommit,
+                reset=_reset_autocommit,
             )
             logger.info(
-                "Database pool opened (min=%d, max=%d)",
+                "Database pool opened (min=%d, max=%d, autocommit=configure+reset)",
                 self._min_size, self._max_size,
             )
         except ImportError:

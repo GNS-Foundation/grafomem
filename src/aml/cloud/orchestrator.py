@@ -146,13 +146,14 @@ class StepRecord:
     latency_tools_ms: int
     # Decision Trail link
     decision_id: str | None
-    parent_decision_id: str | None = None
-    # Provenance
-    signature: bytes | None
-    public_key: bytes | None
     # Status
     status: StepStatus
     created_at: datetime
+    # Fields with defaults must come after non-default fields
+    parent_decision_id: str | None = None
+    # Provenance
+    signature: bytes | None = None
+    public_key: bytes | None = None
     hitl_request_id: str | None = None
 
 

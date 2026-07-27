@@ -161,8 +161,26 @@ class PostgresGMPBackend:
         # Probe embedding dimension
         self._dim = int(np.asarray(self._embed("dimension probe")).shape[0])
 
-        # Initialize connection pool
-        self._pool = ConnectionPool(db_url, min_size=1, max_size=20)
+        # Initialize connection pool.
+        #
+        # Autocommit MUST be enforced on every checkout. psycopg_pool only
+        # applies connection kwargs at creation time, so we also register a
+        # `configure` callback — otherwise pooled connections default to
+        # autocommit=False and every bare SELECT/DDL opens an implicit
+        # transaction that psycopg_pool rolls back on return ("rolling back
+        # returned connection [INTRANS]").  The RLS path (`_tenant_conn`)
+        # wraps its writes in an explicit `with conn.transaction():`, which
+        # remains correct under autocommit.
+        def _configure_autocommit(conn: "psycopg.Connection") -> None:
+            conn.autocommit = True
+
+        self._pool = ConnectionPool(
+            db_url,
+            min_size=1,
+            max_size=20,
+            kwargs={"autocommit": True},
+            configure=_configure_autocommit,
+        )
 
         # Connect — create the pgvector extension FIRST, then register types
         with self._pool.connection() as conn:

@@ -12,3 +12,4 @@ build/
 .env.prod
 .env*
 env.txt
+uvicorn.log
