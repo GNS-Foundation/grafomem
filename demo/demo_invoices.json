@@ -1,0 +1,96 @@
+{
+  "_comment": "SYNTHETIC demo data for GRAFOMEM x Kapwork. Debtors are real carriers (the payers, per Kapwork's own 'Nokia at 120, Verizon at 90' framing). Vendors are FICTIONAL fiber/telecom subcontractors — no real company is shown being rejected. 5 clean (certify) + 3 fraud (reject).",
+  "invoices": [
+    {
+      "invoice_id": "INV-2026-04817",
+      "vendor": "Northline Fiber Contractors LLC",
+      "debtor": "Verizon Communications",
+      "po_number": "VZ-PO-338204",
+      "po_amount": 142000.00,
+      "invoice_amount": 142000.00,
+      "approval_status": "approved",
+      "payment_terms": "Net 90",
+      "submitted_date": "2026-06-14"
+    },
+    {
+      "invoice_id": "INV-2026-04822",
+      "vendor": "Summit OSP Services Inc",
+      "debtor": "AT&T Services",
+      "po_number": "ATT-PO-771905",
+      "po_amount": 88500.00,
+      "invoice_amount": 88500.00,
+      "approval_status": "approved",
+      "payment_terms": "Net 60",
+      "submitted_date": "2026-06-18"
+    },
+    {
+      "invoice_id": "INV-2026-04835",
+      "vendor": "Cascade Trenching & Conduit Co",
+      "debtor": "Lumen Technologies",
+      "po_number": "LUMN-PO-204471",
+      "po_amount": 61250.00,
+      "invoice_amount": 61250.00,
+      "approval_status": "approved",
+      "payment_terms": "Net 90",
+      "submitted_date": "2026-06-21"
+    },
+    {
+      "invoice_id": "INV-2026-04840",
+      "vendor": "Redpoint Aerial Construction LLC",
+      "debtor": "Nokia of America",
+      "po_number": "NOK-PO-559012",
+      "po_amount": 205000.00,
+      "invoice_amount": 205000.00,
+      "approval_status": "approved",
+      "payment_terms": "Net 120",
+      "submitted_date": "2026-06-24"
+    },
+    {
+      "invoice_id": "INV-2026-04851",
+      "vendor": "Ironwood Splicing Solutions",
+      "debtor": "Comcast Cable Communications",
+      "po_number": "CMCST-PO-410338",
+      "po_amount": 47800.00,
+      "invoice_amount": 47800.00,
+      "approval_status": "approved",
+      "payment_terms": "Net 60",
+      "submitted_date": "2026-06-27"
+    },
+    {
+      "invoice_id": "INV-2026-04863",
+      "vendor": "Granite Peak Underground LLC",
+      "debtor": "Charter Communications",
+      "po_number": "CHTR-PO-627144",
+      "po_amount": 95000.00,
+      "invoice_amount": 128400.00,
+      "approval_status": "approved",
+      "payment_terms": "Net 90",
+      "submitted_date": "2026-06-28",
+      "_fraud": "FRAUD-1 amount mismatch: invoice 128,400 exceeds PO 95,000"
+    },
+    {
+      "invoice_id": "INV-2026-04869",
+      "vendor": "Blue Ridge Fiber Works Inc",
+      "debtor": "T-Mobile US",
+      "po_number": "TMUS-PO-883076",
+      "po_amount": 73200.00,
+      "invoice_amount": 73200.00,
+      "approval_status": "pending",
+      "payment_terms": "Net 60",
+      "submitted_date": "2026-06-29",
+      "_fraud": "FRAUD-2 missing approval: approval_status is pending, not approved"
+    },
+    {
+      "invoice_id": "INV-2026-04817",
+      "vendor": "Northline Fiber Contractors LLC",
+      "debtor": "Verizon Communications",
+      "po_number": "VZ-PO-338204",
+      "po_amount": 142000.00,
+      "invoice_amount": 142000.00,
+      "approval_status": "approved",
+      "payment_terms": "Net 90",
+      "submitted_date": "2026-06-30",
+      "_fraud": "FRAUD-3 duplicate: invoice_id INV-2026-04817 already certified"
+    }
+  ]
+}

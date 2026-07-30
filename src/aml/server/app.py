@@ -1043,11 +1043,20 @@ def create_app(
 
             # Sprint 7b: Execution Receipts — hash-chained attestation
             from aml.cloud.execution_receipts import ExecutionReceiptService
-            receipt_svc = ExecutionReceiptService(db_url, pool=pool)
+            receipt_svc = ExecutionReceiptService(db_url, pool=pool, signing_identity=signing_identity)
             _init(receipt_svc)
             app.state.execution_receipts = receipt_svc
             orch._execution_receipts = receipt_svc
-            logger.info("Execution Receipt Service enabled")
+            logger.info("Execution Receipt Service enabled (signing=%s)", signing_identity is not None)
+
+            # Governed-decision + independent-verification routes (Kapwork demo).
+            try:
+                from aml.cloud.demo_routes import create_governed_router, create_verify_router
+                app.include_router(create_governed_router(dt, receipt_svc, signing_identity))
+                app.include_router(create_verify_router(signing_identity))
+                logger.info("Governed-decision + verify routes enabled")
+            except Exception as e:
+                logger.warning("Demo routes not enabled: %s", e)
 
             # Sprint 7c: Memory Taxonomy — workflow context
             from aml.cloud.memory_taxonomy import WorkflowContextService

@@ -33,6 +33,8 @@ _SKIP_AUTH_PATHS = frozenset({
     "/v1/portal/signup", "/v1/portal/login",
     "/v1/cloud/billing/webhook",
     "/v1/gcrumbs/public_key",
+    "/v1/gcrumbs/verify/key",   # independent verifier fetches the key with no access
+    "/v1/gcrumbs/verify",       # stateless receipt verification, no DB, no auth
     "/v1/push/register",
 })
 

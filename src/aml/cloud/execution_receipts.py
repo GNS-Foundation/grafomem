@@ -199,10 +199,14 @@ class ExecutionReceiptService:
         PostgreSQL connection URI.
     """
 
-    def __init__(self, db_url: str, pool=None) -> None:
+    def __init__(self, db_url: str, pool=None, signing_identity=None) -> None:
         self._db_url = db_url
         self._pool = pool
         self._conn: psycopg.Connection[dict[str, Any]] | None = None
+        # Ed25519 signing identity (EnvIdentity). When present, every issued
+        # receipt is signed over its receipt_id, making the receipt
+        # independently verifiable against the public key without DB access.
+        self._signing_identity = signing_identity
 
     # ------------------------------------------------------------------
     # Connection
@@ -302,14 +306,17 @@ class ExecutionReceiptService:
             completed_at=completed,
         )
 
-        # Optional Ed25519 signing
+        # Ed25519 signing over the receipt_id. Prefer an explicitly passed
+        # signing_key (identity), else the service's configured identity.
+        # sign_provenance expects an object exposing .sign(message) -> (sig, pub).
         signature = None
         public_key = None
-        if signing_key:
+        signer = signing_key or self._signing_identity
+        if signer is not None:
             try:
                 from aml.provenance import sign_provenance
                 receipt_id_bytes = bytes.fromhex(receipt_id)
-                signature, public_key = sign_provenance(signing_key, receipt_id_bytes)
+                signature, public_key = sign_provenance(signer, receipt_id_bytes)
             except Exception as e:
                 logger.warning("Receipt signing failed: %s", e)
 
@@ -586,3 +593,58 @@ class ExecutionReceiptService:
             "tampered_at_step": v.tampered_at_step,
             "reason": v.reason,
         }
+
+    @staticmethod
+    def verify_receipt_dict(d: dict[str, Any], public_key_b64: str | None = None) -> tuple[bool, str]:
+        """Stateless verification of a single receipt dict (receipt_to_dict shape).
+
+        No DB access: recomputes the receipt_id from the receipt's own fields
+        (tamper-evidence) and checks the Ed25519 signature against the supplied
+        public key. Returns (valid, reason).
+
+        ``public_key_b64`` overrides the key embedded in the receipt — this is
+        the independent-verifier path (a funder supplies the key they fetched
+        from the public endpoint; a wrong key must fail).
+        """
+        from datetime import datetime as _dt
+
+        try:
+            recomputed = _compute_receipt_id(
+                step_id=d["step_id"],
+                workflow_id=d["workflow_id"],
+                tenant_id=d["tenant_id"],
+                step_number=d["step_number"],
+                previous_receipt_hash=d.get("previous_receipt_hash"),
+                input_hash=d["input_hash"],
+                memory_snapshot_hash=d["memory_snapshot_hash"],
+                policy_evaluation_hash=d["policy_evaluation_hash"],
+                model_id=d["model_id"],
+                model_version=d.get("model_version"),
+                tool_call_hashes=d.get("tool_call_hashes") or [],
+                output_hash=d["output_hash"],
+                decision_id=d.get("decision_id"),
+                started_at=_dt.fromisoformat(d["started_at"]),
+                completed_at=_dt.fromisoformat(d["completed_at"]),
+            )
+        except Exception as e:
+            return False, f"could not recompute receipt_id: {e}"
+
+        if recomputed != d.get("receipt_id"):
+            return False, "receipt_id mismatch — a field was altered after signing (tamper-evident)"
+
+        sig_b64 = d.get("signature")
+        key_b64 = public_key_b64 or d.get("public_key")
+        if not sig_b64:
+            return False, "receipt is unsigned — no signature to verify"
+        if not key_b64:
+            return False, "no public key supplied"
+
+        try:
+            from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+            sig = base64.b64decode(sig_b64)
+            pub = base64.b64decode(key_b64)
+            Ed25519PublicKey.from_public_bytes(pub).verify(sig, bytes.fromhex(recomputed))
+        except Exception:
+            return False, "signature does not verify against the supplied public key"
+
+        return True, "signature valid and receipt_id intact"
