@@ -48,65 +48,99 @@ class GovernedDecisionRequest(BaseModel):
     model_id: str = "kapwork-verify-agent-v1"
 
 
+class VerifyBatchRequest(BaseModel):
+    invoices: list[dict]                             # raw invoice objects
+    policy: dict = Field(default_factory=dict)       # optional overrides of DEFAULT_POLICY
+    model_id: str = "kapwork-verify-agent-v1"
+
+
+def _record_and_sign(decision_trail, execution_receipts, signing_identity, *,
+                     tenant_id, invoice_id, context, decision, reason, model_id):
+    """Record a governed decision as a signed decision_record + signed, chained
+    execution_receipt. Returns {decision_record, execution_receipt}."""
+    query = json.dumps(context, sort_keys=True, default=str)
+    raw_output = json.dumps({"decision": decision, "reason": reason}, sort_keys=True, default=str)
+
+    rec = decision_trail.log(
+        tenant_id=tenant_id, store_id="governed", query=query,
+        model_id=model_id, raw_output=raw_output,
+        parameters={"invoice_id": invoice_id, "decision": decision},
+        signing_identity=signing_identity,
+    )
+    workflow_id = f"governed:{invoice_id or tenant_id}"
+    try:
+        step_number = len(execution_receipts.get_receipts(workflow_id))
+    except Exception:
+        step_number = 0
+    receipt = execution_receipts.issue_receipt(
+        tenant_id=tenant_id, step_id=uuid.uuid4().hex, workflow_id=workflow_id,
+        step_number=step_number, input_text=query, retrieved_contents=[],
+        governance_logs=[{"decision": decision, "reason": reason}],
+        model_id=model_id, raw_output=raw_output, decision_id=rec.decision_id,
+    )
+    return {
+        "decision_record": {
+            "decision_id": rec.decision_id, "tenant_id": rec.tenant_id,
+            "invoice_id": invoice_id, "decision": decision, "reason": reason,
+            "model_id": rec.model_id, "raw_output": rec.raw_output,
+            "created_at": rec.created_at.isoformat(),
+            "signature": base64.b64encode(rec.signature).decode() if rec.signature else None,
+            "public_key": base64.b64encode(rec.public_key).decode() if rec.public_key else None,
+        },
+        "execution_receipt": ExecutionReceiptService.receipt_to_dict(receipt),
+    }
+
+
 def create_governed_router(decision_trail, execution_receipts, signing_identity) -> APIRouter:
     router = APIRouter(tags=["Governed Decisions"])
+
+    def _guard():
+        if execution_receipts is None or decision_trail is None:
+            raise HTTPException(503, "governed-decision services not available")
 
     @router.post("/v1/governed/decisions")
     async def governed_decision(req: GovernedDecisionRequest, request: Request):
         tenant_id = _tenant_id(request)
-        if execution_receipts is None or decision_trail is None:
-            raise HTTPException(503, "governed-decision services not available")
-
-        query = json.dumps(req.context, sort_keys=True, default=str)
-        raw_output = json.dumps(
-            {"decision": req.decision, "reason": req.reason},
-            sort_keys=True, default=str,
+        _guard()
+        return _record_and_sign(
+            decision_trail, execution_receipts, signing_identity,
+            tenant_id=tenant_id, invoice_id=req.invoice_id, context=req.context,
+            decision=req.decision, reason=req.reason, model_id=req.model_id,
         )
 
-        # 1. Signed decision record.
-        rec = decision_trail.log(
-            tenant_id=tenant_id,
-            store_id="governed",
-            query=query,
-            model_id=req.model_id,
-            raw_output=raw_output,
-            parameters={"invoice_id": req.invoice_id, "decision": req.decision},
-            signing_identity=signing_identity,
-        )
+    @router.post("/v1/governed/verify-batch")
+    async def verify_batch(req: VerifyBatchRequest, request: Request):
+        """Ingest a batch of invoices, run the configurable rules engine
+        SERVER-SIDE, and record each result as a signed governed decision."""
+        tenant_id = _tenant_id(request)
+        _guard()
+        from aml.cloud.verification import evaluate_invoice, resolve_policy
 
-        # 2. Signed, hash-chained execution receipt (one chain per invoice).
-        workflow_id = f"governed:{req.invoice_id or tenant_id}"
-        try:
-            step_number = len(execution_receipts.get_receipts(workflow_id))
-        except Exception:
-            step_number = 0
-        receipt = execution_receipts.issue_receipt(
-            tenant_id=tenant_id,
-            step_id=uuid.uuid4().hex,
-            workflow_id=workflow_id,
-            step_number=step_number,
-            input_text=query,
-            retrieved_contents=[],
-            governance_logs=[{"decision": req.decision, "reason": req.reason}],
-            model_id=req.model_id,
-            raw_output=raw_output,
-            decision_id=rec.decision_id,
-        )
+        certified: set = set()
+        results = []
+        for raw in req.invoices:
+            inv = {k: v for k, v in raw.items() if not str(k).startswith("_")}
+            decision, reason = evaluate_invoice(inv, req.policy, certified)
+            packet = _record_and_sign(
+                decision_trail, execution_receipts, signing_identity,
+                tenant_id=tenant_id, invoice_id=inv.get("invoice_id"),
+                context=inv, decision=decision, reason=reason, model_id=req.model_id,
+            )
+            if decision == "certify":
+                certified.add(inv.get("invoice_id"))
+            results.append({
+                "invoice_id": inv.get("invoice_id"),
+                "vendor": inv.get("vendor"), "debtor": inv.get("debtor"),
+                "decision": decision, "reason": reason,
+                "decision_record": packet["decision_record"],
+                "execution_receipt": packet["execution_receipt"],
+            })
 
+        n_cert = sum(1 for r in results if r["decision"] == "certify")
         return {
-            "decision_record": {
-                "decision_id": rec.decision_id,
-                "tenant_id": rec.tenant_id,
-                "invoice_id": req.invoice_id,
-                "decision": req.decision,
-                "reason": req.reason,
-                "model_id": rec.model_id,
-                "raw_output": rec.raw_output,
-                "created_at": rec.created_at.isoformat(),
-                "signature": base64.b64encode(rec.signature).decode() if rec.signature else None,
-                "public_key": base64.b64encode(rec.public_key).decode() if rec.public_key else None,
-            },
-            "execution_receipt": ExecutionReceiptService.receipt_to_dict(receipt),
+            "summary": {"total": len(results), "certified": n_cert, "rejected": len(results) - n_cert},
+            "policy": resolve_policy(req.policy),
+            "results": results,
         }
 
     return router

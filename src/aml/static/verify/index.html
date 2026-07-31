@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Independent Certification Verifier · GRAFOMEM</title>
+<style>
+  :root {
+    --bg:#0b1220; --panel:#121b2e; --panel2:#0f1728; --line:#25304a;
+    --ink:#e8eefc; --muted:#8fa0c0; --accent:#5b8cff;
+    --ok:#12b981; --ok-bg:#0c2a22; --bad:#ef4d5b; --bad-bg:#2c1116;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; line-height:1.5; }
+  .wrap { max-width:960px; margin:0 auto; padding:28px 20px 60px; }
+  header h1 { font-size:22px; margin:0 0 4px; }
+  header p { color:var(--muted); margin:0 0 22px; max-width:70ch; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width:760px){ .grid{ grid-template-columns:1fr; } }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px; }
+  .card h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted);
+    margin:0 0 10px; font-weight:600; }
+  label { display:block; font-size:12px; color:var(--muted); margin:10px 0 4px; }
+  textarea, input {
+    width:100%; background:var(--panel2); color:var(--ink); border:1px solid var(--line);
+    border-radius:8px; padding:10px; font-family:var(--mono); font-size:12px; }
+  textarea { min-height:220px; resize:vertical; white-space:pre; }
+  input { font-size:12.5px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  button {
+    background:var(--accent); color:#fff; border:0; border-radius:8px; padding:9px 14px;
+    font-size:13px; font-weight:600; cursor:pointer; }
+  button.secondary { background:transparent; color:var(--ink); border:1px solid var(--line); }
+  button:disabled { opacity:.5; cursor:default; }
+  .verify-btn { width:100%; padding:14px; font-size:15px; margin-top:14px; }
+  #result { margin-top:16px; border-radius:12px; padding:18px; border:1px solid var(--line);
+    display:none; }
+  #result.ok  { background:var(--ok-bg);  border-color:var(--ok); }
+  #result.bad { background:var(--bad-bg); border-color:var(--bad); }
+  #result .big { font-size:20px; font-weight:700; display:flex; align-items:center; gap:10px; }
+  #result.ok .big { color:var(--ok); }  #result.bad .big { color:var(--bad); }
+  #result .reason { color:var(--muted); margin-top:6px; font-size:13px; }
+  .hint { color:var(--muted); font-size:12px; margin-top:8px; }
+  code { font-family:var(--mono); background:var(--panel2); padding:1px 5px; border-radius:4px; }
+  .foot { color:var(--muted); font-size:12px; margin-top:26px; border-top:1px solid var(--line); padding-top:14px; }
+  .keychip { font-family:var(--mono); font-size:11px; color:var(--muted); word-break:break-all; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Independent Certification Verifier</h1>
+    <p>A funder can verify a certification’s signature here — directly, with no login and no
+       access to the originating system. This page only calls two public endpoints:
+       <code>GET /v1/gcrumbs/verify/key</code> and <code>POST /v1/gcrumbs/verify</code>.</p>
+  </header>
+
+  <div class="grid">
+    <div class="card">
+      <h2>1 · The certification receipt</h2>
+      <label for="receipt">Paste the signed receipt you were given (JSON)</label>
+      <textarea id="receipt" spellcheck="false" placeholder='{ "receipt_id": "...", "signature": "...", ... }'></textarea>
+      <div class="row" style="margin-top:8px">
+        <button class="secondary" id="genBtn">Generate a live certified receipt →</button>
+        <button class="secondary" id="tamperBtn">Tamper one field</button>
+      </div>
+      <div class="hint" id="genHint">“Generate” needs a demo tenant API key (below) — it certifies a sample
+        invoice server-side and drops the signed receipt here. A funder would instead paste one they received.</div>
+      <label for="apikey" style="margin-top:10px">Demo tenant API key (optional — only for “Generate”)</label>
+      <input id="apikey" type="password" placeholder="gfm_… (X-API-Key)" autocomplete="off" />
+    </div>
+
+    <div class="card">
+      <h2>2 · The signer’s public key</h2>
+      <div class="row">
+        <button id="fetchKeyBtn">Fetch the real public key</button>
+        <button class="secondary" id="wrongKeyBtn">Use a wrong key</button>
+      </div>
+      <label for="pubkey" style="margin-top:10px">Ed25519 public key (base64)</label>
+      <input id="pubkey" spellcheck="false" placeholder="fetched from /v1/gcrumbs/verify/key" />
+      <div class="keychip" id="keySource"></div>
+      <p class="hint">The real key is served at a public URL, no authentication. A wrong key must be
+         rejected — that’s what binds the check to the true signer.</p>
+    </div>
+  </div>
+
+  <button class="verify-btn" id="verifyBtn">Verify this certification</button>
+
+  <div id="result">
+    <div class="big"><span id="mark"></span><span id="verdict"></span></div>
+    <div class="reason" id="reason"></div>
+  </div>
+
+  <div class="foot">
+    Running on GRAFOMEM Cloud (staging) · synthetic demo data · the mechanism, working.
+    Signatures are Ed25519 over the receipt id; verification recomputes the id from the receipt’s
+    own fields and checks the signature — no database access.
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const receipt = $("receipt"), pubkey = $("pubkey");
+
+function showResult(valid, reason) {
+  const box = $("result");
+  box.style.display = "block";
+  box.className = valid ? "ok" : "bad";
+  $("mark").textContent = valid ? "✓" : "✗";
+  $("verdict").textContent = valid ? "VALID — signature verified" : "INVALID — verification failed";
+  $("reason").textContent = reason || "";
+}
+
+async function fetchKey() {
+  $("keySource").textContent = "fetching…";
+  const r = await fetch("/v1/gcrumbs/verify/key");
+  if (!r.ok) { $("keySource").textContent = "could not fetch key (HTTP " + r.status + ")"; return; }
+  const k = await r.json();
+  pubkey.value = k.public_key_b64;
+  $("keySource").textContent = "source: GET /v1/gcrumbs/verify/key  ·  " + k.algorithm;
+}
+
+function wrongKey() {
+  // A syntactically valid but unrelated Ed25519 public key (32 random bytes, base64).
+  const b = new Uint8Array(32); crypto.getRandomValues(b);
+  pubkey.value = btoa(String.fromCharCode(...b));
+  $("keySource").textContent = "source: a DIFFERENT (unrelated) key — should be rejected";
+}
+
+async function generate() {
+  const key = $("apikey").value.trim();
+  if (!key) { alert("Enter a demo tenant API key to generate a live receipt (or paste a receipt you were given)."); return; }
+  const sample = { invoice_id: "INV-DEMO-" + Math.floor(Math.random()*1e6),
+    vendor: "Redpoint Aerial Construction LLC", debtor: "Nokia of America",
+    po_amount: 205000, invoice_amount: 205000, approval_status: "approved" };
+  const r = await fetch("/v1/governed/verify-batch", {
+    method: "POST", headers: { "Content-Type": "application/json", "X-API-Key": key },
+    body: JSON.stringify({ invoices: [sample] }) });
+  if (!r.ok) { alert("Generate failed (HTTP " + r.status + ") — check the API key."); return; }
+  const d = await r.json();
+  receipt.value = JSON.stringify(d.results[0].execution_receipt, null, 2);
+  $("result").style.display = "none";
+}
+
+function tamper() {
+  try {
+    const rc = JSON.parse(receipt.value);
+    const z = "0".repeat((rc.output_hash || "0".repeat(64)).length);
+    rc.output_hash = (rc.output_hash === z) ? "1".repeat(z.length) : z;
+    receipt.value = JSON.stringify(rc, null, 2);
+    showResult(false, "You altered a signed field (output_hash). Now click Verify — it will fail.");
+  } catch (e) { alert("Paste or generate a valid receipt JSON first."); }
+}
+
+async function verify() {
+  let rc;
+  try { rc = JSON.parse(receipt.value); } catch (e) { alert("Receipt is not valid JSON."); return; }
+  const key = pubkey.value.trim();
+  if (!key) { alert("Fetch the public key first."); return; }
+  const r = await fetch("/v1/gcrumbs/verify", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ receipts: [rc], public_key_b64: key }) });
+  const d = await r.json();
+  const res = (d.results && d.results[0]) || {};
+  showResult(!!d.valid, res.reason || "");
+}
+
+$("fetchKeyBtn").onclick = fetchKey;
+$("wrongKeyBtn").onclick = wrongKey;
+$("genBtn").onclick = generate;
+$("tamperBtn").onclick = tamper;
+$("verifyBtn").onclick = verify;
+</script>
+</body>
+</html>

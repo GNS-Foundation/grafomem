@@ -233,6 +233,7 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
         # must be explicitly carved out to enforce API-key scopes.
         if (path in _SKIP_AUTH_PATHS
             or path.startswith("/portal")
+            or path.startswith("/verify")
             or path.startswith("/v1/portal")
             or path.startswith("/v1/cloud/billing/webhook")
             or path.startswith("/v1/cloud/compliance/badge")

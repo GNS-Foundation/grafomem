@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "grafomem-cloud"
+version = "0.1.0"
+description = "Official Python client for GRAFOMEM Cloud (governed decisions, signed receipts, independent verification)."
+requires-python = ">=3.9"
+dependencies = ["httpx>=0.24"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["grafomem_cloud*"]

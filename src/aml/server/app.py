@@ -1271,11 +1271,15 @@ def create_app(
         import importlib.resources
         portal_dir = str(importlib.resources.files("aml") / "static" / "portal")
         landing_dir = str(importlib.resources.files("aml") / "static" / "landing")
+        verify_dir = str(importlib.resources.files("aml") / "static" / "verify")
         from fastapi.staticfiles import StaticFiles
         import os as _os
         if _os.path.isdir(portal_dir):
             app.mount("/portal", StaticFiles(directory=portal_dir, html=True), name="portal")
             logger.info("Portal UI mounted at /portal")
+        if _os.path.isdir(verify_dir):
+            app.mount("/verify", StaticFiles(directory=verify_dir, html=True), name="verify")
+            logger.info("Funder verification page mounted at /verify")
         if _os.path.isdir(landing_dir):
             app.mount("/landing", StaticFiles(directory=landing_dir, html=False), name="landing-assets")
             # Serve index.html at root

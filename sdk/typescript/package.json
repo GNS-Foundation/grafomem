@@ -1,0 +1,16 @@
+{
+  "name": "grafomem-cloud",
+  "version": "0.1.0",
+  "description": "Official TypeScript/JavaScript client for GRAFOMEM Cloud (governed decisions, signed receipts, independent verification).",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist", "src"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "example": "node --loader ts-node/esm example.ts"
+  },
+  "engines": { "node": ">=18" },
+  "devDependencies": { "typescript": "^5.4.0" },
+  "license": "UNLICENSED"
+}

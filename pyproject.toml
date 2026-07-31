@@ -65,7 +65,7 @@ where = ["src"]
 # the source tree). Without this, importlib.resources.files("aml")/"static" is
 # missing and the mount is silently skipped.
 [tool.setuptools.package-data]
-aml = ["static/portal/*", "static/landing/*"]
+aml = ["static/portal/*", "static/landing/*", "static/verify/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
