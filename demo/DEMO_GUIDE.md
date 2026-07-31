@@ -1,6 +1,6 @@
 # DEMO GUIDE · KEEP OPEN DURING THE PRESENTATION
 ## Kapwork Live Demo — Step-by-Step
-GRAFOMEM Cloud on staging · four beats · ~4 minutes
+GRAFOMEM Cloud on staging · six beats · ~6 minutes
 
 All commands below are the **real, tested** commands — nothing to fill in. Run them from the
 `demo/` folder after the one-time session setup in Phase A. Use `python3` (not `python`).
