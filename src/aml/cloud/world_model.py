@@ -299,6 +299,20 @@ class WorldModelService:
             raise WorldModelError("action not found")
         return row
 
+    def list_actions(self, tenant_id, limit=50, offset=0) -> list:
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT action_id, action_name, subject_refs, status, signature, "
+                    "signer_public_key, created_at, document FROM world_model_actions "
+                    "WHERE tenant_id=%s ORDER BY created_at DESC LIMIT %s OFFSET %s",
+                    (tenant_id, limit, offset),
+                )
+                return cur.fetchall()
+        finally:
+            self._put_conn(conn)
+
     def verify_action(self, tenant_id, action_id) -> dict:
         row = self.get_action(tenant_id, action_id)
         doc = row.get("document")

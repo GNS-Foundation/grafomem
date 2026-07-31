@@ -101,6 +101,11 @@ def create_world_model_router(service) -> APIRouter:
         except WorldModelError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
+    @router.get("/actions")
+    async def list_all_actions(request: Request, limit: int = Query(50, le=200), offset: int = 0):
+        require_scope(request, "artifacts:read")
+        return {"invocations": service.list_actions(_tenant(request), limit=limit, offset=offset)}
+
     @router.get("/actions/stats")
     async def stats(request: Request):
         require_scope(request, "artifacts:read")
