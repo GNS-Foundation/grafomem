@@ -1,7 +1,7 @@
 # GRAFOMEM Cloud — Internal Technical Whitepaper
 
 **Classification: INTERNAL — Not for publication**
-**Version: 2.7.1 · June 2026**
+**Version: 2.7.2 · July 2026**
 **Authors: GNS Foundation Engineering**
 
 ---
@@ -39,8 +39,62 @@ The platform is built on **7 governance layers** stacked on top of the open-sour
 
 > **v2.7.1** closes the v2.7.0 open item. The **7 production routing/500 errors** were root-caused to a single cause — `RoutingPool` was opened inside the async `lifespan` hook while services were instantiated synchronously *before* it ran, so `app.state.db_pool` was `None` and every service fell back to one shared `psycopg.Connection` corrupted under concurrency (`the connection is closed` on commit). Fixed by moving `RoutingPool(...); pool.open()` into the synchronous scope of `create_app()` before service instantiation (`app.py`); deployed to Railway (commit `3c2ab09`). **Verified on the live deployment**: a full `sandbox_e2e_v2.py` run against `grafomem-production.up.railway.app` (mock mode, provider-independent) is **52/52**, with the previously-500ing endpoints (P0-1, P0-4, HITL resume, SSE `/stream`) all green; `pytest tests/` remains **241/241**. Because those 7 misses were infrastructure (not LLM-dependent), the live per-provider score is expected to rise from 36/46 to ~43/46 on the next real-LLM run — **a confirming live per-provider re-run is the one remaining formality**, with the residual 3 expected misses being 2 environment-blocked offline DB-tamper tests and 1 replay defect (neither a product defect). Watch-item: the `/stream` 405 also passed on the live run, but the reason it resolved (Railway ingress) is unconfirmed.
 
+> **v2.7.2** — **Command Center as the production surface + as-built reconciliation.**
+> The `cloud-v2` Next.js app (repo `grafomem-web`) is now the **production dashboard** — the
+> "Command Center" at **cloud.grafomem.com**, a **static export** (`output: "export"`) deployed to
+> **Cloudflare Pages**, calling the FastAPI backend cross-origin (CORS: `allow_origin_regex =
+> https://.*\.pages\.dev` + `localhost:3000–3003` + `GRAFOMEM_FRONTEND_URL`; API base via
+> `NEXT_PUBLIC_API_URL`). This **supersedes the "Manifold tab" framing** of §11.2 — `cloud-v2`
+> renders the *full* governance surface (Governance, HITL, Compliance, Assurance, **Ontology
+> Airport** = the R1–R5 services, Decision Trail, Erasure, Audit, Usage, Memory, Agent Studio),
+> not only the Semantic Manifold. The FastAPI-served `/portal` dark SPA (§11) remains but is no
+> longer the primary surface. The system is now two repos / two deploys: `grafomem` (backend,
+> Railway) and `grafomem-web` (frontend, Cloudflare Pages).
+>
+> **Command Center data-wiring audit (honest).** A page-by-page audit found most panels genuinely
+> wired to real endpoints, but **2 pages fully broken and 5 partial** — all calling wrong /
+> non-existent paths (not missing capability): HITL Queue → `/v1/orchestrator/hitl` (real:
+> `/v1/hitl/requests`); Usage Analytics → `/v1/portal/dashboard` (real: `/v1/decisions/stats`)
+> **and** two charts rendering fabricated `generateTimeSeries()` random data; Ontology
+> provenance / landing / invocations; Compliance erasure-list; Memory facts-browser.
+> **Fixed:** 6 path corrections + removal of the fabricated Usage charts (KPIs rewired to real
+> `/v1/decisions/stats`), verified live on staging *and* prod. **Added** one missing backend
+> endpoint — **`GET /v1/world-model/actions`** (R5 action-invocation list; the panel previously
+> called a non-existent `/invocations`). **Still open (flagged, not urgent):** HITL approve/reject
+> uses the signed **attestation** flow (`/v1/hitl/requests/{id}/attest`), not a plain POST — the
+> list now loads but the action buttons need the attestation UI.
+>
+> **Infrastructure fixes (as-built; verified against a live Postgres + clean prod/staging boots).**
+> `manifold_cache.ensure_schema` used `SAVEPOINT`, invalid under the pool's `autocommit` checkout
+> → replaced with idempotent `ALTER TABLE … ADD COLUMN IF NOT EXISTS` (the `som_version` /
+> `som_weights` columns were never actually being added, so the manifold cache had been *silently
+> failing to persist on every deploy*); an `unhashable type: 'dict'` guard added where a row's
+> `retrieved_facts` can contain dicts; and a worker-starts-before-`ensure_schema` race closed (the
+> background worker ensures its own schema before its first write). Separately, the **erasure
+> ledger** (`pool-2`) held a **stale credential** after a Postgres password rotation —
+> `GRAFOMEM_LEDGER_URL` (a *separate* env var pointing at the same DB) still carried the old
+> password; re-synced to the main pool's reference. Prod and staging now boot clean (no `pool-2`
+> auth errors, no `SAVEPOINT` / `unhashable` manifold spam).
+>
+> **Governed-decision + independent-verification surface (as-built).**
+> `POST /v1/governed/verify-batch` ingests records, runs a **server-side configurable rules
+> engine**, and returns a `decision_record` + **signed `execution_receipt`** (Ed25519, BLAKE2b
+> `receipt_id`) per item. Independent verification is public / auth-exempt:
+> `GET /v1/gcrumbs/verify/key` (the Ed25519 public key) + `POST /v1/gcrumbs/verify` (stateless
+> recompute + verify, no DB read) + a static funder page at **`/verify`**. **Python + TypeScript
+> SDKs** (`sdk/python`, `sdk/typescript`) wrap signup → verify-batch → public verify. Vocabulary
+> discipline retained: **tamper-evident** (not "tamper-proof"), **demonstrated-on-sample**
+> (synthetic data), record-and-sign (not yet a full policy engine).
+>
+> **Deployment parity.** Prod ↔ staging reconciled: `grafomem` `main` = `staging` (world-model
+> list endpoint + fixes, deployed clean); `grafomem-web` `main` (prod Command Center on Cloudflare)
+> and `staging-deploy` (same UI, staging API base). Both backends run `GRAFOMEM_AUTH_MODE=none`,
+> which **auto-upgrades to `cloud`** (per-tenant `X-API-Key` resolved from `tenant_api_keys`) when a
+> DB URL is present. Railway prod does **not** auto-deploy on push (manual trigger); Cloudflare
+> Pages auto-deploys the frontend on `main`.
+
 > [!NOTE]
-> **Reading the sequence labels.** This document uses three independent axes: **Sprints** (development iterations, 1–26), **Phases** (Cloud-roadmap milestones, 0–7 — a Phase may span or follow several Sprints and is *not* ordered relative to Sprint numbers), and **document versions** (whitepaper revisions, 2.6.1–2.7.0). They do not share one timeline: e.g. "Phase 5 (Sprint 26)" is a roadmap milestone realized in a late Sprint, while "Phase 7" (doc v2.6.6) is the most recent roadmap milestone. Current heads: **Sprint 26 · Phase 7 · doc v2.7.1**. Where a detailed section predates a later Sprint that supersedes it, the changelog above is authoritative.
+> **Reading the sequence labels.** This document uses three independent axes: **Sprints** (development iterations, 1–26), **Phases** (Cloud-roadmap milestones, 0–7 — a Phase may span or follow several Sprints and is *not* ordered relative to Sprint numbers), and **document versions** (whitepaper revisions, 2.6.1–2.7.2). They do not share one timeline: e.g. "Phase 5 (Sprint 26)" is a roadmap milestone realized in a late Sprint, while "Phase 7" (doc v2.6.6) is the most recent roadmap milestone. Current heads: **Sprint 26 · Phase 7 · doc v2.7.2** (frontend head: the `grafomem-web` **Command Center** on Cloudflare Pages — a separate repo/deploy from the `grafomem` backend). Where a detailed section predates a later Sprint that supersedes it, the changelog above is authoritative.
 
 ### Key Numbers
 
@@ -747,6 +801,14 @@ Every tool call is validated against the tool's JSON Schema before execution:
 | **Manifold (v2.6)** | `cloud-v2` | React / WebGL Semantic UI |
 | **Webhooks** | `section-webhooks` | `/v1/webhooks/` |
 | Docs | `section-docs` | Static API reference |
+
+> [!IMPORTANT]
+> **Superseded by v2.7.2 — see the changelog.** The table above describes the legacy
+> FastAPI-served `/portal` dark SPA. As of v2.7.2 the **production dashboard is the `cloud-v2`
+> "Command Center"** (repo `grafomem-web`, Next.js static export on **Cloudflare Pages** at
+> `cloud.grafomem.com`), which renders the *full* governance surface — not just the Manifold tab.
+> `/portal` still exists but is no longer primary. The Command Center calls the FastAPI backend
+> cross-origin via `NEXT_PUBLIC_API_URL`.
 
 ### 11.3 Semantic Manifold (Visual Governance)
 
