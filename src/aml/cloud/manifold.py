@@ -299,6 +299,16 @@ class ManifoldService:
         
         def worker():
             logger.info("Manifold background worker started.")
+            # The worker is started during app setup, BEFORE the deferred
+            # ensure_schema DB-init step runs. Without ensuring our schema here
+            # first, early cache writes hit a not-yet-migrated manifold_cache
+            # table and raise "column som_version does not exist" until the
+            # deferred step catches up. ensure_schema is idempotent, so call it
+            # once up front to close that race (incl. on a first/fresh deploy).
+            try:
+                self.ensure_schema()
+            except Exception as e:
+                logger.warning(f"Manifold worker pre-flight ensure_schema failed: {e}")
             while not self._stop_event.is_set():
                 try:
                     import psycopg2
