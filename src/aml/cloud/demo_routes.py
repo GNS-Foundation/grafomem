@@ -116,21 +116,27 @@ def create_governed_router(decision_trail, execution_receipts, signing_identity)
         _guard()
         from aml.cloud.verification import evaluate_invoice, resolve_policy
 
+        # Resolve the policy once so dedup + the result echo use the SAME field
+        # names the rules engine evaluates (so a customer can pass their own
+        # invoice_id/vendor/debtor field names without transforming the data).
+        pol = resolve_policy(req.policy)
+        id_field, vendor_field, debtor_field = pol["invoice_id_field"], pol["vendor_field"], pol["debtor_field"]
         certified: set = set()
         results = []
         for raw in req.invoices:
             inv = {k: v for k, v in raw.items() if not str(k).startswith("_")}
             decision, reason = evaluate_invoice(inv, req.policy, certified)
+            inv_id = inv.get(id_field)
             packet = _record_and_sign(
                 decision_trail, execution_receipts, signing_identity,
-                tenant_id=tenant_id, invoice_id=inv.get("invoice_id"),
+                tenant_id=tenant_id, invoice_id=inv_id,
                 context=inv, decision=decision, reason=reason, model_id=req.model_id,
             )
             if decision == "certify":
-                certified.add(inv.get("invoice_id"))
+                certified.add(inv_id)
             results.append({
-                "invoice_id": inv.get("invoice_id"),
-                "vendor": inv.get("vendor"), "debtor": inv.get("debtor"),
+                "invoice_id": inv_id,
+                "vendor": inv.get(vendor_field), "debtor": inv.get(debtor_field),
                 "decision": decision, "reason": reason,
                 "decision_record": packet["decision_record"],
                 "execution_receipt": packet["execution_receipt"],

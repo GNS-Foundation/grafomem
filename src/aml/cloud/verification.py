@@ -23,6 +23,9 @@ DEFAULT_POLICY: dict[str, Any] = {
     "approval_field": "approval_status",
     "approved_value": "approved",
     "invoice_id_field": "invoice_id",
+    # Echoed on each result (not evaluated) — override to a customer's field names.
+    "vendor_field": "vendor",
+    "debtor_field": "debtor",
 }
 
 
