@@ -1,56 +1,57 @@
-"""Task 5 — wipe the demo tenant's DATA (decisions, receipts, memories, …) while
-leaving the tenant itself (identity + API key) intact, so rehearsals start clean.
+"""Task 5 (API-only) — reset the demo to a fresh, clean tenant. No DB access.
 
-Deletes every public table row scoped to the demo tenant_id, except the tenant
-identity tables. DB URL comes from GRAFOMEM_DB_URL (env only — never hardcoded).
+Why rotation instead of a wipe: the demo's decision_records and execution_receipts
+are append-only, tamper-evident audit records — there is deliberately no API to
+delete them (deleting the receipts would undercut the very guarantee the demo
+proves). So a rehearsal "reset" provisions a brand-new demo tenant via the portal
+API and points the creds file at it: a genuinely clean slate, zero prior state,
+no direct database connection required.
+
+Note: the 5/3 batch count is independent of any persisted state — the agent's
+duplicate check is per-run — so the counts are stable across rehearsals with or
+without reset. Rotation just guarantees each rehearsal starts on an empty tenant.
 """
 from __future__ import annotations
 
+import secrets
+
+from common import BASE, CREDS_PATH, client, load_creds, redact_key, save_creds
 import os
-import sys
 
-import psycopg
+NAME = "Kapwork Demo (synthetic)"
+PASSWORD = "demo-Kapwork-2026!"   # synthetic throwaway credential
 
-from common import load_creds
 
-PRESERVE = {"tenants", "tenant_api_keys", "tenant_deks", "tenant_members"}
+def count_decisions(api_key: str) -> int | str:
+    with client(api_key) as c:
+        r = c.get("/v1/decisions/")
+        if r.status_code == 200:
+            return r.json().get("count", "?")
+    return "?"
 
 
 def main() -> None:
-    db_url = os.environ.get("GRAFOMEM_DB_URL")
-    if not db_url:
-        sys.exit("blocked — no GRAFOMEM_DB_URL")
-    tenant_id = load_creds()["tenant_id"]
-    print(f"Resetting data for tenant {tenant_id}")
+    print(f"BASE = {BASE}")
+    if os.path.exists(CREDS_PATH):
+        old = load_creds()
+        n = count_decisions(old["api_key"])
+        print(f"  before: tenant {old['tenant_id']} has {n} decision(s) on record "
+              f"(append-only audit — left intact)")
 
-    with psycopg.connect(db_url, autocommit=True) as conn:
-        tables = [r[0] for r in conn.execute(
-            "SELECT table_name FROM information_schema.columns "
-            "WHERE table_schema='public' AND column_name='tenant_id' "
-            "ORDER BY table_name"
-        ).fetchall()]
-        targets = [t for t in tables if t not in PRESERVE]
+    # Provision a fresh, empty demo tenant (unique email so signup always creates new).
+    email = f"demo-tenant+{secrets.token_hex(4)}@kapwork-demo.example"
+    with client() as c:
+        r = c.post("/v1/portal/signup", json={
+            "name": NAME, "email": email, "password": PASSWORD, "plan": "starter"})
+        r.raise_for_status()
+        info = r.json()
+    creds = {"tenant_id": info["tenant_id"], "api_key": info["api_key"], "email": email}
+    save_creds(creds)
 
-        def total() -> int:
-            n = 0
-            for t in targets:
-                n += conn.execute(f"SELECT count(*) FROM {t} WHERE tenant_id = %s", (tenant_id,)).fetchone()[0]
-            return n
-
-        before = total()
-        print(f"  demo-tenant rows BEFORE: {before}  (across {len(targets)} tables)")
-        for t in targets:
-            c = conn.execute(f"DELETE FROM {t} WHERE tenant_id = %s", (tenant_id,)).rowcount
-            if c:
-                print(f"    deleted {c:>4} from {t}")
-        after = total()
-        print(f"  demo-tenant rows AFTER:  {after}")
-
-    # Confirm the tenant + key still exist.
-    with psycopg.connect(db_url, autocommit=True) as conn:
-        still = conn.execute("SELECT count(*) FROM tenants WHERE id = %s", (tenant_id,)).fetchone()[0]
-    print(f"  tenant still present: {'yes' if still else 'NO'}  (api key preserved)")
-    print("OK" if after == 0 and still else "WARNING: unexpected state")
+    n_new = count_decisions(creds["api_key"])
+    print(f"  after:  tenant {creds['tenant_id']} has {n_new} decision(s) — CLEAN slate")
+    print(f"  creds now point to the fresh tenant (key {redact_key(creds['api_key'])})")
+    print("OK: demo reset to a clean tenant." if n_new == 0 else "WARNING: new tenant not empty")
 
 
 if __name__ == "__main__":
