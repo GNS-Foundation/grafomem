@@ -87,7 +87,11 @@ def make_about_vectors(df: pd.DataFrame, fact_vec_lookup: dict, model: BgeEmbedd
     scores_col = df["retrieval_scores"] if "retrieval_scores" in df else [None] * len(df)
     out = np.zeros((len(df), EMB_DIM))
     for i, (facts, scores) in enumerate(zip(df.retrieved_facts, scores_col)):
-        vecs = [fact_vec_lookup[f] for f in (facts or []) if f in fact_vec_lookup]
+        # Only string fact-refs are hashable keys in fact_vec_lookup; a row's
+        # retrieved_facts may contain dicts, so guard with isinstance(f, str)
+        # (mirrors the lookup built in _compute_manifold_sync) to avoid
+        # "unhashable type: 'dict'" on the membership test.
+        vecs = [fact_vec_lookup[f] for f in (facts or []) if isinstance(f, str) and f in fact_vec_lookup]
         if vecs:
             V = np.vstack(vecs)
             wts = (np.asarray(scores[:len(vecs)], float) if scores else np.ones(len(vecs)))
@@ -267,21 +271,12 @@ class ManifoldService:
             conn.commit()
             
             with conn.cursor() as cur:
-                try:
-                    cur.execute("SAVEPOINT manifold_update1")
-                    cur.execute("ALTER TABLE manifold_cache ADD COLUMN som_version TEXT;")
-                    cur.execute("RELEASE SAVEPOINT manifold_update1")
-                except Exception as e:
-                    logger.warning(f"Could not add som_version: {e}")
-                    cur.execute("ROLLBACK TO SAVEPOINT manifold_update1")
-                    
-                try:
-                    cur.execute("SAVEPOINT manifold_update2")
-                    cur.execute("ALTER TABLE manifold_cache ADD COLUMN som_weights BYTEA;")
-                    cur.execute("RELEASE SAVEPOINT manifold_update2")
-                except Exception as e:
-                    logger.warning(f"Could not add som_weights: {e}")
-                    cur.execute("ROLLBACK TO SAVEPOINT manifold_update2")
+                # Migrate tables created before these columns existed. ADD COLUMN
+                # IF NOT EXISTS is idempotent and works under autocommit — the pooled
+                # connection runs with autocommit=True, so SAVEPOINT (which requires an
+                # open transaction block) is unavailable here.
+                cur.execute("ALTER TABLE manifold_cache ADD COLUMN IF NOT EXISTS som_version TEXT;")
+                cur.execute("ALTER TABLE manifold_cache ADD COLUMN IF NOT EXISTS som_weights BYTEA;")
             conn.commit()
         except Exception as e:
             logger.error(f"Failed to setup manifold_cache table: {e}")
