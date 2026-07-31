@@ -77,6 +77,11 @@ invoice already certified. The agent makes the call, with a reason.”
 `Invoice amount exceeds authorized PO` / `No verified approval from debtor` /
 `Duplicate of already-certified invoice`.
 
+ℹ Under the hood: the batch is submitted to `POST /v1/governed/verify-batch` — **verification
+runs server-side** (a configurable rules engine), and each result is signed on our side. The
+script just hands over the invoices. If asked "whose logic?": "the policy is configurable to
+your rules; here it's amount ≤ PO, approval present, no duplicates."
+
 ⚠ If it goes wrong: the count is **always** 5/3 — the duplicate check runs per batch, so a
 skipped reset can't change it. If a beat errors mid-way you'll see a traceback (not a wrong
 count); don't debug — pivot: “let me show you that from the run I captured earlier.”
@@ -120,6 +125,35 @@ because they checked it themselves.”
 ✓ Watch for: `verify with the fetched real key → valid: True`, then
 `verify with a WRONG key → valid: False`.
 
+### BEAT 4 (browser variant) — the funder page ★ strongest if you have a screen
+Instead of (or right after) the terminal, open the **funder verification page** live:
+```
+https://grafomem-staging-staging.up.railway.app/verify/
+```
+1. Paste a certified receipt into box 1 (copy one from Beat 2, or click **Generate a live
+   certified receipt** with the demo tenant's API key), 2. click **Fetch the real public key**,
+   3. click **Verify** → big green **VALID**. 4. Click **Tamper one field** → **Verify** → red
+   **INVALID**. 5. Click **Use a wrong key** → **Verify** → red **INVALID**.
+🗣 “This is what a funder sees — a public page, no login, no access to Kapwork. They check the
+signature themselves. Change anything, or use the wrong key, and it fails.”
+
+> This is the same two public endpoints as the terminal beat, in a browser a funder could
+> actually use. If the network is flaky, fall back to the terminal `--beat 4`.
+
+---
+
+## If they ask “can we see the product / the dashboard?”
+Two live surfaces on staging (both real, both deployed):
+- **Funder verification page** — `…/verify/` — the page above. This is the one that matches the pitch.
+- **Audit console (dashboard)** — `…/portal/` — sign in with the demo tenant's email +
+  password (from `reset_demo.py`'s tenant) to see the **Decision Trail**: every certify/reject
+  recorded for that tenant. Honest note: it lists **decisions**, not the signed receipts — the
+  receipt/verify experience is the `/verify` page.
+
+And the integration story: **SDK (Python + TypeScript) in `sdk/`**, invoices ingest via
+`POST /v1/governed/verify-batch`, funders verify via the public endpoints. So “do you have an
+SDK / an API / a dashboard?” → yes to all three, and you can show them.
+
 ---
 
 ## Phase D — Close (15 sec)
@@ -158,6 +192,14 @@ we'd build with Kapwork.”
 | Beat 3 — tamper | `python3 demo.py --beat 3` |
 | Beat 4 — verify | `python3 demo.py --beat 4` |
 | Dry-run all | `python3 demo.py --beat all` |
+
+**Live browser surfaces (open on a screen):**
+| | URL |
+|---|---|
+| Funder verification page | `https://grafomem-staging-staging.up.railway.app/verify/` |
+| Audit console (dashboard) | `https://grafomem-staging-staging.up.railway.app/portal/` |
+| Ingestion endpoint (server-side verify) | `POST /v1/governed/verify-batch` |
+| SDKs | `sdk/python` (`pip install ./sdk/python`) · `sdk/typescript` (`npm install && npm run build`) |
 
 Setup (once per terminal): `cd /Users/camiloayerbeposada/grafomem/demo && export GRAFOMEM_BASE=https://grafomem-staging-staging.up.railway.app`
 

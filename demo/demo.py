@@ -32,14 +32,13 @@ def _clean_invoice(invoice_id: str | None = None) -> dict:
 
 
 def _one_certified(api_key: str) -> dict:
-    """Submit one certify governed decision for a clean invoice; return the response."""
+    """Certify one clean invoice via the SERVER-SIDE rules engine; return {decision_record,
+    execution_receipt, …}. The server decides + signs — we just submit the invoice."""
     inv = _clean_invoice("INV-2026-04840")   # Nokia of America, clean
     with client(api_key) as c:
-        r = c.post("/v1/governed/decisions", json={
-            "decision": "certify", "reason": "Amount within PO, approved, and not a duplicate",
-            "invoice_id": inv["invoice_id"], "context": inv})
+        r = c.post("/v1/governed/verify-batch", json={"invoices": [inv]})
         r.raise_for_status()
-        return r.json()
+        return r.json()["results"][0]
 
 
 def _verify(receipt: dict, public_key_b64: str | None) -> dict:

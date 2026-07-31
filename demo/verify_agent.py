@@ -40,32 +40,29 @@ def decide(inv: dict, certified_ids: set) -> tuple[str, str]:
 
 
 def run_agent(api_key: str, invoices: list[dict], verbose: bool = True) -> list[dict]:
-    certified_ids: set = set()
-    results = []
+    """Hand the whole batch to the SERVER-SIDE rules engine (POST /v1/governed/verify-batch).
+    Verification, the certify/reject decision, and signing all happen on GRAFOMEM's side —
+    the agent just submits the invoices. (The local ``decide()`` above mirrors the same rules
+    and is kept for reference.)"""
+    clean = [strip_annotations(i) for i in invoices]   # never send a '_' annotation key
     with client(api_key) as c:
-        for raw in invoices:
-            inv = strip_annotations(raw)          # never let a '_' key reach the payload
-            decision, reason = decide(inv, certified_ids)
-            r = c.post("/v1/governed/decisions", json={
-                "decision": decision,
-                "reason": reason,
-                "invoice_id": inv["invoice_id"],
-                "context": inv,
-            })
-            r.raise_for_status()
-            body = r.json()
-            # Mark certified ONLY after a successful certify decision is recorded.
-            if decision == "certify":
-                certified_ids.add(inv["invoice_id"])
-            results.append({
-                "invoice_id": inv["invoice_id"], "decision": decision, "reason": reason,
-                "decision_id": body["decision_record"]["decision_id"],
-                "receipt_id": body["execution_receipt"]["receipt_id"],
-                "response": body,
-            })
-            if verbose:
-                mark = "CERTIFY" if decision == "certify" else "REJECT "
-                print(f"  [{mark}] {inv['invoice_id']:<16} {inv['vendor'][:30]:<30} -> {reason}")
+        r = c.post("/v1/governed/verify-batch", json={"invoices": clean})
+        r.raise_for_status()
+        body = r.json()
+
+    results = []
+    for x in body["results"]:
+        results.append({
+            "invoice_id": x["invoice_id"], "decision": x["decision"], "reason": x["reason"],
+            "decision_id": x["decision_record"]["decision_id"],
+            "receipt_id": x["execution_receipt"]["receipt_id"],
+            "response": {"decision_record": x["decision_record"],
+                         "execution_receipt": x["execution_receipt"]},
+        })
+        if verbose:
+            mark = "CERTIFY" if x["decision"] == "certify" else "REJECT "
+            vendor = (x.get("vendor") or "")[:30]
+            print(f"  [{mark}] {x['invoice_id']:<16} {vendor:<30} -> {x['reason']}")
     return results
 
 
