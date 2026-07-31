@@ -1,17 +1,10 @@
 # DEMO GUIDE · KEEP OPEN DURING THE PRESENTATION
 ## Kapwork Live Demo — Step-by-Step
-GRAFOMEM Cloud on staging · five beats · ~6 minutes
+GRAFOMEM Cloud on staging · four beats · ~4 minutes
 
 All commands below are the **real, tested** commands — nothing to fill in. Run them from the
 `demo/` folder after the one-time session setup in Phase A. Use `python3` (not `python`).
 Test every command once before the meeting.
-
-> **Environment.** This guide runs on **staging** (`grafomem-staging-staging.up.railway.app`) —
-> that's the honest "running live on our staging Cloud, on synthetic data" frame, and it's the
-> only environment the demo scripts are wired to. Production is now fully synced and live too
-> (`grafomem-production.up.railway.app`) if you'd rather show the **public** pages (landing `/`,
-> funder `/verify/`) on the production URL — but keep the *scripted beats* on staging so you're
-> not seeding synthetic tenants into prod.
 
 ---
 
@@ -26,12 +19,12 @@ export GRAFOMEM_BASE=https://grafomem-staging-staging.up.railway.app
 > beat fails in the room. Every command below inherits it from this shell. (Creds are handled
 > automatically — `reset_demo.py` writes them to the gitignored `demo/.demo_creds.json`.)
 
-**2. Confirm staging is healthy (full cloud layer, not just the DB):**
+**2. Confirm staging is healthy:**
 ```bash
 curl -s https://grafomem-staging-staging.up.railway.app/readyz
 ```
 ✓ Watch for: `"status":"ok"` and the checks list includes `decision_trail, governance_gateway,
-orchestrator, erasure_proof, regulatory_reports`.
+orchestrator, erasure_proof, regulatory_reports` (the full cloud layer — not just database/pool).
 
 **3. Confirm the signing-key endpoint returns a real key:**
 ```bash
@@ -46,27 +39,18 @@ python3 reset_demo.py
 ```
 ✓ Watch for: `after: tenant … has 0 decision(s) — CLEAN slate`.
 
-**5. Get the dashboard login for this tenant** (you'll need it for Beat 5 — the email is random
-per reset, the password is fixed):
-```bash
-cat demo/.demo_creds.json
-```
-✓ Note the **`email`** value. The dashboard password is always **`demo-Kapwork-2026!`**.
-(Run this from the repo root, or `cat .demo_creds.json` from inside `demo/`.)
-
-**6. Full silent dry-run of all four scripted beats, then reset again so you start clean:**
+**5. Full silent dry-run, then reset again so you start the real demo clean:**
 ```bash
 python3 demo.py --beat all
 python3 reset_demo.py
-cat demo/.demo_creds.json   # re-read the NEW email after the reset
 ```
+> If you plan to use Beats 5–6 (dashboard + funder page), rehearse them now too: after this
+> reset, run `python3 demo.py --beat 1`, then log into `/portal/` with the email in
+> `.demo_creds.json` and confirm the 5/3 rows show; open `/verify/` and confirm it loads.
+> Then `python3 reset_demo.py` once more — and remember to re-run a beat before the portal in
+> the real demo so the tenant has data.
 
-**7. Pre-open two browser tabs** (log in now so you're not typing a password on stage):
-- `https://grafomem-staging-staging.up.railway.app/portal/` → sign in with the `email` from
-  step 6 + password `demo-Kapwork-2026!`. Leave it on the **Decision Trail** view.
-- `https://grafomem-staging-staging.up.railway.app/verify/` → the funder page (Beat 4 browser variant).
-
-**8. Close noisy tabs and logs. Have this guide open on a second screen or on paper.**
+**6. Close noisy tabs and logs. Have this guide open on a second screen or on paper.**
 
 ---
 
@@ -82,7 +66,7 @@ on synthetic invoice data — it's the mechanism, working.”
 
 ---
 
-## Phase C — The five beats
+## Phase C — The four beats
 
 ### BEAT 1 — Verify & catch fraud (~45 sec)
 Run the full batch over the 8 invoices.
@@ -97,11 +81,6 @@ invoice already certified. The agent makes the call, with a reason.”
 ✓ Watch for: `Batch summary: 5 certified, 3 rejected`, and the three reject reasons —
 `Invoice amount exceeds authorized PO` / `No verified approval from debtor` /
 `Duplicate of already-certified invoice`.
-
-ℹ Under the hood: the batch is submitted to `POST /v1/governed/verify-batch` — **verification
-runs server-side** (a configurable rules engine), and each result is signed on our side. The
-script just hands over the invoices. If asked "whose logic?": "the policy is configurable to
-your rules; here it's amount ≤ PO, approval present, no duplicates."
 
 ⚠ If it goes wrong: the count is **always** 5/3 — the duplicate check runs per batch, so a
 skipped reset can't change it. If a beat errors mid-way you'll see a traceback (not a wrong
@@ -133,7 +112,7 @@ a record that's tamper-evident.”
 `receipt_id mismatch — a field was altered after signing`. (On screen the altered field is
 `output_hash` — “a field in the record”; don't call it a dollar amount if they're reading closely.)
 
-### BEAT 4 — Independent funder verification (~60 sec) ★ the external climax
+### BEAT 4 — Independent funder verification (~60 sec) ★ the climax
 Fetch the public key, verify the honest receipt with it, then show a wrong key is rejected.
 ```bash
 python3 demo.py --beat 4
@@ -146,40 +125,68 @@ because they checked it themselves.”
 ✓ Watch for: `verify with the fetched real key → valid: True`, then
 `verify with a WRONG key → valid: False`.
 
-**BEAT 4 (browser variant) — the funder page ★ strongest if you have a screen.** Open the
-pre-loaded funder tab `…/verify/` and: 1. paste a certified receipt into box 1 (copy one from
-Beat 2, or click **Generate a live certified receipt**), 2. **Fetch the real public key**,
-3. **Verify** → big green **VALID**, 4. **Tamper one field** → **Verify** → red **INVALID**,
-5. **Use a wrong key** → **Verify** → red **INVALID**.
-🗣 “This is what a funder sees — a public page, no login, no access to Kapwork. Change anything,
-or use the wrong key, and it fails.” (If the network is flaky, fall back to the terminal `--beat 4`.)
+---
 
-### BEAT 5 — The audit console / dashboard (~45 sec) ★ the internal view
-Switch to the pre-loaded **`/portal/`** tab (already signed in from Phase A) and open the
-**Decision Trail**.
-🗣 “That was the funder's view — external, no login. This is Kapwork's own view. Every decision
-the agent made — every certify and every reject — is recorded here: timestamped, queryable,
-attributable. The funder verifies one certification; your team has the whole trail.”
+## Phase C-bis — The product surfaces (optional finale)
 
-✓ Watch for: the trail lists the decisions from Beat 1 (and any produced by beats 2–4) — each row
-has a decision id, a timestamp, and the decision. Point at a **reject** row and a **certify** row.
+> ⚠️ **Only include Beats 5–6 if you have rehearsed them end-to-end at least twice.** The
+> terminal beats (1–4) are proven; the browser surfaces are new. If the portal login or the
+> grid is fiddly in rehearsal, drop these and instead say: *"the decisions also flow into the
+> audit console and a funder-verification page — I'll walk you through those live once we've
+> wired your data."* Honest, and keeps you on rehearsed ground.
+>
+> 🔑 **Tenant-match rule (critical):** `reset_demo.py` rotates to a NEW tenant on every reset.
+> Log into the portal with the email in `demo/.demo_creds.json` **from the reset you are
+> actually demoing from** — i.e. do NOT reset again after Beat 1–4 and before showing the
+> portal, or the Decision Trail will be empty and you'll look broken. Order: reset once →
+> run beats 1–4 → show portal/verify on that same tenant.
 
-ℹ Honest framing: this console lists **decisions** (the audit trail) — it is **not** the signed
-receipt/verify experience; that's the `/verify` page from Beat 4. Say “decision trail,” not
-“the receipts,” if they're reading closely.
+### BEAT 5 — The Audit Console (dashboard)  (~45 sec)
+Show that the decisions you just created appear in the tenant's dashboard.
 
-⚠ If the login dropped or the UI is fiddly, don't fight it live — the exact same data is one
-command: `curl -s -H "X-API-Key: <key from .demo_creds.json>"
-https://grafomem-staging-staging.up.railway.app/v1/decisions/` → shows the count and rows. Or
-just say “the trail's in the console, I'll walk you through it after.”
+- Open: `https://grafomem-staging-staging.up.railway.app/portal/`
+- Log in with the demo tenant's email (in `demo/.demo_creds.json`), password `demo-Kapwork-2026!`
+- Go to the **Decision Trail**.
+
+> ⚠️ **A 401 here almost always means you opened the `production` URL.** The demo tenant lives on
+> **staging** — log in at `https://grafomem-staging-staging.up.railway.app/portal/`, never the
+> `grafomem-production…` URL (that database has no demo tenant).
+
+🗣 “And here it is in the product — the tenant's Audit Console. Every decision the agent made
+is here: the five certified, the three rejected, each with its reason and timestamp. This is
+the oversight surface your team would use.”
+
+✓ Watch for: the Decision Trail shows the **5 certified + 3 rejected** rows for this tenant
+(refresh if needed). If empty → you're logged into the wrong tenant; log in with the email from
+the *current* `.demo_creds.json`.
+
+> Note: the dashboard shows the **decisions**, not the signed receipts — the signature and
+> independent verification live on the `/verify` page (Beat 6). Don't hunt for a "verify" button
+> in the portal; that's by design.
+
+### BEAT 6 — The funder verification page  (~45 sec)  ★ ties back to the climax
+Show the public page a funder uses — no login, no Kapwork access.
+
+- Open: `https://grafomem-staging-staging.up.railway.app/verify/`
+
+🗣 “And this is what a funder uses — a public page, no login, no access to Kapwork. They paste
+a certification, it fetches our public key, and it verifies the signature itself. It's the same
+independent check we just ran in the terminal — now as the surface a funder actually touches.”
+
+✓ Watch for: the page loads (public, no login) and a valid certification verifies; a tampered
+one is rejected.
+
+> If you didn't rehearse pasting a live receipt into `/verify`, keep this to *showing the page
+> exists* and referring back to Beat 4 (“this is the same check, in a funder-facing page”) —
+> don't attempt a first-time live paste in the room.
 
 ---
 
 ## Phase D — Close (15 sec)
 
 🗣 “The invoice goes in, and a certification comes out that carries its own signature —
-tamper-evident, verifiable by a funder who never touches your systems, and recorded in an audit
-trail your team owns. That's the layer we'd build with Kapwork.”
+tamper-evident, and verifiable by a funder who never touches your systems. That's the layer
+we'd build with Kapwork.”
 
 > Then stop talking. Let them react and ask. The Q&A (separate run-sheet) has the answers to
 > Pete's likely questions.
@@ -193,7 +200,6 @@ trail your team owns. That's the layer we'd build with Kapwork.”
   live debugging reads as fragility.
 - **Frame it honestly.** “live on staging, synthetic data, the mechanism” — not “production-ready.”
 - **Don't claim the governance engine.** This path records + signs. Policy engine is “the next phase.”
-- **The dashboard shows decisions, not receipts.** Don't conflate the two.
 - **No caching number.** It's unmeasured — don't quote it.
 - **Say tamper-evident, not tamper-proof.** And “logical residency,” not “physical.”
 - **A “no” is fine.** Offer them the honest verdict — it's what makes a yes real.
@@ -207,28 +213,15 @@ trail your team owns. That's the layer we'd build with Kapwork.”
 | Health check | `curl -s https://grafomem-staging-staging.up.railway.app/readyz` |
 | Key check | `curl -s https://grafomem-staging-staging.up.railway.app/v1/gcrumbs/verify/key` |
 | Reset | `python3 reset_demo.py` |
-| Dashboard login (email) | `cat demo/.demo_creds.json` · password `demo-Kapwork-2026!` |
 | Beat 1 — batch | `python3 demo.py --beat 1` |
 | Beat 2 — record | `python3 demo.py --beat 2` |
 | Beat 3 — tamper | `python3 demo.py --beat 3` |
-| Beat 4 — funder verify | `python3 demo.py --beat 4` |
-| Beat 5 — dashboard | open `…/portal/` (Decision Trail) |
-| Dry-run all scripts | `python3 demo.py --beat all` |
+| Beat 4 — verify | `python3 demo.py --beat 4` |
+| Dry-run all | `python3 demo.py --beat all` |
+| Beat 5 — dashboard | open `https://grafomem-staging-staging.up.railway.app/portal/` (login: email from `.demo_creds.json`, pw `demo-Kapwork-2026!`) |
+| Beat 6 — funder page | open `https://grafomem-staging-staging.up.railway.app/verify/` (public, no login) |
 
-**Live browser surfaces (open on a screen):**
-| | URL | Login |
-|---|---|---|
-| Funder verification page | `…/verify/` | none (public) |
-| Audit console (dashboard) | `…/portal/` | demo tenant `email` (from `.demo_creds.json`) + `demo-Kapwork-2026!` |
-| Ingestion endpoint (server-side verify) | `POST /v1/governed/verify-batch` | `X-API-Key` |
-| SDKs | `sdk/python` (`pip install ./sdk/python`) · `sdk/typescript` (`npm install && npm run build`) | — |
-
-Base for all URLs: `https://grafomem-staging-staging.up.railway.app`
 Setup (once per terminal): `cd /Users/camiloayerbeposada/grafomem/demo && export GRAFOMEM_BASE=https://grafomem-staging-staging.up.railway.app`
-
-**Integration story** (if they ask “do you have an SDK / API / dashboard?”): yes to all three —
-**SDK** (Python + TypeScript in `sdk/`), invoices **ingest** via `POST /v1/governed/verify-batch`,
-funders **verify** via the public endpoints, and the **dashboard** is the audit console above.
 
 ---
 
