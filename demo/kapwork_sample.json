@@ -1,0 +1,12 @@
+[
+  {"invoiceNumber":"K-2001","vendorName":"Nokia of America","debtorName":"AT&T","poAmount":142000,"invoiceAmount":142000,"approvalState":"APPROVED"},
+  {"invoiceNumber":"K-2002","vendorName":"Cisco Systems","debtorName":"Verizon","poAmount":88000,"invoiceAmount":88000,"approvalState":"APPROVED"},
+  {"invoiceNumber":"K-2003","vendorName":"Granite Peak","debtorName":"Charter","poAmount":100000,"invoiceAmount":128400,"approvalState":"APPROVED"},
+  {"invoiceNumber":"K-2004","vendorName":"Dell Technologies","debtorName":"Comcast","poAmount":54000,"invoiceAmount":54000,"approvalState":"APPROVED"},
+  {"invoiceNumber":"K-2005","vendorName":"Blue Ridge","debtorName":"T-Mobile","poAmount":90000,"invoiceAmount":90000,"approvalState":"PENDING"},
+  {"invoiceNumber":"K-2006","vendorName":"Juniper","debtorName":"Lumen","poAmount":73000,"invoiceAmount":73000,"approvalState":"APPROVED"},
+  {"invoiceNumber":"K-2007","vendorName":"Arista","debtorName":"Cox","poAmount":61000,"invoiceAmount":61000,"approvalState":"APPROVED"},
+  {"invoiceNumber":"K-2008","vendorName":"Ericsson","debtorName":"Dish","poAmount":45000,"invoiceAmount":52000,"approvalState":"APPROVED"},
+  {"invoiceNumber":"K-2001","vendorName":"Nokia of America","debtorName":"AT&T","poAmount":142000,"invoiceAmount":142000,"approvalState":"APPROVED"},
+  {"invoiceNumber":"K-2009","vendorName":"Fortinet","debtorName":"Frontier","poAmount":39000,"invoiceAmount":39000,"approvalState":"APPROVED"}
+]

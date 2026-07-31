@@ -29,11 +29,28 @@ key = anon.public_key()["public_key_b64"]
 print(anon.verify([receipt], public_key_b64=key)["valid"])   # True
 ```
 
-The policy is configurable per call — override field names or which checks run:
+### Bring your own field names (no data transform)
+
+Pass a `policy` that names **your** invoice fields — the rules, duplicate
+detection, and the result echo all follow it, so you don't have to reshape your
+data before sending it:
 
 ```python
-client.verify_batch(invoices, policy={"require_approval": False, "po_amount_field": "authorized_amount"})
+out = client.verify_batch(my_invoices, policy={
+    "invoice_amount_field": "invoiceAmount",   # your field → compared to the PO amount
+    "po_amount_field":      "poAmount",
+    "approval_field":       "approvalState",
+    "approved_value":       "APPROVED",         # your "approved" value (any string, matched exactly)
+    "invoice_id_field":     "invoiceNumber",    # used for de-duplication + echoed as invoice_id
+    "vendor_field":         "vendorName",       # echoed on each result
+    "debtor_field":         "debtorName",
+    # turn checks off if you don't want them:
+    # "require_approval": False, "reject_duplicates": False, "require_amount_within_po": False,
+})
 ```
+
+Notes: amount fields must be **numeric** (parse currency strings like `"$142,000"` first);
+`approved_value` is matched exactly (case-sensitive).
 
 **Methods:** `signup` · `verify_batch` · `governed_decision` · `list_decisions` ·
 `public_key` · `verify` · `readyz`. Non-2xx responses raise `GrafomemError(status_code, body)`.

@@ -30,6 +30,25 @@ const { public_key_b64 } = await anon.publicKey();
 console.log((await anon.verify([receipt], public_key_b64)).valid);   // true
 ```
 
+### Bring your own field names (no data transform)
+
+Pass a `policy` (2nd arg) that names **your** invoice fields — rules,
+de-duplication, and the result echo all follow it:
+
+```ts
+const out = await client.verifyBatch(myInvoices, {
+  invoice_amount_field: "invoiceAmount",   // → compared to the PO amount
+  po_amount_field:      "poAmount",
+  approval_field:       "approvalState",
+  approved_value:       "APPROVED",         // matched exactly
+  invoice_id_field:     "invoiceNumber",    // de-duplication + echoed as invoice_id
+  vendor_field:         "vendorName",
+  debtor_field:         "debtorName",
+});
+```
+
+Amount fields must be numeric (parse currency strings first).
+
 **Methods:** `signup` · `verifyBatch` · `governedDecision` · `publicKey` · `verify` · `readyz`.
 Non-2xx responses throw `GrafomemError(status, body)`. This is the same primitive a
 browser/funder integration uses to verify a certification client-side.
