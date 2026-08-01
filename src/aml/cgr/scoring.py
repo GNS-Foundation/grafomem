@@ -12,9 +12,16 @@ core is a per-agent Beta-mean trust score:
     soft count (α += w·rating, β += w·(1−rating)), where w comes from Brier
     calibration of each reviewer on *resolved* invoices ("verify the reviewer").
   * SCORE  E = α/(α+β);  confidence n = α+β (evidence mass).
-  * CEILING (Ticket #2 addition, not in the reference): when tier is present,
-    E is clamped to tier + 0.02 — a capability can't out-score its tier ceiling.
-    Skipped entirely when tier is None.
+  * CEILING (Ticket #2 addition, not in the reference) — evidence-gated: tight
+    when verifiable evidence is thin (guards cold-start / review-farm inflation),
+    lifts as resolved outcomes prove capability (verifiable evidence dominates).
+    Skipped entirely when tier is None. The gate ramps the ceiling from
+    tier + CEILING_EPS (at n_resolved = 0) to 1.0 (at n_resolved ≥ N_LIFT), so a
+    low-tier agent cannot be inflated past its tier on thin/soft evidence, but a
+    genuinely capable agent with proven outcomes is not held down by a noisy tier.
+    (Roadmap: `tier` should eventually be a J-Space capability measurement from
+    the neutral authority, not the TierGate proxy — the evidence gate is what
+    makes the proxy safe to use in the meantime.)
 
 Only `certify` decisions tagged `judgment` earn credit/blame; rule-rejects are
 excluded (they are deterministic, not a judgment call).
@@ -46,7 +53,8 @@ import numpy as np
 DIMENSION_RECEIVABLES = "receivables"
 
 K_PRIOR = 4.0                    # capability-prior strength (reference K_PRIOR)
-CEILING_EPS = 0.02               # capability ceiling slack: E ≤ tier + CEILING_EPS
+CEILING_EPS = 0.02               # thin-evidence ceiling margin above tier (n_resolved=0)
+N_LIFT = 20                      # resolved outcomes at which the ceiling fully lifts to 1.0
 MIN_REVIEWS = 5                  # reviewer needs ≥ this many resolved obs to earn a real weight
 DEFAULT_REVIEWER_WEIGHT = 0.05   # floor weight for under-observed / unseen reviewers
 BRIER_SCALE = 0.25               # worst-case Brier for a [0,1] estimate (normalizer)
@@ -146,8 +154,13 @@ def score_agent(
         beta += w * (1.0 - float(rating))
 
     E = alpha / (alpha + beta)
-    if tier is not None:                       # capability ceiling — skipped when tier is None
-        E = min(E, float(tier) + CEILING_EPS)
+    # capability ceiling — evidence-gated: tight when verifiable evidence is thin
+    # (guards cold-start / review-farm inflation), lifts as resolved outcomes prove
+    # capability (verifiable evidence dominates). Skipped entirely when tier is None.
+    if tier is not None:
+        s = min(max(n_resolved / N_LIFT, 0.0), 1.0)
+        ceiling = float(tier) + CEILING_EPS + (1.0 - float(tier) - CEILING_EPS) * s
+        E = min(E, ceiling)
 
     return CGRResult(
         agent_handle=agent_handle,

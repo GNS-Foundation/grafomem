@@ -21,6 +21,7 @@ from aml.cgr import (
     CGRResult, DIMENSION_RECEIVABLES, MIN_RESOLVED_PROVEN,
     beta_prior, compute_scores_from_rows, reviewer_weights, score_agent, to_tiergate,
 )
+from aml.cgr.scoring import CEILING_EPS, N_LIFT
 from aml.cgr.substrate import DecisionRow
 from aml.cgr.validate import synthetic_substrate, validate_report
 
@@ -61,12 +62,24 @@ def test_score_agent_resolved_updates_and_rule_excluded():
     assert r.cgr_score == pytest.approx((1 + 1) / (1 + 1 + 1 + 1))  # α=2,β=2 ⇒ 0.5
 
 
-def test_ceiling_caps_when_tier_present_and_skipped_when_none():
-    rows = [_row(f"INV{i}", outcome="paid", tier=0.3) for i in range(20)]
+def test_ceiling_cold_start_clamps_even_against_review_farm():
+    # n_resolved = 0 with tier present: ceiling pinned at tier + CEILING_EPS.
+    # A wall of rave (soft) reviews must NOT inflate the score past it.
+    rows = [_row(f"INV{i}", tier=0.3) for i in range(10)]          # certifies, NO outcomes
+    reviews = [(f"INV{i}", "rev", 1.0) for i in range(10)]         # all 1.0, unresolved
+    r = score_agent("A@k", rows, {}, reviews, {"rev": 1.0}, 0.3)
+    assert r.n_resolved == 0
+    assert r.cgr_score == pytest.approx(0.3 + CEILING_EPS)         # 0.32 — cold-start clamp holds
+
+
+def test_ceiling_lifts_with_evidence_and_skipped_when_none():
+    # ≥ N_LIFT resolved outcomes ⇒ ceiling lifts to 1.0, calibration shows through
+    rows = [_row(f"INV{i}", outcome="paid", tier=0.3) for i in range(N_LIFT)]
     out = {r.invoice_ref: "paid" for r in rows}
-    capped = score_agent("A@k", rows, out, [], {}, 0.3)
-    assert capped.cgr_score == pytest.approx(0.32)  # min(E, tier+0.02); E≫0.32 here
-    # tier=None ⇒ no clamp, the calibrated posterior shows through
+    lifted = score_agent("A@k", rows, out, [], {}, 0.3)
+    assert lifted.n_resolved == N_LIFT
+    assert lifted.cgr_score > 0.8                                  # NOT capped at 0.32 anymore
+    # tier=None ⇒ ceiling skipped entirely
     uncapped = score_agent("A@k", rows, out, [], {}, None)
     assert uncapped.cgr_score > 0.9
 
@@ -114,6 +127,16 @@ def test_synthetic_corr_meets_threshold_and_beats_naive():
     assert rep["corr_cgr_default"] < -0.7, rep["corr_cgr_default"]
     assert rep["beats_naive"]
     assert abs(rep["corr_cgr_default"]) > abs(rep["corr_naive_default"])
+
+
+def test_synthetic_tier_wired_meets_threshold_after_ceiling_lift():
+    # tier-wired path: each agent has ≫ N_LIFT resolved outcomes, so the
+    # evidence-gated ceiling lifts and calibration dominates — the old tier+0.02
+    # hard-clamp inversion is gone.
+    d = synthetic_substrate(with_tier=True)
+    rep = validate_report(d.rows, d.reviews, truth_by_ref=d.truth_by_ref)
+    assert rep["corr_cgr_default"] < -0.7, rep["corr_cgr_default"]
+    assert rep["beats_naive"]
 
 
 def test_early_signal_before_full_resolution():

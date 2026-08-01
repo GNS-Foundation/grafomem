@@ -185,23 +185,24 @@ def format_report(rep: dict, title: str = "") -> str:
 
 
 def _run_synthetic() -> int:
-    # LIVE path (tier=None — TierGate unwired today) is the headline: pure
-    # calibration on realized outcomes. This is the config production runs.
+    # LIVE path (tier=None — TierGate unwired today): pure calibration on realized
+    # outcomes. This is the config production runs.
     dlive = synthetic_substrate(with_tier=False)
     live = validate_report(dlive.rows, dlive.reviews, truth_by_ref=dlive.truth_by_ref)
-    print(format_report(live, "— tier=None (LIVE path, headline)"))
+    print(format_report(live, "— tier=None (live path)"))
     print()
-    # FUTURE path (tier wired): the capability ceiling E=min(E, tier+0.02) caps the
-    # score to ~tier, so CGR collapses onto the tier proxy and the correlation
-    # reflects tier quality, NOT calibration. Shown for transparency — see the
-    # deviation note; the ceiling margin is flagged for architecture review.
+    # FUTURE path (tier wired): with the evidence-gated ceiling, each agent here has
+    # far more than N_LIFT resolved outcomes, so the ceiling lifts to 1.0 and
+    # calibration dominates — the correlation is strongly negative again (the
+    # tier+0.02 hard clamp that used to invert it is gone).
     dfut = synthetic_substrate(with_tier=True)
     fut = validate_report(dfut.rows, dfut.reviews, truth_by_ref=dfut.truth_by_ref)
-    print(format_report(fut, "— tier prior + ceiling (FUTURE path, informational)"))
-    print("   note: ceiling tier+0.02 caps CGR≈tier here → corr tracks the tier proxy, not calibration.")
+    print(format_report(fut, "— tier prior + evidence-gated ceiling (future path)"))
+    print("   note: agents have ≫ N_LIFT resolved outcomes → ceiling lifts, calibration dominates.")
     print()
-    ok = live["meets_threshold"] and live["beats_naive"]
-    print(f"SYNTHETIC VALIDATION (live path): {'PASS' if ok else 'FAIL'}")
+    ok = (live["meets_threshold"] and live["beats_naive"]
+          and fut["meets_threshold"] and fut["beats_naive"])
+    print(f"SYNTHETIC VALIDATION: {'PASS' if ok else 'FAIL'}")
     return 0 if ok else 1
 
 
