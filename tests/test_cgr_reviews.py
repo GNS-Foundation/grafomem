@@ -249,7 +249,8 @@ async def test_review_with_null_agent_handle_still_attributed_via_join(db):
 
 
 @pytest.mark.asyncio
-async def test_orphan_review_no_matching_decision_does_not_crash(db):
+async def test_orphan_review_no_matching_decision_does_not_crash(db, caplog):
+    import logging
     T = _tenant()
     await _certify(db, T, "R1")
     await _outcome(db, T, "R1", "paid")
@@ -257,7 +258,9 @@ async def test_orphan_review_no_matching_decision_does_not_crash(db):
     # a review for an invoice that has NO decision (orphan) + no client handle
     await _review(db, T, "GHOST", "good", 1.0, agent=None)
 
-    results = compute_scores(db.dt, db.sm, T)              # must not raise
+    with caplog.at_level(logging.WARNING, logger="grafomem.cgr.engine"):
+        results = compute_scores(db.dt, db.sm, T)          # must not raise
     handles = {r.agent_handle for r in results}
     assert AGENT in handles                                # real agent still scored
     assert None not in handles and "GHOST" not in handles  # no phantom agent from the orphan
+    assert any("capture gap" in r.message for r in caplog.records)  # capture-gap warning emitted

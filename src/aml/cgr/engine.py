@@ -6,6 +6,7 @@ resolved history) and passed into each per-agent `score_agent` call.
 """
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 from collections.abc import Iterable
 
@@ -14,6 +15,8 @@ from aml.cgr.scoring import (
     reviewer_weights, score_agent,
 )
 from aml.cgr.substrate import DecisionRow, ReviewEvent, load_reviews, load_substrate
+
+logger = logging.getLogger("grafomem.cgr.engine")
 
 # TierGate band contract. Each promotion needs BOTH a score floor and an
 # evidence floor (n_resolved) — "report the posterior, not a point". An agent at
@@ -69,6 +72,14 @@ def compute_scores_from_rows(
     # above but has no agent to carry its early signal — dropped here, no crash.
     # (Attribution wiring, not scoring math — scoring.py is untouched.)
     agent_by_ref = {r.invoice_ref: r.agent_handle for r in rows if r.invoice_ref is not None}
+    orphans = sorted({rv.invoice_ref for rv in reviews if rv.invoice_ref not in agent_by_ref})
+    if orphans:
+        # A review referencing an invoice with no captured decision is a capture gap
+        # against Ticket-#1's spine (mirrors the null-invoice_ref decision warning):
+        # it can inform neither calibration nor attribution and is dropped from scoring.
+        logger.warning("CGR: %d review(s) reference invoice_refs with no captured decision "
+                       "(capture gap — not scored): %s%s", len(orphans), orphans[:5],
+                       " …" if len(orphans) > 5 else "")
     for rv in reviews:
         handle = agent_by_ref.get(rv.invoice_ref) or rv.agent_handle
         if handle is None:
