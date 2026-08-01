@@ -1054,11 +1054,13 @@ def create_app(
                 from aml.cloud.demo_routes import (
                     create_cgr_router, create_governed_router, create_verify_router,
                 )
+                from aml.cgr.routes import create_cgr_scoring_router
                 store_mgr = app.state.store_manager
                 app.include_router(create_governed_router(dt, receipt_svc, signing_identity, store_mgr))
                 app.include_router(create_verify_router(signing_identity))
                 app.include_router(create_cgr_router(dt, store_mgr))
-                logger.info("Governed-decision + verify + CGR substrate routes enabled")
+                app.include_router(create_cgr_scoring_router(dt, store_mgr))
+                logger.info("Governed-decision + verify + CGR substrate + CGR scoring routes enabled")
             except Exception as e:
                 logger.warning("Demo routes not enabled: %s", e)
 

@@ -36,12 +36,18 @@ from pydantic import BaseModel, Field
 from aml.backends.interface import Capability, WriteOptions
 from aml.cloud.execution_receipts import ExecutionReceiptService
 
+# The CGR outcome-store read/join is owned by aml.cgr.substrate (single source of
+# truth, shared with the scoring engine). The write path below reuses these.
+from aml.cgr.substrate import (
+    CGR_OUTCOMES_STORE, CGR_OUTCOME_SCHEMA,
+    _effective_at, _latest_for, _sort_key, _tenant_outcomes,
+    export_rows, load_substrate,
+)
+
 logger = logging.getLogger("grafomem.cloud.demo_routes")
 
-# CGR substrate constants
+# CGR substrate constants (CGR_OUTCOMES_STORE / CGR_OUTCOME_SCHEMA imported above)
 CGR_DECISION_SCHEMA = "cgr.decision.v1"
-CGR_OUTCOME_SCHEMA = "cgr.outcome.v1"
-CGR_OUTCOMES_STORE = "cgr-outcomes"
 _OUTCOME_PREDICATE = "receivable_outcome"
 _VALID_OUTCOMES = {"paid", "default", "disputed", "late", "written_off"}
 
@@ -165,35 +171,6 @@ def _outcome_metadata(invoice_ref: str, outcome: str, amount_recovered, source: 
         "amount_recovered": amount_recovered, "source": source,
         "cgr_schema": CGR_OUTCOME_SCHEMA,
     }
-
-
-def _tenant_outcomes(backend, tenant_id: str) -> list:
-    """Every CGR outcome record for a tenant. `audit()` is an admin (all-tenant)
-    dump over the shared store, so we filter by tenant_id + the cgr_schema marker.
-    Correctness over performance (POC scale); paginate/optimize later."""
-    rows = []
-    for m in backend.audit():
-        md = m.metadata or {}
-        if md.get("cgr_schema") == CGR_OUTCOME_SCHEMA and m.tenant_id == tenant_id:
-            rows.append(m)
-    return rows
-
-
-def _effective_at(m):
-    return m.valid_from or m.written_at
-
-
-def _sort_key(m):
-    # Latest wins by valid_from; ref (monotonic insert id) breaks same-instant ties
-    # so a same-day correction always beats the record it revised.
-    return (_effective_at(m), m.ref or 0)
-
-
-def _latest_for(outcomes: list, invoice_ref: str):
-    """The current outcome for an invoice_ref: latest by valid_from. Append-safe —
-    correct whether or not the backend marked the prior via supersede()."""
-    cands = [m for m in outcomes if (m.metadata or {}).get("subject") == invoice_ref]
-    return max(cands, key=_sort_key) if cands else None
 
 
 def _record_outcome(backend, *, tenant_id, invoice_ref, outcome, outcome_date,
@@ -354,36 +331,12 @@ def create_cgr_router(decision_trail, store_manager) -> APIRouter:
         if decision_trail is None or store_manager is None:
             raise HTTPException(503, "CGR substrate services not available")
 
-        backend = store_manager.get_or_create_named(CGR_OUTCOMES_STORE).backend
-        decisions = decision_trail.query_decisions(tenant_id=tenant_id, limit=limit, offset=offset)
-
-        # latest outcome per invoice_ref (tenant-scoped, by valid_from)
-        by_ref: dict = {}
-        for m in _tenant_outcomes(backend, tenant_id):
-            ref = (m.metadata or {}).get("subject")
-            if ref is None:
-                continue
-            if ref not in by_ref or _sort_key(m) > _sort_key(by_ref[ref]):
-                by_ref[ref] = m
-
-        rows = []
-        for rec in decisions:
-            p = rec.parameters or {}
-            inv_ref = p.get("invoice_ref", p.get("invoice_id"))
-            om = by_ref.get(inv_ref)          # join is tag-agnostic (all certifies, any tag)
-            rows.append({
-                "decision_id": rec.decision_id,
-                "invoice_ref": inv_ref,
-                "agent_handle": p.get("agent_handle"),
-                "agent_tier": p.get("agent_tier"),
-                "decision": p.get("decision"),
-                "reason_code": p.get("reason_code"),
-                "verifiability_tag": p.get("verifiability_tag"),
-                "created_at": rec.created_at.isoformat() if rec.created_at else None,
-                "outcome": (om.metadata or {}).get("object") if om else None,
-                "outcome_date": _effective_at(om).isoformat() if om else None,
-            })
-        return {"decisions": rows, "count": len(rows)}
+        # The join now lives in aml.cgr.substrate.load_substrate (single source of
+        # truth, shared with the scoring engine). export_rows() reproduces the
+        # historical 10-key response shape byte-for-byte.
+        rows = load_substrate(decision_trail, store_manager, tenant_id, limit=limit, offset=offset)
+        serialized = export_rows(rows)
+        return {"decisions": serialized, "count": len(serialized)}
 
     return router
 

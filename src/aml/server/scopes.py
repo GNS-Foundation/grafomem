@@ -38,6 +38,8 @@ SCOPE_VOCABULARY: frozenset[str] = frozenset(
         "governance:admin",
         # Decision trail
         "decisions:read",
+        # CGR — capability-grounded reputation scores (read-only)
+        "cgr:read",
         # Erasure
         "erasure:execute",
         # Gcrumbs
@@ -74,11 +76,13 @@ ROLE_SCOPES: dict[str, list[str]] = {
         "memory:write",
         "orchestrator:run",
         "decisions:read",
+        "cgr:read",
         "gcrumbs:read",
     ],
     "read_only": [
         "memory:read",
         "decisions:read",
+        "cgr:read",
         "gcrumbs:read",
     ],
 }
