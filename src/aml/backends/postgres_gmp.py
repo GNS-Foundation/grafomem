@@ -48,6 +48,13 @@ from aml.backends.interface import (
 from aml.backends.vector_only import _default_embedder
 from aml.provenance import fact_id_for_content, sign_provenance
 
+# Canonical JSON — deterministic key order + compact separators (matches the
+# _CANON used in decision_trail.py / orchestrator.py). Used to serialize metadata
+# consistently before it is stored/encrypted.
+def _CANON(obj) -> str:
+    return json.dumps(obj, sort_keys=True, separators=(",", ":"), default=str)
+
+
 # Sentinels — same semantics as sqlite_gmp.py, avoiding NULLs in indexed columns.
 OPEN_UNTIL_TS = datetime(9999, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
 FROM_BEGIN_TS = datetime(1970, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
