@@ -1,17 +1,25 @@
-"""Governed-decision + independent-verification routes.
+"""Governed-decision, independent-verification, and CGR substrate-capture routes.
 
-Adds the three endpoints the Kapwork demo is built on:
+Kapwork surface:
+  POST /v1/governed/decisions      Record a governed (judgment) decision.
+  POST /v1/governed/verify-batch   Rules-engine batch; every decision tagged "rule".
+  GET  /v1/gcrumbs/verify/key       Public Ed25519 key (auth-exempt).
+  POST /v1/gcrumbs/verify           Stateless receipt verification.
 
-  POST /v1/governed/decisions   Record a governed decision -> returns the
-                                decision_record AND a signed, hash-chained
-                                execution_receipt (tenant-scoped, auth required).
-  GET  /v1/gcrumbs/verify/key    The real Ed25519 public key (auth-exempt) so an
-                                independent party can fetch it without access.
-  POST /v1/gcrumbs/verify        Stateless verification of one or more receipts
-                                against a supplied public key. No DB access.
+CGR substrate capture (Ticket #1) — instrument the path so it accumulates what
+the capability-grounded reputation layer needs, from the first invoice:
+  * every governed decision carries the three irreversible CGR fields
+    (invoice_ref, agent_handle, verifiability_tag) + a structured reason_code
+    in its decision `parameters` (JSONB — no migration);
+  POST /v1/governed/outcomes       Append-only intake of the ground-truth label
+                                   (paid/default/…) that arrives weeks later.
+  POST /v1/governed/outcomes/bulk  Same, list form (CSV day-one).
+  GET  /v1/cgr/substrate/export    Joined decisions + outcomes for the offline
+                                   CGR-v1 pass (shaped for cgr_substrate.py).
 
-The receipt is signed over its receipt_id by the shared signing identity, so a
-funder can verify it themselves and a wrong key is rejected.
+No DB migration: CGR decision fields ride `decision_records.parameters`;
+outcomes ride a dedicated append-only GMP store ("cgr-outcomes"). The
+signing/gcrumbs receipt logic is unchanged.
 """
 
 from __future__ import annotations
@@ -20,13 +28,22 @@ import base64
 import json
 import logging
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from aml.backends.interface import Capability, WriteOptions
 from aml.cloud.execution_receipts import ExecutionReceiptService
 
 logger = logging.getLogger("grafomem.cloud.demo_routes")
+
+# CGR substrate constants
+CGR_DECISION_SCHEMA = "cgr.decision.v1"
+CGR_OUTCOME_SCHEMA = "cgr.outcome.v1"
+CGR_OUTCOMES_STORE = "cgr-outcomes"
+_OUTCOME_PREDICATE = "receivable_outcome"
+_VALID_OUTCOMES = {"paid", "default", "disputed", "late", "written_off"}
 
 
 def _tenant_id(request: Request) -> str:
@@ -36,9 +53,9 @@ def _tenant_id(request: Request) -> str:
     return ctx.tenant_id
 
 
-# ----------------------------------------------------------------------------
-# POST /v1/governed/decisions
-# ----------------------------------------------------------------------------
+# ============================================================================
+# Request models
+# ============================================================================
 
 class GovernedDecisionRequest(BaseModel):
     decision: str                                    # "certify" | "reject"
@@ -46,28 +63,61 @@ class GovernedDecisionRequest(BaseModel):
     invoice_id: str | None = None
     context: dict = Field(default_factory=dict)      # the invoice fields
     model_id: str = "kapwork-verify-agent-v1"
+    # CGR substrate (Ticket #1)
+    agent_handle: str = "invoice-certifier@kapwork-receivables"
+    verifiability_tag: str = "judgment"              # agent-posted judgment calls
+    agent_tier: float | None = None                  # optional GEIANT TierGate snapshot
 
 
 class VerifyBatchRequest(BaseModel):
     invoices: list[dict]                             # raw invoice objects
     policy: dict = Field(default_factory=dict)       # optional overrides of DEFAULT_POLICY
     model_id: str = "kapwork-verify-agent-v1"
+    # CGR substrate (Ticket #1) — verify-batch decisions are always tag="rule"
+    agent_handle: str = "invoice-rules-engine@kapwork-receivables"
+    agent_tier: float | None = None
 
+
+class OutcomeEvent(BaseModel):
+    invoice_ref: str
+    outcome: str                                     # paid|default|disputed|late|written_off
+    outcome_date: str | None = None                  # ISO; default = now
+    amount_recovered: float | None = None
+    source: str = "manual"                           # funder_feed|kapwork_ledger|manual
+
+
+# ============================================================================
+# Decision record + sign (with CGR substrate fields in parameters)
+# ============================================================================
 
 def _record_and_sign(decision_trail, execution_receipts, signing_identity, *,
-                     tenant_id, invoice_id, context, decision, reason, model_id):
+                     tenant_id, invoice_ref, context, decision, reason, model_id,
+                     agent_handle, verifiability_tag, agent_tier, reason_code):
     """Record a governed decision as a signed decision_record + signed, chained
-    execution_receipt. Returns {decision_record, execution_receipt}."""
+    execution_receipt, carrying the CGR substrate fields in `parameters`.
+    Returns {decision_record, execution_receipt}."""
+    if invoice_ref is None:
+        logger.warning("CGR: governed decision recorded with no invoice_ref — will be unjoinable to outcome")
+
     query = json.dumps(context, sort_keys=True, default=str)
     raw_output = json.dumps({"decision": decision, "reason": reason}, sort_keys=True, default=str)
 
     rec = decision_trail.log(
         tenant_id=tenant_id, store_id="governed", query=query,
         model_id=model_id, raw_output=raw_output,
-        parameters={"invoice_id": invoice_id, "decision": decision},
+        parameters={
+            "invoice_id": invoice_ref,               # existing
+            "invoice_ref": invoice_ref,              # explicit CGR join key (alias, keep both)
+            "decision": decision,                    # existing
+            "reason_code": reason_code,              # structured code (rule) or None (judgment)
+            "agent_handle": agent_handle,            # CGR: stable agent identity
+            "verifiability_tag": verifiability_tag,  # CGR: "rule" | "judgment"
+            "agent_tier": agent_tier,                # CGR: optional TierGate snapshot (nullable)
+            "cgr_schema": CGR_DECISION_SCHEMA,        # CGR: substrate version tag
+        },
         signing_identity=signing_identity,
     )
-    workflow_id = f"governed:{invoice_id or tenant_id}"
+    workflow_id = f"governed:{invoice_ref or tenant_id}"
     try:
         step_number = len(execution_receipts.get_receipts(workflow_id))
     except Exception:
@@ -81,7 +131,9 @@ def _record_and_sign(decision_trail, execution_receipts, signing_identity, *,
     return {
         "decision_record": {
             "decision_id": rec.decision_id, "tenant_id": rec.tenant_id,
-            "invoice_id": invoice_id, "decision": decision, "reason": reason,
+            "invoice_id": invoice_ref, "decision": decision, "reason": reason,
+            "reason_code": reason_code, "agent_handle": agent_handle,
+            "verifiability_tag": verifiability_tag, "agent_tier": agent_tier,
             "model_id": rec.model_id, "raw_output": rec.raw_output,
             "created_at": rec.created_at.isoformat(),
             "signature": base64.b64encode(rec.signature).decode() if rec.signature else None,
@@ -91,12 +143,122 @@ def _record_and_sign(decision_trail, execution_receipts, signing_identity, *,
     }
 
 
-def create_governed_router(decision_trail, execution_receipts, signing_identity) -> APIRouter:
+# ============================================================================
+# CGR outcomes store — append-only, tenant-scoped
+# ============================================================================
+
+def _parse_dt(s: str | None) -> datetime:
+    if not s:
+        return datetime.now(timezone.utc)
+    try:
+        dt = datetime.fromisoformat(str(s).replace("Z", "+00:00"))
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    except Exception:
+        return datetime.now(timezone.utc)
+
+
+def _outcome_metadata(invoice_ref: str, outcome: str, amount_recovered, source: str) -> dict:
+    # Fact-shaped record carried in content + metadata (the GMP write API is
+    # content-based): predicate="receivable_outcome", subject=invoice_ref, object=outcome.
+    return {
+        "predicate": _OUTCOME_PREDICATE, "subject": invoice_ref, "object": outcome,
+        "amount_recovered": amount_recovered, "source": source,
+        "cgr_schema": CGR_OUTCOME_SCHEMA,
+    }
+
+
+def _tenant_outcomes(backend, tenant_id: str) -> list:
+    """Every CGR outcome record for a tenant. `audit()` is an admin (all-tenant)
+    dump over the shared store, so we filter by tenant_id + the cgr_schema marker.
+    Correctness over performance (POC scale); paginate/optimize later."""
+    rows = []
+    for m in backend.audit():
+        md = m.metadata or {}
+        if md.get("cgr_schema") == CGR_OUTCOME_SCHEMA and m.tenant_id == tenant_id:
+            rows.append(m)
+    return rows
+
+
+def _effective_at(m):
+    return m.valid_from or m.written_at
+
+
+def _sort_key(m):
+    # Latest wins by valid_from; ref (monotonic insert id) breaks same-instant ties
+    # so a same-day correction always beats the record it revised.
+    return (_effective_at(m), m.ref or 0)
+
+
+def _latest_for(outcomes: list, invoice_ref: str):
+    """The current outcome for an invoice_ref: latest by valid_from. Append-safe —
+    correct whether or not the backend marked the prior via supersede()."""
+    cands = [m for m in outcomes if (m.metadata or {}).get("subject") == invoice_ref]
+    return max(cands, key=_sort_key) if cands else None
+
+
+def _record_outcome(backend, *, tenant_id, invoice_ref, outcome, outcome_date,
+                    amount_recovered, source) -> dict:
+    """Append-only write of an outcome. Idempotent on an identical re-post;
+    supersedes the prior when it differs and the backend supports it."""
+    existing = _tenant_outcomes(backend, tenant_id)
+    current = _latest_for(existing, invoice_ref)
+
+    # (3) Idempotent: an identical (outcome, amount_recovered, source) re-post is a no-op.
+    if current is not None:
+        cm = current.metadata or {}
+        if (cm.get("object") == outcome and cm.get("amount_recovered") == amount_recovered
+                and cm.get("source") == source):
+            return {"invoice_ref": invoice_ref, "outcome": outcome,
+                    "recorded_at": _effective_at(current).isoformat(),
+                    "superseded_prior": False, "idempotent": True}
+
+    vf = _parse_dt(outcome_date)
+    meta = _outcome_metadata(invoice_ref, outcome, amount_recovered, source)
+    opts = WriteOptions(valid_from=vf, tenant_id=tenant_id, metadata=meta)
+    content = f"{_OUTCOME_PREDICATE} | {invoice_ref} | {outcome}"
+
+    superseded = current is not None
+    if current is not None:
+        # (2) supersede is OPTIONAL — check capability, fall back to append.
+        caps = getattr(backend, "capabilities", lambda: set())()
+        did = False
+        if Capability.SUPERSESSION_CHAIN in caps:
+            try:
+                backend.supersede(current.ref, content, meta, opts)   # PostgresGMPBackend sig
+                did = True
+            except TypeError:
+                try:
+                    backend.supersede(current.ref, content, opts)     # Protocol 3-arg sig
+                    did = True
+                except Exception:
+                    did = False
+            except Exception:
+                did = False
+        if not did:
+            backend.write(content, opts)   # append-only fallback; latest valid_from wins
+    else:
+        backend.write(content, opts)
+
+    return {"invoice_ref": invoice_ref, "outcome": outcome, "recorded_at": vf.isoformat(),
+            "superseded_prior": superseded, "idempotent": False}
+
+
+# ============================================================================
+# Routers
+# ============================================================================
+
+def create_governed_router(decision_trail, execution_receipts, signing_identity,
+                           store_manager=None) -> APIRouter:
     router = APIRouter(tags=["Governed Decisions"])
 
     def _guard():
         if execution_receipts is None or decision_trail is None:
             raise HTTPException(503, "governed-decision services not available")
+
+    def _outcomes_backend():
+        if store_manager is None:
+            raise HTTPException(503, "outcomes store not available")
+        return store_manager.get_or_create_named(CGR_OUTCOMES_STORE).backend
 
     @router.post("/v1/governed/decisions")
     async def governed_decision(req: GovernedDecisionRequest, request: Request):
@@ -104,40 +266,42 @@ def create_governed_router(decision_trail, execution_receipts, signing_identity)
         _guard()
         return _record_and_sign(
             decision_trail, execution_receipts, signing_identity,
-            tenant_id=tenant_id, invoice_id=req.invoice_id, context=req.context,
+            tenant_id=tenant_id, invoice_ref=req.invoice_id, context=req.context,
             decision=req.decision, reason=req.reason, model_id=req.model_id,
+            agent_handle=req.agent_handle, verifiability_tag=req.verifiability_tag,
+            agent_tier=req.agent_tier, reason_code=None,  # judgment: no rule reason_code
         )
 
     @router.post("/v1/governed/verify-batch")
     async def verify_batch(req: VerifyBatchRequest, request: Request):
         """Ingest a batch of invoices, run the configurable rules engine
-        SERVER-SIDE, and record each result as a signed governed decision."""
+        SERVER-SIDE, and record each result as a signed governed decision
+        (verifiability_tag="rule")."""
         tenant_id = _tenant_id(request)
         _guard()
         from aml.cloud.verification import evaluate_invoice, resolve_policy
 
-        # Resolve the policy once so dedup + the result echo use the SAME field
-        # names the rules engine evaluates (so a customer can pass their own
-        # invoice_id/vendor/debtor field names without transforming the data).
         pol = resolve_policy(req.policy)
         id_field, vendor_field, debtor_field = pol["invoice_id_field"], pol["vendor_field"], pol["debtor_field"]
         certified: set = set()
         results = []
         for raw in req.invoices:
             inv = {k: v for k, v in raw.items() if not str(k).startswith("_")}
-            decision, reason = evaluate_invoice(inv, req.policy, certified)
+            decision, reason_code, reason = evaluate_invoice(inv, req.policy, certified)
             inv_id = inv.get(id_field)
             packet = _record_and_sign(
                 decision_trail, execution_receipts, signing_identity,
-                tenant_id=tenant_id, invoice_id=inv_id,
-                context=inv, decision=decision, reason=reason, model_id=req.model_id,
+                tenant_id=tenant_id, invoice_ref=inv_id, context=inv,
+                decision=decision, reason=reason, model_id=req.model_id,
+                agent_handle=req.agent_handle, verifiability_tag="rule",
+                agent_tier=req.agent_tier, reason_code=reason_code,
             )
             if decision == "certify":
                 certified.add(inv_id)
             results.append({
                 "invoice_id": inv_id,
                 "vendor": inv.get(vendor_field), "debtor": inv.get(debtor_field),
-                "decision": decision, "reason": reason,
+                "decision": decision, "reason": reason, "reason_code": reason_code,
                 "decision_record": packet["decision_record"],
                 "execution_receipt": packet["execution_receipt"],
             })
@@ -145,16 +309,88 @@ def create_governed_router(decision_trail, execution_receipts, signing_identity)
         n_cert = sum(1 for r in results if r["decision"] == "certify")
         return {
             "summary": {"total": len(results), "certified": n_cert, "rejected": len(results) - n_cert},
-            "policy": resolve_policy(req.policy),
+            "policy": pol,
             "results": results,
         }
+
+    @router.post("/v1/governed/outcomes")
+    async def post_outcome(ev: OutcomeEvent, request: Request):
+        tenant_id = _tenant_id(request)
+        if ev.outcome not in _VALID_OUTCOMES:
+            raise HTTPException(400, f"outcome must be one of {sorted(_VALID_OUTCOMES)}")
+        return _record_outcome(
+            _outcomes_backend(), tenant_id=tenant_id, invoice_ref=ev.invoice_ref,
+            outcome=ev.outcome, outcome_date=ev.outcome_date,
+            amount_recovered=ev.amount_recovered, source=ev.source,
+        )
+
+    @router.post("/v1/governed/outcomes/bulk")
+    async def post_outcomes_bulk(events: list[OutcomeEvent], request: Request):
+        tenant_id = _tenant_id(request)
+        backend = _outcomes_backend()
+        recorded = []
+        for ev in events:
+            if ev.outcome not in _VALID_OUTCOMES:
+                raise HTTPException(400, f"outcome must be one of {sorted(_VALID_OUTCOMES)}")
+            recorded.append(_record_outcome(
+                backend, tenant_id=tenant_id, invoice_ref=ev.invoice_ref,
+                outcome=ev.outcome, outcome_date=ev.outcome_date,
+                amount_recovered=ev.amount_recovered, source=ev.source))
+        return {"count": len(recorded), "recorded": recorded}
 
     return router
 
 
-# ----------------------------------------------------------------------------
+def create_cgr_router(decision_trail, store_manager) -> APIRouter:
+    """The read/join path so the validated cgr_substrate.py can run on real data."""
+    from aml.server.scopes import require_scope
+
+    router = APIRouter(prefix="/v1/cgr", tags=["CGR Substrate"])
+
+    @router.get("/substrate/export")
+    async def export_substrate(request: Request, limit: int = 500, offset: int = 0):
+        tenant_id = _tenant_id(request)
+        require_scope(request, "decisions:read")
+        if decision_trail is None or store_manager is None:
+            raise HTTPException(503, "CGR substrate services not available")
+
+        backend = store_manager.get_or_create_named(CGR_OUTCOMES_STORE).backend
+        decisions = decision_trail.query_decisions(tenant_id=tenant_id, limit=limit, offset=offset)
+
+        # latest outcome per invoice_ref (tenant-scoped, by valid_from)
+        by_ref: dict = {}
+        for m in _tenant_outcomes(backend, tenant_id):
+            ref = (m.metadata or {}).get("subject")
+            if ref is None:
+                continue
+            if ref not in by_ref or _sort_key(m) > _sort_key(by_ref[ref]):
+                by_ref[ref] = m
+
+        rows = []
+        for rec in decisions:
+            p = rec.parameters or {}
+            inv_ref = p.get("invoice_ref", p.get("invoice_id"))
+            om = by_ref.get(inv_ref)          # join is tag-agnostic (all certifies, any tag)
+            rows.append({
+                "decision_id": rec.decision_id,
+                "invoice_ref": inv_ref,
+                "agent_handle": p.get("agent_handle"),
+                "agent_tier": p.get("agent_tier"),
+                "decision": p.get("decision"),
+                "reason_code": p.get("reason_code"),
+                "verifiability_tag": p.get("verifiability_tag"),
+                "created_at": rec.created_at.isoformat() if rec.created_at else None,
+                "outcome": (om.metadata or {}).get("object") if om else None,
+                "outcome_date": _effective_at(om).isoformat() if om else None,
+            })
+        return {"decisions": rows, "count": len(rows)}
+
+    return router
+
+
+# ============================================================================
 # GET /v1/gcrumbs/verify/key  +  POST /v1/gcrumbs/verify   (independent verifier)
-# ----------------------------------------------------------------------------
+# ============================================================================
 
 class VerifyRequest(BaseModel):
     receipts: list[dict]
@@ -167,7 +403,7 @@ def create_verify_router(signing_identity) -> APIRouter:
     @router.get("/verify/key")
     def verify_key():
         if signing_identity is None:
-            raise HTTPException(503, "no signing identity configured — receipts are unsigned")
+            raise HTTPException(status_code=503, detail="no signing identity configured — receipts are unsigned")
         pub = signing_identity.public_key()
         return {
             "algorithm": "ed25519",

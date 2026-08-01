@@ -1051,10 +1051,14 @@ def create_app(
 
             # Governed-decision + independent-verification routes (Kapwork demo).
             try:
-                from aml.cloud.demo_routes import create_governed_router, create_verify_router
-                app.include_router(create_governed_router(dt, receipt_svc, signing_identity))
+                from aml.cloud.demo_routes import (
+                    create_cgr_router, create_governed_router, create_verify_router,
+                )
+                store_mgr = app.state.store_manager
+                app.include_router(create_governed_router(dt, receipt_svc, signing_identity, store_mgr))
                 app.include_router(create_verify_router(signing_identity))
-                logger.info("Governed-decision + verify routes enabled")
+                app.include_router(create_cgr_router(dt, store_mgr))
+                logger.info("Governed-decision + verify + CGR substrate routes enabled")
             except Exception as e:
                 logger.warning("Demo routes not enabled: %s", e)
 

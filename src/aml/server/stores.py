@@ -113,3 +113,26 @@ class StoreManager:
             if "__default__" not in self._stores:
                 self._stores["__default__"] = entry
             return self._stores["__default__"]
+
+    def get_or_create_named(self, store_id: str, tenant_id: str | None = None) -> StoreEntry:
+        """Get a store by a fixed, human-chosen id (e.g. "cgr-outcomes"), creating
+        it on first use. Unlike create() (which mints a random id), this keeps a
+        stable, well-known store id across restarts. Tenant isolation inside the
+        store is enforced by the backend (RLS / tenant_id on writes)."""
+        with self._lock:
+            existing = self._stores.get(store_id)
+            if existing is not None:
+                return existing
+        from datetime import datetime, timezone
+        backend = self._factory()
+        entry = StoreEntry(
+            store_id=store_id,
+            backend=backend,
+            created_at=datetime.now(timezone.utc).isoformat(),
+            owner_tenant_id=tenant_id,
+        )
+        with self._lock:
+            if store_id not in self._stores:
+                self._stores[store_id] = entry
+                logger.info("Named store created: %s (owner=%s)", store_id, tenant_id or 'none')
+            return self._stores[store_id]

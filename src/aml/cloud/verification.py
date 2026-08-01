@@ -5,9 +5,10 @@ configurable per request, so a customer expresses their own field names,
 thresholds, and which checks are active without a code change — the decision it
 returns is then recorded as a signed, tamper-evident governed decision.
 
-evaluate_invoice() returns (decision, reason) where decision is "certify" or
-"reject". Duplicate detection is caller-scoped: pass the set of invoice_ids
-already certified in this batch.
+evaluate_invoice() returns (decision, reason_code, reason_text) where decision is
+"certify" or "reject" and reason_code is a stable code from REASON_CODES (so the
+CGR substrate can group calls without NLP). Duplicate detection is caller-scoped:
+pass the set of invoice_ids already certified in this batch.
 """
 from __future__ import annotations
 
@@ -33,8 +34,19 @@ def resolve_policy(policy: dict | None) -> dict[str, Any]:
     return {**DEFAULT_POLICY, **(policy or {})}
 
 
-def evaluate_invoice(inv: dict, policy: dict | None, certified_ids: set) -> tuple[str, str]:
-    """Apply the (resolved) policy to one invoice. Returns (decision, reason)."""
+# Stable, NLP-free grouping keys for the CGR substrate. All `rule`/verifiable.
+# (A future `risk_judgment` code will come from a judgment agent — not this layer.)
+REASON_CODES = ("amount_exceeds_po", "amount_or_po_missing",
+                "no_debtor_approval", "duplicate", "clean")
+
+
+def evaluate_invoice(inv: dict, policy: dict | None, certified_ids: set) -> tuple[str, str, str]:
+    """Apply the (resolved) policy to one invoice.
+
+    Returns (decision, reason_code, reason_text). ``reason_code`` is a stable
+    code from REASON_CODES so CGR can group calls without NLP; ``reason_text``
+    is the human-readable explanation.
+    """
     p = resolve_policy(policy)
     # Ignore any annotation/helper keys (e.g. '_fraud') — decide only from real fields.
     inv = {k: v for k, v in inv.items() if not str(k).startswith("_")}
@@ -44,16 +56,16 @@ def evaluate_invoice(inv: dict, policy: dict | None, certified_ids: set) -> tupl
             inv_amt = float(inv.get(p["invoice_amount_field"]))
             po_amt = float(inv.get(p["po_amount_field"]))
         except (TypeError, ValueError):
-            return "reject", "Invoice or PO amount is missing or non-numeric"
+            return "reject", "amount_or_po_missing", "Invoice or PO amount is missing or non-numeric"
         if inv_amt > po_amt:
-            return "reject", "Invoice amount exceeds authorized PO"
+            return "reject", "amount_exceeds_po", "Invoice amount exceeds authorized PO"
 
     if p["require_approval"]:
         if inv.get(p["approval_field"]) != p["approved_value"]:
-            return "reject", "No verified approval from debtor"
+            return "reject", "no_debtor_approval", "No verified approval from debtor"
 
     if p["reject_duplicates"]:
         if inv.get(p["invoice_id_field"]) in certified_ids:
-            return "reject", "Duplicate of already-certified invoice"
+            return "reject", "duplicate", "Duplicate of already-certified invoice"
 
-    return "certify", "Amount within PO, approved, and not a duplicate"
+    return "certify", "clean", "Amount within PO, approved, and not a duplicate"
