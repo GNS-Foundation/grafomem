@@ -25,6 +25,8 @@ from datetime import datetime
 # aml.cloud.demo_routes, which keeps the write path).
 CGR_OUTCOMES_STORE = "cgr-outcomes"
 CGR_OUTCOME_SCHEMA = "cgr.outcome.v1"
+CGR_REVIEWS_STORE = "cgr-reviews"
+CGR_REVIEW_SCHEMA = "cgr.review.v1"
 
 
 @dataclass
@@ -85,6 +87,81 @@ def _latest_for(outcomes: list, invoice_ref: str):
     correct whether or not the backend marked the prior via supersede()."""
     cands = [m for m in outcomes if (m.metadata or {}).get("subject") == invoice_ref]
     return max(cands, key=_sort_key) if cands else None
+
+
+# -- review-store read helpers ------------------------------------------------
+# Reviews are MANY-per-invoice (many reviewers rate one certification), so the
+# dedup/revision key is the (subject, reviewer_handle) PAIR — not the invoice
+# alone. _latest_for (one-per-invoice) is deliberately NOT reused here.
+
+def _tenant_reviews(backend, tenant_id: str) -> list:
+    """Every CGR review record for a tenant. Mirrors _tenant_outcomes: audit() is
+    admin/all-tenant, so we filter by tenant_id + the review cgr_schema marker."""
+    rows = []
+    for m in backend.audit():
+        md = m.metadata or {}
+        if md.get("cgr_schema") == CGR_REVIEW_SCHEMA and m.tenant_id == tenant_id:
+            rows.append(m)
+    return rows
+
+
+def _latest_review_for(reviews: list, invoice_ref: str, reviewer_handle: str):
+    """Current review for ONE (invoice_ref, reviewer_handle) pair — latest by
+    valid_from. Used by the write path to dedup/supersede a reviewer's own prior."""
+    cands = [m for m in reviews
+             if (m.metadata or {}).get("subject") == invoice_ref
+             and (m.metadata or {}).get("reviewer_handle") == reviewer_handle]
+    return max(cands, key=_sort_key) if cands else None
+
+
+def _latest_reviews_by_pair(reviews: list) -> list:
+    """One record per (subject, reviewer_handle) — the latest by _sort_key. Keeps
+    the newest rating per reviewer instead of collapsing to one per invoice."""
+    latest: dict = {}
+    for m in reviews:
+        md = m.metadata or {}
+        key = (md.get("subject"), md.get("reviewer_handle"))
+        if key[0] is None or key[1] is None:
+            continue
+        if key not in latest or _sort_key(m) > _sort_key(latest[key]):
+            latest[key] = m
+    return list(latest.values())
+
+
+def load_reviews(store_manager, tenant_id: str) -> list[ReviewEvent]:
+    """One ReviewEvent per (invoice, reviewer), tenant-scoped, latest rating wins.
+    Feeds the reviewer-calibration bridge in engine.compute_scores. Deps injected;
+    stdlib-only — import isolation preserved."""
+    backend = store_manager.get_or_create_named(CGR_REVIEWS_STORE).backend
+    events = []
+    for m in _latest_reviews_by_pair(_tenant_reviews(backend, tenant_id)):
+        md = m.metadata or {}
+        obj = md.get("object")
+        events.append(ReviewEvent(
+            invoice_ref=md.get("subject"),
+            agent_handle=md.get("agent_handle"),
+            reviewer=md.get("reviewer_handle"),
+            rating=float(obj) if obj is not None else 0.0,
+        ))
+    return events
+
+
+def export_reviews(store_manager, tenant_id: str) -> list[dict]:
+    """Latest review per (invoice, reviewer), serialized for the additive reviews[]
+    on /substrate/export."""
+    backend = store_manager.get_or_create_named(CGR_REVIEWS_STORE).backend
+    out = []
+    for m in _latest_reviews_by_pair(_tenant_reviews(backend, tenant_id)):
+        md = m.metadata or {}
+        obj = md.get("object")
+        out.append({
+            "invoice_ref": md.get("subject"),
+            "reviewer_handle": md.get("reviewer_handle"),
+            "agent_handle": md.get("agent_handle"),
+            "rating": float(obj) if obj is not None else None,
+            "review_date": _effective_at(m).isoformat() if _effective_at(m) else None,
+        })
+    return out
 
 
 def load_substrate(decision_trail, store_manager, tenant_id: str, *,

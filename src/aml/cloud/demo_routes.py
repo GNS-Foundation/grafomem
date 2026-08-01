@@ -39,16 +39,17 @@ from aml.cloud.execution_receipts import ExecutionReceiptService
 # The CGR outcome-store read/join is owned by aml.cgr.substrate (single source of
 # truth, shared with the scoring engine). The write path below reuses these.
 from aml.cgr.substrate import (
-    CGR_OUTCOMES_STORE, CGR_OUTCOME_SCHEMA,
-    _effective_at, _latest_for, _sort_key, _tenant_outcomes,
-    export_rows, load_substrate,
+    CGR_OUTCOMES_STORE, CGR_OUTCOME_SCHEMA, CGR_REVIEWS_STORE, CGR_REVIEW_SCHEMA,
+    _effective_at, _latest_for, _latest_review_for, _sort_key,
+    _tenant_outcomes, _tenant_reviews, export_reviews, export_rows, load_substrate,
 )
 
 logger = logging.getLogger("grafomem.cloud.demo_routes")
 
-# CGR substrate constants (CGR_OUTCOMES_STORE / CGR_OUTCOME_SCHEMA imported above)
+# CGR substrate constants (store ids / schema markers imported from aml.cgr.substrate)
 CGR_DECISION_SCHEMA = "cgr.decision.v1"
 _OUTCOME_PREDICATE = "receivable_outcome"
+_REVIEW_PREDICATE = "certification_review"
 _VALID_OUTCOMES = {"paid", "default", "disputed", "late", "written_off"}
 
 
@@ -90,6 +91,20 @@ class OutcomeEvent(BaseModel):
     outcome_date: str | None = None                  # ISO; default = now
     amount_recovered: float | None = None
     source: str = "manual"                           # funder_feed|kapwork_ledger|manual
+
+
+class ReviewRecord(BaseModel):
+    """A funder/analyst rating of a certification (Ticket #3). Enables the
+    "verify the reviewer" bridge — calibrate a reviewer on verifiable outcomes,
+    then trust their ratings on unverifiable calls. Many-per-invoice: dedup key is
+    (invoice_ref, reviewer_handle)."""
+    invoice_ref: str
+    reviewer_handle: str
+    rating: float                                    # [0, 1]
+    agent_handle: str | None = None                  # who certified; back-filled at score time if omitted
+    decision_id: str | None = None                   # precise referent (kept in metadata)
+    review_date: str | None = None                   # ISO; default = now
+    source: str = "manual"                           # funder_feed|analyst|manual
 
 
 # ============================================================================
@@ -221,6 +236,71 @@ def _record_outcome(backend, *, tenant_id, invoice_ref, outcome, outcome_date,
 
 
 # ============================================================================
+# CGR reviews store — append-only, tenant-scoped, keyed by (invoice_ref, reviewer)
+# ============================================================================
+
+def _review_metadata(invoice_ref, reviewer_handle, rating, agent_handle, decision_id, source) -> dict:
+    # Fact-shaped: predicate="certification_review", subject=invoice_ref (join key,
+    # consistent with the outcome store), object=rating. reviewer_handle/decision_id
+    # in metadata (decision_id kept for precise attribution; subject stays invoice_ref).
+    return {
+        "predicate": _REVIEW_PREDICATE, "subject": invoice_ref, "object": rating,
+        "reviewer_handle": reviewer_handle, "agent_handle": agent_handle,
+        "decision_id": decision_id, "source": source,
+        "cgr_schema": CGR_REVIEW_SCHEMA,
+    }
+
+
+def _record_review(backend, *, tenant_id, invoice_ref, reviewer_handle, rating,
+                   agent_handle, decision_id, review_date, source) -> dict:
+    """Append-only write of a review. Dedup/revision key is (invoice_ref,
+    reviewer_handle): a reviewer re-rating supersedes their OWN prior; a different
+    reviewer is a distinct record. Idempotent on an identical re-post."""
+    existing = _tenant_reviews(backend, tenant_id)
+    current = _latest_review_for(existing, invoice_ref, reviewer_handle)
+
+    # Idempotent: identical (rating, agent_handle, source) from the same reviewer is a no-op.
+    if current is not None:
+        cm = current.metadata or {}
+        if (cm.get("object") == rating and cm.get("agent_handle") == agent_handle
+                and cm.get("source") == source):
+            return {"invoice_ref": invoice_ref, "reviewer_handle": reviewer_handle,
+                    "rating": rating, "recorded_at": _effective_at(current).isoformat(),
+                    "superseded_prior": False, "idempotent": True}
+
+    vf = _parse_dt(review_date)
+    meta = _review_metadata(invoice_ref, reviewer_handle, rating, agent_handle, decision_id, source)
+    opts = WriteOptions(valid_from=vf, tenant_id=tenant_id, metadata=meta)
+    content = f"{_REVIEW_PREDICATE} | {invoice_ref} | {reviewer_handle} | {rating}"
+
+    superseded = current is not None
+    if current is not None:
+        # supersede is OPTIONAL — check capability, fall back to append (latest wins).
+        caps = getattr(backend, "capabilities", lambda: set())()
+        did = False
+        if Capability.SUPERSESSION_CHAIN in caps:
+            try:
+                backend.supersede(current.ref, content, meta, opts)   # PostgresGMPBackend sig
+                did = True
+            except TypeError:
+                try:
+                    backend.supersede(current.ref, content, opts)     # Protocol 3-arg sig
+                    did = True
+                except Exception:
+                    did = False
+            except Exception:
+                did = False
+        if not did:
+            backend.write(content, opts)
+    else:
+        backend.write(content, opts)
+
+    return {"invoice_ref": invoice_ref, "reviewer_handle": reviewer_handle,
+            "rating": rating, "recorded_at": vf.isoformat(),
+            "superseded_prior": superseded, "idempotent": False}
+
+
+# ============================================================================
 # Routers
 # ============================================================================
 
@@ -236,6 +316,11 @@ def create_governed_router(decision_trail, execution_receipts, signing_identity,
         if store_manager is None:
             raise HTTPException(503, "outcomes store not available")
         return store_manager.get_or_create_named(CGR_OUTCOMES_STORE).backend
+
+    def _reviews_backend():
+        if store_manager is None:
+            raise HTTPException(503, "reviews store not available")
+        return store_manager.get_or_create_named(CGR_REVIEWS_STORE).backend
 
     @router.post("/v1/governed/decisions")
     async def governed_decision(req: GovernedDecisionRequest, request: Request):
@@ -315,6 +400,35 @@ def create_governed_router(decision_trail, execution_receipts, signing_identity,
                 amount_recovered=ev.amount_recovered, source=ev.source))
         return {"count": len(recorded), "recorded": recorded}
 
+    def _validate_rating(rating: float):
+        if not (0.0 <= rating <= 1.0):
+            raise HTTPException(400, "rating must be in [0, 1]")
+
+    @router.post("/v1/governed/reviews")
+    async def post_review(rv: ReviewRecord, request: Request):
+        tenant_id = _tenant_id(request)
+        _validate_rating(rv.rating)
+        return _record_review(
+            _reviews_backend(), tenant_id=tenant_id, invoice_ref=rv.invoice_ref,
+            reviewer_handle=rv.reviewer_handle, rating=rv.rating,
+            agent_handle=rv.agent_handle, decision_id=rv.decision_id,
+            review_date=rv.review_date, source=rv.source,
+        )
+
+    @router.post("/v1/governed/reviews/bulk")
+    async def post_reviews_bulk(reviews: list[ReviewRecord], request: Request):
+        tenant_id = _tenant_id(request)
+        backend = _reviews_backend()
+        recorded = []
+        for rv in reviews:
+            _validate_rating(rv.rating)
+            recorded.append(_record_review(
+                backend, tenant_id=tenant_id, invoice_ref=rv.invoice_ref,
+                reviewer_handle=rv.reviewer_handle, rating=rv.rating,
+                agent_handle=rv.agent_handle, decision_id=rv.decision_id,
+                review_date=rv.review_date, source=rv.source))
+        return {"count": len(recorded), "recorded": recorded}
+
     return router
 
 
@@ -333,10 +447,15 @@ def create_cgr_router(decision_trail, store_manager) -> APIRouter:
 
         # The join now lives in aml.cgr.substrate.load_substrate (single source of
         # truth, shared with the scoring engine). export_rows() reproduces the
-        # historical 10-key response shape byte-for-byte.
+        # historical 10-key decisions[] shape byte-for-byte; reviews[] is additive
+        # (Ticket #3) — new top-level key, decisions[] + count unchanged.
         rows = load_substrate(decision_trail, store_manager, tenant_id, limit=limit, offset=offset)
         serialized = export_rows(rows)
-        return {"decisions": serialized, "count": len(serialized)}
+        return {
+            "decisions": serialized,
+            "count": len(serialized),
+            "reviews": export_reviews(store_manager, tenant_id),
+        }
 
     return router
 

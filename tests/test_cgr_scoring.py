@@ -259,9 +259,11 @@ async def test_export_response_shape_unchanged(db):
                                    agent_handle="a@k"), _req(T))
     await db.post_outcome(db.OutcomeEvent(invoice_ref="X", outcome="paid"), _req(T))
     exp = await db.export(_req(T))
-    assert set(exp.keys()) == {"decisions", "count"} and exp["count"] == 1
+    # decisions[] + count byte-identical; reviews[] is the additive Ticket-#3 key
+    assert set(exp.keys()) == {"decisions", "count", "reviews"} and exp["count"] == 1
     assert list(exp["decisions"][0].keys()) == _EXPORT_KEYS   # byte-identical 10 keys, in order
     assert exp["decisions"][0]["outcome"] == "paid"
+    assert isinstance(exp["reviews"], list)
 
 
 @pytest.mark.asyncio
