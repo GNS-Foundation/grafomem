@@ -12,6 +12,8 @@ Two layers, matching #1–#3 style:
 """
 from __future__ import annotations
 
+import json
+import pathlib
 import uuid
 from types import SimpleNamespace
 
@@ -163,6 +165,43 @@ def test_fingerprint_changes_on_tamper():
     fp = attestation_fingerprint(att)
     tampered = dict(att, cgr_score=0.99)
     assert attestation_fingerprint(tampered) != fp
+
+
+# ============================================================================
+# JCS (RFC 8785) golden fixture — the cross-language wire-format contract (#4a.1)
+# ============================================================================
+
+_GOLDEN = pathlib.Path(__file__).resolve().parent / "fixtures" / "cgr_attestation_v1_jcs.golden.json"
+_TIERGATE_KEYS = ("agent_handle", "dimension", "tier", "cgr_score", "confidence",
+                  "n_resolved", "capability_tier", "as_of", "rationale")
+
+
+def test_jcs_golden_fixture_wire_format_locked():
+    """The committed JCS canonical bytes are the contract GEIANT (#4b) mirrors.
+    Locks: exact canonical byte string, signature verifies over raw bytes under the
+    pinned Foundation key, one-byte tamper fails, and signing is deterministic."""
+    fx = json.loads(_GOLDEN.read_text())
+    att = fx["attestation"]
+
+    # 1. wire format locked — JCS canonical bytes equal the committed string
+    assert canonical_body(att).decode("utf-8") == fx["canonical_body_utf8"]
+    # JCS number formatting: integer-valued float serialized WITHOUT ".0"
+    assert '"confidence":6,' in fx["canonical_body_utf8"]
+    # JCS strings are raw UTF-8, not \uXXXX ascii-escaped
+    assert "≥" in fx["canonical_body_utf8"] and "\\u2265" not in fx["canonical_body_utf8"]
+
+    # 2. signature verifies over the raw JCS bytes under the pinned Foundation key
+    verify = make_verifier(bytes.fromhex(fx["issuer_key_id"]))
+    assert verify_attestation(att, verify) is True
+
+    # 3. one-byte tamper → false
+    assert verify_attestation({**att, "cgr_score": 0.99}, verify) is False
+
+    # 4. determinism — re-signing the same seed reproduces the exact signature
+    ident = FoundationIdentity(bytes.fromhex(fx["provenance"]["foundation_signing_seed_hex"]))
+    tiergate = {k: att[k] for k in _TIERGATE_KEYS}
+    resigned = build_attestation(tiergate, signer=make_signer(ident), issuer_key_id=issuer_key_id(ident))
+    assert resigned["signature"] == att["signature"]
 
 
 # ============================================================================

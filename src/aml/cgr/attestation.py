@@ -27,7 +27,8 @@ issuance record lives in the gcrumbs chain, not in evidence_ref.
 from __future__ import annotations
 
 import hashlib
-import json
+
+import rfc8785
 
 CGR_ATTESTATION_SCHEMA = "cgr.attestation.v1"
 ISSUER = "gns-foundation"
@@ -37,9 +38,17 @@ _ENVELOPE_KEYS = ("signature", "evidence_ref")
 
 
 def _canon(obj) -> bytes:
-    """Deterministic canonical JSON — same rule as postgres_gmp._CANON / gcrumbs.canon
-    (sort_keys, tight separators, default=str). Signatures are reproducible."""
-    return json.dumps(obj, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    """RFC 8785 (JCS) canonicalization — a language-neutral canonical JSON so a
+    non-Python verifier (GEIANT, #4b) reproduces the signed bytes byte-for-byte.
+
+    JCS pins the two cross-language traps that plain ``json.dumps`` gets wrong:
+    raw UTF-8 (no ``\\uXXXX`` ascii-escaping) and ECMAScript number formatting
+    (integer-valued floats like ``6.0`` serialize as ``6``; shortest round-trip
+    otherwise), plus lexicographically sorted keys and tight separators. Output is
+    byte-identical to the stock JS ``canonicalize`` (JCS) library. All signed-body
+    values are JSON-native (str/float/int/None) — ``rfc8785`` raises on anything
+    else rather than silently coercing, which is the behaviour we want."""
+    return rfc8785.dumps(obj)
 
 
 def _signed_body(att: dict) -> dict:

@@ -1,0 +1,29 @@
+{
+  "provenance": {
+    "ticket": "grafomem #4a.1 (cgr/attestation-canon-jcs)",
+    "canonicalization": "RFC 8785 (JCS) — raw UTF-8, ECMAScript number formatting, sorted keys, tight separators",
+    "foundation_signing_seed_hex": "1111111111111111111111111111111111111111111111111111111111111111",
+    "foundation_signing_seed_note": "32-byte all-0x11 seed — TEST KEY ONLY, not the real Foundation key",
+    "input_cgrresult": "CGRResult('invoice-certifier@kapwork-receivables', 2/3, 6.0, 12, 3, 0.75, '2026-01-01T00:00:00Z')",
+    "signed_body": "attestation minus signature + evidence_ref; Ed25519 over canonical_body_utf8 (raw bytes, NO sha256 prehash)",
+    "cross_language": "byte-identical to JS canonicalize@3 (JCS); GEIANT #4b copies .attestation + .canonical_body_utf8 + .issuer_key_id"
+  },
+  "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+  "canonical_body_utf8": "{\"agent_handle\":\"invoice-certifier@kapwork-receivables\",\"as_of\":\"2026-01-01T00:00:00Z\",\"capability_tier\":0.75,\"cgr_score\":0.6666666666666666,\"confidence\":6,\"dimension\":\"receivables\",\"issuer\":\"gns-foundation\",\"issuer_key_id\":\"d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737\",\"n_resolved\":12,\"rationale\":\"score 0.667 ≥ 0.65 and n_resolved 12 ≥ 10\",\"schema\":\"cgr.attestation.v1\",\"tier\":\"silver\"}",
+  "attestation": {
+    "agent_handle": "invoice-certifier@kapwork-receivables",
+    "dimension": "receivables",
+    "tier": "silver",
+    "cgr_score": 0.6666666666666666,
+    "confidence": 6.0,
+    "n_resolved": 12,
+    "capability_tier": 0.75,
+    "as_of": "2026-01-01T00:00:00Z",
+    "rationale": "score 0.667 ≥ 0.65 and n_resolved 12 ≥ 10",
+    "schema": "cgr.attestation.v1",
+    "issuer": "gns-foundation",
+    "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "signature": "6b6271fe501f7b43f70781996aacb22ec50484420adde52c4f58c0224faa202188f20e340345e3eb3240362afeb17c5f6cc4f2e8baa081e880501a4fc3a12207",
+    "evidence_ref": null
+  }
+}
