@@ -249,9 +249,13 @@ def test_run_round_robin_deadline(tenant_setup, client):
     )
     agent_id = agent_resp.json()["agent_id"]
 
+    # No max_total_steps=1: with a single step the fast mock could complete before
+    # the 1ms deadline is checked (flaky). Letting the round-robin loop run means the
+    # deadline reliably fires on a later step — same pattern as the sequential
+    # timeout test above, which is deterministic.
     wf_resp = client.post("/v1/orchestrator/workflows",
         headers={"Authorization": f"Bearer {admin_key}"},
-        json={"name": "rr_deadline_wf", "agent_ids": [agent_id], "mode": "round_robin", "max_total_steps": 1}
+        json={"name": "rr_deadline_wf", "agent_ids": [agent_id], "mode": "round_robin"}
     )
     wf_id = wf_resp.json()["workflow_id"]
 

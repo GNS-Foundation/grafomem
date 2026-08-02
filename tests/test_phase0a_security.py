@@ -50,8 +50,12 @@ def test_rest_erasure_fail_closed(temp_db_url, monkeypatch):
     # We must ensure PROVIDER_ENCRYPTION_KEY is set or create_app will crash (because db_url is set).
     # conftest.py already sets PROVIDER_ENCRYPTION_KEY.
     
-    # 1. Create app without an ERASURE_SIGNING_KEY in environment
+    # 1. Create app without ANY signing key in environment. Both ERASURE_SIGNING_KEY
+    #    and GRAFOMEM_SIGNING_KEY gate the signing identity — clear both, or a
+    #    GRAFOMEM_SIGNING_KEY leaked by an earlier test's fixture (e.g.
+    #    test_integration_seams) would let the delete sign + succeed (fail-open).
     monkeypatch.delenv("ERASURE_SIGNING_KEY", raising=False)
+    monkeypatch.delenv("GRAFOMEM_SIGNING_KEY", raising=False)
     monkeypatch.delenv("UNSAFE_LOCAL_DEV", raising=False)
         
     def _test_factory():

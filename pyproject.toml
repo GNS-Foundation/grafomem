@@ -42,11 +42,11 @@ grafomem = "aml.cli:main"
 backends = ["sentence-transformers>=2.2", "numpy>=1.24"]
 store = ["sqlite-vec", "apsw"]
 crypto = ["cryptography>=41"]
-runtime = ["numpy>=1.24", "cryptography>=41", "structlog>=23.1.0", "mcp>=0.1.0"]
+runtime = ["numpy>=1.24", "cryptography>=41", "structlog>=23.1.0", "mcp>=1.0,<2"]  # mcp 1.x: has fastmcp AND low-level Server.list_tools; 2.0 removed both
 # PostgreSQL + pgvector backend (GRAFOMEM Cloud).
 postgres = ["psycopg[binary]>=3.1", "psycopg_pool>=3.2", "pgvector>=0.3", "numpy>=1.24", "tiktoken>=0.7.0"]
 # Production server: FastAPI + MCP + batched ingestion.
-server = ["fastapi>=0.110", "uvicorn[standard]>=0.29", "mcp>=1.0", "pydantic>=2.0", "sse-starlette>=2.0", "fpdf2>=2.8", "httpx[http2]>=0.27"]
+server = ["fastapi>=0.110,<0.137", "starlette>=1.0,<1.2", "uvicorn[standard]>=0.29", "mcp>=1.0,<2", "pydantic>=2.0", "sse-starlette>=2.0", "fpdf2>=2.8", "httpx[http2]>=0.27"]  # fastapi>=0.137 / starlette>=1.2 silently break app.include_router()
 # GRAFOMEM Cloud: managed service with tenant provisioning + metering.
 cloud = ["grafomem[postgres,server,crypto]", "stripe>=8.0", "bcrypt>=4.0", "PyJWT>=2.8", "authlib>=1.3", "prometheus-client>=0.20", "apscheduler>=3.10", "pandas>=2.0", "minisom>=2.3", "scikit-learn>=1.3", "psycopg2-binary>=2.9", "fastembed>=0.2.0", "sentence-transformers>=2.2"]
 all = ["grafomem[crypto,backends,store,server,postgres,cloud,llm]"]
