@@ -1054,13 +1054,30 @@ def create_app(
                 from aml.cloud.demo_routes import (
                     create_cgr_router, create_governed_router, create_verify_router,
                 )
-                from aml.cgr.routes import create_cgr_scoring_router
+                from aml.cgr.routes import (
+                    create_cgr_issuance_router, create_cgr_scoring_router,
+                )
+                from aml.cgr.issuance import load_foundation_identity
                 store_mgr = app.state.store_manager
                 app.include_router(create_governed_router(dt, receipt_svc, signing_identity, store_mgr))
                 app.include_router(create_verify_router(signing_identity))
                 app.include_router(create_cgr_router(dt, store_mgr))
                 app.include_router(create_cgr_scoring_router(dt, store_mgr))
-                logger.info("Governed-decision + verify + CGR substrate + CGR scoring routes enabled")
+                # Foundation issuance seam — the NEUTRAL key (distinct from the
+                # commercial signing_identity). None if FOUNDATION_SIGNING_SEED unset
+                # → issuance endpoints 503 (never falls back to the commercial key).
+                foundation_identity = load_foundation_identity()
+                app.state.cgr_foundation_identity = foundation_identity
+                app.include_router(
+                    create_cgr_issuance_router(
+                        dt, store_mgr, foundation_identity,
+                        gcrumbs=getattr(app.state, "gcrumbs", None),
+                    )
+                )
+                logger.info(
+                    "Governed-decision + verify + CGR substrate + CGR scoring + CGR issuance "
+                    "routes enabled (foundation_issuer=%s)", foundation_identity is not None,
+                )
             except Exception as e:
                 logger.warning("Demo routes not enabled: %s", e)
 
