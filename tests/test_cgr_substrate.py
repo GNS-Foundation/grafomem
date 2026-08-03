@@ -88,6 +88,7 @@ def services():
         verify_batch=_endpoint(gov, "/v1/governed/verify-batch"),
         post_outcome=_endpoint(gov, "/v1/governed/outcomes"),
         post_outcomes_bulk=_endpoint(gov, "/v1/governed/outcomes/bulk"),
+        post_rotation=_endpoint(gov, "/v1/cgr/rotation"),
         export=_endpoint(cgr, "/v1/cgr/substrate/export", "GET"),
     )
 
@@ -273,3 +274,48 @@ async def test_outcomes_bulk(services):
     assert out["count"] == 2
     refs = {(m.metadata or {}).get("subject") for m in dr._tenant_outcomes(backend, T)}
     assert {"B1", "B2"} <= refs
+
+
+# ============================================================================
+# Ticket #7 — key-rotation capture round-trip + anchor aggregation (live path)
+# ============================================================================
+
+async def test_rotation_capture_and_continuity(services):
+    from aml.cgr.attestation import _canon
+    from aml.cgr.engine import compute_scores, to_tiergate
+    from aml.cgr.identity import did_key
+    from aml.cgr.issuance import FoundationIdentity
+    from aml.cgr.substrate import load_rotations
+    from aml.cloud.demo_routes import GovernedDecisionRequest, RotationProofRequest
+
+    T = _tenant()
+    seedA, seedB = "a1" * 32, "b2" * 32
+    A = FoundationIdentity(bytes.fromhex(seedA)).public_key().hex()
+    B = FoundationIdentity(bytes.fromhex(seedB)).public_key().hex()
+
+    # agent signs the rotation A -> B with its OLD key, emits the proof
+    body = {"prev_key": A, "new_key": B, "seq": 1, "not_before": "2026-01-01T00:00:00Z"}
+    sig = FoundationIdentity(bytes.fromhex(seedA)).sign(_canon(body))[0].hex()
+    r = await services.post_rotation(
+        RotationProofRequest(prev_key=A, new_key=B, seq=1,
+                             not_before="2026-01-01T00:00:00Z", sig=sig), _req(T))
+    assert r["recorded"] is True
+
+    # captured + reloadable (raw; verified at scoring time)
+    proofs = load_rotations(services.store_mgr, T)
+    assert any(p.prev_key == A and p.new_key == B for p in proofs)
+
+    # decisions under the OLD key then the NEW key
+    await services.governed_decision(
+        GovernedDecisionRequest(decision="certify", reason="", invoice_id="R1", agent_key=A), _req(T))
+    await services.governed_decision(
+        GovernedDecisionRequest(decision="certify", reason="", invoice_id="R2", agent_key=B), _req(T))
+    await services.post_outcome(OutcomeEvent(invoice_ref="R1", outcome="paid"), _req(T))
+    await services.post_outcome(OutcomeEvent(invoice_ref="R2", outcome="default"), _req(T))
+
+    # live scoring folds both keys into ONE identity anchored at A
+    results = compute_scores(services.dt, services.store_mgr, T)
+    assert len(results) == 1
+    tg = to_tiergate(results[0])
+    assert tg["subject_key"] == B                 # current operational key
+    assert tg["subject_did"] == did_key(A)        # stable anchor did:key

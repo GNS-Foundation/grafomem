@@ -172,8 +172,8 @@ def test_fingerprint_changes_on_tamper():
 # ============================================================================
 
 _GOLDEN = pathlib.Path(__file__).resolve().parent / "fixtures" / "cgr_attestation_v2_jcs.golden.json"
-_TIERGATE_KEYS = ("agent_handle", "subject_key", "dimension", "tier", "cgr_score", "confidence",
-                  "n_resolved", "capability_tier", "as_of", "rationale")
+_TIERGATE_KEYS = ("agent_handle", "subject_key", "subject_did", "dimension", "tier", "cgr_score",
+                  "confidence", "n_resolved", "capability_tier", "as_of", "rationale")
 
 
 def test_binding_invariant_subject_key_distinct():
@@ -181,11 +181,16 @@ def test_binding_invariant_subject_key_distinct():
     NEITHER the Foundation issuer key (neutrality) NOR the commercial signing key.
     This is the whole point — reputation is signed by a neutral key, ABOUT an agent
     key, and neither of those may be the agent's own commercial signer."""
+    from aml.cgr.identity import did_key
     fx = json.loads(_GOLDEN.read_text())
-    assert fx["subject_key"] != fx["issuer_key_id"]                       # ≠ neutrality key
     commercial = FoundationIdentity(bytes.fromhex(COMMERCIAL_SEED)).public_key().hex()
+    assert fx["subject_key"] != fx["issuer_key_id"]                       # ≠ neutrality key
     assert fx["subject_key"] != commercial                               # ≠ commercial signer
+    # #7: the identity ANCHOR (subject_did) is likewise neither the issuer nor the commercial key.
+    assert fx["subject_did"] != did_key(fx["issuer_key_id"])
+    assert fx["subject_did"] != did_key(commercial)
     assert fx["attestation"]["subject_key"] == fx["subject_key"]
+    assert fx["attestation"]["subject_did"] == fx["subject_did"]
 
 
 def test_jcs_golden_fixture_wire_format_locked():
@@ -198,9 +203,12 @@ def test_jcs_golden_fixture_wire_format_locked():
 
     # 1. wire format locked — JCS canonical bytes equal the committed string
     assert canonical_body(att).decode("utf-8") == fx["canonical_body_utf8"]
-    # v2: subject_key (the bound GEIANT identity key) is INSIDE the signed body
+    # v2: subject_key (current op key) AND subject_did (identity anchor, #7) are
+    # both INSIDE the signed body — a rotated identity (subject_key ≠ anchor).
     assert att["schema"] == "cgr.attestation.v2"
     assert f'"subject_key":"{fx["subject_key"]}"' in fx["canonical_body_utf8"]
+    assert f'"subject_did":"{fx["subject_did"]}"' in fx["canonical_body_utf8"]
+    assert fx["subject_did"].startswith("did:key:z")
     # JCS number formatting: integer-valued float serialized WITHOUT ".0"
     assert '"confidence":6,' in fx["canonical_body_utf8"]
     # JCS strings are raw UTF-8, not \uXXXX ascii-escaped

@@ -27,6 +27,8 @@ CGR_OUTCOMES_STORE = "cgr-outcomes"
 CGR_OUTCOME_SCHEMA = "cgr.outcome.v1"
 CGR_REVIEWS_STORE = "cgr-reviews"
 CGR_REVIEW_SCHEMA = "cgr.review.v1"
+CGR_ROTATION_STORE = "cgr-identity"   # Ticket #7: append-only key-rotation proofs
+from aml.cgr.identity import CGR_ROTATION_SCHEMA, RotationProof  # noqa: E402  (schema tag + dataclass)
 
 
 @dataclass
@@ -147,6 +149,37 @@ def load_reviews(store_manager, tenant_id: str) -> list[ReviewEvent]:
             rating=float(obj) if obj is not None else 0.0,
         ))
     return events
+
+
+def _tenant_rotations(backend, tenant_id: str) -> list:
+    """Every CGR rotation-proof record for a tenant (mirrors _tenant_reviews)."""
+    rows = []
+    for m in backend.audit():
+        md = m.metadata or {}
+        if md.get("cgr_schema") == CGR_ROTATION_SCHEMA and m.tenant_id == tenant_id:
+            rows.append(m)
+    return rows
+
+
+def load_rotations(store_manager, tenant_id: str) -> list[RotationProof]:
+    """All captured key-rotation proofs for a tenant, tenant-scoped. RAW — the
+    signature is verified at aggregation time (engine), never at read time, so a
+    tampered row cannot grant continuity. Deps injected; stdlib-only."""
+    backend = store_manager.get_or_create_named(CGR_ROTATION_STORE).backend
+    proofs = []
+    for m in _tenant_rotations(backend, tenant_id):
+        md = m.metadata or {}
+        try:
+            proofs.append(RotationProof(
+                prev_key=md.get("prev_key"),
+                new_key=md.get("subject"),          # subject == new_key (the Fact key)
+                seq=int(md.get("seq")) if md.get("seq") is not None else 0,
+                not_before=md.get("not_before") or "",
+                sig=md.get("sig"),
+            ))
+        except (TypeError, ValueError):
+            continue                                # malformed row → skip (verified later anyway)
+    return proofs
 
 
 def export_reviews(store_manager, tenant_id: str) -> list[dict]:
