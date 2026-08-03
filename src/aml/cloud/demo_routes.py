@@ -40,6 +40,7 @@ from aml.cloud.execution_receipts import ExecutionReceiptService
 # truth, shared with the scoring engine). The write path below reuses these.
 from aml.cgr.substrate import (
     CGR_OUTCOMES_STORE, CGR_OUTCOME_SCHEMA, CGR_REVIEWS_STORE, CGR_REVIEW_SCHEMA,
+    CGR_ROTATION_STORE, CGR_ROTATION_SCHEMA,
     _effective_at, _latest_for, _latest_review_for, _sort_key,
     _tenant_outcomes, _tenant_reviews, export_reviews, export_rows, load_substrate,
 )
@@ -110,6 +111,18 @@ class ReviewRecord(BaseModel):
     decision_id: str | None = None                   # precise referent (kept in metadata)
     review_date: str | None = None                   # ISO; default = now
     source: str = "manual"                           # funder_feed|analyst|manual
+
+
+class RotationProofRequest(BaseModel):
+    """A self-certifying key-rotation link (Ticket #7), EMITTER-supplied: the agent's
+    OLD key signs {prev_key, new_key, seq, not_before}. Stored raw (append-only);
+    the signature is verified at aggregation time, never trusted on write."""
+    prev_key: str                                    # 64-hex — key being rotated out (the signer)
+    new_key: str                                     # 64-hex — successor key
+    seq: int = 1                                     # position in the chain
+    not_before: str | None = None                    # ISO; default = now
+    sig: str                                         # 128-hex Ed25519 signature by prev_key
+    source: str = "agent"
 
 
 # ============================================================================
@@ -308,6 +321,34 @@ def _record_review(backend, *, tenant_id, invoice_ref, reviewer_handle, rating,
 
 
 # ============================================================================
+# CGR identity store (Ticket #7) — append-only key-rotation proofs, keyed by new_key
+# ============================================================================
+
+def _rotation_metadata(p: RotationProofRequest) -> dict:
+    # Fact-shaped: subject == new_key (the successor being claimed). The whole signed
+    # link rides in metadata; verification is deferred to aggregation time.
+    return {
+        "predicate": "key_rotation", "subject": p.new_key, "object": p.prev_key,
+        "prev_key": p.prev_key, "seq": p.seq, "not_before": p.not_before,
+        "sig": p.sig, "source": p.source,
+        "cgr_schema": CGR_ROTATION_SCHEMA,
+    }
+
+
+def _record_rotation(backend, *, tenant_id, p: RotationProofRequest) -> dict:
+    """Append-only write of a rotation proof. RAW — no signature check here (a
+    tampered row must not confer continuity; the engine verifies every link before
+    folding keys). Append, latest valid_from wins if a (prev,new) is re-posted."""
+    vf = _parse_dt(p.not_before)
+    meta = _rotation_metadata(p)
+    opts = WriteOptions(valid_from=vf, tenant_id=tenant_id, metadata=meta)
+    content = f"key_rotation | {p.prev_key} | {p.new_key} | seq={p.seq}"
+    backend.write(content, opts)
+    return {"prev_key": p.prev_key, "new_key": p.new_key, "seq": p.seq,
+            "not_before": vf.isoformat(), "recorded": True}
+
+
+# ============================================================================
 # Routers
 # ============================================================================
 
@@ -328,6 +369,11 @@ def create_governed_router(decision_trail, execution_receipts, signing_identity,
         if store_manager is None:
             raise HTTPException(503, "reviews store not available")
         return store_manager.get_or_create_named(CGR_REVIEWS_STORE).backend
+
+    def _rotations_backend():
+        if store_manager is None:
+            raise HTTPException(503, "identity store not available")
+        return store_manager.get_or_create_named(CGR_ROTATION_STORE).backend
 
     @router.post("/v1/governed/decisions")
     async def governed_decision(req: GovernedDecisionRequest, request: Request):
@@ -423,6 +469,14 @@ def create_governed_router(decision_trail, execution_receipts, signing_identity,
             agent_handle=rv.agent_handle, decision_id=rv.decision_id,
             review_date=rv.review_date, source=rv.source,
         )
+
+    @router.post("/v1/cgr/rotation")
+    async def post_rotation(p: RotationProofRequest, request: Request):
+        """Capture an emitter-supplied key-rotation proof (Ticket #7). Stored raw,
+        append-only; the signature is verified at scoring time before keyA and keyB
+        are folded into one identity."""
+        tenant_id = _tenant_id(request)
+        return _record_rotation(_rotations_backend(), tenant_id=tenant_id, p=p)
 
     @router.post("/v1/governed/reviews/bulk")
     async def post_reviews_bulk(reviews: list[ReviewRecord], request: Request):

@@ -75,6 +75,10 @@ class CGRResult:
     # for, or None when the agent's decisions carried no key. Data only — set by
     # engine.compute_scores via dataclasses.replace; the Beta math never reads it.
     subject_key: str | None = None
+    # CGR identity continuity (Ticket #7): did:key of the IDENTITY ANCHOR (genesis
+    # key). == did:key(subject_key) when no rotation has occurred; after a rotation
+    # subject_key is the current operational key while subject_did stays the anchor.
+    subject_did: str | None = None
 
 
 def _now_iso() -> str:

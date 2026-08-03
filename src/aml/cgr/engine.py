@@ -11,11 +11,14 @@ from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import replace
 
+from aml.cgr.identity import did_key, resolve_identities
 from aml.cgr.scoring import (
     CGRResult, DIMENSION_RECEIVABLES, MIN_REVIEWS, _now_iso,
     reviewer_weights, score_agent,
 )
-from aml.cgr.substrate import DecisionRow, ReviewEvent, load_reviews, load_substrate
+from aml.cgr.substrate import (
+    DecisionRow, ReviewEvent, load_reviews, load_rotations, load_substrate,
+)
 
 logger = logging.getLogger("grafomem.cgr.engine")
 
@@ -34,17 +37,31 @@ def compute_scores_from_rows(
     rows: Iterable[DecisionRow],
     *,
     reviews: Iterable[ReviewEvent] = (),
+    rotations: Iterable = (),
+    verify=None,
     as_of: str | None = None,
 ) -> list[CGRResult]:
-    """Pure scoring over already-loaded substrate rows (+ optional reviews).
+    """Pure scoring over already-loaded substrate rows (+ optional reviews + rotations).
 
-    Groups decisions by agent_handle, computes global reviewer weights from the
-    reviews whose invoices are resolved, and scores each agent. Returns results
-    sorted by cgr_score descending. Deterministic.
+    Groups decisions by IDENTITY ANCHOR (Ticket #7) — an agent_key is folded to its
+    anchor via the verified rotation chain, so a rotated agent's whole key-history
+    rolls up to one result — falling back to agent_key then agent_handle (legacy).
+    Computes global reviewer weights and scores each agent. Deterministic.
+
+    `rotations` + `verify` are injected; with either absent, aggregation is by
+    agent_key/agent_handle exactly as #5 (backward-compatible). `verify(pubkey_hex,
+    message, sig_hex) -> bool` is the Ed25519 capability, kept out of this pure path.
     """
     rows = list(rows)
     reviews = list(reviews)
+    rotations = list(rotations)
     as_of = as_of or _now_iso()
+
+    # Resolve rotation chains → {op_key: anchor}, {anchor: current_key}, frozen set.
+    if rotations and verify is not None:
+        anchor_of, current_of, _frozen = resolve_identities(rotations, verify=verify)
+    else:
+        anchor_of, current_of = {}, {}
 
     # each row already carries its joined outcome (latest, tenant-scoped)
     outcomes_by_ref = {r.invoice_ref: r.outcome for r in rows
@@ -58,24 +75,35 @@ def compute_scores_from_rows(
             resolved_obs.append((rv.reviewer, rv.rating, 1.0 if oc == "paid" else 0.0))
     rev_w = reviewer_weights(resolved_obs)
 
-    # Aggregation key (Ticket #5): the agent's GEIANT pubkey when captured at
-    # decision time, else the handle (legacy rows). One agent = one key. The handle
-    # stays a human label; the key is the identity. Never back-resolve key↔handle.
+    # Aggregation key: the IDENTITY ANCHOR of the agent's captured GEIANT pubkey
+    # (Ticket #7 — folds a rotated key back to its genesis), else the pubkey itself
+    # (#5), else the handle (legacy). The handle is a label; the key is the identity;
+    # the anchor is the identity across rotation. Never back-resolve key↔handle.
     def _gkey(r: DecisionRow) -> str | None:
-        return r.agent_key or r.agent_handle
+        if r.agent_key:
+            return anchor_of.get(r.agent_key, r.agent_key)   # anchor, or the key if never rotated
+        return r.agent_handle
 
     decisions_by_agent: dict[str, list[DecisionRow]] = defaultdict(list)
     reviews_by_agent: dict[str, list[tuple[str, str, float]]] = defaultdict(list)
     tier_by_agent: dict[str, float | None] = {}
     label_by_agent: dict[str, str | None] = {}     # gkey -> human handle label
-    subject_by_agent: dict[str, str | None] = {}   # gkey -> bound pubkey hex, or None (legacy)
+    subject_by_agent: dict[str, str | None] = {}   # gkey -> current operational pubkey, or None (legacy)
+    did_by_agent: dict[str, str | None] = {}       # gkey -> anchor did:key, or None (legacy)
     for r in rows:
         g = _gkey(r)
         if g is None:
             continue
         decisions_by_agent[g].append(r)
         label_by_agent.setdefault(g, r.agent_handle)
-        subject_by_agent.setdefault(g, r.agent_key)  # key iff key-aggregated; None for legacy groups
+        if r.agent_key:
+            # g is the identity anchor: subject_key = current op key (== g if never
+            # rotated), subject_did = anchor did:key (stable across rotation).
+            subject_by_agent[g] = current_of.get(g, g)
+            did_by_agent[g] = did_key(g)
+        else:
+            subject_by_agent.setdefault(g, None)
+            did_by_agent.setdefault(g, None)
         if r.agent_tier is not None:            # capability tier (None until TierGate wired)
             tier_by_agent[g] = r.agent_tier
     # Attribute each review to the certifying agent from the JOIN (the decision
@@ -102,7 +130,8 @@ def compute_scores_from_rows(
         replace(
             score_agent(label_by_agent[g], decs, outcomes_by_ref, reviews_by_agent.get(g, ()),
                         rev_w, tier_by_agent.get(g), as_of=as_of),
-            subject_key=subject_by_agent.get(g),   # bind the reputation to the captured GEIANT key (#5)
+            subject_key=subject_by_agent.get(g),   # current operational GEIANT key (#5)
+            subject_did=did_by_agent.get(g),       # identity anchor did:key — stable across rotation (#7)
         )
         for g, decs in decisions_by_agent.items()
     ]
@@ -110,16 +139,32 @@ def compute_scores_from_rows(
     return results
 
 
+def _rotation_verifier(pubkey_hex: str, message: bytes, sig_hex: str) -> bool:
+    """Ed25519 verify capability for rotation links — lazy `cryptography` import keeps
+    the pure scoring path crypto-free. Reuses issuance.make_verifier (the same
+    primitive that checks Foundation attestations)."""
+    from aml.cgr.issuance import make_verifier
+    try:
+        return make_verifier(bytes.fromhex(pubkey_hex))(message, sig_hex)
+    except Exception:
+        return False
+
+
 def compute_scores(decision_trail, store_manager, tenant_id: str, *,
-                   reviews: Iterable[ReviewEvent] | None = None, as_of: str | None = None,
+                   reviews: Iterable[ReviewEvent] | None = None,
+                   rotations: Iterable | None = None, as_of: str | None = None,
                    limit: int = 500, offset: int = 0) -> list[CGRResult]:
-    """Live path: load the tenant's substrate, then score. Reviews are auto-loaded
-    from the cgr-reviews store when the caller doesn't supply them (reviews=None);
-    pass reviews=() to force the empty (no-review) baseline, or an explicit list."""
+    """Live path: load the tenant's substrate, then score. Reviews + rotation proofs
+    are auto-loaded from their stores when the caller doesn't supply them (None);
+    pass () to force the empty baseline, or an explicit list. Rotation links are
+    verified (Ed25519) before an agent's key-history is folded into one identity."""
     rows = load_substrate(decision_trail, store_manager, tenant_id, limit=limit, offset=offset)
     if reviews is None:
         reviews = load_reviews(store_manager, tenant_id)
-    return compute_scores_from_rows(rows, reviews=reviews, as_of=as_of)
+    if rotations is None:
+        rotations = load_rotations(store_manager, tenant_id)
+    return compute_scores_from_rows(rows, reviews=reviews, rotations=rotations,
+                                    verify=_rotation_verifier, as_of=as_of)
 
 
 def to_tiergate(r: CGRResult, *, min_resolved: int = MIN_RESOLVED_PROVEN) -> dict:
@@ -142,7 +187,8 @@ def to_tiergate(r: CGRResult, *, min_resolved: int = MIN_RESOLVED_PROVEN) -> dic
                 break
     return {
         "agent_handle": r.agent_handle,          # human-readable label (facet@territory)
-        "subject_key": r.subject_key,            # CGR #5: the BOUND GEIANT pubkey (or null) — the identity
+        "subject_key": r.subject_key,            # CGR #5: current operational GEIANT pubkey (or null)
+        "subject_did": r.subject_did,            # CGR #7: identity anchor did:key — stable across rotation
         "dimension": r.dimension,
         "tier": tier,
         "cgr_score": r.cgr_score,

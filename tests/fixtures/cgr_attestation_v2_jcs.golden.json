@@ -1,21 +1,22 @@
 {
   "provenance": {
-    "ticket": "grafomem #5a (cgr/identity-binding)",
-    "schema": "cgr.attestation.v2",
-    "canonicalization": "RFC 8785 (JCS) — unchanged from v1; subject_key is a signed-body field",
+    "ticket": "grafomem #7a (cgr/identity-continuity)",
+    "schema": "cgr.attestation.v2 (subject_did now populated — identity continuity)",
+    "canonicalization": "RFC 8785 (JCS); subject_did is a signed-body field",
     "foundation_signing_seed_hex": "1111111111111111111111111111111111111111111111111111111111111111",
-    "foundation_signing_seed_note": "32-byte 0x11 seed — TEST issuer key only",
-    "subject_signing_seed_hex": "3333333333333333333333333333333333333333333333333333333333333333",
-    "subject_key_note": "32-byte 0x33 seed -> the agent GEIANT identity pubkey; distinct from issuer (0x11) and commercial (0x22). subject_key is INSIDE the signed body.",
-    "input_cgrresult": "CGRResult('invoice-certifier@kapwork-receivables', 2/3, 6.0, 12, 3, 0.75, '2026-01-01T00:00:00Z', subject_key=<0x33 pubkey>)",
-    "cross_language": "GEIANT #5b copies .attestation + .canonical_body_utf8 + .issuer_key_id; binds cgrBand on subject_key == manifest.identity.publicKey"
+    "identity_anchor_seed_hex": "3333333333333333333333333333333333333333333333333333333333333333",
+    "current_key_seed_hex": "4444444444444444444444444444444444444444444444444444444444444444",
+    "note": "Rotated identity: anchor 0x33 (== #5a subject) rotated to current key 0x44. subject_key = CURRENT operational key; subject_did = did:key(anchor). Distinct from issuer(0x11) + commercial(0x22). Both fields are INSIDE the signed body.",
+    "cross_language": "GEIANT #7b copies .attestation + .canonical_body_utf8 + .issuer_key_id; binds cgrBand on subject_key; displays subject_did as the stable identity anchor."
   },
   "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
-  "subject_key": "17cb79fb2b4120f2b1ec65e4198d6e08b28e813feb01e4a400839b85e18080ce",
-  "canonical_body_utf8": "{\"agent_handle\":\"invoice-certifier@kapwork-receivables\",\"as_of\":\"2026-01-01T00:00:00Z\",\"capability_tier\":0.75,\"cgr_score\":0.6666666666666666,\"confidence\":6,\"dimension\":\"receivables\",\"issuer\":\"gns-foundation\",\"issuer_key_id\":\"d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737\",\"n_resolved\":12,\"rationale\":\"score 0.667 ≥ 0.65 and n_resolved 12 ≥ 10\",\"schema\":\"cgr.attestation.v2\",\"subject_key\":\"17cb79fb2b4120f2b1ec65e4198d6e08b28e813feb01e4a400839b85e18080ce\",\"tier\":\"silver\"}",
+  "subject_key": "d759793bbc13a2819a827c76adb6fba8a49aee007f49f2d0992d99b825ad2c48",
+  "subject_did": "did:key:z6Mkg49NtQR2LyYRDCQFK4w1VVHqhypZSSRo7HsyuN7SV7v5",
+  "canonical_body_utf8": "{\"agent_handle\":\"invoice-certifier@kapwork-receivables\",\"as_of\":\"2026-01-01T00:00:00Z\",\"capability_tier\":0.75,\"cgr_score\":0.6666666666666666,\"confidence\":6,\"dimension\":\"receivables\",\"issuer\":\"gns-foundation\",\"issuer_key_id\":\"d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737\",\"n_resolved\":12,\"rationale\":\"score 0.667 ≥ 0.65 and n_resolved 12 ≥ 10\",\"schema\":\"cgr.attestation.v2\",\"subject_did\":\"did:key:z6Mkg49NtQR2LyYRDCQFK4w1VVHqhypZSSRo7HsyuN7SV7v5\",\"subject_key\":\"d759793bbc13a2819a827c76adb6fba8a49aee007f49f2d0992d99b825ad2c48\",\"tier\":\"silver\"}",
   "attestation": {
     "agent_handle": "invoice-certifier@kapwork-receivables",
-    "subject_key": "17cb79fb2b4120f2b1ec65e4198d6e08b28e813feb01e4a400839b85e18080ce",
+    "subject_key": "d759793bbc13a2819a827c76adb6fba8a49aee007f49f2d0992d99b825ad2c48",
+    "subject_did": "did:key:z6Mkg49NtQR2LyYRDCQFK4w1VVHqhypZSSRo7HsyuN7SV7v5",
     "dimension": "receivables",
     "tier": "silver",
     "cgr_score": 0.6666666666666666,
@@ -27,7 +28,7 @@
     "schema": "cgr.attestation.v2",
     "issuer": "gns-foundation",
     "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
-    "signature": "1d9b0706d7a4f0d86c24b3fc4617ad005443d908e0f20fcc2925353a450be6a7655b98cf2b6a939526d10d46530ec028337940d86235a1b2d42326c803f4db0e",
+    "signature": "6d5327981a79e7a40c10b9ddd8c67df33f3f9e3456b832bda9334b6b0fcac83aaec9725aa425fbb45baf3ae22d13c83f5b4803ce9795c8216e82b353e10d9805",
     "evidence_ref": null
   }
 }
