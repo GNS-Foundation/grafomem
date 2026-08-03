@@ -74,6 +74,10 @@ class GovernedDecisionRequest(BaseModel):
     agent_handle: str = "invoice-certifier@kapwork-receivables"
     verifiability_tag: str = "judgment"              # agent-posted judgment calls
     agent_tier: float | None = None                  # optional GEIANT TierGate snapshot
+    # CGR identity binding (Ticket #5) — the acting agent's GEIANT Ed25519 pubkey
+    # (64-hex), supplied by the emitter at decision time. Irreversible; NEVER
+    # back-resolved from agent_handle. Absent ⇒ null ⇒ unbindable (unproven).
+    agent_key: str | None = None
 
 
 class VerifyBatchRequest(BaseModel):
@@ -83,6 +87,7 @@ class VerifyBatchRequest(BaseModel):
     # CGR substrate (Ticket #1) — verify-batch decisions are always tag="rule"
     agent_handle: str = "invoice-rules-engine@kapwork-receivables"
     agent_tier: float | None = None
+    agent_key: str | None = None                     # CGR identity binding (Ticket #5)
 
 
 class OutcomeEvent(BaseModel):
@@ -113,7 +118,8 @@ class ReviewRecord(BaseModel):
 
 def _record_and_sign(decision_trail, execution_receipts, signing_identity, *,
                      tenant_id, invoice_ref, context, decision, reason, model_id,
-                     agent_handle, verifiability_tag, agent_tier, reason_code):
+                     agent_handle, verifiability_tag, agent_tier, reason_code,
+                     agent_key=None):
     """Record a governed decision as a signed decision_record + signed, chained
     execution_receipt, carrying the CGR substrate fields in `parameters`.
     Returns {decision_record, execution_receipt}."""
@@ -131,7 +137,8 @@ def _record_and_sign(decision_trail, execution_receipts, signing_identity, *,
             "invoice_ref": invoice_ref,              # explicit CGR join key (alias, keep both)
             "decision": decision,                    # existing
             "reason_code": reason_code,              # structured code (rule) or None (judgment)
-            "agent_handle": agent_handle,            # CGR: stable agent identity
+            "agent_handle": agent_handle,            # CGR: human-readable label (facet@territory)
+            "agent_key": agent_key,                  # CGR: GEIANT identity pubkey — the binding subject (#5)
             "verifiability_tag": verifiability_tag,  # CGR: "rule" | "judgment"
             "agent_tier": agent_tier,                # CGR: optional TierGate snapshot (nullable)
             "cgr_schema": CGR_DECISION_SCHEMA,        # CGR: substrate version tag
@@ -332,6 +339,7 @@ def create_governed_router(decision_trail, execution_receipts, signing_identity,
             decision=req.decision, reason=req.reason, model_id=req.model_id,
             agent_handle=req.agent_handle, verifiability_tag=req.verifiability_tag,
             agent_tier=req.agent_tier, reason_code=None,  # judgment: no rule reason_code
+            agent_key=req.agent_key,
         )
 
     @router.post("/v1/governed/verify-batch")
@@ -357,6 +365,7 @@ def create_governed_router(decision_trail, execution_receipts, signing_identity,
                 decision=decision, reason=reason, model_id=req.model_id,
                 agent_handle=req.agent_handle, verifiability_tag="rule",
                 agent_tier=req.agent_tier, reason_code=reason_code,
+                agent_key=req.agent_key,
             )
             if decision == "certify":
                 certified.add(inv_id)

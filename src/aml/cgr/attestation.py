@@ -30,7 +30,7 @@ import hashlib
 
 import rfc8785
 
-CGR_ATTESTATION_SCHEMA = "cgr.attestation.v1"
+CGR_ATTESTATION_SCHEMA = "cgr.attestation.v2"   # v2 (#5): signed body now carries subject_key (the bound GEIANT identity key)
 ISSUER = "gns-foundation"
 
 # Fields present in the envelope but excluded from the signed / fingerprinted body.

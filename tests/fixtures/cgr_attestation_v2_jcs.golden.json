@@ -1,0 +1,33 @@
+{
+  "provenance": {
+    "ticket": "grafomem #5a (cgr/identity-binding)",
+    "schema": "cgr.attestation.v2",
+    "canonicalization": "RFC 8785 (JCS) — unchanged from v1; subject_key is a signed-body field",
+    "foundation_signing_seed_hex": "1111111111111111111111111111111111111111111111111111111111111111",
+    "foundation_signing_seed_note": "32-byte 0x11 seed — TEST issuer key only",
+    "subject_signing_seed_hex": "3333333333333333333333333333333333333333333333333333333333333333",
+    "subject_key_note": "32-byte 0x33 seed -> the agent GEIANT identity pubkey; distinct from issuer (0x11) and commercial (0x22). subject_key is INSIDE the signed body.",
+    "input_cgrresult": "CGRResult('invoice-certifier@kapwork-receivables', 2/3, 6.0, 12, 3, 0.75, '2026-01-01T00:00:00Z', subject_key=<0x33 pubkey>)",
+    "cross_language": "GEIANT #5b copies .attestation + .canonical_body_utf8 + .issuer_key_id; binds cgrBand on subject_key == manifest.identity.publicKey"
+  },
+  "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+  "subject_key": "17cb79fb2b4120f2b1ec65e4198d6e08b28e813feb01e4a400839b85e18080ce",
+  "canonical_body_utf8": "{\"agent_handle\":\"invoice-certifier@kapwork-receivables\",\"as_of\":\"2026-01-01T00:00:00Z\",\"capability_tier\":0.75,\"cgr_score\":0.6666666666666666,\"confidence\":6,\"dimension\":\"receivables\",\"issuer\":\"gns-foundation\",\"issuer_key_id\":\"d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737\",\"n_resolved\":12,\"rationale\":\"score 0.667 ≥ 0.65 and n_resolved 12 ≥ 10\",\"schema\":\"cgr.attestation.v2\",\"subject_key\":\"17cb79fb2b4120f2b1ec65e4198d6e08b28e813feb01e4a400839b85e18080ce\",\"tier\":\"silver\"}",
+  "attestation": {
+    "agent_handle": "invoice-certifier@kapwork-receivables",
+    "subject_key": "17cb79fb2b4120f2b1ec65e4198d6e08b28e813feb01e4a400839b85e18080ce",
+    "dimension": "receivables",
+    "tier": "silver",
+    "cgr_score": 0.6666666666666666,
+    "confidence": 6.0,
+    "n_resolved": 12,
+    "capability_tier": 0.75,
+    "as_of": "2026-01-01T00:00:00Z",
+    "rationale": "score 0.667 ≥ 0.65 and n_resolved 12 ≥ 10",
+    "schema": "cgr.attestation.v2",
+    "issuer": "gns-foundation",
+    "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "signature": "1d9b0706d7a4f0d86c24b3fc4617ad005443d908e0f20fcc2925353a450be6a7655b98cf2b6a939526d10d46530ec028337940d86235a1b2d42326c803f4db0e",
+    "evidence_ref": null
+  }
+}

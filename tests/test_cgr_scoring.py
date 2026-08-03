@@ -21,6 +21,8 @@ from aml.cgr import (
     CGRResult, DIMENSION_RECEIVABLES, MIN_RESOLVED_PROVEN,
     beta_prior, compute_scores_from_rows, reviewer_weights, score_agent, to_tiergate,
 )
+from aml.cgr.attestation import build_attestation, verify_attestation
+from aml.cgr.issuance import FoundationIdentity, issuer_key_id, make_signer, make_verifier
 from aml.cgr.scoring import CEILING_EPS, N_LIFT
 from aml.cgr.substrate import DecisionRow
 from aml.cgr.validate import synthetic_substrate, validate_report
@@ -28,10 +30,11 @@ from aml.cgr.validate import synthetic_substrate, validate_report
 TEST_DB_URL = "postgresql://grafomem:dev@localhost:5432/grafomem"
 
 
-def _row(inv, handle="A@k", decision="certify", tag="judgment", outcome=None, tier=None):
+def _row(inv, handle="A@k", decision="certify", tag="judgment", outcome=None, tier=None, key=None):
     return DecisionRow(decision_id=f"dec-{inv}", invoice_ref=inv, agent_handle=handle,
                        agent_tier=tier, decision=decision, reason_code="clean",
-                       verifiability_tag=tag, created_at=None, outcome=outcome, outcome_date=None)
+                       verifiability_tag=tag, created_at=None, outcome=outcome, outcome_date=None,
+                       agent_key=key)
 
 
 # ============================================================================
@@ -88,6 +91,53 @@ def test_dimension_axis_present():
     r = CGRResult("A@k", 0.5, 2.0, 0, 0, None, "2026-01-01T00:00:00Z")
     assert r.dimension == DIMENSION_RECEIVABLES == "receivables"
     assert to_tiergate(r)["dimension"] == "receivables"
+
+
+# ============================================================================
+# Identity-key binding (Ticket #5) — aggregate + emit by GEIANT pubkey
+# ============================================================================
+
+AK = "ab" * 32   # a stand-in agent GEIANT identity pubkey (64-hex)
+
+
+def test_subject_key_captured_and_rides_inside_signed_body():
+    rows = [_row("X", handle="finance@zurich", outcome="paid", key=AK),
+            _row("Y", handle="finance@zurich", outcome="default", key=AK)]
+    res = compute_scores_from_rows(rows)
+    assert len(res) == 1 and res[0].subject_key == AK
+    tg = to_tiergate(res[0])
+    assert tg["subject_key"] == AK and tg["agent_handle"] == "finance@zurich"
+
+    fid = FoundationIdentity(bytes.fromhex("11" * 32))
+    att = build_attestation(tg, signer=make_signer(fid), issuer_key_id=issuer_key_id(fid))
+    assert att["subject_key"] == AK                                     # inside the signed body
+    verify = make_verifier(fid.public_key())
+    assert verify_attestation(att, verify) is True
+    assert verify_attestation({**att, "subject_key": "cd" * 32}, verify) is False  # tamper breaks sig
+
+
+def test_aggregate_by_key_not_handle():
+    # same key, DIFFERENT handles → ONE agent (the key is the identity)
+    same_key = [_row("X", handle="finance@zurich", outcome="paid", key=AK),
+                _row("Y", handle="finance@osaka", outcome="default", key=AK)]
+    r1 = compute_scores_from_rows(same_key)
+    assert len(r1) == 1 and r1[0].subject_key == AK
+
+    # same handle, DIFFERENT keys → TWO agents (the handle is only a label)
+    diff_keys = [_row("X", handle="finance@zurich", outcome="paid", key="ab" * 32),
+                 _row("Y", handle="finance@zurich", outcome="default", key="cd" * 32)]
+    r2 = compute_scores_from_rows(diff_keys)
+    assert len(r2) == 2
+    assert {x.subject_key for x in r2} == {"ab" * 32, "cd" * 32}
+
+
+def test_legacy_rows_without_key_aggregate_by_handle():
+    rows = [_row("X", handle="a@k", outcome="paid"),        # key=None (legacy)
+            _row("Y", handle="a@k", outcome="default")]
+    res = compute_scores_from_rows(rows)
+    assert len(res) == 1 and res[0].agent_handle == "a@k"
+    assert res[0].subject_key is None                       # honest null → GEIANT reads as unproven
+    assert to_tiergate(res[0])["subject_key"] is None
 
 
 # ============================================================================
@@ -204,7 +254,8 @@ def _ep(router, needle, method="GET"):
 
 
 _EXPORT_KEYS = ["decision_id", "invoice_ref", "agent_handle", "agent_tier", "decision",
-                "reason_code", "verifiability_tag", "created_at", "outcome", "outcome_date"]
+                "reason_code", "verifiability_tag", "created_at", "outcome", "outcome_date",
+                "agent_key"]   # 11th key appended (Ticket #5 identity binding)
 
 
 @pytest.fixture(scope="module")
@@ -261,7 +312,7 @@ async def test_export_response_shape_unchanged(db):
     exp = await db.export(_req(T))
     # decisions[] + count byte-identical; reviews[] is the additive Ticket-#3 key
     assert set(exp.keys()) == {"decisions", "count", "reviews"} and exp["count"] == 1
-    assert list(exp["decisions"][0].keys()) == _EXPORT_KEYS   # byte-identical 10 keys, in order
+    assert list(exp["decisions"][0].keys()) == _EXPORT_KEYS   # first 10 keys byte-identical, agent_key appended
     assert exp["decisions"][0]["outcome"] == "paid"
     assert isinstance(exp["reviews"], list)
 

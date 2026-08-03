@@ -171,20 +171,36 @@ def test_fingerprint_changes_on_tamper():
 # JCS (RFC 8785) golden fixture — the cross-language wire-format contract (#4a.1)
 # ============================================================================
 
-_GOLDEN = pathlib.Path(__file__).resolve().parent / "fixtures" / "cgr_attestation_v1_jcs.golden.json"
-_TIERGATE_KEYS = ("agent_handle", "dimension", "tier", "cgr_score", "confidence",
+_GOLDEN = pathlib.Path(__file__).resolve().parent / "fixtures" / "cgr_attestation_v2_jcs.golden.json"
+_TIERGATE_KEYS = ("agent_handle", "subject_key", "dimension", "tier", "cgr_score", "confidence",
                   "n_resolved", "capability_tier", "as_of", "rationale")
 
 
+def test_binding_invariant_subject_key_distinct():
+    """The v2 binding invariant: the bound subject_key (agent GEIANT identity) is
+    NEITHER the Foundation issuer key (neutrality) NOR the commercial signing key.
+    This is the whole point — reputation is signed by a neutral key, ABOUT an agent
+    key, and neither of those may be the agent's own commercial signer."""
+    fx = json.loads(_GOLDEN.read_text())
+    assert fx["subject_key"] != fx["issuer_key_id"]                       # ≠ neutrality key
+    commercial = FoundationIdentity(bytes.fromhex(COMMERCIAL_SEED)).public_key().hex()
+    assert fx["subject_key"] != commercial                               # ≠ commercial signer
+    assert fx["attestation"]["subject_key"] == fx["subject_key"]
+
+
 def test_jcs_golden_fixture_wire_format_locked():
-    """The committed JCS canonical bytes are the contract GEIANT (#4b) mirrors.
-    Locks: exact canonical byte string, signature verifies over raw bytes under the
-    pinned Foundation key, one-byte tamper fails, and signing is deterministic."""
+    """The committed JCS canonical bytes are the v2 contract GEIANT (#5b) mirrors.
+    Locks: exact canonical byte string (incl. subject_key inside the signed body),
+    signature verifies over raw bytes under the pinned Foundation key, one-byte
+    tamper fails, and signing is deterministic."""
     fx = json.loads(_GOLDEN.read_text())
     att = fx["attestation"]
 
     # 1. wire format locked — JCS canonical bytes equal the committed string
     assert canonical_body(att).decode("utf-8") == fx["canonical_body_utf8"]
+    # v2: subject_key (the bound GEIANT identity key) is INSIDE the signed body
+    assert att["schema"] == "cgr.attestation.v2"
+    assert f'"subject_key":"{fx["subject_key"]}"' in fx["canonical_body_utf8"]
     # JCS number formatting: integer-valued float serialized WITHOUT ".0"
     assert '"confidence":6,' in fx["canonical_body_utf8"]
     # JCS strings are raw UTF-8, not \uXXXX ascii-escaped
@@ -194,7 +210,8 @@ def test_jcs_golden_fixture_wire_format_locked():
     verify = make_verifier(bytes.fromhex(fx["issuer_key_id"]))
     assert verify_attestation(att, verify) is True
 
-    # 3. one-byte tamper → false
+    # 3. one-byte tamper of subject_key → signature fails (proves it's in the body)
+    assert verify_attestation({**att, "subject_key": "00" * 32}, verify) is False
     assert verify_attestation({**att, "cgr_score": 0.99}, verify) is False
 
     # 4. determinism — re-signing the same seed reproduces the exact signature

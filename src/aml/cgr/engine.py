@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 from collections.abc import Iterable
+from dataclasses import replace
 
 from aml.cgr.scoring import (
     CGRResult, DIMENSION_RECEIVABLES, MIN_REVIEWS, _now_iso,
@@ -57,21 +58,32 @@ def compute_scores_from_rows(
             resolved_obs.append((rv.reviewer, rv.rating, 1.0 if oc == "paid" else 0.0))
     rev_w = reviewer_weights(resolved_obs)
 
+    # Aggregation key (Ticket #5): the agent's GEIANT pubkey when captured at
+    # decision time, else the handle (legacy rows). One agent = one key. The handle
+    # stays a human label; the key is the identity. Never back-resolve key↔handle.
+    def _gkey(r: DecisionRow) -> str | None:
+        return r.agent_key or r.agent_handle
+
     decisions_by_agent: dict[str, list[DecisionRow]] = defaultdict(list)
     reviews_by_agent: dict[str, list[tuple[str, str, float]]] = defaultdict(list)
     tier_by_agent: dict[str, float | None] = {}
+    label_by_agent: dict[str, str | None] = {}     # gkey -> human handle label
+    subject_by_agent: dict[str, str | None] = {}   # gkey -> bound pubkey hex, or None (legacy)
     for r in rows:
-        if r.agent_handle is None:
+        g = _gkey(r)
+        if g is None:
             continue
-        decisions_by_agent[r.agent_handle].append(r)
+        decisions_by_agent[g].append(r)
+        label_by_agent.setdefault(g, r.agent_handle)
+        subject_by_agent.setdefault(g, r.agent_key)  # key iff key-aggregated; None for legacy groups
         if r.agent_tier is not None:            # capability tier (None until TierGate wired)
-            tier_by_agent[r.agent_handle] = r.agent_tier
+            tier_by_agent[g] = r.agent_tier
     # Attribute each review to the certifying agent from the JOIN (the decision
     # record is authoritative), falling back to the client-supplied handle. A
     # review whose invoice has no matching decision still informed reviewer_weights
     # above but has no agent to carry its early signal — dropped here, no crash.
     # (Attribution wiring, not scoring math — scoring.py is untouched.)
-    agent_by_ref = {r.invoice_ref: r.agent_handle for r in rows if r.invoice_ref is not None}
+    agent_by_ref = {r.invoice_ref: _gkey(r) for r in rows if r.invoice_ref is not None}
     orphans = sorted({rv.invoice_ref for rv in reviews if rv.invoice_ref not in agent_by_ref})
     if orphans:
         # A review referencing an invoice with no captured decision is a capture gap
@@ -87,9 +99,12 @@ def compute_scores_from_rows(
         reviews_by_agent[handle].append((rv.invoice_ref, rv.reviewer, rv.rating))
 
     results = [
-        score_agent(handle, decs, outcomes_by_ref, reviews_by_agent.get(handle, ()),
-                    rev_w, tier_by_agent.get(handle), as_of=as_of)
-        for handle, decs in decisions_by_agent.items()
+        replace(
+            score_agent(label_by_agent[g], decs, outcomes_by_ref, reviews_by_agent.get(g, ()),
+                        rev_w, tier_by_agent.get(g), as_of=as_of),
+            subject_key=subject_by_agent.get(g),   # bind the reputation to the captured GEIANT key (#5)
+        )
+        for g, decs in decisions_by_agent.items()
     ]
     results.sort(key=lambda r: r.cgr_score, reverse=True)
     return results
@@ -126,7 +141,8 @@ def to_tiergate(r: CGRResult, *, min_resolved: int = MIN_RESOLVED_PROVEN) -> dic
                 rationale = f"score {r.cgr_score:.3f} ≥ {min_score} and n_resolved {r.n_resolved} ≥ {min_n}"
                 break
     return {
-        "agent_handle": r.agent_handle,
+        "agent_handle": r.agent_handle,          # human-readable label (facet@territory)
+        "subject_key": r.subject_key,            # CGR #5: the BOUND GEIANT pubkey (or null) — the identity
         "dimension": r.dimension,
         "tier": tier,
         "cgr_score": r.cgr_score,

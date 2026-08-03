@@ -71,6 +71,10 @@ class CGRResult:
     capability_tier: float | None
     as_of: str                  # ISO-8601 UTC timestamp of the computation
     dimension: str = DIMENSION_RECEIVABLES
+    # CGR identity binding (Ticket #5): the bound GEIANT pubkey this reputation is
+    # for, or None when the agent's decisions carried no key. Data only — set by
+    # engine.compute_scores via dataclasses.replace; the Beta math never reads it.
+    subject_key: str | None = None
 
 
 def _now_iso() -> str:
