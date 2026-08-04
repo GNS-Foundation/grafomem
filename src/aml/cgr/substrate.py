@@ -63,6 +63,9 @@ class ReviewEvent:
     agent_handle: str
     reviewer: str
     rating: float
+    # CGR v2 (Ticket #13): review timestamp for recency weighting. Optional/None ⇒
+    # recency defaults to 1 (v1). Populated by load_reviews from the record's valid_from.
+    review_date: datetime | None = None
 
 
 # -- outcome-store read helpers (moved verbatim from demo_routes; single owner) --
@@ -162,6 +165,7 @@ def load_reviews(store_manager, tenant_id: str) -> list[ReviewEvent]:
             agent_handle=md.get("agent_handle"),
             reviewer=md.get("reviewer_handle"),
             rating=float(obj) if obj is not None else 0.0,
+            review_date=_effective_at(m),        # CGR v2: recency timestamp
         ))
     return events
 

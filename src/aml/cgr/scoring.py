@@ -26,24 +26,24 @@ core is a per-agent Beta-mean trust score:
 Only `certify` decisions tagged `judgment` earn credit/blame; rule-rejects are
 excluded (they are deterministic, not a judgment call).
 
-DELIBERATE v1 OMISSIONS (flagged for v2 — see reputation-score-design.md):
-  * Forgetting factor λ (time decay of old evidence): the reference and v1 weight
-    all resolved outcomes equally. Decay matters for anti-pump once an agent has
-    volume (stale good behavior shouldn't mask a recent turn) — deferred.
-  * Stake-weighted evidence (invoice amount / capital at risk): v1 counts each
-    outcome as 1. Needs an amount field carried into scoring — substrate has it
-    on decisions but v1 does not consume it.
-  * Recency-weighted reviewer calibration: v1 uses a flat Brier over a reviewer's
-    whole resolved history.
-All three need substrate we either don't capture yet (stake/recency provenance)
-or additional design (λ tuning); v1 follows the validated reference exactly so
-the −0.7 field correlation is attributable to the ported core, not new knobs.
+v2 (Ticket #13) WIRES the deferred knobs behind a `WeightingConfig` whose defaults
+are NEUTRAL, so v1 output is reproduced BYTE-FOR-BYTE (regression-tested):
+  * recency_i = exp(-Δt/τ) per observation (τ=∞ default ⇒ 1);
+  * forgetting factor λ on the prior carry-over (λ=1 default);
+  * stake_i injection seam (default 1 — no staking source exists yet, not fabricated);
+  * N_lift on the evidence-gated ceiling is now configurable (ceiling formula
+    UNCHANGED) and can tie to a J-Space capability profile's confidence (Part B).
+The capability signal `cap_d` resolves from a `CapabilityProfile` when the neutral
+measurement authority has issued one for the agent's identity, else the TierGate
+proxy exactly as v1 (`resolve_capability`). The measurement instrument that PRODUCES
+a profile is out of scope (Part C, flagged/separate).
 """
 from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import Callable
 
 import numpy as np
 
@@ -85,6 +85,90 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+@dataclass(frozen=True)
+class WeightingConfig:
+    """v2 evidence-weighting knobs (Ticket #13 Part A). Every default is NEUTRAL, so
+    with the defaults the score is BYTE-IDENTICAL to v1. See the math in
+    docs/cgr/reputation-score-design.md ("The math").
+
+    The intended split (avoid double-decay): `lam` fades the accumulated/prior mass
+    (a one-time pump decays); `recency` weights each NEW observation by its age.
+    Recency-on-evidence is the recommended primary knob with `lam=1`."""
+    tau_days: float | None = None        # recency scale: recency_i = exp(-Δt/τ); None ⇒ 1.0 (v1)
+    lam: float = 1.0                      # forgetting factor λ ∈ (0,1] on the prior carry-over
+    n_lift: int = N_LIFT                  # evidence-gate lift point (design: ≈ k+2, adjusted for cap noise)
+    stake_fn: Callable[[str], float] | None = None   # (ref) -> stake_i; None ⇒ 1.0 (no source yet — do not fabricate)
+
+
+DEFAULT_WEIGHTING = WeightingConfig()
+
+
+@dataclass(frozen=True)
+class CapabilityProfile:
+    """Minimal, versioned J-Space capability profile (Ticket #13 Part B) — the
+    `cap_d` source. Produced by a neutral measurement AUTHORITY; the instrument that
+    produces it is NOT built here (Part C, flagged/separate). Consumed as `cap_d` in
+    the Beta prior and the evidence-gated ceiling, in place of the TierGate proxy."""
+    dimension: str
+    cap_d: float                         # ∈ [0,1] verified capability ceiling
+    issuer: str                          # measurement authority / body (provenance)
+    method: str                          # how cap_d was measured (provenance)
+    as_of: str                           # ISO-8601 (provenance)
+    confidence: float | None = None      # optional ∈ [0,1]: how well-measured cap_d is
+    schema: str = "cgr.capability.v1"
+
+
+def resolve_capability(profile: "CapabilityProfile | None",
+                       agent_tier: float | None) -> tuple[float | None, float | None]:
+    """Resolve the capability signal `cap_d`: from the J-Space profile when one
+    exists for the agent's identity, ELSE the TierGate proxy (`agent_tier`) exactly
+    as v1. Returns (cap_d, confidence)."""
+    if profile is not None:
+        conf = None if profile.confidence is None else float(profile.confidence)
+        return float(profile.cap_d), conf
+    return agent_tier, None
+
+
+def n_lift_for(confidence: float | None, base: int = N_LIFT, k: float = K_PRIOR) -> int:
+    """Evidence-gate lift point N_lift. Default `base` (= N_LIFT) when there is no
+    profile confidence — v1 behaviour. With a profile confidence, interpolate from a
+    floor (≈ k+2, the design's "verifiable mass overwhelms prior mass" point) up to
+    `base` by confidence: a WELL-measured cap_d (high confidence) is relied on longer
+    ⇒ higher N_lift; a NOISY cap_d (low confidence) lifts the ceiling sooner ⇒ lower
+    N_lift. (docs/cgr/reputation-score-design.md, §N_lift calibration.)"""
+    if confidence is None:
+        return int(base)
+    floor = int(round(k + 2))
+    conf = min(max(float(confidence), 0.0), 1.0)
+    return max(floor, int(round(floor + (int(base) - floor) * conf)))
+
+
+def _as_utc(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+
+
+def _parse_as_of_dt(as_of: str | None) -> datetime | None:
+    if not as_of:
+        return None
+    try:
+        return _as_utc(datetime.fromisoformat(as_of.replace("Z", "+00:00")))
+    except ValueError:
+        return None
+
+
+def _recency(ts: datetime | None, as_of_dt: datetime | None, tau_days: float | None) -> float:
+    """Per-observation recency weight exp(-Δt/τ), Δt = age (days) from `ts` to `as_of`.
+    τ=None (default) ⇒ 1.0 (no decay, v1). A future/missing ts ⇒ full weight."""
+    if tau_days is None or ts is None or as_of_dt is None:
+        return 1.0
+    dt_days = (as_of_dt - _as_utc(ts)).total_seconds() / 86400.0
+    if dt_days <= 0.0:
+        return 1.0
+    return float(np.exp(-dt_days / float(tau_days)))
+
+
 def beta_prior(tier: float | None, k: float = K_PRIOR) -> tuple[float, float]:
     """Capability prior as Beta(α, β). tier is None ⇒ neutral prior (1, 1)."""
     if tier is None:
@@ -117,24 +201,46 @@ def score_agent(
     agent_handle: str,
     decisions: Iterable,
     outcomes_by_ref: dict[str, str],
-    reviews: Iterable[tuple[str, str, float]],
+    reviews: Iterable[tuple],
     reviewer_w: dict[str, float],
     tier: float | None,
     *,
     k: float = K_PRIOR,
     as_of: str | None = None,
     dimension: str = DIMENSION_RECEIVABLES,
+    weighting: WeightingConfig = DEFAULT_WEIGHTING,
+    outcome_dates_by_ref: dict | None = None,
 ) -> CGRResult:
     """Score one agent from its decisions + the joined outcomes + reviews.
 
     decisions        : this agent's DecisionRow-like items (need .decision,
                        .verifiability_tag, .invoice_ref).
     outcomes_by_ref  : invoice_ref -> outcome string ("paid"|"default"|...).
-    reviews          : this agent's (invoice_ref, reviewer_handle, rating) tuples.
+    reviews          : this agent's (invoice_ref, reviewer_handle, rating) tuples,
+                       optionally a 4th element (review_date) for recency.
     reviewer_w       : global reviewer weights (computed once by the engine).
-    tier             : capability tier in [0,1] or None (neutral prior, no ceiling).
+    tier             : the capability signal cap_d ∈ [0,1] (a J-Space profile value
+                       or the TierGate proxy) used in the prior + evidence-gated
+                       ceiling, or None (neutral prior, no ceiling).
+    weighting        : v2 knobs (recency τ, forgetting λ, N_lift, stake). Defaults
+                       are NEUTRAL ⇒ output byte-identical to v1.
+    outcome_dates_by_ref : invoice_ref -> outcome timestamp, for recency of the
+                       verifiable slice (only consulted when weighting.tau_days set).
+
+    v2 evidence weight (docs/cgr/reputation-score-design.md):
+        w_i = verifiability_i × calibration_i × stake_i × recency_i
+        α ← λ·α_prior + Σ w_i·r_i ;  β ← λ·β_prior + Σ w_i·(1−r_i)
     """
-    alpha, beta = beta_prior(tier, k)
+    lam = weighting.lam
+    tau = weighting.tau_days
+    stake_fn = weighting.stake_fn or (lambda _ref: 1.0)
+    as_of_dt = _parse_as_of_dt(as_of) if tau is not None else None
+    outcome_dates = outcome_dates_by_ref or {}
+
+    # λ fades the accumulated/prior mass (a one-time pump decays). λ=1 ⇒ v1.
+    alpha_prior, beta_prior_ = beta_prior(tier, k)
+    alpha = lam * alpha_prior
+    beta = lam * beta_prior_
     n_resolved = n_pending = 0
     resolved_refs: set[str] = set()
 
@@ -146,18 +252,24 @@ def score_agent(
         outcome = outcomes_by_ref.get(ref)
         if outcome == "paid" or outcome == "default":
             good = 1.0 if outcome == "paid" else 0.0
-            alpha += good
-            beta += 1.0 - good
+            # verifiable ground truth: verifiability=1, calibration=1; × stake × recency
+            w = float(stake_fn(ref)) * _recency(outcome_dates.get(ref), as_of_dt, tau)
+            alpha += w * good
+            beta += w * (1.0 - good)
             n_resolved += 1
             resolved_refs.add(ref)
         else:
             n_pending += 1
 
     # reviewer-weighted early signal on UNRESOLVED certifications only
-    for ref, reviewer, rating in reviews:
+    for review in reviews:
+        ref, reviewer, rating = review[0], review[1], review[2]
         if ref in resolved_refs:
             continue
-        w = reviewer_w.get(reviewer, DEFAULT_REVIEWER_WEIGHT)
+        review_date = review[3] if len(review) > 3 else None
+        # feedback: calibration = reviewer weight (verifiability folded in); × stake × recency
+        w = (reviewer_w.get(reviewer, DEFAULT_REVIEWER_WEIGHT)
+             * float(stake_fn(ref)) * _recency(review_date, as_of_dt, tau))
         alpha += w * float(rating)
         beta += w * (1.0 - float(rating))
 
@@ -165,8 +277,10 @@ def score_agent(
     # capability ceiling — evidence-gated: tight when verifiable evidence is thin
     # (guards cold-start / review-farm inflation), lifts as resolved outcomes prove
     # capability (verifiable evidence dominates). Skipped entirely when tier is None.
+    # N_lift is configurable (weighting.n_lift); the formula is UNCHANGED from v1.
     if tier is not None:
-        s = min(max(n_resolved / N_LIFT, 0.0), 1.0)
+        nl = max(int(weighting.n_lift), 1)
+        s = min(max(n_resolved / nl, 0.0), 1.0)
         ceiling = float(tier) + CEILING_EPS + (1.0 - float(tier) - CEILING_EPS) * s
         E = min(E, ceiling)
 

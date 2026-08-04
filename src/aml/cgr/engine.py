@@ -13,8 +13,8 @@ from dataclasses import replace
 
 from aml.cgr.identity import did_key, resolve_identities
 from aml.cgr.scoring import (
-    CGRResult, DIMENSION_RECEIVABLES, MIN_REVIEWS, _now_iso,
-    reviewer_weights, score_agent,
+    CGRResult, DEFAULT_WEIGHTING, DIMENSION_RECEIVABLES, MIN_REVIEWS, WeightingConfig,
+    _now_iso, n_lift_for, resolve_capability, reviewer_weights, score_agent,
 )
 from aml.cgr.substrate import (
     DecisionRow, ReviewEvent, load_reviews, load_rotations, load_substrate,
@@ -40,6 +40,8 @@ def compute_scores_from_rows(
     rotations: Iterable = (),
     verify=None,
     as_of: str | None = None,
+    weighting: "WeightingConfig | None" = None,
+    capability_profiles: dict | None = None,
 ) -> list[CGRResult]:
     """Pure scoring over already-loaded substrate rows (+ optional reviews + rotations).
 
@@ -56,6 +58,7 @@ def compute_scores_from_rows(
     reviews = list(reviews)
     rotations = list(rotations)
     as_of = as_of or _now_iso()
+    weighting = weighting or DEFAULT_WEIGHTING   # neutral ⇒ byte-identical to v1
 
     # Resolve rotation chains → {op_key: anchor}, {anchor: current_key}, frozen set.
     if rotations and verify is not None:
@@ -66,6 +69,9 @@ def compute_scores_from_rows(
     # each row already carries its joined outcome (latest, tenant-scoped)
     outcomes_by_ref = {r.invoice_ref: r.outcome for r in rows
                        if r.invoice_ref is not None and r.outcome is not None}
+    # outcome timestamps for recency (v2) — only consulted when weighting.tau_days is set
+    outcome_dates_by_ref = {r.invoice_ref: r.outcome_date for r in rows
+                            if r.invoice_ref is not None and r.outcome_date is not None}
 
     # global reviewer calibration: only reviews on RESOLVED invoices inform weight
     resolved_obs = []
@@ -124,17 +130,29 @@ def compute_scores_from_rows(
         handle = agent_by_ref.get(rv.invoice_ref) or rv.agent_handle
         if handle is None:
             continue
-        reviews_by_agent[handle].append((rv.invoice_ref, rv.reviewer, rv.rating))
+        # 4-tuple carries the review timestamp for recency (v2); None ⇒ recency 1
+        reviews_by_agent[handle].append(
+            (rv.invoice_ref, rv.reviewer, rv.rating, getattr(rv, "review_date", None)))
 
-    results = [
-        replace(
-            score_agent(label_by_agent[g], decs, outcomes_by_ref, reviews_by_agent.get(g, ()),
-                        rev_w, tier_by_agent.get(g), as_of=as_of),
-            subject_key=subject_by_agent.get(g),   # current operational GEIANT key (#5)
-            subject_did=did_by_agent.get(g),       # identity anchor did:key — stable across rotation (#7)
+    results = []
+    for g, decs in decisions_by_agent.items():
+        subject_did = did_by_agent.get(g)
+        # Part B: resolve cap_d from a J-Space capability profile keyed by the agent's
+        # identity (anchor key or its did:key), else the TierGate proxy exactly as v1.
+        profile = None
+        if capability_profiles:
+            profile = capability_profiles.get(g) or (
+                capability_profiles.get(subject_did) if subject_did else None)
+        cap_d, cap_conf = resolve_capability(profile, tier_by_agent.get(g))
+        # A well-measured cap_d (high confidence) is relied on longer (higher N_lift);
+        # no profile ⇒ N_lift unchanged. Ceiling formula itself is untouched.
+        agent_weighting = replace(weighting, n_lift=n_lift_for(cap_conf, weighting.n_lift))
+        res = score_agent(
+            label_by_agent[g], decs, outcomes_by_ref, reviews_by_agent.get(g, ()),
+            rev_w, cap_d, as_of=as_of, weighting=agent_weighting,
+            outcome_dates_by_ref=outcome_dates_by_ref,
         )
-        for g, decs in decisions_by_agent.items()
-    ]
+        results.append(replace(res, subject_key=subject_by_agent.get(g), subject_did=subject_did))
     results.sort(key=lambda r: r.cgr_score, reverse=True)
     return results
 
@@ -153,18 +171,25 @@ def _rotation_verifier(pubkey_hex: str, message: bytes, sig_hex: str) -> bool:
 def compute_scores(decision_trail, store_manager, tenant_id: str, *,
                    reviews: Iterable[ReviewEvent] | None = None,
                    rotations: Iterable | None = None, as_of: str | None = None,
+                   weighting: "WeightingConfig | None" = None,
+                   capability_profiles: dict | None = None,
                    limit: int = 500, offset: int = 0) -> list[CGRResult]:
     """Live path: load the tenant's substrate, then score. Reviews + rotation proofs
     are auto-loaded from their stores when the caller doesn't supply them (None);
     pass () to force the empty baseline, or an explicit list. Rotation links are
-    verified (Ed25519) before an agent's key-history is folded into one identity."""
+    verified (Ed25519) before an agent's key-history is folded into one identity.
+
+    v2 (Ticket #13): `weighting` (recency/λ/N_lift/stake) and `capability_profiles`
+    (J-Space cap_d per identity) are pass-through seams — both default to the neutral
+    v1 behaviour. No profile source is wired into the live path yet (Part C)."""
     rows = load_substrate(decision_trail, store_manager, tenant_id, limit=limit, offset=offset)
     if reviews is None:
         reviews = load_reviews(store_manager, tenant_id)
     if rotations is None:
         rotations = load_rotations(store_manager, tenant_id)
     return compute_scores_from_rows(rows, reviews=reviews, rotations=rotations,
-                                    verify=_rotation_verifier, as_of=as_of)
+                                    verify=_rotation_verifier, as_of=as_of,
+                                    weighting=weighting, capability_profiles=capability_profiles)
 
 
 def to_tiergate(r: CGRResult, *, min_resolved: int = MIN_RESOLVED_PROVEN) -> dict:
