@@ -3,10 +3,12 @@
 Owns the read/join over Ticket-#1's captured substrate:
   * decisions live in `decision_records.parameters` (JSONB) — read via an injected
     DecisionTrailService (`query_decisions`);
-  * outcomes live in the append-only `cgr-outcomes` GMP store — read via an
-    injected StoreManager's backend `audit()`, filtered to the tenant + the
-    cgr_schema marker (audit() is admin/all-tenant, so the tenant predicate here
-    IS the isolation boundary — same guarantee as the export route).
+  * outcomes/reviews/rotations live in append-only GMP stores — read via the
+    injected StoreManager's backend `scoped_audit(tenant_id)` (CGR #12), which on
+    Postgres runs under the REAL tenant RLS context so the DATABASE enforces
+    isolation under the restricted runtime role; a Python `tenant_id ==` + cgr_schema
+    check stays as belt-and-suspenders. (Genuine cross-tenant admin still uses
+    `audit()`.)
 
 Both the `GET /v1/cgr/substrate/export` route and the scoring engine call
 `load_substrate()`, so the join lives in exactly one place. `export_rows()`
@@ -75,12 +77,25 @@ def _sort_key(m):
     return (_effective_at(m), m.ref or 0)
 
 
+def _scoped_audit(backend, tenant_id: str):
+    """Tenant-scoped audit (CGR #12). Prefer the backend's RLS-aware
+    `scoped_audit` — Postgres routes it through the REAL tenant RLS context, so the
+    DATABASE enforces isolation under the restricted runtime role — and fall back
+    to filtering `audit()` for backends that don't implement it (sqlite/reference).
+    This replaces the `audit()` (admin/all-tenant) dumps for tenant reads; callers
+    keep their own `tenant_id ==` check as belt-and-suspenders. Stdlib-only (getattr)."""
+    fn = getattr(backend, "scoped_audit", None)
+    if callable(fn):
+        return fn(tenant_id)
+    return (m for m in backend.audit() if m.tenant_id == tenant_id)
+
+
 def _tenant_outcomes(backend, tenant_id: str) -> list:
-    """Every CGR outcome record for a tenant. `audit()` is an admin (all-tenant)
-    dump over the shared store, so we filter by tenant_id + the cgr_schema marker.
-    Correctness over performance (POC scale); paginate/optimize later."""
+    """Every CGR outcome record for a tenant. Reads through `scoped_audit` (RLS-
+    enforced on Postgres under the restricted role) + a Python tenant check as
+    belt-and-suspenders. Correctness over performance (POC scale)."""
     rows = []
-    for m in backend.audit():
+    for m in _scoped_audit(backend, tenant_id):
         md = m.metadata or {}
         if md.get("cgr_schema") == CGR_OUTCOME_SCHEMA and m.tenant_id == tenant_id:
             rows.append(m)
@@ -100,10 +115,10 @@ def _latest_for(outcomes: list, invoice_ref: str):
 # alone. _latest_for (one-per-invoice) is deliberately NOT reused here.
 
 def _tenant_reviews(backend, tenant_id: str) -> list:
-    """Every CGR review record for a tenant. Mirrors _tenant_outcomes: audit() is
-    admin/all-tenant, so we filter by tenant_id + the review cgr_schema marker."""
+    """Every CGR review record for a tenant. Mirrors _tenant_outcomes: reads through
+    `scoped_audit` (RLS-enforced on Postgres) + the tenant check as belt-and-suspenders."""
     rows = []
-    for m in backend.audit():
+    for m in _scoped_audit(backend, tenant_id):
         md = m.metadata or {}
         if md.get("cgr_schema") == CGR_REVIEW_SCHEMA and m.tenant_id == tenant_id:
             rows.append(m)
@@ -152,9 +167,10 @@ def load_reviews(store_manager, tenant_id: str) -> list[ReviewEvent]:
 
 
 def _tenant_rotations(backend, tenant_id: str) -> list:
-    """Every CGR rotation-proof record for a tenant (mirrors _tenant_reviews)."""
+    """Every CGR rotation-proof record for a tenant (mirrors _tenant_reviews):
+    reads through `scoped_audit` (RLS-enforced on Postgres) + the tenant check."""
     rows = []
-    for m in backend.audit():
+    for m in _scoped_audit(backend, tenant_id):
         md = m.metadata or {}
         if md.get("cgr_schema") == CGR_ROTATION_SCHEMA and m.tenant_id == tenant_id:
             rows.append(m)

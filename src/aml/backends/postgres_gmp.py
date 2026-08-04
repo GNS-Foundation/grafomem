@@ -39,6 +39,8 @@ from typing import Any
 
 import numpy as np
 
+logger = logging.getLogger("grafomem.backends.postgres_gmp")
+
 _tokenizer = tiktoken.get_encoding("cl100k_base")
 
 from aml.backends.gmp_reference import GMP_V02_PROFILE
@@ -151,7 +153,17 @@ class PostgresGMPBackend:
 
     __grafomem_interface__ = "0.2.0"
 
-    def __init__(self, db_url: str, embed_fn=None, encryption=None) -> None:
+    def __init__(self, db_url: str, embed_fn=None, encryption=None,
+                 ensure_schema: bool | None = None) -> None:
+        # CGR #12 (RLS enforcement): startup DDL runs only under a MIGRATOR role.
+        # When the app connects as the restricted runtime role (grafomem_rt,
+        # NOSUPERUSER/NOBYPASSRLS, non-owner), schema-setup must not run — hence
+        # this gate. Default from env GRAFOMEM_DB_ENSURE_SCHEMA ("true"), so
+        # today's postgres-as-superuser boot is unchanged (backward-compatible).
+        if ensure_schema is None:
+            ensure_schema = os.environ.get("GRAFOMEM_DB_ENSURE_SCHEMA", "true").strip().lower() \
+                in ("1", "true", "yes", "on")
+        self._ensure_schema_on = ensure_schema
         try:
             import psycopg
             from psycopg_pool import ConnectionPool
@@ -202,7 +214,11 @@ class PostgresGMPBackend:
                     # Ignore if the user isn't superuser (assume vector is already created by admin)
                     conn.rollback()
             register_vector(conn)
-        self._ensure_schema()
+        if self._ensure_schema_on:
+            self._ensure_schema()
+        else:
+            logger.info("PostgresGMPBackend: schema-setup skipped "
+                        "(GRAFOMEM_DB_ENSURE_SCHEMA off — restricted/runtime role)")
 
     @contextmanager
     def _tenant_conn(self, tenant_id: str):
@@ -216,48 +232,62 @@ class PostgresGMPBackend:
                     yield conn, cur
 
     def _ensure_schema(self) -> None:
-        """Create tables and indexes if they don't exist."""
+        """Create tables, indexes, and RLS policies if they don't exist.
+
+        MIGRATOR-ONLY + PRIVILEGE-TOLERANT (CGR #12): every DDL statement is
+        wrapped so that a non-owner / non-superuser role neither attempts-and-
+        crashes nor aborts startup — each InsufficientPrivilege is rolled back,
+        warned, and skipped (mirroring the CREATE EXTENSION guard in __init__).
+        The restricted runtime role should run with GRAFOMEM_DB_ENSURE_SCHEMA off
+        so this is never called; this guard is defense in depth."""
+        import psycopg
         with self._pool.connection() as conn:
             with conn.cursor() as cur:
-                # Memories table (no format needed — no dimension)
-                cur.execute(_SCHEMA_MEMORIES.format())
+                def _ddl(sql: str, label: str) -> None:
+                    try:
+                        cur.execute(sql)
+                    except psycopg.errors.InsufficientPrivilege:
+                        conn.rollback()   # harmless under autocommit; keeps the conn usable
+                        logger.warning(
+                            "RLS/DDL: insufficient privilege for %s — skipping "
+                            "(non-migrator role). Schema must be provisioned by a "
+                            "migrator/owner.", label)
 
-                # Embeddings table (dimension injected)
-                cur.execute(_SCHEMA_EMBEDDINGS.format(dim=self._dim))
+                # Tables
+                _ddl(_SCHEMA_MEMORIES.format(), "CREATE TABLE memories")
+                _ddl(_SCHEMA_EMBEDDINGS.format(dim=self._dim), "CREATE TABLE memory_embeddings")
 
+                # Encryption columns
+                _ddl("ALTER TABLE memories ADD COLUMN IF NOT EXISTS content_enc TEXT;",
+                     "ALTER memories +content_enc")
+                _ddl("ALTER TABLE memories ADD COLUMN IF NOT EXISTS metadata_enc TEXT;",
+                     "ALTER memories +metadata_enc")
+                # Region columns
+                _ddl("ALTER TABLE memories ADD COLUMN IF NOT EXISTS region TEXT DEFAULT 'global';",
+                     "ALTER memories +region")
+                _ddl("ALTER TABLE memory_embeddings ADD COLUMN IF NOT EXISTS region TEXT DEFAULT 'global';",
+                     "ALTER memory_embeddings +region")
+                # Tokenizer columns
+                _ddl("ALTER TABLE memory_embeddings ADD COLUMN IF NOT EXISTS token_count INTEGER;",
+                     "ALTER memory_embeddings +token_count")
+                _ddl("ALTER TABLE memory_embeddings ADD COLUMN IF NOT EXISTS tokenizer_id TEXT;",
+                     "ALTER memory_embeddings +tokenizer_id")
 
-                # Migration for encryption columns
-                try:
-                    cur.execute("ALTER TABLE memories ADD COLUMN IF NOT EXISTS content_enc TEXT;")
-                    cur.execute("ALTER TABLE memories ADD COLUMN IF NOT EXISTS metadata_enc TEXT;")
-                except Exception as e:
-                    logger.warning(f"Could not alter memories table for encryption columns: {e}")
+                # Indexes (after migrations so columns exist)
+                _ddl("CREATE INDEX IF NOT EXISTS idx_mem_tenant_valid "
+                     "ON memories(tenant_id, valid_until, valid_from)", "INDEX idx_mem_tenant_valid")
+                _ddl(_HNSW_INDEX.strip(), "INDEX hnsw")
+                _ddl(_TENANT_FILTER_INDEX.strip(), "INDEX tenant_filter")
 
-                # Migration for region columns
-                try:
-                    cur.execute("ALTER TABLE memories ADD COLUMN IF NOT EXISTS region TEXT DEFAULT 'global';")
-                    cur.execute("ALTER TABLE memory_embeddings ADD COLUMN IF NOT EXISTS region TEXT DEFAULT 'global';")
-                except Exception as e:
-                    logger.warning(f"Could not alter tables for region columns: {e}")
-
-                # Migration for tokenizer columns
-                try:
-                    cur.execute("ALTER TABLE memory_embeddings ADD COLUMN IF NOT EXISTS token_count INTEGER;")
-                    cur.execute("ALTER TABLE memory_embeddings ADD COLUMN IF NOT EXISTS tokenizer_id TEXT;")
-                except Exception as e:
-                    logger.warning(f"Could not alter tables for tokenizer columns: {e}")
-
-                # Indexes (must run after migrations to ensure columns exist)
-                cur.execute(
-                    "CREATE INDEX IF NOT EXISTS idx_mem_tenant_valid "
-                    "ON memories(tenant_id, valid_until, valid_from)"
-                )
-                cur.execute(_HNSW_INDEX.strip())
-                cur.execute(_TENANT_FILTER_INDEX.strip())
-
-                # Enable Postgres RLS
-                cur.execute("ALTER TABLE memories ENABLE ROW LEVEL SECURITY")
-                cur.execute(
+                # Postgres RLS: enable + the tenant-isolation policies. NOTE: we do
+                # NOT FORCE row level security. The restricted runtime role
+                # (grafomem_rt) is a NON-OWNER, so it is subject to RLS without FORCE;
+                # meanwhile FORCE would make the table OWNER subject to RLS too, which
+                # changes behaviour for any owner-role raw query and is NOT backward-
+                # compatible with today's owner/superuser connection. If the app ever
+                # connects as the owner, DB-admin can add FORCE at the DB level.
+                _ddl("ALTER TABLE memories ENABLE ROW LEVEL SECURITY", "ENABLE RLS memories")
+                _ddl(
                     """
                     DO $$ BEGIN
                         CREATE POLICY tenant_isolation_memories ON memories
@@ -265,10 +295,9 @@ class PostgresGMPBackend:
                     EXCEPTION
                         WHEN duplicate_object THEN null;
                     END $$;
-                    """
-                )
-                cur.execute("ALTER TABLE memory_embeddings ENABLE ROW LEVEL SECURITY")
-                cur.execute(
+                    """, "POLICY tenant_isolation_memories")
+                _ddl("ALTER TABLE memory_embeddings ENABLE ROW LEVEL SECURITY", "ENABLE RLS memory_embeddings")
+                _ddl(
                     """
                     DO $$ BEGIN
                         CREATE POLICY tenant_isolation_embeddings ON memory_embeddings
@@ -276,8 +305,7 @@ class PostgresGMPBackend:
                     EXCEPTION
                         WHEN duplicate_object THEN null;
                     END $$;
-                    """
-                )
+                    """, "POLICY tenant_isolation_embeddings")
 
     # -- Storage reporting (M5, duck-typed) --------------------------------
 
@@ -551,6 +579,24 @@ class PostgresGMPBackend:
 
     def audit(self) -> Iterator[Memory]:
         with self._tenant_conn("admin") as (conn, cur):
+            cur.execute(
+                """SELECT ref, content, written_at, metadata,
+                          valid_from, valid_until, tenant_id,
+                          superseded_by, written_by, signature, public_key, region,
+                          content_enc, metadata_enc
+                   FROM memories ORDER BY ref"""
+            )
+            rows = cur.fetchall()
+        return iter([self._row_to_memory(r) for r in rows])
+
+    def scoped_audit(self, tenant_id: str) -> Iterator[Memory]:
+        """Tenant-scoped audit under the REAL tenant RLS context (CGR #12) — NOT
+        the 'admin' bypass. Under the restricted runtime role (grafomem_rt), RLS
+        enforces isolation at the DB, so only this tenant's memories are returned
+        even if callers forget to filter. Under a superuser/BYPASSRLS role (today's
+        prod) RLS is inert and this returns all rows — the caller's Python
+        tenant filter (belt-and-suspenders) keeps behaviour identical."""
+        with self._tenant_conn(tenant_id) as (conn, cur):
             cur.execute(
                 """SELECT ref, content, written_at, metadata,
                           valid_from, valid_until, tenant_id,
