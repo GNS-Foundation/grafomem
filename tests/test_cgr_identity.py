@@ -7,11 +7,16 @@ subject_key = current op key, subject_did = anchor did:key).
 """
 from __future__ import annotations
 
+import json
+import pathlib
+
 from aml.cgr.attestation import _canon
 from aml.cgr.engine import compute_scores_from_rows, to_tiergate
-from aml.cgr.identity import RotationProof, did_key, resolve_identities, verify_link
+from aml.cgr.identity import RotationProof, _link_body, did_key, resolve_identities, verify_link
 from aml.cgr.issuance import FoundationIdentity, make_verifier
 from aml.cgr.substrate import DecisionRow
+
+_FIXTURES = pathlib.Path(__file__).resolve().parent / "fixtures"
 
 
 def _id(seed_byte: str) -> FoundationIdentity:
@@ -111,3 +116,26 @@ def test_no_rotation_backward_consistent_with_5a():
     tg = to_tiergate(res[0])
     assert tg["subject_key"] == A
     assert tg["subject_did"] == did_key(A)                     # anchor == current when never rotated
+
+
+# --- #10a chain-emit golden fixture (the 10b cross-repo contract) -----------
+
+def test_chain_golden_fixture_self_certifying_and_byte_parity():
+    fx = json.loads((_FIXTURES / "cgr_rotation_chain_jcs.golden.json").read_text())
+    proofs = [RotationProof(**p) for p in fx["proofs"]]
+
+    for p, canon_expected in zip(proofs, fx["canonical_link_bodies_utf8"]):
+        assert verify_link(p, verify=_verify) is True           # self-certifying: prev_key signed it
+        # byte-parity: JCS canon of {prev,new,seq,not_before} == the bytes prev_key signed
+        assert _canon(_link_body(p)).decode("utf-8") == canon_expected
+
+    anchor_of, current_of, frozen = resolve_identities(proofs, verify=_verify)
+    assert anchor_of[fx["current_key"]] == fx["anchor_key"]     # chain terminates at current
+    assert current_of[fx["anchor_key"]] == fx["current_key"]
+    assert not frozen
+    assert did_key(fx["anchor_key"]) == fx["subject_did"]        # did:key(anchor) == the anchor DID
+
+    # cross-repo contract: this chain matches the #7 v2 attestation fixture exactly
+    v2 = json.loads((_FIXTURES / "cgr_attestation_v2_jcs.golden.json").read_text())
+    assert fx["current_key"] == v2["subject_key"]                # chain terminates at att.subject_key
+    assert fx["subject_did"] == v2["subject_did"]                # did(anchor) == att.subject_did

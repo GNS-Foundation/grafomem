@@ -89,6 +89,7 @@ def services():
         post_outcome=_endpoint(gov, "/v1/governed/outcomes"),
         post_outcomes_bulk=_endpoint(gov, "/v1/governed/outcomes/bulk"),
         post_rotation=_endpoint(gov, "/v1/cgr/rotation"),
+        get_rotations=_endpoint(gov, "/v1/cgr/rotations", "GET"),
         export=_endpoint(cgr, "/v1/cgr/substrate/export", "GET"),
     )
 
@@ -319,3 +320,70 @@ async def test_rotation_capture_and_continuity(services):
     tg = to_tiergate(results[0])
     assert tg["subject_key"] == B                 # current operational key
     assert tg["subject_did"] == did_key(A)        # stable anchor did:key
+
+
+# ============================================================================
+# Ticket #10a — read-only rotation-proof exposure (export + GET route + filters)
+# ============================================================================
+
+async def test_export_rotations_roundtrip_and_read_route(services):
+    from aml.cgr.attestation import _canon
+    from aml.cgr.identity import RotationProof, verify_link
+    from aml.cgr.issuance import FoundationIdentity, make_verifier
+    from aml.cgr.substrate import export_rotations
+    from aml.cloud.demo_routes import RotationProofRequest
+
+    T = _tenant()
+    sA, sB, sC = "c1" * 32, "c2" * 32, "c3" * 32
+    A = FoundationIdentity(bytes.fromhex(sA)).public_key().hex()
+    B = FoundationIdentity(bytes.fromhex(sB)).public_key().hex()
+    C = FoundationIdentity(bytes.fromhex(sC)).public_key().hex()
+    NB = "2026-01-01T00:00:00Z"
+
+    def _sig(prev_seed, prev, new, seq):
+        body = {"prev_key": prev, "new_key": new, "seq": seq, "not_before": NB}
+        return FoundationIdentity(bytes.fromhex(prev_seed)).sign(_canon(body))[0].hex()
+
+    # emit a two-link chain A -> B -> C
+    await services.post_rotation(
+        RotationProofRequest(prev_key=A, new_key=B, seq=1, not_before=NB, sig=_sig(sA, A, B, 1)), _req(T))
+    await services.post_rotation(
+        RotationProofRequest(prev_key=B, new_key=C, seq=2, not_before=NB, sig=_sig(sB, B, C, 2)), _req(T))
+
+    def _verify(pk, msg, s):
+        return make_verifier(bytes.fromhex(pk))(msg, s)
+
+    # export serves exactly {prev_key,new_key,seq,not_before,sig}; each re-verifies
+    exported = export_rotations(services.store_mgr, T)
+    assert len(exported) == 2
+    for p in exported:
+        assert set(p) == {"prev_key", "new_key", "seq", "not_before", "sig"}
+        rp = RotationProof(prev_key=p["prev_key"], new_key=p["new_key"], seq=int(p["seq"]),
+                           not_before=p["not_before"], sig=p["sig"])
+        assert verify_link(rp, verify=_verify) is True         # self-certifying, served raw
+
+    # GET route returns them; filters by anchor / current resolve the same chain
+    assert len((await services.get_rotations(_req(T)))["rotations"]) == 2
+    by_anchor = await services.get_rotations(_req(T), anchor=A)
+    assert {p["new_key"] for p in by_anchor["rotations"]} == {B, C}
+    by_current = await services.get_rotations(_req(T), current=C)
+    assert {p["new_key"] for p in by_current["rotations"]} == {B, C}
+
+
+async def test_rotations_tenant_isolation(services):
+    from aml.cgr.substrate import export_rotations
+    from aml.cloud.demo_routes import RotationProofRequest
+    from aml.cgr.attestation import _canon
+    from aml.cgr.issuance import FoundationIdentity
+
+    A_, B_ = _tenant(), _tenant()
+    sA, sB = "d1" * 32, "d2" * 32
+    A = FoundationIdentity(bytes.fromhex(sA)).public_key().hex()
+    B = FoundationIdentity(bytes.fromhex(sB)).public_key().hex()
+    body = {"prev_key": A, "new_key": B, "seq": 1, "not_before": "2026-01-01T00:00:00Z"}
+    sig = FoundationIdentity(bytes.fromhex(sA)).sign(_canon(body))[0].hex()
+    await services.post_rotation(
+        RotationProofRequest(prev_key=A, new_key=B, seq=1, not_before="2026-01-01T00:00:00Z", sig=sig), _req(A_))
+    # tenant B sees none of A's proofs
+    assert export_rotations(services.store_mgr, B_) == []
+    assert (await services.get_rotations(_req(B_)))["rotations"] == []

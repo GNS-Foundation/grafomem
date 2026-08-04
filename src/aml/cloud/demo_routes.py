@@ -42,7 +42,8 @@ from aml.cgr.substrate import (
     CGR_OUTCOMES_STORE, CGR_OUTCOME_SCHEMA, CGR_REVIEWS_STORE, CGR_REVIEW_SCHEMA,
     CGR_ROTATION_STORE, CGR_ROTATION_SCHEMA,
     _effective_at, _latest_for, _latest_review_for, _sort_key,
-    _tenant_outcomes, _tenant_reviews, export_reviews, export_rows, load_substrate,
+    _tenant_outcomes, _tenant_reviews, export_reviews, export_rotations, export_rows,
+    load_substrate,
 )
 
 logger = logging.getLogger("grafomem.cloud.demo_routes")
@@ -477,6 +478,48 @@ def create_governed_router(decision_trail, execution_receipts, signing_identity,
         are folded into one identity."""
         tenant_id = _tenant_id(request)
         return _record_rotation(_rotations_backend(), tenant_id=tenant_id, p=p)
+
+    @router.get("/v1/cgr/rotations")
+    async def get_rotations(request: Request, anchor: str | None = None, current: str | None = None):
+        """Serve the captured, self-certifying rotation proofs read-only (Ticket
+        #10a) so a consumer (geiant) can INDEPENDENTLY verify anchor→current instead
+        of trusting grafomem's re-issue. Each proof is served raw (byte-parity with
+        what prev_key signed); the reader re-checks every signature — the server is
+        untrusted transport, never an authority on continuity.
+
+        Optional ?anchor=<hex> / ?current=<hex> filter to one identity's chain,
+        resolved server-side via resolve_identities (a convenience; the reader still
+        re-verifies). Read-only, no write path touched.
+
+        Auth: tenant-scoped (parity with the reviews/substrate reads) — a valid
+        tenant context is required. Because the proofs are self-certifying, this
+        route COULD be made anonymous by adding "/v1/cgr/rotations" to auth.py's
+        _SKIP_AUTH_PATHS (as /v1/cgr/issuer is); left tenant-scoped by default until
+        a concrete anonymous-verifier need lands."""
+        tenant_id = _tenant_id(request)
+        if store_manager is None:
+            raise HTTPException(503, "identity store not available")
+        proofs = export_rotations(store_manager, tenant_id)
+        if not (anchor or current):
+            return {"rotations": proofs}
+
+        # Resolve chains to filter by identity. Verification here is only for the
+        # filter; the consumer re-verifies the raw proofs it receives.
+        from aml.cgr.engine import _rotation_verifier
+        from aml.cgr.identity import RotationProof, resolve_identities
+        rp = []
+        for p in proofs:
+            try:
+                rp.append(RotationProof(
+                    prev_key=p["prev_key"], new_key=p["new_key"],
+                    seq=int(p["seq"]) if p["seq"] is not None else 0,
+                    not_before=p["not_before"] or "", sig=p["sig"]))
+            except (TypeError, ValueError):
+                continue
+        anchor_of, _current_of, _frozen = resolve_identities(rp, verify=_rotation_verifier)
+        target = anchor if anchor else anchor_of.get(current, current)
+        filtered = [p for p in proofs if anchor_of.get(p["new_key"]) == target]
+        return {"rotations": filtered}
 
     @router.post("/v1/governed/reviews/bulk")
     async def post_reviews_bulk(reviews: list[ReviewRecord], request: Request):

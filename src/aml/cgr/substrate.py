@@ -182,6 +182,29 @@ def load_rotations(store_manager, tenant_id: str) -> list[RotationProof]:
     return proofs
 
 
+def export_rotations(store_manager, tenant_id: str) -> list[dict]:
+    """Serialize the captured rotation proofs for read-only exposure (Ticket #10a).
+
+    Each proof is EXACTLY the signed link body + `sig`: {prev_key, new_key, seq,
+    not_before, sig}. The values are served RAW as stored (never re-parsed/
+    normalized), so JCS-canonicalizing {prev_key,new_key,seq,not_before} reproduces
+    the bytes `prev_key` signed — the same object `identity.verify_link` reconstructs.
+    The reader (geiant #10b) re-verifies each signature; the server is untrusted
+    transport. No verify-and-discard here — self-certifying facts, served raw."""
+    backend = store_manager.get_or_create_named(CGR_ROTATION_STORE).backend
+    out = []
+    for m in _tenant_rotations(backend, tenant_id):
+        md = m.metadata or {}
+        out.append({
+            "prev_key": md.get("prev_key"),
+            "new_key": md.get("subject"),           # subject == new_key (the Fact key)
+            "seq": md.get("seq"),                   # int as signed — do NOT stringify (byte-parity)
+            "not_before": md.get("not_before"),     # raw as signed
+            "sig": md.get("sig"),
+        })
+    return out
+
+
 def export_reviews(store_manager, tenant_id: str) -> list[dict]:
     """Latest review per (invoice, reviewer), serialized for the additive reviews[]
     on /substrate/export."""
