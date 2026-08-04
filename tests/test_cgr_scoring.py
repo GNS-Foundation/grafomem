@@ -303,6 +303,25 @@ async def test_scores_route_groups_and_resolves(db):
 
 
 @pytest.mark.asyncio
+async def test_scores_route_surfaces_posterior_and_cap_provenance(db):
+    # #8a: the live /v1/cgr/scores payload carries the Beta posterior + cap provenance.
+    T = _tenant()
+    A = "invoice-certifier@kapwork-receivables"
+    GDR = db.GovernedDecisionRequest
+    for inv, oc in [("X", "paid"), ("Y", "default")]:
+        await db.governed_decision(GDR(decision="certify", reason="", invoice_id=inv, agent_handle=A), _req(T))
+        await db.post_outcome(db.OutcomeEvent(invoice_ref=inv, outcome=oc), _req(T))
+    resp = await db.scores(_req(T))
+    s = next(x for x in resp["scores"] if x["agent_handle"] == A)
+    a, b = s["post_alpha"], s["post_beta"]
+    assert a is not None and b is not None
+    assert abs(a / (a + b) - s["cgr_score"]) < 1e-9        # posterior mean == score (no tier ⇒ unbound)
+    assert abs((a + b) - s["confidence"]) < 1e-9           # α+β == confidence
+    assert s["cap_source"] == "tier_proxy"                 # no J-Space profile in the live path
+    assert s["cap_confidence"] is None
+
+
+@pytest.mark.asyncio
 async def test_export_response_shape_unchanged(db):
     T = _tenant()
     await db.governed_decision(

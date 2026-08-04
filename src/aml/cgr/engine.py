@@ -152,7 +152,14 @@ def compute_scores_from_rows(
             rev_w, cap_d, as_of=as_of, weighting=agent_weighting,
             outcome_dates_by_ref=outcome_dates_by_ref,
         )
-        results.append(replace(res, subject_key=subject_by_agent.get(g), subject_did=subject_did))
+        # #8a: capability provenance for the reputation panel. cap_d itself is set by
+        # score_agent; the SOURCE (a J-Space profile vs the TierGate proxy) and the
+        # profile confidence are only known here, so stamp them on the result.
+        results.append(replace(
+            res, subject_key=subject_by_agent.get(g), subject_did=subject_did,
+            cap_source=("profile" if profile is not None else "tier_proxy"),
+            cap_confidence=cap_conf,
+        ))
     results.sort(key=lambda r: r.cgr_score, reverse=True)
     return results
 
