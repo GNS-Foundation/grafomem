@@ -280,6 +280,18 @@ class MemoryBackend(Protocol):
         hard-deleted. Requires AUDIT (§6.6)."""
         ...
 
+    # OPTIONAL override (CGR #12) — deliberately NOT a Protocol member, so adding
+    # it does not change runtime_checkable conformance for existing backends:
+    #
+    #     def scoped_audit(self, tenant_id: str) -> Iterator[Memory]: ...
+    #
+    # Tenant-scoped audit — audit() restricted to one tenant. The DEFAULT behaviour
+    # (filter audit() by tenant_id in Python) is supplied by the caller-side
+    # dispatcher (aml.cgr.substrate._scoped_audit) when a backend does not implement
+    # it, so every backend keeps working. The Postgres backend IMPLEMENTS it to run
+    # under the real tenant RLS context, so the DATABASE enforces isolation (defense
+    # in depth) rather than trusting an admin dump + a Python filter.
+
     def flush(self) -> None:
         """Block until preceding mutations are durable + visible. Always
         required; no-op for synchronous in-memory backends (§6.7)."""
