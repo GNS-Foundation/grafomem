@@ -1,0 +1,24 @@
+{
+  "provenance": {
+    "ticket": "grafomem #10a (cgr/chain-emit) — consumer chain-verification contract",
+    "note": "The #7 rotated identity: anchor 0x33 rotates to current 0x44. The ordered self-certifying proof(s) verify anchor->current; did_key(anchor) equals the v2 attestation fixture subject_did. GEIANT #10b: verifyLink each proof, resolveChain -> anchor/current, require did_key(anchor)===att.subject_did AND chain terminates at subject_key.",
+    "anchor_seed_hex": "3333333333333333333333333333333333333333333333333333333333333333",
+    "current_seed_hex": "4444444444444444444444444444444444444444444444444444444444444444",
+    "links_to": "cgr_attestation_v2_jcs.golden.json (subject_key == current, subject_did == did_key(anchor))"
+  },
+  "anchor_key": "17cb79fb2b4120f2b1ec65e4198d6e08b28e813feb01e4a400839b85e18080ce",
+  "current_key": "d759793bbc13a2819a827c76adb6fba8a49aee007f49f2d0992d99b825ad2c48",
+  "subject_did": "did:key:z6Mkg49NtQR2LyYRDCQFK4w1VVHqhypZSSRo7HsyuN7SV7v5",
+  "proofs": [
+    {
+      "prev_key": "17cb79fb2b4120f2b1ec65e4198d6e08b28e813feb01e4a400839b85e18080ce",
+      "new_key": "d759793bbc13a2819a827c76adb6fba8a49aee007f49f2d0992d99b825ad2c48",
+      "seq": 1,
+      "not_before": "2026-01-01T00:00:00Z",
+      "sig": "c24760f4c56ab0fca157698feaceb292ae7274cf4bd6d4d29c9a1ac196be9c2190e55de8d444a4b52c0dcd81de38e69a2469130dea4f82f2c185d38f305bc508"
+    }
+  ],
+  "canonical_link_bodies_utf8": [
+    "{\"new_key\":\"d759793bbc13a2819a827c76adb6fba8a49aee007f49f2d0992d99b825ad2c48\",\"not_before\":\"2026-01-01T00:00:00Z\",\"prev_key\":\"17cb79fb2b4120f2b1ec65e4198d6e08b28e813feb01e4a400839b85e18080ce\",\"seq\":1}"
+  ]
+}
