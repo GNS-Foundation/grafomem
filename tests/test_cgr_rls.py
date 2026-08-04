@@ -144,6 +144,82 @@ async def test_scoped_audit_db_level_isolation(backend):
     assert f"{A}-SECRET" not in subjects
 
 
+def _can_create_role() -> bool:
+    with psycopg.connect(TEST_DB_URL, autocommit=True) as conn, conn.cursor() as cur:
+        cur.execute("SELECT rolsuper OR rolcreaterole FROM pg_roles WHERE rolname = current_user")
+        return bool(cur.fetchone()[0])
+
+
+@pytest.mark.asyncio
+async def test_rls_proven_under_self_provisioned_restricted_role(backend):
+    """PROVE RLS at the DB level by SELF-PROVISIONING a restricted role (mirrors the
+    future grafomem_rt: NOSUPERUSER/NOBYPASSRLS, non-owner) — so this RUNS in CI
+    (superuser) instead of skipping. Skips ONLY when current_user cannot CREATE ROLE.
+
+    Seeds tenants A and B as the normal (privileged) backend, then reads through the
+    shipped scoped_audit path AS the restricted role: RLS must show only B's rows and
+    zero of A's, with NO Python tenant filter; unset tenant ⇒ zero rows (fail-closed)."""
+    from psycopg import sql
+
+    if not _can_create_role():
+        pytest.skip("current_user lacks CREATEROLE — cannot self-provision a restricted role "
+                    "to prove RLS locally. In CI current_user is a superuser and this RUNS.")
+
+    role = "rls_rt_" + uuid.uuid4().hex[:12]
+    pw = uuid.uuid4().hex
+    restricted_url = f"postgresql://{role}:{pw}@localhost:5432/grafomem"
+
+    A, B = _tenant(), _tenant()
+    _write_outcome(backend, A, f"{A}-SECRET")
+    _write_outcome(backend, B, f"{B}-OWN")
+
+    admin = psycopg.connect(TEST_DB_URL, autocommit=True)
+    try:
+        with admin.cursor() as cur:
+            cur.execute(sql.SQL("CREATE ROLE {} LOGIN PASSWORD {} NOSUPERUSER NOBYPASSRLS")
+                        .format(sql.Identifier(role), sql.Literal(pw)))
+            cur.execute(sql.SQL("GRANT USAGE ON SCHEMA public TO {}").format(sql.Identifier(role)))
+            cur.execute(sql.SQL("GRANT SELECT, INSERT, UPDATE, DELETE ON memories, memory_embeddings TO {}")
+                        .format(sql.Identifier(role)))
+            cur.execute(sql.SQL("GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO {}")
+                        .format(sql.Identifier(role)))
+
+        # (a) Independent, backend-free proof: a raw SELECT AS the restricted role,
+        # under SET app.current_tenant — pure DB enforcement, no grafomem code at all.
+        with psycopg.connect(restricted_url, autocommit=True) as rc, rc.cursor() as rcur:
+            rcur.execute("SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user")
+            rs, rb = rcur.fetchone()
+            assert rs is False and rb is False, "restricted role must be NOSUPERUSER/NOBYPASSRLS"
+            rcur.execute("SELECT set_config('app.current_tenant', %s, false)", (B,))
+            rcur.execute("SELECT DISTINCT tenant_id FROM memories")
+            tids = {r[0] for r in rcur.fetchall()}
+            assert tids == {B}, f"RLS must restrict the restricted role to tenant B, saw {tids}"
+            rcur.execute("SELECT set_config('app.current_tenant', '', false)")   # fail-closed
+            rcur.execute("SELECT count(*) FROM memories")
+            assert rcur.fetchone()[0] == 0, "unset tenant must yield zero rows (fail-closed)"
+
+        # (b) Same enforcement via the SHIPPED scoped_audit path (_tenant_conn) — NO Python filter
+        rt = PostgresGMPBackend(restricted_url, ensure_schema=False)   # no DDL under the restricted role
+        try:
+            b_rows = list(rt.scoped_audit(B))
+            assert b_rows, "tenant B must see its own rows"
+            assert all(m.tenant_id == B for m in b_rows)                # zero of A leaks
+            assert f"{A}-SECRET" not in {(m.metadata or {}).get("subject") for m in b_rows}
+            # cross-check: A's scope also excludes B
+            assert all(m.tenant_id == A for m in rt.scoped_audit(A))
+            # fail-closed: empty tenant context ⇒ zero rows
+            assert list(rt.scoped_audit("")) == []
+        finally:
+            rt.close()
+    finally:
+        with admin.cursor() as cur:
+            cur.execute(sql.SQL("SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                                "WHERE usename = {}").format(sql.Literal(role)))
+            cur.execute(sql.SQL("DROP OWNED BY {}").format(sql.Identifier(role)))
+            cur.execute(sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(role)))
+        admin.close()
+
+
 @pytest.mark.asyncio
 async def test_scoped_audit_fail_closed_unset_tenant(backend):
     enforceable, why = _rls_enforceable()
