@@ -79,6 +79,22 @@ class CGRResult:
     # key). == did:key(subject_key) when no rotation has occurred; after a rotation
     # subject_key is the current operational key while subject_did stays the anchor.
     subject_did: str | None = None
+    # Reputation-panel surface (Ticket #8a) — additive, nullable, no scoring-math
+    # change. All default None so pre-#8a construction paths still serialize.
+    #  * post_alpha/post_beta: the RAW Beta posterior params (α, β). The panel draws
+    #    Beta(α, β) from these. NOTE these are UNCAPPED: cgr_score is min(α/(α+β),
+    #    ceiling), so cgr_score == α/(α+β) only when the evidence gate does not bind.
+    #    Always α+β == confidence.
+    #  * cap_d: the capability value fed to the prior + ceiling (== capability_tier;
+    #    surfaced under the design's name). cap_source: where it came from —
+    #    "profile" (a J-Space CapabilityProfile, #13 Part B) or "tier_proxy" (the
+    #    TierGate fallback). cap_confidence: the profile's confidence when
+    #    cap_source == "profile", else None.
+    post_alpha: float | None = None
+    post_beta: float | None = None
+    cap_d: float | None = None
+    cap_source: str | None = None
+    cap_confidence: float | None = None
 
 
 def _now_iso() -> str:
@@ -293,4 +309,9 @@ def score_agent(
         capability_tier=(None if tier is None else float(tier)),
         as_of=as_of or _now_iso(),
         dimension=dimension,
+        # #8a: the raw (uncapped) posterior + cap_d used. cap_source/cap_confidence
+        # need profile knowledge the engine holds, so they are filled there.
+        post_alpha=float(alpha),
+        post_beta=float(beta),
+        cap_d=(None if tier is None else float(tier)),
     )
