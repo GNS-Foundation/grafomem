@@ -636,14 +636,21 @@ class PostgresGMPBackend:
                 encryptor = encryptor.get_encryptor(tenant)
             content = encryptor.decrypt(content_enc)
 
-        # Handle metadata: could be dict (JSONB auto-parsed) or string
-        if isinstance(metadata, str):
-            if self._encryption and metadata_enc:
-                encryptor = self._encryption
-                if tenant and hasattr(encryptor, "get_encryptor"):
-                    encryptor = encryptor.get_encryptor(tenant)
-                metadata = encryptor.decrypt(metadata_enc)
+        # Handle metadata. When encryption is on, the real payload lives in
+        # `metadata_enc`; the plaintext `metadata` column is only the "{}" sentinel.
+        # That sentinel comes back as a STR on TEXT backends but as a DICT on this
+        # backend's JSONB column (psycopg auto-parses it) — so we must key the decrypt
+        # on `metadata_enc` being present, NOT on `isinstance(metadata, str)`. Gating on
+        # the str form silently dropped all encrypted metadata on Postgres (cgr_schema,
+        # subject, …), making every CGR outcome/review invisible to the scorer.
+        if self._encryption and metadata_enc:
+            encryptor = self._encryption
+            if tenant and hasattr(encryptor, "get_encryptor"):
+                encryptor = encryptor.get_encryptor(tenant)
+            metadata = json.loads(encryptor.decrypt(metadata_enc))
+        elif isinstance(metadata, str):
             metadata = json.loads(metadata)
+        # else: already a dict (unencrypted JSONB) — use as-is
 
         # Normalize valid_until: sentinel means None (open interval)
         if vu is not None and vu >= OPEN_UNTIL_TS:
