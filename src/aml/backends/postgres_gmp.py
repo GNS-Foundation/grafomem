@@ -590,19 +590,26 @@ class PostgresGMPBackend:
         return iter([self._row_to_memory(r) for r in rows])
 
     def scoped_audit(self, tenant_id: str) -> Iterator[Memory]:
-        """Tenant-scoped audit under the REAL tenant RLS context (CGR #12) — NOT
-        the 'admin' bypass. Under the restricted runtime role (grafomem_rt), RLS
-        enforces isolation at the DB, so only this tenant's memories are returned
-        even if callers forget to filter. Under a superuser/BYPASSRLS role (today's
-        prod) RLS is inert and this returns all rows — the caller's Python
-        tenant filter (belt-and-suspenders) keeps behaviour identical."""
+        """Tenant-scoped audit (CGR #12/#12a). Filters to `tenant_id` in SQL AND runs
+        under the tenant RLS context (defense-in-depth) — NOT the 'admin' bypass.
+
+        The SQL `WHERE tenant_id = %s` is load-bearing, not belt-and-suspenders: rows
+        are materialized here via `_row_to_memory`, which DECRYPTS each row's content,
+        BEFORE any caller-side Python `tenant_id ==` filter (substrate.py
+        _tenant_outcomes/_tenant_reviews/_tenant_decisions) ever runs. So on a
+        superuser/BYPASSRLS connection (today's prod) — where RLS is inert — omitting
+        the WHERE returned every tenant's rows and decrypting a foreign/legacy row
+        raised "Decryption failures are strictly denied" → HTTP 500 on
+        /v1/cgr/scores. The WHERE (not RLS, not the caller) is what makes this correct
+        under both bypass and restricted roles. (#12a hotfix.)"""
         with self._tenant_conn(tenant_id) as (conn, cur):
             cur.execute(
                 """SELECT ref, content, written_at, metadata,
                           valid_from, valid_until, tenant_id,
                           superseded_by, written_by, signature, public_key, region,
                           content_enc, metadata_enc
-                   FROM memories ORDER BY ref"""
+                   FROM memories WHERE tenant_id = %s ORDER BY ref""",
+                (tenant_id,),
             )
             rows = cur.fetchall()
         return iter([self._row_to_memory(r) for r in rows])

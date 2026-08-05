@@ -121,6 +121,52 @@ async def test_scoped_audit_regression_equivalence(backend):
 
 
 # ---------------------------------------------------------------------------
+# 2a. scoped_audit under a BYPASS role — reproduces the prod 500 (#12a)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_scoped_audit_filters_in_sql_under_bypass_role(backend, monkeypatch):
+    """Reproduce the prod /v1/cgr/scores 500 (#12a) and prove the fix.
+
+    On a connection where RLS does NOT enforce (the default owner/superuser test
+    role — the exact prod situation), scoped_audit(A) must return ONLY tenant A's
+    rows AND must never MATERIALIZE tenant B's row. Row materialization runs
+    `_row_to_memory`, which DECRYPTS content — so before the SQL `WHERE tenant_id`
+    fix, scoped_audit returned every tenant's rows and decrypting a foreign/legacy
+    row raised "Decryption failures are strictly denied" → HTTP 500. The caller's
+    Python `tenant_id ==` filter can't help: it runs AFTER decryption.
+
+    This exercises the bypass-role read path the #12 self-provisioned-role test
+    (which proves the restricted role) does not. In CI current_user is a superuser,
+    so this RUNS; it SKIPS only on an RLS-enforcing role (there the DB filters anyway)."""
+    enforceable, why = _rls_enforceable()
+    if enforceable:
+        pytest.skip(f"needs a NON-enforcing (bypass) role to reproduce the prod path ({why}); "
+                    f"runs under the CI superuser. RLS-enforcing roles filter at the DB regardless.")
+
+    A, B = _tenant(), _tenant()
+    _write_outcome(backend, A, f"{A}-INV0")
+    _write_outcome(backend, A, f"{A}-INV1")
+    _write_outcome(backend, B, f"{B}-SECRET")
+
+    # Spy on materialization: record the tenant_id column (index 6) of every raw row
+    # that reaches _row_to_memory, to PROVE B's row is never decrypted.
+    materialized: list[str] = []
+    orig_row_to_memory = backend._row_to_memory
+    def _spy(row, *args, **kwargs):
+        materialized.append(row[6])
+        return orig_row_to_memory(row, *args, **kwargs)
+    monkeypatch.setattr(backend, "_row_to_memory", _spy)
+
+    rows = list(backend.scoped_audit(A))
+
+    assert {m.tenant_id for m in rows} == {A}          # only A's rows returned (no B leak)
+    assert len(rows) == 2
+    assert B not in materialized                        # B's row NEVER materialized/decrypted
+    assert materialized and all(t == A for t in materialized)
+
+
+# ---------------------------------------------------------------------------
 # 3. DB-level isolation + fail-closed — RLS-enforceable roles only (else SKIP)
 # ---------------------------------------------------------------------------
 
