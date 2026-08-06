@@ -56,10 +56,12 @@ already deployed and live (agent scored in Reputation). This package is **code-o
 - **F2 — FIXED.** `attest` now parses `proposed_action` from the SIGNED `context_bytes`
   (`json.loads(row["context_bytes"])`), not the `context_json` column, so sign-X-execute-X holds
   by construction. Test: `test_hitl_attest_execute.py`.
-- **F3 — PARTIAL.** attest→execute round-trip covered by `test_hitl_attest_execute.py` (real
-  Ed25519 sign → real attest handler → executes the signed action; deny/bad-sig never execute).
-  **Still needed on staging:** the `execute_step` PAUSE half (a mock-LLM emitting `send_email`
-  → escalate → WAITING_HITL → tool NOT executed). Needs a mock-LLM harness.
+- **F3 — CLEARED.** Both halves covered: (a) attest→execute round-trip
+  (`test_hitl_attest_execute.py`, real Ed25519 sign → real attest → executes the signed action;
+  deny/bad-sig never execute); (b) the `execute_step` PAUSE proven end-to-end against Postgres
+  (`test_execute_step_hitl_pause.py`) — mock-LLM emits `send_email` → escalate → asserts
+  WAITING_HITL + step ESCALATED + tool `execute()` NEVER called + 1 pending HITL request
+  (action=send_email, resource=recipient).
 - **F7 — CONFIRMED.** The escalation branch `break`s the tool loop (orchestrator.py:1206), so no
   further tools execute in that step after a send escalates.
 
