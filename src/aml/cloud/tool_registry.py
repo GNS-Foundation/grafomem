@@ -47,6 +47,7 @@ class ToolType(str, Enum):
     HTTP_REQUEST = "http_request"
     DATABASE_QUERY = "database_query"
     CUSTOM = "custom"
+    EMAIL_SEND = "email_send"   # PR-2: edge-gated outreach send (interim stub; Gmail connector = PR-2b)
 
 
 # ============================================================================
@@ -236,6 +237,28 @@ BUILTIN_TOOLS = [
             "additionalProperties": False,
         },
         "config": {"method": "POST"},
+        "requires_governance": True,
+    },
+    {
+        "name": "send_email",
+        "description": (
+            "Send an outreach email to a named recipient. EDGE ACTION: every send to a named "
+            "human requires founder approval via HITL before execution. INTERIM: records the "
+            "approved intent only and never sends — a human sends out of band until the Gmail "
+            "connector ships (PR-2b)."
+        ),
+        "tool_type": ToolType.EMAIL_SEND,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "to": {"type": "string", "description": "Recipient (email or named human)"},
+                "subject": {"type": "string", "description": "Email subject"},
+                "body": {"type": "string", "description": "Email body"},
+            },
+            "required": ["to"],
+            "additionalProperties": True,
+        },
+        "config": {},
         "requires_governance": True,
     },
 ]
@@ -548,6 +571,8 @@ class ToolRegistry:
                 output = self._exec_http(tool, arguments)
             elif tool.tool_type == ToolType.CUSTOM:
                 output = self._exec_custom(tool, arguments)
+            elif tool.tool_type == ToolType.EMAIL_SEND:
+                output = self._exec_email_send(tenant_id, tool, arguments)
             else:
                 output = f"Unsupported tool type: {tool.tool_type.value}"
 
@@ -577,6 +602,22 @@ class ToolRegistry:
     # ------------------------------------------------------------------
     # Tool executors
     # ------------------------------------------------------------------
+
+    def _exec_email_send(self, tenant_id: str, tool: ToolDefinition, args: dict) -> Any:
+        """PR-2 INTERIM (approve-to-send): NEVER sends. Records the approved intent and
+        returns a marker; a human sends out of band. The real Gmail connector is PR-2b.
+
+        The edge gate (HITL approval) is enforced UPSTREAM (governance send_email policy +
+        the PR-4 escalate→HITL bridge + PR-6 approve→execute). This stub is intentionally
+        send-less so that even if reached un-gated, no email leaves the system.
+        """
+        return {
+            "status": "approved_to_send",
+            "sent": False,
+            "to": args.get("to"),
+            "subject": args.get("subject"),
+            "note": "interim stub — founder sends out of band; real Gmail send is PR-2b",
+        }
 
     def _exec_memory_read(self, tool: ToolDefinition, args: dict) -> Any:
         """Execute grafomem_retrieve or grafomem_audit."""

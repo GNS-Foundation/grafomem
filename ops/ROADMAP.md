@@ -44,3 +44,17 @@ and orphan the seeded one.
 tenant lifecycle) so a tenant can be started clean without abandoning it. Until then, the
 operational rule is: **never seed a tenant you intend to keep with synthetic outcomes** —
 prove the loop on a throwaway tenant, provision the keeper empty.
+
+## Encrypt decision-record context (PII) — MUST-FIX before Mauricio
+
+**Signal.** `OrchestratorService.propose_action` records governed decisions via
+`decision_trail.log` WITHOUT passing encryption (matching `demo_routes._record_and_sign`), so
+the decision `query`/context — which holds real prospect **company + person names** — is stored
+**plaintext** in `decision_records` on the corp tenant. Provider keys and governed memory are
+encrypted at rest (EnvIdentity/Fernet), so this is an inconsistency and a PII exposure.
+
+**Roadmap.** Pass `encryption=self._encryption` in `propose_action` (verify CGR still reads
+`agent_key`/`invoice_ref` from `parameters`, which are separate from the encrypted query — see
+the #13 CGR+encryption fix), and re-encrypt the 21 rows already written for
+`gtm-outreach-agent@ulissy`. Consider the same for `demo_routes._record_and_sign`. Tracked as a
+session chip; parallel to the loop PRs — does not block the PR-4/5/6 review checkpoint.
