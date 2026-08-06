@@ -341,11 +341,17 @@ def create_hitl_router(db_pool: DatabasePool, orchestrator: OrchestratorService,
 
     @router.get("/requests/{request_id}/verify")
     def verify_request(request_id: str, request: Request):
+        # SECURITY: scope by the authenticated tenant. Without the tenant filter this is a
+        # cross-tenant IDOR — any compliance:read key could verify ANY request_id and read its
+        # signature + context_bytes (which carry the proposed action + recipient PII). 404 on
+        # a tenant mismatch (indistinguishable from not-found).
         require_scope(request, "compliance:read")
+        ctx = getattr(request.state, "tenant", None)
+        tenant_id = ctx.tenant_id if ctx is not None else None
         with db_pool.connection() as conn:
             row = conn.execute(
-                "SELECT * FROM hitl_approval_requests WHERE request_id = %s",
-                (request_id,)
+                "SELECT * FROM hitl_approval_requests WHERE request_id = %s AND tenant_id = %s",
+                (request_id, tenant_id)
             ).fetchone()
         
         if not row:

@@ -45,6 +45,19 @@ tenant lifecycle) so a tenant can be started clean without abandoning it. Until 
 operational rule is: **never seed a tenant you intend to keep with synthetic outcomes** —
 prove the loop on a throwaway tenant, provision the keeper empty.
 
+## Enforce RLS on the HITL tables — MUST-FIX before multi-tenant
+
+**Signal.** RLS is not enforced on `hitl_approval_requests` / `hitl_approvers`. The live smoke
+found **two** app-layer tenant-scoping bugs in `hitl_routes.py` in one pass: `list_requests`
+filtered by `tenant_id=None` (require_scope returns None), and `verify_request` had no tenant
+filter at all (cross-tenant IDOR leaking signature + `context_bytes`/recipient PII). Both fixed
+at the app layer, but there is no DB backstop.
+
+**Roadmap.** Enforce Postgres RLS on the HITL tables the way `memories` is protected (#12/#12a:
+`app.current_tenant` + FORCE ROW LEVEL SECURITY under `grafomem_rt`; `tests/test_cgr_rls.py` is
+the proving pattern), so an app-layer scoping bug can't leak cross-tenant by construction.
+Prioritize before onboarding a 2nd tenant. Tracked as a session chip.
+
 ## Encrypt decision-record context (PII) — MUST-FIX before Mauricio
 
 **Signal.** `OrchestratorService.propose_action` records governed decisions via

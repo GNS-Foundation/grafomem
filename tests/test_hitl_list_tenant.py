@@ -32,6 +32,16 @@ class _Cur:
                          "issued_at": None, "expires_at": None, "status": "pending"}]
         return []
 
+    def fetchone(self):
+        # verify_request: SELECT * ... WHERE request_id = %s AND tenant_id = %s
+        if "FROM hitl_approval_requests" in self.q and "request_id" in self.q and "tenant_id" in self.q:
+            rid, tid = self.p
+            self.conn.captured["verify_tenant_id"] = tid
+            if rid == "reqA" and tid == "A":            # the seeded request belongs to tenant A
+                return {"status": "pending", "signer_id": None, "signature": None,
+                        "context_bytes": b"secret"}
+        return None
+
 
 class _Conn:
     def __init__(self):
@@ -79,3 +89,14 @@ def test_list_requests_filters_by_real_tenant_not_none():
     assert pool.conn.captured.get("tenant_id") == "corp"   # NOT None (the bug)
     assert len(r.json()["requests"]) == 1
     assert r.json()["requests"][0]["action"] == "send_email"
+
+
+def test_verify_request_is_tenant_scoped_no_idor():
+    pool = _Pool()
+    # tenant A verifies its OWN request → 200
+    ra = _client(pool, "A").get("/v1/hitl/requests/reqA/verify")
+    assert ra.status_code == 200, ra.text
+    # tenant B tries to verify tenant A's request_id → 404 (IDOR blocked; queried with B's tenant)
+    rb = _client(pool, "B").get("/v1/hitl/requests/reqA/verify")
+    assert rb.status_code == 404
+    assert pool.conn.captured.get("verify_tenant_id") == "B"
