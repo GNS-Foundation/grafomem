@@ -515,6 +515,7 @@ class OrchestratorService:
         # the concrete action (PR-5) and, on approval, is executed by PR-6.
         hitl_request_id = None
         escalated = False
+        gate_error = False
         if self._governance is not None:
             from aml.cloud.governance import EvaluationResult
             gate_ctx = {
@@ -527,16 +528,24 @@ class OrchestratorService:
                 _allowed, glogs = self._governance.evaluate_and_gate(tenant_id, "tool_execution", gate_ctx)
                 escalated = any(getattr(l, "result", None) == EvaluationResult.ESCALATED for l in glogs)
             except Exception as e:
-                logger.warning("propose_action governance gate failed (recording decision only): %s", e)
-            if escalated:
+                # F1 (review): FAIL CLOSED. A gate we cannot evaluate must NEVER let a gated
+                # action slip the queue on a log line. Surface it (gate_error=True + a visible
+                # governance.error log) AND create the HITL request so the action still needs a
+                # human. The decision is already recorded/audited above.
+                gate_error = True
+                logger.error("governance.error: propose_action gate raised — failing CLOSED "
+                             "(creating HITL) tool=%s ref=%s: %s", tool, invoice_ref, e)
+            if escalated or gate_error:
                 proposed_action = {
                     "tool": tool,
                     "args": args if isinstance(args, dict) else {},
                     "to": args.get("to") if isinstance(args, dict) else None,
                     "invoice_ref": invoice_ref,
                 }
+                # F3 (review): fold the decision_id into the workflow_id so re-proposing the
+                # same ref does not collide on a prior request's synthetic id.
                 hitl_request_id = self._create_hitl_request(
-                    f"propose:{invoice_ref}", tenant_id=tenant_id,
+                    f"propose:{invoice_ref}:{rec.decision_id}", tenant_id=tenant_id,
                     step_id=rec.decision_id, agent_id=agent_id,
                     proposed_action=proposed_action,
                 )
@@ -545,7 +554,7 @@ class OrchestratorService:
             "decision_id": rec.decision_id, "tenant_id": rec.tenant_id,
             "agent_id": agent_id, "agent_handle": handle, "invoice_ref": invoice_ref,
             "tool": tool, "decision": "certify", "proposed": True, "executed": False,
-            "escalated": escalated, "hitl_request_id": hitl_request_id,
+            "escalated": escalated, "gate_error": gate_error, "hitl_request_id": hitl_request_id,
             "created_at": rec.created_at.isoformat(),
         }
 

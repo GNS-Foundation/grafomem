@@ -121,7 +121,7 @@ def test_propose_action_escalates_send_email_to_hitl(monkeypatch):
                               {"to": "ana@globex.example", "subject": "hi"}, "OUT-globex-ana")
     assert out["escalated"] is True and out["hitl_request_id"] == "hitl-1"
     assert out["executed"] is False
-    assert captured["wf"] == "propose:OUT-globex-ana"
+    assert captured["wf"] == "propose:OUT-globex-ana:dec-123"   # F3: decision_id folded in
     assert captured["step_id"] == "dec-123"                 # linked to the decision record
     assert captured["proposed_action"] == {
         "tool": "send_email", "args": {"to": "ana@globex.example", "subject": "hi"},
@@ -138,3 +138,24 @@ def test_propose_action_no_policy_no_hitl(monkeypatch):
     out = orch.propose_action("corp", "aid", "send_email", {"to": "x"}, "OUT-2")
     assert out["escalated"] is False and out["hitl_request_id"] is None
     assert calls == []                                       # policy allowed → no HITL
+
+
+class _RaisingGov:
+    def evaluate_and_gate(self, tenant, op, ctx):
+        raise RuntimeError("gate backend down")
+
+
+def test_propose_action_gate_error_fails_closed(monkeypatch):
+    # F1: a gate we cannot evaluate must NOT silently pass — surface gate_error AND fail closed
+    # (create the HITL request) so the gated action still needs a human.
+    orch = OrchestratorService(db_url="", governance=_RaisingGov(), decision_trail=_FakeTrail(),
+                               signing_identity=None)
+    monkeypatch.setattr(orch, "get_agent", lambda aid, encryption=None: _agent())
+    created = []
+    monkeypatch.setattr(orch, "_create_hitl_request",
+                        lambda *a, **k: created.append((a, k)) or "hitl-err")
+    out = orch.propose_action("corp", "aid", "send_email", {"to": "x"}, "OUT-9")
+    assert out["gate_error"] is True                          # visible, not a silent success
+    assert out["escalated"] is False
+    assert out["hitl_request_id"] == "hitl-err"              # FAILED CLOSED — HITL created anyway
+    assert len(created) == 1

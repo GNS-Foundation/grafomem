@@ -36,6 +36,10 @@ class _Orch:
     def resume_workflow(self, workflow_id, approved):
         self.resumed.append((workflow_id, approved))
 
+    def get_workflow(self, workflow_id):
+        # synthetic propose:<ref> ids have no backing workflow row
+        return None if str(workflow_id).startswith("propose:") else object()
+
 
 class _Gcrumbs:
     def append_breadcrumb(self, tenant_id, event_type, payload, conn=None):
@@ -86,16 +90,16 @@ def _make_key():
     return priv, pub_hex
 
 
-def _setup(proposed_action):
+def _setup(proposed_action, workflow_id="wf1"):
     priv, pub_hex = _make_key()
-    ctx = {"request_id": "r1", "tenant_id": "corp", "workflow_id": "wf1", "step_id": "s1",
+    ctx = {"request_id": "r1", "tenant_id": "corp", "workflow_id": workflow_id, "step_id": "s1",
            "action": "send_email", "resource": "ana@globex.example"}
     if proposed_action is not None:
         ctx["proposed_action"] = proposed_action
     context_bytes = json.dumps(ctx).encode("utf-8")
     row = {"request_id": "r1", "status": "pending",
            "expires_at": datetime.now(timezone.utc) + timedelta(hours=1),
-           "tenant_id": "corp", "workflow_id": "wf1", "step_id": "s1",
+           "tenant_id": "corp", "workflow_id": workflow_id, "step_id": "s1",
            "context_bytes": context_bytes, "context_json": ctx}
     orch = _Orch()
     router = create_hitl_router(_Pool(_Conn(row, pub_hex)), orch, _Gcrumbs())
@@ -136,6 +140,17 @@ def test_bad_signature_never_executes():
                     json={"decision": "approve", "signer_id": pub_hex, "signature": sig})
     assert r.status_code == 401
     assert orch.executed == [] and orch.resumed == []
+
+
+def test_deny_of_propose_request_no_resume_no_500():
+    # F2: a propose-created request has a synthetic workflow_id with no backing workflow.
+    # Denying it must record the deny cleanly — NOT call resume_workflow (which would raise/500).
+    client, priv, pub_hex, cb, orch = _setup(PROPOSED, workflow_id="propose:OUT-globex-ana:dec-1")
+    r = _attest(client, pub_hex, priv, cb, "deny")
+    assert r.status_code == 200, r.text
+    assert orch.executed == []                       # deny never executes
+    assert orch.resumed == []                        # resume SKIPPED (no backing workflow)
+    assert "warning" not in r.json()                 # clean deny, not a degraded resume-failed
 
 
 def test_legacy_step_request_uses_resume_not_execute():

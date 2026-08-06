@@ -246,7 +246,12 @@ def create_hitl_router(db_pool: DatabasePool, orchestrator: OrchestratorService,
             if approved and proposed_action:
                 # PR-6: execute the COMMITTED action deterministically (not an LLM re-run).
                 orchestrator.execute_approved_action(row["tenant_id"], row["workflow_id"], proposed_action)
-            else:
+            elif orchestrator.get_workflow(row["workflow_id"]) is not None:
+                # F2 (review): only resume a REAL workflow. A propose-created request has a
+                # synthetic workflow_id (propose:<ref>:<decision_id>) with no backing workflow row —
+                # resume_workflow would raise ValueError AFTER the status flip already recorded the
+                # decision (turning a legitimate Reject into a 500). Skip resume when there is no
+                # workflow; the committed status flip is the record of the deny/approve.
                 orchestrator.resume_workflow(row["workflow_id"], approved)
         except Exception as e:
             import logging
