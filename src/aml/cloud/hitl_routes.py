@@ -47,6 +47,11 @@ class AttestRequest(BaseModel):
     signer_id: str
     signature: str
 
+
+# Canonical terminal status per decision. Replaces the old `body.decision + "d"` which produced
+# "denyd" for a denial (the rest of the platform uses "denied" — orchestrator StepStatus.DENIED).
+_DECISION_STATUS = {"approve": "approved", "deny": "denied"}
+
 def create_hitl_router(db_pool: DatabasePool, orchestrator: OrchestratorService, gcrumbs: GcrumbsService) -> APIRouter:
     router = APIRouter(prefix="/v1/hitl", tags=["hitl"])
 
@@ -210,11 +215,11 @@ def create_hitl_router(db_pool: DatabasePool, orchestrator: OrchestratorService,
                 SET status = %s, signer_id = %s, signature = %s, decided_at = %s 
                 WHERE request_id = %s
                 """,
-                (body.decision + "d", body.signer_id, body.signature, datetime.now(timezone.utc), request_id)
+                (_DECISION_STATUS[body.decision], body.signer_id, body.signature, datetime.now(timezone.utc), request_id)
             )
 
             # Append gcrumbs breadcrumb in the same transaction
-            event_type = f"hitl:{body.decision}d"
+            event_type = f"hitl:{_DECISION_STATUS[body.decision]}"
             gcrumbs.append_breadcrumb(
                 tenant_id=row["tenant_id"],
                 event_type=event_type,
@@ -264,7 +269,7 @@ def create_hitl_router(db_pool: DatabasePool, orchestrator: OrchestratorService,
             logger.error("Failed to resume workflow %s for request %s", row["workflow_id"], request_id, exc_info=True)
             resume_failed = True
 
-        response_data = {"status": body.decision + "d"}
+        response_data = {"status": _DECISION_STATUS[body.decision]}
         if resume_failed:
             response_data["warning"] = "workflow_resume_failed"
         return response_data

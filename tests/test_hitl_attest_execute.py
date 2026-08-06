@@ -153,6 +153,22 @@ def test_deny_of_propose_request_no_resume_no_500():
     assert "warning" not in r.json()                 # clean deny, not a degraded resume-failed
 
 
+def test_attest_status_is_canonical_approved_denied():
+    # approve -> "approved", deny -> "denied" (NOT the old "denyd")
+    c1, p1, k1, cb1, _ = _setup(PROPOSED)
+    assert _attest(c1, k1, p1, cb1, "approve").json()["status"] == "approved"
+    c2, p2, k2, cb2, _ = _setup(PROPOSED)
+    assert _attest(c2, k2, p2, cb2, "deny").json()["status"] == "denied"
+
+
+def test_attest_rejects_invalid_decision_400():
+    client, priv, pub_hex, cb, orch = _setup(PROPOSED)
+    r = client.post("/v1/hitl/requests/r1/attest",
+                    json={"decision": "maybe", "signer_id": pub_hex, "signature": "00"})
+    assert r.status_code == 400                      # no arbitrary decision -> arbitrary status
+    assert orch.executed == [] and orch.resumed == []
+
+
 def test_legacy_step_request_uses_resume_not_execute():
     # no proposed_action in the signed context → falls back to resume_workflow (unchanged)
     client, priv, pub_hex, cb, orch = _setup(None)
