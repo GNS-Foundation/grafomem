@@ -514,6 +514,33 @@ class OrchestratorService:
             "created_at": rec.created_at.isoformat(),
         }
 
+    def execute_approved_action(self, tenant_id: str, workflow_id: str, proposed_action: dict) -> dict:
+        """PR-6 — after a human APPROVES an escalated tool action, execute the COMMITTED action
+        DETERMINISTICALLY (not via resume_workflow's LLM re-run, which runs with
+        ignore_governance=True and could emit a *different* call), then complete the paused
+        workflow. For the interim send_email stub this is send-less (approved_to_send).
+
+        NOTE: no terminal CGR outcome (paid/default) is recorded here — a *send* is not a
+        *resolution*. Recording an outcome at approval time would corrupt CGR (the Phase-0
+        synthetic-data lesson). The outcome is recorded later when the outreach resolves.
+        """
+        tool = proposed_action.get("tool")
+        args = proposed_action.get("args", {}) or {}
+        invoice_ref = proposed_action.get("invoice_ref")
+        result = None
+        if tool and self._tool_registry:
+            result = self._tool_registry.execute(tenant_id, tool, args)
+        try:
+            self._update_workflow_status(workflow_id, WorkflowStatus.COMPLETED)
+            self._set_workflow_completed(workflow_id)
+        except Exception as e:
+            logger.warning("execute_approved_action: workflow completion failed: %s", e)
+        return {
+            "tool": tool, "invoice_ref": invoice_ref,
+            "executed": bool(result and getattr(result, "success", False)),
+            "output": getattr(result, "output", None),
+        }
+
     def get_agent(self, agent_id: str, encryption: Any | None = None) -> AgentDefinition | None:
         with self._get_conn() as conn:
             row = conn.execute(
@@ -843,7 +870,10 @@ class OrchestratorService:
                 self._update_workflow_status(
                     workflow_id, WorkflowStatus.WAITING_HITL,
                 )
-                request_id = self._create_hitl_request(workflow_id, step)
+                request_id = self._create_hitl_request(
+                    workflow_id, tenant_id=step.tenant_id,
+                    step_id=step.step_id, agent_id=step.agent_id,
+                )
                 step.hitl_request_id = request_id
 
 
@@ -1117,6 +1147,7 @@ class OrchestratorService:
         # ── 4. TOOL EXECUTION ──────────────────────────────
         t0_tools = time.monotonic()
         tool_results: list[dict] = []
+        hitl_paused_request_id: str | None = None   # PR-4: set if a tool action escalates to HITL
         if tool_calls and self._tool_registry:
             for tc in tool_calls:
                 if deadline and time.monotonic() > deadline:
@@ -1141,6 +1172,38 @@ class OrchestratorService:
                     gov_log_dicts.extend([self._governance.log_to_dict(l) for l in tool_gov_logs])
                 
                 if not tool_allowed:
+                    from aml.cloud.governance import EvaluationResult
+                    tool_escalated = any(
+                        getattr(l, "result", None) == EvaluationResult.ESCALATED
+                        for l in tool_gov_logs
+                    )
+                    if tool_escalated:
+                        # PR-4: an edge-gated tool action (e.g. send_email to a named human) —
+                        # ESCALATE to HITL and PAUSE the workflow rather than silently denying.
+                        # The tool does NOT execute; it waits for a human approval (PR-6).
+                        proposed_action = {
+                            "tool": tool_name,
+                            "args": tool_args if isinstance(tool_args, dict) else {},
+                            "to": tool_args.get("to") if isinstance(tool_args, dict) else None,
+                            "invoice_ref": tool_args.get("invoice_ref") if isinstance(tool_args, dict) else None,
+                        }
+                        self._update_workflow_status(workflow_id, WorkflowStatus.WAITING_HITL)
+                        hitl_paused_request_id = self._create_hitl_request(
+                            workflow_id, tenant_id=agent.tenant_id,
+                            step_id=step_id, agent_id=agent_id,
+                            proposed_action=proposed_action,
+                        )
+                        logger.info("Tool '%s' escalated to HITL %s — workflow paused",
+                                    tool_name, hitl_paused_request_id)
+                        tool_results.append({
+                            "name": tool_name,
+                            "arguments": tool_args,
+                            "output": "[HITL: awaiting human approval before send]",
+                            "success": False,
+                            "governance_allowed": False,
+                            "hitl_request_id": hitl_paused_request_id,
+                        })
+                        break   # pause: stop executing further tools this step
                     logger.warning("Tool execution denied by governance: %s", tool_name)
                     tool_results.append({
                         "name": tool_name,
@@ -1259,6 +1322,10 @@ class OrchestratorService:
                 logger.warning("PII post-check failed: %s", e)
 
         # ── 7. PERSIST STEP ────────────────────────────────
+        # PR-4: a tool action escalated to HITL — mark the step ESCALATED so _run_sequential
+        # PAUSES the workflow (the workflow is already WAITING_HITL) instead of completing.
+        if hitl_paused_request_id:
+            final_status = StepStatus.ESCALATED
         latency_ms = int((time.monotonic() - t0_total) * 1000)
         step = self._persist_step(encryption=encryption,
             step_id=step_id,
@@ -1287,6 +1354,8 @@ class OrchestratorService:
             status=final_status,
             created_at=now,
         )
+        if hitl_paused_request_id:
+            step.hitl_request_id = hitl_paused_request_id
 
         # Update workflow counters
         self._increment_workflow(workflow_id, tokens_used)
@@ -2047,27 +2116,51 @@ class OrchestratorService:
             created_at=kwargs["created_at"],
         )
 
-    def _create_hitl_request(self, workflow_id: str, step: WorkflowStep) -> str:
+    def _create_hitl_request(
+        self, workflow_id: str, *, tenant_id: str, step_id: str, agent_id: str,
+        proposed_action: dict | None = None,
+    ) -> str:
+        """Create a pending HITL approval request.
+
+        PR-5: when a concrete tool action is being escalated (proposed_action =
+        {tool, args, to, invoice_ref}), the request COMMITS to that exact action —
+        `action`/`resource` carry the tool + recipient (so the console queue shows "send_email
+        → <recipient>"), and the full action is embedded in `context_json` (JSONB — no schema
+        change). Because the approver's Ed25519 signature is over `context_bytes` (the canonical
+        `context_json`), the human signs the SPECIFIC send, and PR-6 executes exactly that.
+        With no proposed_action this is the legacy step-level escalation (unchanged).
+        """
         import uuid
         import datetime
         request_id = uuid.uuid4().hex
         nonce = uuid.uuid4().hex
-        expires_at = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=24)
+        now = datetime.datetime.now(datetime.timezone.utc)
+        expires_at = now + datetime.timedelta(hours=24)
+
+        if proposed_action:
+            action = str(proposed_action.get("tool") or "execute_action")
+            resource = str(proposed_action.get("to") or agent_id)
+        else:
+            action = "execute_step"
+            resource = agent_id
+
         context_json = {
             "request_id": request_id,
-            "tenant_id": step.tenant_id,
+            "tenant_id": tenant_id,
             "workflow_id": workflow_id,
-            "step_id": step.step_id,
-            "action": "execute_step",
-            "resource": step.agent_id,
-            "issued_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "step_id": step_id,
+            "action": action,
+            "resource": resource,
+            "issued_at": now.isoformat(),
             "expires_at": expires_at.isoformat(),
-            "nonce": nonce
+            "nonce": nonce,
         }
-        
+        if proposed_action:
+            context_json["proposed_action"] = proposed_action
+
         canonical_str = _CANON(context_json)
         context_bytes = canonical_str.encode("utf-8")
-        
+
         with self._get_conn() as conn:
             conn.execute(
                 """
@@ -2076,18 +2169,18 @@ class OrchestratorService:
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'pending')
                 """,
                 (
-                    request_id, step.tenant_id, workflow_id, step.step_id, 
-                    "execute_step", step.agent_id, json.dumps(context_json), 
+                    request_id, tenant_id, workflow_id, step_id,
+                    action, resource, json.dumps(context_json),
                     context_bytes, nonce, expires_at
                 )
             )
-            
-        logger.info("HITL request %s created — grafomem:hitl:%s", request_id, request_id)
+
+        logger.info("HITL request %s created (action=%s) — grafomem:hitl:%s", request_id, action, request_id)
 
         push_svc = getattr(self, "_push_dispatch", None)
         if push_svc:
             try:
-                push_svc.dispatch_background(step.tenant_id, request_id, expires_at)
+                push_svc.dispatch_background(tenant_id, request_id, expires_at)
             except Exception as e:
                 logger.error("Failed to trigger push dispatch for %s: %s", request_id, e)
 

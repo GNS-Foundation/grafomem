@@ -226,11 +226,23 @@ def create_hitl_router(db_pool: DatabasePool, orchestrator: OrchestratorService,
                 conn=conn
             )
 
-        # Outside the transaction, resume workflow
+        # Outside the transaction, resume workflow / execute the approved action
         approved = (body.decision == "approve")
         resume_failed = False
         try:
-            orchestrator.resume_workflow(row["workflow_id"], approved)
+            proposed_action = None
+            if approved:
+                ctx = row["context_json"]
+                if isinstance(ctx, str):
+                    import json as _json
+                    ctx = _json.loads(ctx)
+                if isinstance(ctx, dict):
+                    proposed_action = ctx.get("proposed_action")
+            if approved and proposed_action:
+                # PR-6: execute the COMMITTED action deterministically (not an LLM re-run).
+                orchestrator.execute_approved_action(row["tenant_id"], row["workflow_id"], proposed_action)
+            else:
+                orchestrator.resume_workflow(row["workflow_id"], approved)
         except Exception as e:
             import logging
             logger = logging.getLogger("grafomem.cloud.hitl")
