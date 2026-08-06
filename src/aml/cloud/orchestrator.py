@@ -507,10 +507,45 @@ class OrchestratorService:
             },
             signing_identity=self._signing_identity,
         )
+
+        # PR-0 completion: evaluate the tool-action policy and, on ESCALATE, create the HITL
+        # request DETERMINISTICALLY (no LLM). This is the design's propose→gate→HITL path — the
+        # proposal is recorded as a decision AND gated into a pending human approval when a
+        # policy (e.g. hitl_required for send_email) requires it. The HITL request commits to
+        # the concrete action (PR-5) and, on approval, is executed by PR-6.
+        hitl_request_id = None
+        escalated = False
+        if self._governance is not None:
+            from aml.cloud.governance import EvaluationResult
+            gate_ctx = {
+                "tool_name": tool,
+                "tool_args": json.dumps(args, default=str) if isinstance(args, dict) else str(args),
+                "agent_id": agent_id,
+                "to": args.get("to") if isinstance(args, dict) else None,
+            }
+            try:
+                _allowed, glogs = self._governance.evaluate_and_gate(tenant_id, "tool_execution", gate_ctx)
+                escalated = any(getattr(l, "result", None) == EvaluationResult.ESCALATED for l in glogs)
+            except Exception as e:
+                logger.warning("propose_action governance gate failed (recording decision only): %s", e)
+            if escalated:
+                proposed_action = {
+                    "tool": tool,
+                    "args": args if isinstance(args, dict) else {},
+                    "to": args.get("to") if isinstance(args, dict) else None,
+                    "invoice_ref": invoice_ref,
+                }
+                hitl_request_id = self._create_hitl_request(
+                    f"propose:{invoice_ref}", tenant_id=tenant_id,
+                    step_id=rec.decision_id, agent_id=agent_id,
+                    proposed_action=proposed_action,
+                )
+
         return {
             "decision_id": rec.decision_id, "tenant_id": rec.tenant_id,
             "agent_id": agent_id, "agent_handle": handle, "invoice_ref": invoice_ref,
             "tool": tool, "decision": "certify", "proposed": True, "executed": False,
+            "escalated": escalated, "hitl_request_id": hitl_request_id,
             "created_at": rec.created_at.isoformat(),
         }
 
