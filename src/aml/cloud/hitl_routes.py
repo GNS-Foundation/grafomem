@@ -52,8 +52,13 @@ def create_hitl_router(db_pool: DatabasePool, orchestrator: OrchestratorService,
 
     @router.get("/requests")
     def list_requests(request: Request, status: str = "pending"):
-        tenant_id = require_scope(request, "compliance:read")
-        
+        # BUG FIX: require_scope() returns None (it only raises 403 on a missing scope) — using
+        # its return as tenant_id made the query `WHERE tenant_id = NULL`, so the HITL queue
+        # ALWAYS returned 0 rows (what the console reads). Take the tenant from the auth context.
+        require_scope(request, "compliance:read")
+        ctx = getattr(request.state, "tenant", None)
+        tenant_id = ctx.tenant_id if ctx is not None else None
+
         with db_pool.connection() as conn:
             rows = conn.execute(
                 """
