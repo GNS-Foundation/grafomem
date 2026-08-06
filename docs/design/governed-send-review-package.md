@@ -1,0 +1,55 @@
+# Governed-send loop (PR-2→6) — adversarial review package
+
+**For:** Cowork adversarial review. **Branch:** `phase2/governed-send-loop` (pushed to origin).
+**Design:** [governed-send-hitl-loop.md](governed-send-hitl-loop.md).
+**HARD GATE:** nothing in this package reaches prod until this review passes — no `railway up`,
+no PR-5 migration (there is none — see PR-5), no cloud-v2 deploy of the queue UI.
+
+This is the send/HITL half of Phase 2. The identity + propose half (PR-1a/PR-0/PR-1b) is
+already deployed and live (agent scored in Reputation). This package is **code-only**.
+
+## What to review, by PR (diffs on the branch: `git diff main...phase2/governed-send-loop`)
+
+| PR | Files | What it does | Risk |
+|---|---|---|---|
+| PR-2 | `tool_registry.py` | `ToolType.EMAIL_SEND` + `send_email` builtin — **send-LESS** stub (`sent:false`, `approved_to_send`). Real Gmail = PR-2b. | Low |
+| PR-3 | `policy_engine.py` | `_eval_hitl` gains a `tools` filter → escalate a NAMED tool (`send_email`); backward-compatible. | Low |
+| PR-5 | `orchestrator.py` `_create_hitl_request` | HITL request commits to `{tool,args,to,invoice_ref}` in `context_json` (JSONB); `action`/`resource` carry tool+recipient. **No migration** (deviation from the design's PR-5 — commit-in-JSONB avoids it). | Med |
+| PR-4 | `orchestrator.py` `execute_step` | Tool-execution **escalation → HITL** + `WAITING_HITL` + step `ESCALATED` so `_run_sequential` PAUSES. Replaces the old silent inline-deny. | **HIGH** |
+| PR-6 | `orchestrator.py` `execute_approved_action` + `hitl_routes.py` `attest` | On approve, execute the COMMITTED action deterministically (not the LLM re-run) + complete workflow. | **HIGH** |
+
+## Attack these specifically
+
+1. **PR-4 pause coordination (the #1 item).** A `send_email` escalation must NEVER execute the
+   tool and must reliably pause. Verify: (a) `tool_escalated` detection via `EvaluationResult.ESCALATED`
+   on `tool_gov_logs`; (b) `break` + `WAITING_HITL` + forced `final_status = ESCALATED` actually
+   halts `_run_sequential` (line ~1544) for ALL workflow modes — **ROUND_ROBIN / SUPERVISOR are
+   NOT covered** (only SEQUENTIAL); confirm the outreach agent is sequential and flag the others.
+   (c) No path where a deny is mis-read as escalate or vice-versa.
+2. **PR-6 no double-execution.** `attest` is `FOR UPDATE`-locked and one-shot (status flips to
+   `approved`), but `execute_approved_action` runs OUTSIDE that txn — verify a retried/concurrent
+   approve can't double-execute the send. Verify it does NOT also call `resume_workflow` (which
+   would LLM-re-run with `ignore_governance=True`).
+3. **The signed commitment (PR-5).** The approver signs `grafomem.hitl.approval.v1:<context_bytes>`.
+   `context_bytes` now includes `proposed_action` — confirm the human is signing the EXACT
+   `{tool,to,args}` that PR-6 executes (no field the executor reads that isn't in the signed bytes).
+4. **Interim send-safety (PR-2).** `_exec_email_send` must be structurally incapable of sending
+   (it isn't wired to any transport) even if reached un-gated.
+5. **No premature outcome.** PR-6 deliberately records NO paid/default outcome at approval time
+   (a send ≠ a resolution). Confirm this — recording one would corrupt CGR (Phase-0 lesson).
+
+## Test coverage (all green, DB-free)
+
+- `test_governed_send_pr23.py` — send_email stub is send-less; policy gates the named tool.
+- `test_governed_send_pr456.py` — HITL request commits `{tool,recipient,invoice_ref}` + signs it;
+  `execute_approved_action` runs the committed tool + completes, no LLM re-run.
+- **Not unit-covered (needs staging):** the PR-4 `execute_step` pause end-to-end, and a real
+  Ed25519 attest→execute round-trip. Recommend a staging integration test before deploy.
+
+## Dependencies for deploy (AFTER review passes)
+
+- Deploy is `railway up` (backend). **No migration** for PR-5 (JSONB). PR-2's `send_email`
+  builtin needs `POST /v1/llm/tools/seed-builtins` re-run on the corp tenant.
+- A registered HITL **approver** (Ed25519 key) for `cayerbe@ulissy.app`, and cloud-v2 signing
+  (design doc PR-7) — the queue's Approve button can't attest without it. Out of this package.
+- Parallel must-fix: encrypt `decision_records` context (session chip + ops/ROADMAP.md).
