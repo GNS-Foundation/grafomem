@@ -52,6 +52,19 @@ class CreateAgentRequest(BaseModel):
     max_tokens_per_step: int = 4096
     temperature: float = 0.7
     enabled: bool = True
+    # CGR identity (Phase 2, PR-1). Set agent_key to bind this agent's governed decisions
+    # to a stable CGR subject; agent_handle defaults to name when omitted.
+    agent_key: str | None = None
+    agent_handle: str | None = None
+
+
+class ProposeActionRequest(BaseModel):
+    """Request body for POST /v1/orchestrator/agents/{agent_id}/propose (Phase 2, PR-0)."""
+    tool: str
+    args: dict = Field(default_factory=dict)
+    invoice_ref: str
+    reason: str = ""
+    agent_tier: float | None = None
 
 
 class UpdateAgentRequest(BaseModel):
@@ -179,11 +192,33 @@ def create_orchestrator_router(orchestrator) -> APIRouter:
                 max_tokens_per_step=req.max_tokens_per_step,
                 temperature=req.temperature,
                 enabled=req.enabled,
+                agent_key=req.agent_key,
+                agent_handle=req.agent_handle,
             )
             return orchestrator.agent_to_dict(agent)
         except Exception as e:
             logger.error("Failed to create agent: %s", e)
             raise HTTPException(500, f"Failed to create agent: {e}")
+
+    @router.post("/agents/{agent_id}/propose")
+    async def propose_action(agent_id: str, req: ProposeActionRequest, request: Request):
+        """PR-0 — record a CGR-attributed governed decision for a proposed tool action
+        (no LLM run). The decision carries the agent's agent_key + invoice_ref so the agent
+        becomes CGR-scorable. Edge-gate/HITL enforcement arrives in later PRs."""
+        tenant_id = _get_tenant_id(request)
+        require_scope(request, "orchestrator:admin")
+        try:
+            return orchestrator.propose_action(
+                tenant_id, agent_id, req.tool, req.args, req.invoice_ref,
+                reason=req.reason, agent_tier=req.agent_tier,
+            )
+        except KeyError as e:
+            raise HTTPException(404, str(e))
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except Exception as e:
+            logger.error("propose_action failed: %s", e)
+            raise HTTPException(500, f"propose_action failed: {e}")
 
     @router.get("/agents")
     async def list_agents(

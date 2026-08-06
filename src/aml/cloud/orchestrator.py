@@ -117,6 +117,11 @@ class AgentDefinition:
     enabled: bool
     created_at: datetime
     updated_at: datetime
+    # CGR identity (Phase 2, PR-1): the stable key the CGR engine groups scores by, plus a
+    # display handle (facet@territory, e.g. "gtm-outreach-agent@ulissy"). Nullable — an agent
+    # without a key is simply not CGR-attributed. Defaults keep positional construction valid.
+    agent_key: str | None = None
+    agent_handle: str | None = None
 
 
 @dataclass(slots=True)
@@ -212,6 +217,8 @@ CREATE TABLE IF NOT EXISTS orchestrator_agents (
     max_tokens      INTEGER NOT NULL DEFAULT 4096,
     temperature     REAL NOT NULL DEFAULT 0.7,
     enabled         BOOLEAN NOT NULL DEFAULT TRUE,
+    agent_key       TEXT,
+    agent_handle    TEXT,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -384,12 +391,20 @@ class OrchestratorService:
         tools: list[str] | None = None,
         max_steps: int = 20,
         max_tokens_per_step: int = 4096,
-        temperature: float = 0.7,
         enabled: bool = True,
+        agent_key: str | None = None,
+        agent_handle: str | None = None,
+        temperature: float = 0.7,
     ) -> AgentDefinition:
-        """Create a new agent definition."""
+        """Create a new agent definition.
+
+        `agent_key`/`agent_handle` (Phase 2, PR-1) are the stable CGR identity; when set,
+        this agent's governed decisions become attributable/scorable. `agent_handle`
+        defaults to the agent `name` when omitted.
+        """
         now = datetime.now(tz=timezone.utc)
         agent_id = _compute_id(tenant_id, name, now.isoformat())
+        handle = agent_handle or name
 
         if isinstance(role, str):
             role = AgentRole(role)
@@ -410,14 +425,14 @@ class OrchestratorService:
                 "INSERT INTO orchestrator_agents "
                 "(agent_id, tenant_id, name, role, description, model_id, fallback_models, "
                 " system_prompt, system_prompt_enc, memory_stores, tools, max_steps, max_tokens, "
-                " temperature, enabled, created_at, updated_at) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                " temperature, enabled, created_at, updated_at, agent_key, agent_handle) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
                 (
                     agent_id, tenant_id, name, role.value, description,
                     model_id, json.dumps(fallbacks), db_prompt, enc_prompt,
                     json.dumps(stores), json.dumps(tool_list),
                     max_steps, max_tokens_per_step, temperature,
-                    enabled, now, now,
+                    enabled, now, now, agent_key, handle,
                 ),
             )
             conn.commit()
@@ -444,7 +459,60 @@ class OrchestratorService:
             enabled=enabled,
             created_at=now,
             updated_at=now,
+            agent_key=agent_key,
+            agent_handle=handle,
         )
+
+    def propose_action(
+        self, tenant_id: str, agent_id: str, tool: str, args: dict,
+        invoice_ref: str, *, reason: str = "", agent_tier: float | None = None,
+    ) -> dict:
+        """PR-0 — structured propose: record a CGR-attributed governed decision for a
+        proposed tool action (e.g. send_email) WITHOUT running the LLM. Carries the agent's
+        stable agent_key + agent_handle + invoice_ref (mirroring the /v1/governed/decisions
+        parameter shape) so the decision is CGR-scorable and joinable to an outcome.
+
+        Recorded as an UNEXECUTED proposal (edge_gate=true, executed=false). The policy gate
+        and HITL enforcement are layered on in later PRs (PR-3/4/5) — this PR only makes the
+        proposal a governed, attributable decision through the orchestrator (not around it).
+        """
+        agent = self.get_agent(agent_id)
+        if agent is None:
+            raise KeyError(f"agent {agent_id!r} not found")
+        if not agent.agent_key:
+            raise ValueError(f"agent {agent_id!r} has no agent_key — cannot attribute to CGR")
+        handle = agent.agent_handle or agent.name
+        context = {
+            "tool": tool, "args": args, "invoice_ref": invoice_ref,
+            "dimension": "gtm-outreach", "edge_gate": True, "executed": False,
+        }
+        query = json.dumps(context, sort_keys=True, default=str)
+        raw_output = json.dumps({"decision": "certify", "reason": reason or f"propose {tool}"},
+                                sort_keys=True, default=str)
+        rec = self._decision_trail.log(
+            tenant_id=tenant_id, store_id="governed", query=query,
+            model_id=agent.model_id, raw_output=raw_output,
+            parameters={
+                "invoice_id": invoice_ref,
+                "invoice_ref": invoice_ref,            # CGR join key
+                "decision": "certify",
+                "reason_code": None,
+                "agent_handle": handle,
+                "agent_key": agent.agent_key,          # CGR grouping subject
+                "verifiability_tag": "judgment",
+                "agent_tier": agent_tier,
+                "cgr_schema": "cgr.decision.v1",        # matches demo_routes.CGR_DECISION_SCHEMA
+                "tool": tool,
+                "proposed": True,
+            },
+            signing_identity=self._signing_identity,
+        )
+        return {
+            "decision_id": rec.decision_id, "tenant_id": rec.tenant_id,
+            "agent_id": agent_id, "agent_handle": handle, "invoice_ref": invoice_ref,
+            "tool": tool, "decision": "certify", "proposed": True, "executed": False,
+            "created_at": rec.created_at.isoformat(),
+        }
 
     def get_agent(self, agent_id: str, encryption: Any | None = None) -> AgentDefinition | None:
         with self._get_conn() as conn:
@@ -957,7 +1025,10 @@ class OrchestratorService:
                                 retrieved_refs=[],
                                 retrieved_contents=[],
                                 retrieval_scores=[],
-                                parameters={"temperature": agent.temperature, "fallback_attempt": attempt_idx},
+                                parameters={"temperature": agent.temperature, "fallback_attempt": attempt_idx,
+                                            "agent_key": agent.agent_key,
+                                            "agent_handle": agent.agent_handle or agent.name,
+                                            "verifiability_tag": "judgment", "cgr_schema": "cgr.decision.v1"},
                                 output_tokens=0,
                                 latency_ms=failed_latency,
                                 signing_identity=self._signing_identity,
@@ -1143,7 +1214,13 @@ class OrchestratorService:
                     retrieval_scores=[],
                     parameters={
                         "temperature": agent.temperature,
-                        "system_prompt": agent.system_prompt
+                        "system_prompt": agent.system_prompt,
+                        # PR-1b: CGR identity so orchestrated (LLM-path) decisions are
+                        # attributable/scorable (the CGR engine groups by agent_key).
+                        "agent_key": agent.agent_key,
+                        "agent_handle": agent.agent_handle or agent.name,
+                        "verifiability_tag": "judgment",
+                        "cgr_schema": "cgr.decision.v1",
                     },
                     output_tokens=tokens_used,
                     latency_ms=latency_llm_ms,
@@ -2100,6 +2177,8 @@ class OrchestratorService:
             enabled=row.get("enabled", True),
             created_at=row["created_at"],
             updated_at=row["updated_at"],
+            agent_key=row.get("agent_key"),
+            agent_handle=row.get("agent_handle"),
         )
 
     @staticmethod
@@ -2188,6 +2267,8 @@ class OrchestratorService:
             "max_tokens_per_step": a.max_tokens_per_step,
             "temperature": a.temperature,
             "enabled": a.enabled,
+            "agent_key": a.agent_key,
+            "agent_handle": a.agent_handle,
             "created_at": a.created_at.isoformat(),
             "updated_at": a.updated_at.isoformat(),
         }
