@@ -2218,6 +2218,7 @@ class OrchestratorService:
                     context_bytes, nonce, expires_at
                 )
             )
+            conn.commit()   # was missing — the HITL INSERT rolled back on pooled conns (empty queue)
 
         logger.info("HITL request %s created (action=%s) — grafomem:hitl:%s", request_id, action, request_id)
 

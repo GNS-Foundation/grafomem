@@ -18,6 +18,7 @@ def _orch():
 class _FakeConn:
     def __init__(self):
         self.executed = []
+        self.committed = False
 
     def __enter__(self):
         return self
@@ -27,6 +28,9 @@ class _FakeConn:
 
     def execute(self, sql, params=None):
         self.executed.append((sql, params))
+
+    def commit(self):
+        self.committed = True
 
 
 # ---------------------------------------------------------------------------
@@ -45,6 +49,7 @@ def test_create_hitl_request_commits_proposed_action(monkeypatch):
                          "invoice_ref": "OUT-globex-ana"},
     )
     assert rid
+    assert fc.committed is True                          # the INSERT must be committed (was the bug)
     sql, params = fc.executed[0]
     # INSERT params: (request_id, tenant_id, workflow_id, step_id, action, resource, json, bytes, nonce, expires)
     action, resource, ctx_json = params[4], params[5], params[6]
