@@ -46,6 +46,31 @@ already deployed and live (agent scored in Reputation). This package is **code-o
 - **Not unit-covered (needs staging):** the PR-4 `execute_step` pause end-to-end, and a real
   Ed25519 attest→execute round-trip. Recommend a staging integration test before deploy.
 
+## Cowork review findings — status
+
+**Pre-deploy blockers (must clear before ANY deploy):**
+- **F1 — CLEARED (no code change).** `_unsafe_dev_enabled()` (hitl_routes.py:25) returns False
+  unless `UNSAFE_LOCAL_DEV=="true"` AND no prod markers. Prod: `UNSAFE_LOCAL_DEV` unset →
+  False at line 33; belt-and-suspenders `RAILWAY_ENVIRONMENT`/`RAILWAY_PUBLIC_DOMAIN` present →
+  False at line 38-41. Auto-register-approver is doubly unreachable in prod.
+- **F2 — FIXED.** `attest` now parses `proposed_action` from the SIGNED `context_bytes`
+  (`json.loads(row["context_bytes"])`), not the `context_json` column, so sign-X-execute-X holds
+  by construction. Test: `test_hitl_attest_execute.py`.
+- **F3 — PARTIAL.** attest→execute round-trip covered by `test_hitl_attest_execute.py` (real
+  Ed25519 sign → real attest handler → executes the signed action; deny/bad-sig never execute).
+  **Still needed on staging:** the `execute_step` PAUSE half (a mock-LLM emitting `send_email`
+  → escalate → WAITING_HITL → tool NOT executed). Needs a mock-LLM harness.
+- **F7 — CONFIRMED.** The escalation branch `break`s the tool loop (orchestrator.py:1206), so no
+  further tools execute in that step after a send escalates.
+
+**HARD GATES before PR-2b (real Gmail send) — tracked, NOT yet fixed:**
+- **F4** — `execute_approved_action` marks the workflow COMPLETED even if the tool `execute`
+  fails, and the attest caller ignores its return. Before a real send: gate completion on
+  success + surface failure to the caller/response.
+- **F5** — audit the EXECUTION firing (a gcrumb/decision when the send actually runs), not only
+  the approval. Today only the approval is breadcrumbed.
+- **F6** — the pause is SEQUENTIAL-mode only; ROUND_ROBIN/SUPERVISOR are not wired.
+
 ## Dependencies for deploy (AFTER review passes)
 
 - Deploy is `railway up` (backend). **No migration** for PR-5 (JSONB). PR-2's `send_email`

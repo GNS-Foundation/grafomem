@@ -232,12 +232,17 @@ def create_hitl_router(db_pool: DatabasePool, orchestrator: OrchestratorService,
         try:
             proposed_action = None
             if approved:
-                ctx = row["context_json"]
-                if isinstance(ctx, str):
-                    import json as _json
-                    ctx = _json.loads(ctx)
-                if isinstance(ctx, dict):
-                    proposed_action = ctx.get("proposed_action")
+                # F2: parse the action from the SIGNED bytes (exactly what the approver's
+                # Ed25519 signature covers), NOT the separate context_json column — so
+                # sign-X-execute-X holds BY CONSTRUCTION even if context_json were tampered
+                # after signing. context_bytes == _CANON(context_json) verified above.
+                import json as _json
+                try:
+                    signed_ctx = _json.loads(row["context_bytes"])
+                    if isinstance(signed_ctx, dict):
+                        proposed_action = signed_ctx.get("proposed_action")
+                except Exception:
+                    proposed_action = None
             if approved and proposed_action:
                 # PR-6: execute the COMMITTED action deterministically (not an LLM re-run).
                 orchestrator.execute_approved_action(row["tenant_id"], row["workflow_id"], proposed_action)
