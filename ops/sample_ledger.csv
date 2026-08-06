@@ -1,0 +1,7 @@
+ref,company,person,channel,message_variant,rationale,status,edge_approved,reviewer,rating,resolved_date
+,Globex Capital,Ana Ruiz,email,v1-thesis,Fit: governed-agent reputation for allocators; warm via portfolio note,meeting_booked,yes,founder@ulissy,0.9,2026-07-28
+,Initech Ventures,Marco Bianchi,linkedin,v2-dogfood,Angle: Ulissy runs on Ulissy live dashboard,replied,yes,,,
+,Hooli Capital,Sara De Luca,email,v1-thesis,Angle: CGR tiers as underwriting signal,passed,yes,founder@ulissy,0.4,2026-07-30
+OUT-acme-partners-luca-conti,Acme Partners,Luca Conti,email,v3-proof,Referral from prior demo; asked for governed-outcome proof,no_response,no,,,2026-08-01
+,Northwind Labs,Elena Rossi,linkedin,v2-dogfood,Technical buyer; interested in tenant isolation story,sent,no,,,
+,Borealis SGR,Paolo Greco,email,v1-thesis,Allocator; introduced at conference,meeting_booked,yes,founder@ulissy,0.85,2026-08-03

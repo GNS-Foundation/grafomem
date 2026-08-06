@@ -1,0 +1,18 @@
+# Ulissy tenant secrets & local state — never commit
+.ulissy_creds.json
+.ulissy_ingest_state.json
+
+# Ledger exports may carry contact PII — keep them out of the repo
+ledger.csv
+ledger.json
+
+# One-off local adoption helper (prompts for a password; keep local per Phase-2 spec)
+adopt_corp_tenant.py
+
+# Provider API keys for local provider registration — never commit
+.env.providers
+
+__pycache__/
+
+# Propose state manifest
+.ulissy_propose_state.json
