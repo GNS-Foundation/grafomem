@@ -56,10 +56,8 @@ ALTER TABLE decision_records ENABLE ROW LEVEL SECURITY;
 ALTER TABLE decision_records FORCE  ROW LEVEL SECURITY;
 DO $$ BEGIN
   CREATE POLICY tenant_isolation_decision_records ON decision_records
-    USING      (tenant_id = current_setting('app.current_tenant', true)
-                OR current_setting('app.current_tenant', true) = 'admin')
-    WITH CHECK (tenant_id = current_setting('app.current_tenant', true)
-                OR current_setting('app.current_tenant', true) = 'admin');
+    USING      (tenant_id = current_setting('app.current_tenant', true))
+    WITH CHECK (tenant_id = current_setting('app.current_tenant', true));
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 
 -- hitl_approval_requests ----------------------------------------------------
@@ -67,10 +65,8 @@ ALTER TABLE hitl_approval_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE hitl_approval_requests FORCE  ROW LEVEL SECURITY;
 DO $$ BEGIN
   CREATE POLICY tenant_isolation_hitl_requests ON hitl_approval_requests
-    USING      (tenant_id = current_setting('app.current_tenant', true)
-                OR current_setting('app.current_tenant', true) = 'admin')
-    WITH CHECK (tenant_id = current_setting('app.current_tenant', true)
-                OR current_setting('app.current_tenant', true) = 'admin');
+    USING      (tenant_id = current_setting('app.current_tenant', true))
+    WITH CHECK (tenant_id = current_setting('app.current_tenant', true));
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 
 -- hitl_approvers ------------------------------------------------------------
@@ -78,10 +74,8 @@ ALTER TABLE hitl_approvers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE hitl_approvers FORCE  ROW LEVEL SECURITY;
 DO $$ BEGIN
   CREATE POLICY tenant_isolation_hitl_approvers ON hitl_approvers
-    USING      (tenant_id = current_setting('app.current_tenant', true)
-                OR current_setting('app.current_tenant', true) = 'admin')
-    WITH CHECK (tenant_id = current_setting('app.current_tenant', true)
-                OR current_setting('app.current_tenant', true) = 'admin');
+    USING      (tenant_id = current_setting('app.current_tenant', true))
+    WITH CHECK (tenant_id = current_setting('app.current_tenant', true));
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 
 -- Uniformity with the FORCE ask: bring the already-enabled #12 tables up to FORCE too.

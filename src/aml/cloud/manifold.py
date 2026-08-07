@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 
 from aml.cloud.db_pool import RoutingPool
+from aml.server.tenant_context import apply_tenant_context
 
 logger = logging.getLogger("grafomem.cloud.manifold")
 
@@ -254,9 +255,9 @@ class ManifoldService:
     def ensure_schema(self):
         import psycopg2
         if self.pool:
-            conn = self.pool.getconn()
+            conn = self.pool.getconn(); apply_tenant_context(conn)
         else:
-            conn = psycopg2.connect(self.db_url)
+            conn = psycopg2.connect(self.db_url); apply_tenant_context(conn)
         try:
             with conn.cursor() as cur:
                 cur.execute("""
@@ -313,9 +314,9 @@ class ManifoldService:
                 try:
                     import psycopg2
                     if self.pool:
-                        conn = self.pool.getconn()
+                        conn = self.pool.getconn(); apply_tenant_context(conn)
                     else:
-                        conn = psycopg2.connect(self.db_url)
+                        conn = psycopg2.connect(self.db_url); apply_tenant_context(conn)
                         
                     tenants = ["default"]
                     try:
@@ -379,9 +380,9 @@ class ManifoldService:
         import psycopg2
         import json
         if self.pool:
-            conn = self.pool.getconn()
+            conn = self.pool.getconn(); apply_tenant_context(conn)
         else:
-            conn = psycopg2.connect(self.db_url)
+            conn = psycopg2.connect(self.db_url); apply_tenant_context(conn)
             
         try:
             with conn.cursor() as cur:
@@ -405,9 +406,9 @@ class ManifoldService:
         # Save it to cache for next time
         try:
             if self.pool:
-                conn = self.pool.getconn()
+                conn = self.pool.getconn(); apply_tenant_context(conn)
             else:
-                conn = psycopg2.connect(self.db_url)
+                conn = psycopg2.connect(self.db_url); apply_tenant_context(conn)
             with conn.cursor() as cur:
                 import psycopg2
                 cur.execute("""
@@ -438,7 +439,7 @@ class ManifoldService:
         
         df = None
         if self.pool:
-            conn = self.pool.getconn()
+            conn = self.pool.getconn(); apply_tenant_context(conn)
             try:
                 with conn.cursor() as cur:
                     cur.execute(EXTRACTION_SQL, (tenant_id,))
@@ -450,7 +451,7 @@ class ManifoldService:
             finally:
                 self.pool.putconn(conn)
         else:
-            conn = psycopg2.connect(self.db_url)
+            conn = psycopg2.connect(self.db_url); apply_tenant_context(conn)
             try:
                 df = pd.read_sql(EXTRACTION_SQL, conn, params=(tenant_id,))
             finally:
@@ -464,9 +465,9 @@ class ManifoldService:
             
         # We need a new connection for embeddings because the first one is already closed/returned
         if self.pool:
-            conn = self.pool.getconn()
+            conn = self.pool.getconn(); apply_tenant_context(conn)
         else:
-            conn = psycopg2.connect(self.db_url)
+            conn = psycopg2.connect(self.db_url); apply_tenant_context(conn)
             
         try:
             refs = sorted({r for fs in df.retrieved_facts for r in (fs or []) if isinstance(r, str)})
@@ -503,9 +504,9 @@ class ManifoldService:
         import psycopg2
         import json
         if self.pool:
-            conn = self.pool.getconn()
+            conn = self.pool.getconn(); apply_tenant_context(conn)
         else:
-            conn = psycopg2.connect(self.db_url)
+            conn = psycopg2.connect(self.db_url); apply_tenant_context(conn)
             
         try:
             # 1. Load the step

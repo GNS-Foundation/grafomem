@@ -21,6 +21,8 @@ from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import JSONResponse, Response
 
+from aml.server.tenant_context import set_current_tenant
+
 logger = logging.getLogger("grafomem.auth")
 
 # Sentinel — matches the SQLite backend's NO_TENANT
@@ -244,6 +246,7 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
             request.state.tenant = TenantContext(
                 tenant_id=DEFAULT_NAMESPACE, authenticated=False
             )
+            set_current_tenant(request.state.tenant.tenant_id)   # RLS: central tenant context
             return await call_next(request)
 
         # Cloud mode: resolve X-API-Key from the tenants table
@@ -291,12 +294,14 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
                 tenant_id=tenant_id, authenticated=True, role=role,
                 scopes=scopes, allowed_stores=allowed_stores, key_id=key_id,
             )
+            set_current_tenant(request.state.tenant.tenant_id)   # RLS: central tenant context
             return await call_next(request)
 
         if self.auth_mode == "none":
             request.state.tenant = TenantContext(
                 tenant_id=DEFAULT_NAMESPACE, authenticated=False
             )
+            set_current_tenant(request.state.tenant.tenant_id)   # RLS: central tenant context
             return await call_next(request)
 
         # Token auth — return JSONResponse directly (not HTTPException,
@@ -356,4 +361,5 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
             tenant_id=tenant_id, authenticated=True, role=role,
             scopes=scopes, allowed_stores=allowed_stores, key_id=key_id,
         )
+        set_current_tenant(request.state.tenant.tenant_id)   # RLS: central tenant context
         return await call_next(request)
