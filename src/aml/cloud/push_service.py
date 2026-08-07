@@ -8,6 +8,8 @@ from typing import Optional
 import httpx
 import jwt
 
+from aml.server.tenant_context import set_current_tenant
+
 logger = logging.getLogger("grafomem.hitl.push")
 
 
@@ -64,6 +66,9 @@ class PushDispatchService:
 
     def _dispatch_sync(self, tenant_id: str, request_id: str, expires_at: datetime):
         """Query pending requests for badge counts and dispatch APNs to active approvers."""
+        # RLS: this is a BACKGROUND worker thread (no auth middleware, no inherited ContextVar),
+        # but it is tenant-scoped — set the context to its own tenant, never a cross-tenant bypass.
+        set_current_tenant(tenant_id)
         jwt_token = self._get_jwt()
         if not jwt_token:
             return

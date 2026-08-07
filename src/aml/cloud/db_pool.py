@@ -31,6 +31,8 @@ from typing import Any
 import psycopg
 from psycopg.rows import dict_row
 
+from aml.server.tenant_context import apply_tenant_context
+
 logger = logging.getLogger("grafomem.cloud.db_pool")
 
 # libpq connect_timeout (seconds) applied to every pooled connection so a
@@ -189,6 +191,7 @@ class DatabasePool:
         """
         if self._pool is not None:
             with self._pool.connection() as conn:
+                apply_tenant_context(conn)   # RLS: scope to the request/task tenant (fail-closed)
                 yield conn
         else:
             conn = psycopg.connect(
@@ -196,6 +199,7 @@ class DatabasePool:
                 connect_timeout=_CONNECT_TIMEOUT,
             )
             try:
+                apply_tenant_context(conn)
                 yield conn
             finally:
                 conn.close()
@@ -219,6 +223,7 @@ class DatabasePool:
                 self._db_url, row_factory=dict_row, autocommit=True,
                 connect_timeout=_CONNECT_TIMEOUT,
             )
+        apply_tenant_context(conn)   # RLS: scope to the request/task tenant (fail-closed)
         return _PooledConnectionProxy(self, conn)
 
     def putconn(self, conn: psycopg.Connection | _PooledConnectionProxy) -> None:
