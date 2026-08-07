@@ -120,6 +120,15 @@ def test_mechanism_enforces_isolation_and_fail_closed(enforcing):
             with pytest.raises(psycopg.errors.InsufficientPrivilege):
                 rc.execute(f"INSERT INTO {tbl} VALUES (%s,'evil')", (B,))
             rc.rollback()
+
+            # (5) own-tenant WRITE succeeds (proves DML grant + WITH CHECK admits own tenant —
+            #     the pre-flip smoke's write leg; a read-only smoke misses missing grants)
+            _set_ctx(rc, A)
+            rc.execute(f"INSERT INTO {tbl} VALUES (%s,'a3')", (A,))
+            rc.execute(f"UPDATE {tbl} SET val='a3x' WHERE val='a3'")
+            rc.commit()
+            _set_ctx(rc, A)
+            assert "a3x" in [r[0] for r in rc.execute(f"SELECT val FROM {tbl}").fetchall()]
     finally:
         with _owner() as c:
             c.execute(f"DROP TABLE IF EXISTS {tbl}")
