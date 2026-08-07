@@ -153,20 +153,29 @@ def test_e2e_authenticated_request_isolates_tenants(enforcing):
     app = FastAPI()
     app.add_middleware(TenantAuthMiddleware, auth_mode="token", tokens={"tkA": A, "tkB": B})
 
-    @app.get("/rows")
-    async def rows():                                         # async endpoint → real checkout path
+    def _read():
         with pool.connection() as conn:                       # apply_tenant_context reads the ContextVar HERE
             got = conn.execute(f"SELECT val FROM {tbl} ORDER BY val").fetchall()
         return {"vals": [r["val"] for r in got]}              # DatabasePool uses dict_row
 
+    @app.get("/rows_async")
+    async def rows_async():                                   # async def → same task (decision_records routes)
+        return _read()
+
+    @app.get("/rows_sync")
+    def rows_sync():                                          # SYNC def → anyio THREADPOOL (HITL's actual path)
+        return _read()
+
     client = TestClient(app)
     try:
-        ra = client.get("/rows", headers={"Authorization": "Bearer tkA"})
-        assert ra.status_code == 200, ra.text
-        assert ra.json()["vals"] == ["a"], \
-            "tenant A must see ONLY A's row — ContextVar must propagate middleware→endpoint→getconn"
-        rb = client.get("/rows", headers={"Authorization": "Bearer tkB"})
-        assert rb.json()["vals"] == ["b"], "tenant B must see ONLY B's row"
+        # Both propagation paths must isolate: async (same task) AND sync (threadpool context-copy).
+        for path in ("/rows_async", "/rows_sync"):
+            ra = client.get(path, headers={"Authorization": "Bearer tkA"})
+            assert ra.status_code == 200, ra.text
+            assert ra.json()["vals"] == ["a"], \
+                f"{path}: tenant A must see ONLY A — ContextVar must propagate to this endpoint's connection"
+            rb = client.get(path, headers={"Authorization": "Bearer tkB"})
+            assert rb.json()["vals"] == ["b"], f"{path}: tenant B must see ONLY B"
     finally:
         pool.close()
         with _owner() as c:
