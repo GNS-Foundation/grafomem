@@ -72,6 +72,9 @@ was an inconsistency and a PII exposure.
 - `execute_step` ×2 (orchestrator.py) — already correct (both passed encryption). No change.
 - `demo_routes._record_and_sign` (`/v1/governed/decisions`, `/verify-batch`) — **FIXED**: threads
   `encryption` from `request.app.state.encryption` (safe helper `_tenant_encryption`, None in tests).
+- `decision_routes` `POST /v1/decisions/log` — **FIXED** (Cowork review #1): passes
+  `encryption=request.app.state.encryption` on write AND on the 4 read routes (get ×2, query,
+  export) so authorized reads decrypt — no read regression. Closes the class.
 - `landing` / `world_model` — **EXEMPT**: never call `decision_trail.log` (verified). Their
   outcome/review writes go through the GMP `memories` store, already encrypted (#13).
 - `execution_receipts.issue_receipt` — **EXEMPT**: persists BLAKE2b **hashes** of input/output,
@@ -98,6 +101,3 @@ corp `5605470c` (34), machine `600e0890` (21, = the brief's "~21"), orphaned `e1
   agents/demo/legacy paths (only 41 rows encrypted table-wide). Needs its OWN characterization
   (which store_ids/tenants/paths; live PII vs dev/test) before any backfill. Do NOT fold into the
   GTM migration.
-- `decision_routes` `/v1/decisions/log` — generic public decision API, same omission, but its GET
-  routes return `query` un-decrypted, so encrypting writes there needs a **coordinated write+read**
-  change (API contract). Deferred as its own PR.

@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import psycopg
 import pytest
@@ -30,7 +31,9 @@ from aml.cloud.decision_trail import DecisionTrailService
 from aml.cloud.orchestrator import AgentDefinition, OrchestratorService
 from aml.cloud.tenant_key_manager import FernetEncryptor
 from aml.server.stores import StoreManager
-from ops.encrypt_decision_context import reencrypt_decision_context, count_plaintext
+from ops.encrypt_decision_context import (
+    ContentsParsedNotEmpty, count_plaintext, reencrypt_decision_context,
+)
 
 TEST_DB_URL = "postgresql://grafomem:dev@localhost:5432/grafomem"
 KEY = "b" * 64
@@ -176,10 +179,18 @@ def _seed_plaintext(dt, T, marker):
     return rec.decision_id
 
 
-def test_migration_encrypts_idempotently(monkeypatch):
+def _raw_row_full(decision_id):
+    with psycopg.connect(TEST_DB_URL) as c:
+        r = c.execute("SELECT query, query_enc, raw_output, raw_output_enc "
+                      "FROM decision_records WHERE decision_id = %s", (decision_id,)).fetchone()
+    return {"query": r[0], "query_enc": r[1], "raw_output": r[2], "raw_output_enc": r[3]}
+
+
+def test_migration_encrypts_idempotently(monkeypatch, tmp_path):
     T = "enc-" + uuid.uuid4().hex[:8]
     enc = _enc()
     dt = _dt()
+    backup = str(tmp_path / "preimage.jsonl")
 
     # two plaintext rows (pre-fix) + one already-encrypted row (must be skipped, untouched)
     d1 = _seed_plaintext(dt, T, PII_COMPANY)
@@ -196,16 +207,23 @@ def test_migration_encrypts_idempotently(monkeypatch):
 
     # ── run 1: encrypts d1, d2; skips d3 ──
     with psycopg.connect(TEST_DB_URL) as conn:
-        stats1 = reencrypt_decision_context(conn, enc, T)
+        stats1 = reencrypt_decision_context(conn, enc, T, backup_path=backup)
     assert stats1["encrypted_rows"] == 2
     assert stats1["scanned"] == 2
 
+    # pre-image backup (#2) captured both rows' plaintext BEFORE mutation
+    backup_lines = [json.loads(l) for l in open(backup) if l.strip()]
+    assert {b["decision_id"] for b in backup_lines} == {d1, d2}
+    assert any(PII_COMPANY in b["query"] for b in backup_lines)
+
     # verified over a FRESH connection (commit actually persisted — the HITL-bug lesson)
     for did, marker in ((d1, PII_COMPANY), (d2, "Northwind Traders")):
-        row = _raw_row(did)
+        row = _raw_row_full(did)
         assert row["query"] == "[ENCRYPTED]"
+        assert row["raw_output"] == "[ENCRYPTED]"          # (#3) raw_output encrypted too
         assert marker not in (row["query"] or "")
         assert marker in enc.decrypt(row["query_enc"])     # round-trips to original PII
+        assert "certify" in enc.decrypt(row["raw_output_enc"])
     # the pre-encrypted row is byte-for-byte untouched (NOT double-encrypted)
     assert _raw_row(d3)["query_enc"] == d3_enc_before
     assert "AlreadySafe Inc" in enc.decrypt(_raw_row(d3)["query_enc"])
@@ -214,7 +232,7 @@ def test_migration_encrypts_idempotently(monkeypatch):
 
     # ── run 2: idempotent no-op ──
     with psycopg.connect(TEST_DB_URL) as conn:
-        stats2 = reencrypt_decision_context(conn, enc, T)
+        stats2 = reencrypt_decision_context(conn, enc, T, backup_path=backup)
     assert stats2["encrypted_rows"] == 0
     assert stats2["scanned"] == 0
     # still decrypts to the ORIGINAL (single encryption, not doubled)
@@ -228,11 +246,85 @@ def test_migration_dry_run_writes_nothing():
     _seed_plaintext(dt, T, PII_COMPANY)
 
     with psycopg.connect(TEST_DB_URL) as conn:
-        stats = reencrypt_decision_context(conn, enc, T, dry_run=True)
+        stats = reencrypt_decision_context(conn, enc, T, dry_run=True)   # no backup needed
     assert stats["dry_run"] is True
     assert stats["scanned"] == 1
     assert stats["encrypted_rows"] == 0                    # NO writes on dry-run
     assert count_plaintext_via_conn(T) == 1                # still plaintext
+
+
+def test_migration_aborts_on_nonempty_contents(tmp_path):
+    # GUARD (#3): a row with retrieved_contents data must ABORT — the migration only encrypts
+    # query/raw_output, so it must refuse rather than leave those columns plaintext.
+    T = "enc-" + uuid.uuid4().hex[:8]
+    enc = _enc()
+    dt = _dt()
+    dt.log(tenant_id=T, store_id="governed", query=json.dumps({"co": PII_COMPANY}),
+           model_id="m", raw_output="{}", retrieved_contents=["a sensitive retrieved fact"],
+           parameters={"invoice_ref": "OUT-z", "agent_key": KEY})       # NON-empty contents
+
+    with psycopg.connect(TEST_DB_URL) as conn:
+        with pytest.raises(ContentsParsedNotEmpty):
+            reencrypt_decision_context(conn, enc, T, backup_path=str(tmp_path / "b.jsonl"))
+    # nothing was mutated
+    assert count_plaintext_via_conn(T) == 1
+
+
+def test_migration_apply_requires_backup(tmp_path):
+    T = "enc-" + uuid.uuid4().hex[:8]
+    enc = _enc()
+    dt = _dt()
+    _seed_plaintext(dt, T, PII_COMPANY)
+    with psycopg.connect(TEST_DB_URL) as conn:
+        with pytest.raises(ValueError):
+            reencrypt_decision_context(conn, enc, T)       # apply without backup_path → refuse
+    assert count_plaintext_via_conn(T) == 1                # unmutated
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 4. decision_routes POST /v1/decisions/log — the missed caller (Cowork #1)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_decision_log_route_encrypts_at_rest():
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from aml.cloud.decision_routes import create_decision_router
+
+    T = "enc-" + uuid.uuid4().hex[:8]
+    enc = _enc()
+    dt = _dt()
+
+    app = FastAPI()
+    app.state.encryption = enc
+    app.state.signing_identity = None
+
+    @app.middleware("http")
+    async def _inject(request, call_next):
+        request.state.tenant = SimpleNamespace(tenant_id=T, scopes=["*"])
+        return await call_next(request)
+
+    app.include_router(create_decision_router(dt))
+    client = TestClient(app)
+
+    r = client.post("/v1/decisions/log", json={
+        "store_id": "governed",
+        "query": json.dumps({"company": PII_COMPANY, "to": PII_EMAIL}),
+        "model_id": "m", "raw_output": json.dumps({"decision": "certify"}),
+        "parameters": {"invoice_ref": "OUT-r", "agent_key": KEY},
+    })
+    assert r.status_code == 200, r.text
+    did = r.json()["decision_id"]
+
+    # at rest: encrypted, no plaintext PII in the raw column
+    raw = _raw_row(did)
+    assert raw["query"] == "[ENCRYPTED]"
+    assert PII_COMPANY not in (raw["query"] or "")
+    assert PII_COMPANY in enc.decrypt(raw["query_enc"])
+
+    # authorized API read decrypts transparently (no read regression from the write fix)
+    got = client.get(f"/v1/decisions/{did}")
+    assert got.status_code == 200, got.text
+    assert PII_COMPANY in got.json()["query"]
 
 
 def count_plaintext_via_conn(tenant_id):

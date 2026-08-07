@@ -25,6 +25,7 @@ never `query`/`raw_output`.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 
@@ -42,44 +43,66 @@ GTM_TENANTS = [
 
 _SENTINEL = "[ENCRYPTED]"
 # The two content-bearing columns the write path encrypts and that these rows populate.
-# (retrieved_contents/parsed_output are empty/null for propose_action rows and their
-#  canonical representation is identical encrypted-or-not, so they need no backfill.)
+# retrieved_contents/parsed_output are empty/null for propose_action rows (their canonical
+# representation is identical encrypted-or-not, so no backfill) — ENFORCED by a runtime guard
+# below: if any target row actually has content there, the migration ABORTS rather than
+# half-encrypt, so the assumption can't silently leave PII plaintext.
 _COLS = [("query", "query_enc"), ("raw_output", "raw_output_enc")]
 
 
-def _looks_like_pii(sample_rows) -> bool:
-    return any(r.get("query") not in (None, _SENTINEL) for r in sample_rows)
+class ContentsParsedNotEmpty(RuntimeError):
+    """A target row carries retrieved_contents/parsed_output data this migration doesn't
+    encrypt — abort instead of leaving those columns plaintext."""
 
 
-def reencrypt_decision_context(conn, encryptor, tenant_id, *, dry_run=False):
+def _contents_is_empty(v) -> bool:
+    # JSONB `retrieved_contents`: psycopg returns a list/dict (or the "[]" string sentinel).
+    return v is None or v == [] or v == {} or v == "[]" or v == "{}"
+
+
+def reencrypt_decision_context(conn, encryptor, tenant_id, *, dry_run=False, backup_path=None):
     """Encrypt any plaintext `query`/`raw_output` for `tenant_id` in decision_records.
 
-    `conn`      : a live psycopg connection (dict_row not required; we pass explicit cols).
-    `encryptor` : object with .encrypt(str)->str / .decrypt(str)->str (per-tenant Fernet).
-    Returns a stats dict. Commits on apply (pooled-connection safe — explicit commit)."""
-    # Select rows where AT LEAST ONE content column is still plaintext.
+    `conn`        : a live psycopg connection.
+    `encryptor`   : object with .encrypt(str)->str / .decrypt(str)->str (per-tenant Fernet).
+    `backup_path` : on apply, pre-images of the mutated rows are appended here (JSONL) and
+                    flushed BEFORE any UPDATE — required for a real run (irreversible mutation).
+    Returns a stats dict. Commits on apply (pooled-connection safe — explicit commit).
+    Raises ContentsParsedNotEmpty if a target row has non-empty contents/parsed_output."""
     rows = conn.execute(
-        "SELECT decision_id, query, raw_output, query_enc, raw_output_enc "
+        "SELECT decision_id, query, raw_output, query_enc, raw_output_enc, "
+        "       retrieved_contents, parsed_output "
         "FROM decision_records "
         "WHERE tenant_id = %s AND (query <> %s OR raw_output <> %s) "
         "ORDER BY created_at",
         (tenant_id, _SENTINEL, _SENTINEL),
     ).fetchall()
 
-    # psycopg default row is a tuple; normalize to dict by position.
     def _as_dict(r):
         if isinstance(r, dict):
             return r
         return {"decision_id": r[0], "query": r[1], "raw_output": r[2],
-                "query_enc": r[3], "raw_output_enc": r[4]}
+                "query_enc": r[3], "raw_output_enc": r[4],
+                "retrieved_contents": r[5], "parsed_output": r[6]}
 
     scanned = [_as_dict(r) for r in rows]
     stats = {"tenant_id": tenant_id, "scanned": len(scanned),
              "encrypted_rows": 0, "columns_written": 0, "dry_run": dry_run,
              "sample_plaintext": []}
 
+    # GUARD (#3): this migration encrypts query + raw_output only. If any target row carries
+    # retrieved_contents/parsed_output data, a natively-encrypted row would cover those too —
+    # abort so we consciously extend rather than leave them plaintext.
+    conflicts = [r["decision_id"] for r in scanned
+                 if not _contents_is_empty(r.get("retrieved_contents"))
+                 or r.get("parsed_output") is not None]
+    if conflicts:
+        raise ContentsParsedNotEmpty(
+            f"{len(conflicts)} row(s) for tenant {tenant_id} have non-empty "
+            f"retrieved_contents/parsed_output (e.g. {conflicts[:3]}); extend the migration "
+            f"to encrypt those columns before running.")
+
     for r in scanned[:3]:
-        # Redacted sample for the operator: prove it's plaintext without dumping full PII.
         q = r.get("query") or ""
         stats["sample_plaintext"].append({
             "decision_id": r["decision_id"],
@@ -89,6 +112,19 @@ def reencrypt_decision_context(conn, encryptor, tenant_id, *, dry_run=False):
 
     if dry_run:
         return stats
+
+    # PRE-IMAGE BACKUP (#2): dump what we're about to overwrite, flush to disk, THEN mutate.
+    if backup_path is None:
+        raise ValueError("backup_path is required for a real apply (pre-image backup).")
+    import os as _os
+    with open(backup_path, "a", encoding="utf-8") as bf:
+        for r in scanned:
+            bf.write(json.dumps({
+                "decision_id": r["decision_id"], "tenant_id": tenant_id,
+                "query": r["query"], "raw_output": r["raw_output"],
+            }, default=str) + "\n")
+        bf.flush()
+        _os.fsync(bf.fileno())
 
     for r in scanned:
         sets, params = [], []
@@ -115,9 +151,11 @@ def reencrypt_decision_context(conn, encryptor, tenant_id, *, dry_run=False):
 
 
 def count_plaintext(conn, tenant_id) -> int:
+    # (#3) count a row as plaintext if EITHER content column is unencrypted.
     row = conn.execute(
-        "SELECT COUNT(*) FROM decision_records WHERE tenant_id = %s AND query <> %s",
-        (tenant_id, _SENTINEL),
+        "SELECT COUNT(*) FROM decision_records "
+        "WHERE tenant_id = %s AND (query <> %s OR raw_output <> %s)",
+        (tenant_id, _SENTINEL, _SENTINEL),
     ).fetchone()
     return int(row[0] if not isinstance(row, dict) else row["count"])
 
@@ -170,6 +208,8 @@ def main(argv=None):
                     help="report the plaintext-context count + a redacted sample; NO writes")
     ap.add_argument("--verify", action="store_true",
                     help="assert 0 plaintext decision_records rows; also report plaintext llm_providers")
+    ap.add_argument("--backup", default="decision_context_preimage.jsonl",
+                    help="pre-image backup file (JSONL) written before any mutation on apply")
     args = ap.parse_args(argv)
     tenants = _resolve_tenants(args)
 
@@ -188,11 +228,17 @@ def main(argv=None):
             print(f"[verify] plaintext llm_providers (ALL tenants): {count_plaintext_llm_providers(conn, None)}")
         sys.exit(0 if ok else 1)
 
+    if not args.dry_run:
+        print(f"[apply] pre-image backup → {args.backup} (appended before any mutation)")
     all_stats = []
     for t in tenants:
         conn, encryptor = _build_conn_and_encryptor(t)     # per-tenant DEK
         try:
-            stats = reencrypt_decision_context(conn, encryptor, t, dry_run=args.dry_run)
+            stats = reencrypt_decision_context(
+                conn, encryptor, t, dry_run=args.dry_run,
+                backup_path=None if args.dry_run else args.backup)
+        except ContentsParsedNotEmpty as e:
+            sys.exit(f"[ABORT] {e}")
         finally:
             conn.close()
         all_stats.append(stats)
