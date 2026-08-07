@@ -58,16 +58,46 @@ at the app layer, but there is no DB backstop.
 the proving pattern), so an app-layer scoping bug can't leak cross-tenant by construction.
 Prioritize before onboarding a 2nd tenant. Tracked as a session chip.
 
-## Encrypt decision-record context (PII) — MUST-FIX before Mauricio
+## Encrypt decision-record context (PII) — MUST-FIX before Mauricio — ADDRESSED (branch phase2/encrypt-decision-context)
 
-**Signal.** `OrchestratorService.propose_action` records governed decisions via
-`decision_trail.log` WITHOUT passing encryption (matching `demo_routes._record_and_sign`), so
-the decision `query`/context — which holds real prospect **company + person names** — is stored
-**plaintext** in `decision_records` on the corp tenant. Provider keys and governed memory are
-encrypted at rest (EnvIdentity/Fernet), so this is an inconsistency and a PII exposure.
+**Signal.** `OrchestratorService.propose_action` recorded governed decisions via
+`decision_trail.log` WITHOUT passing encryption, so the decision `query`/context — which holds
+real prospect **company + person names** — was stored **plaintext** in `decision_records` on the
+corp tenant. Provider keys and governed memory are encrypted at rest (EnvIdentity/Fernet), so this
+was an inconsistency and a PII exposure.
 
-**Roadmap.** Pass `encryption=self._encryption` in `propose_action` (verify CGR still reads
-`agent_key`/`invoice_ref` from `parameters`, which are separate from the encrypted query — see
-the #13 CGR+encryption fix), and re-encrypt the 21 rows already written for
-`gtm-outreach-agent@ulissy`. Consider the same for `demo_routes._record_and_sign`. Tracked as a
-session chip; parallel to the loop PRs — does not block the PR-4/5/6 review checkpoint.
+**Fix (class-wide audit of every governed decision_trail.log writer):**
+- `propose_action` (orchestrator.py) — **FIXED**: now passes `encryption=self._encryption` (the
+  prod TenantKeyManager). This is the path that wrote the corp GTM rows.
+- `execute_step` ×2 (orchestrator.py) — already correct (both passed encryption). No change.
+- `demo_routes._record_and_sign` (`/v1/governed/decisions`, `/verify-batch`) — **FIXED**: threads
+  `encryption` from `request.app.state.encryption` (safe helper `_tenant_encryption`, None in tests).
+- `decision_routes` `POST /v1/decisions/log` — **FIXED** (Cowork review #1): passes
+  `encryption=request.app.state.encryption` on write AND on the 4 read routes (get ×2, query,
+  export) so authorized reads decrypt — no read regression. Closes the class.
+- `landing` / `world_model` — **EXEMPT**: never call `decision_trail.log` (verified). Their
+  outcome/review writes go through the GMP `memories` store, already encrypted (#13).
+- `execution_receipts.issue_receipt` — **EXEMPT**: persists BLAKE2b **hashes** of input/output,
+  never the plaintext context.
+
+CGR is provably unaffected: `load_substrate`/`join_decisions_to_outcomes` read decisions ONLY from
+`parameters` (JSONB, never encrypted); `_row_to_record` decrypts keyed on `query_enc` presence
+(the #13-correct pattern). Tests: `tests/test_decision_context_encryption.py` (no plaintext PII at
+rest, CGR join survives, migration idempotent).
+
+**Migration.** `ops/encrypt_decision_context.py` — idempotent, reuses each tenant's existing DEK;
+`--dry-run` (step-0 count/sample), `--verify` (zero plaintext decision_records + plaintext
+llm_providers heuristic), `--all-gtm` (all 3 GTM tenants). Runs INSIDE Railway (private DB +
+`GRAFOMEM_MASTER_KEY`). Gated: run against prod only AFTER Cowork adversarial review of diff + script.
+
+**LIVE-VERIFIED SCOPE (2026-08-07, Railway console).** The brief's "~21 corp rows" was wrong. Real
+state: `decision_records` holds **424 rows, 383 plaintext**. The `gtm-outreach-agent@ulissy` PII
+(real prospect company names, e.g. "Abound (Fintern)") is **61 plaintext rows across 3 tenants** —
+corp `5605470c` (34), machine `600e0890` (21, = the brief's "~21"), orphaned `e1c5e06` (6). Decision
+(Camilo): migrate all 3 (no tenant-purge path ⇒ machine-tenant PII persists otherwise).
+
+**Follow-ups (NOT in this branch):**
+- **Systemic plaintext (~322 non-GTM rows).** 383 total plaintext − 61 GTM = ~322 rows from other
+  agents/demo/legacy paths (only 41 rows encrypted table-wide). Needs its OWN characterization
+  (which store_ids/tenants/paths; live PII vs dev/test) before any backfill. Do NOT fold into the
+  GTM migration.

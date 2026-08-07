@@ -177,6 +177,11 @@ def create_decision_router(decision_trail, store_manager=None, tenant_auth=None)
                 latency_ms=req.latency_ms,
                 signing_identity=request.app.state.signing_identity,
                 parent_decision_id=req.parent_decision_id,
+                # PII-at-rest (#Mauricio gate B): encrypt query/raw_output/contents at rest
+                # (client-supplied, may carry PII). Mirrors demo_routes/propose_action. CGR
+                # reads `parameters` (never encrypted). The GET reads below pass the same
+                # encryption so authorized consumers still get plaintext (no read regression).
+                encryption=getattr(request.app.state, "encryption", None),
             )
         except Exception as e:
             logger.error("Failed to log decision: %s", e)
@@ -216,6 +221,7 @@ def create_decision_router(decision_trail, store_manager=None, tenant_auth=None)
         def generate():
             for record_dict in decision_trail.export(
                 tenant_id, from_time=from_time, to_time=to_time,
+                encryption=getattr(request.app.state, "encryption", None),
             ):
                 yield json.dumps(record_dict) + "\n"
 
@@ -236,7 +242,7 @@ def create_decision_router(decision_trail, store_manager=None, tenant_auth=None)
         """Retrieve a single decision record by its ID."""
         tenant_id = _get_tenant_id(request)
         require_scope(request, "decisions:read")
-        record = decision_trail.get(decision_id)
+        record = decision_trail.get(decision_id, encryption=getattr(request.app.state, "encryption", None))
 
         if record is None:
             raise HTTPException(404, f"Decision '{decision_id}' not found")
@@ -259,7 +265,7 @@ def create_decision_router(decision_trail, store_manager=None, tenant_auth=None)
         """
         tenant_id = _get_tenant_id(request)
         require_scope(request, "decisions:read")
-        record = decision_trail.get(decision_id)
+        record = decision_trail.get(decision_id, encryption=getattr(request.app.state, "encryption", None))
 
         if record is None:
             raise HTTPException(404, f"Decision '{decision_id}' not found")
@@ -344,6 +350,7 @@ def create_decision_router(decision_trail, store_manager=None, tenant_auth=None)
             model_id=model_id,
             limit=limit,
             offset=offset,
+            encryption=getattr(request.app.state, "encryption", None),
         )
 
         return {
