@@ -47,13 +47,23 @@ class AttestRequest(BaseModel):
     signer_id: str
     signature: str
 
+
+# Canonical terminal status per decision. Replaces the old `body.decision + "d"` which produced
+# "denyd" for a denial (the rest of the platform uses "denied" — orchestrator StepStatus.DENIED).
+_DECISION_STATUS = {"approve": "approved", "deny": "denied"}
+
 def create_hitl_router(db_pool: DatabasePool, orchestrator: OrchestratorService, gcrumbs: GcrumbsService) -> APIRouter:
     router = APIRouter(prefix="/v1/hitl", tags=["hitl"])
 
     @router.get("/requests")
     def list_requests(request: Request, status: str = "pending"):
-        tenant_id = require_scope(request, "compliance:read")
-        
+        # BUG FIX: require_scope() returns None (it only raises 403 on a missing scope) — using
+        # its return as tenant_id made the query `WHERE tenant_id = NULL`, so the HITL queue
+        # ALWAYS returned 0 rows (what the console reads). Take the tenant from the auth context.
+        require_scope(request, "compliance:read")
+        ctx = getattr(request.state, "tenant", None)
+        tenant_id = ctx.tenant_id if ctx is not None else None
+
         with db_pool.connection() as conn:
             rows = conn.execute(
                 """
@@ -205,11 +215,11 @@ def create_hitl_router(db_pool: DatabasePool, orchestrator: OrchestratorService,
                 SET status = %s, signer_id = %s, signature = %s, decided_at = %s 
                 WHERE request_id = %s
                 """,
-                (body.decision + "d", body.signer_id, body.signature, datetime.now(timezone.utc), request_id)
+                (_DECISION_STATUS[body.decision], body.signer_id, body.signature, datetime.now(timezone.utc), request_id)
             )
 
             # Append gcrumbs breadcrumb in the same transaction
-            event_type = f"hitl:{body.decision}d"
+            event_type = f"hitl:{_DECISION_STATUS[body.decision]}"
             gcrumbs.append_breadcrumb(
                 tenant_id=row["tenant_id"],
                 event_type=event_type,
@@ -226,18 +236,40 @@ def create_hitl_router(db_pool: DatabasePool, orchestrator: OrchestratorService,
                 conn=conn
             )
 
-        # Outside the transaction, resume workflow
+        # Outside the transaction, resume workflow / execute the approved action
         approved = (body.decision == "approve")
         resume_failed = False
         try:
-            orchestrator.resume_workflow(row["workflow_id"], approved)
+            proposed_action = None
+            if approved:
+                # F2: parse the action from the SIGNED bytes (exactly what the approver's
+                # Ed25519 signature covers), NOT the separate context_json column — so
+                # sign-X-execute-X holds BY CONSTRUCTION even if context_json were tampered
+                # after signing. context_bytes == _CANON(context_json) verified above.
+                import json as _json
+                try:
+                    signed_ctx = _json.loads(row["context_bytes"])
+                    if isinstance(signed_ctx, dict):
+                        proposed_action = signed_ctx.get("proposed_action")
+                except Exception:
+                    proposed_action = None
+            if approved and proposed_action:
+                # PR-6: execute the COMMITTED action deterministically (not an LLM re-run).
+                orchestrator.execute_approved_action(row["tenant_id"], row["workflow_id"], proposed_action)
+            elif orchestrator.get_workflow(row["workflow_id"]) is not None:
+                # F2 (review): only resume a REAL workflow. A propose-created request has a
+                # synthetic workflow_id (propose:<ref>:<decision_id>) with no backing workflow row —
+                # resume_workflow would raise ValueError AFTER the status flip already recorded the
+                # decision (turning a legitimate Reject into a 500). Skip resume when there is no
+                # workflow; the committed status flip is the record of the deny/approve.
+                orchestrator.resume_workflow(row["workflow_id"], approved)
         except Exception as e:
             import logging
             logger = logging.getLogger("grafomem.cloud.hitl")
             logger.error("Failed to resume workflow %s for request %s", row["workflow_id"], request_id, exc_info=True)
             resume_failed = True
 
-        response_data = {"status": body.decision + "d"}
+        response_data = {"status": _DECISION_STATUS[body.decision]}
         if resume_failed:
             response_data["warning"] = "workflow_resume_failed"
         return response_data
@@ -314,11 +346,17 @@ def create_hitl_router(db_pool: DatabasePool, orchestrator: OrchestratorService,
 
     @router.get("/requests/{request_id}/verify")
     def verify_request(request_id: str, request: Request):
+        # SECURITY: scope by the authenticated tenant. Without the tenant filter this is a
+        # cross-tenant IDOR — any compliance:read key could verify ANY request_id and read its
+        # signature + context_bytes (which carry the proposed action + recipient PII). 404 on
+        # a tenant mismatch (indistinguishable from not-found).
         require_scope(request, "compliance:read")
+        ctx = getattr(request.state, "tenant", None)
+        tenant_id = ctx.tenant_id if ctx is not None else None
         with db_pool.connection() as conn:
             row = conn.execute(
-                "SELECT * FROM hitl_approval_requests WHERE request_id = %s",
-                (request_id,)
+                "SELECT * FROM hitl_approval_requests WHERE request_id = %s AND tenant_id = %s",
+                (request_id, tenant_id)
             ).fetchone()
         
         if not row:

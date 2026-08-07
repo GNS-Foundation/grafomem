@@ -1,0 +1,103 @@
+name: ulissy-weekly-refresh
+
+# Phase-0 weekly loop (single owner — do NOT also schedule this in Cowork/Railway,
+# to avoid double-runs). Re-runs the GTM resolve+score pass onto the Ulissy tenant
+# when a ledger export is available, and always snapshots the front-agent's CGR tier.
+#
+# Required repo secrets (set by a human — never commit a key):
+#   ULISSY_API_KEY   the gfm_… key for the Ulissy tenant (from ops/.ulissy_creds.json)
+#   GRAFOMEM_BASE    e.g. https://grafomem-production.up.railway.app
+# Optional (enables the resolve/ingest pass in CI):
+#   ULISSY_TENANT_ID   the Ulissy tenant_id
+#   ULISSY_AGENT_KEY   the pinned agent_key for gtm-outreach-agent@ulissy
+# Optional repo variable:
+#   ULISSY_LEDGER_URL  URL to fetch the current ledger export (CSV/JSON) into ops/ledger.csv
+
+on:
+  schedule:
+    - cron: "0 7 * * 1"   # Mondays 07:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    env:
+      GRAFOMEM_BASE: ${{ secrets.GRAFOMEM_BASE }}
+      ULISSY_API_KEY: ${{ secrets.ULISSY_API_KEY }}
+      ULISSY_TENANT_ID: ${{ secrets.ULISSY_TENANT_ID }}
+      ULISSY_AGENT_KEY: ${{ secrets.ULISSY_AGENT_KEY }}
+      ULISSY_LEDGER_URL: ${{ vars.ULISSY_LEDGER_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install --quiet httpx
+
+      - name: Guard — API key present
+        run: |
+          if [ -z "$ULISSY_API_KEY" ] || [ -z "$GRAFOMEM_BASE" ]; then
+            echo "::error::ULISSY_API_KEY and GRAFOMEM_BASE secrets are required." >&2
+            exit 1
+          fi
+
+      - name: Fetch ledger export (optional)
+        if: ${{ env.ULISSY_LEDGER_URL != '' }}
+        run: curl -fsSL "$ULISSY_LEDGER_URL" -o ops/ledger.csv && echo "fetched ledger -> ops/ledger.csv"
+
+      - name: Reconstruct creds + run resolve/score pass (optional)
+        if: ${{ env.ULISSY_AGENT_KEY != '' && hashFiles('ops/ledger.csv') != '' }}
+        run: |
+          python - <<'PY'
+          import json, os
+          creds = {
+              "tenant_id": os.environ.get("ULISSY_TENANT_ID", ""),
+              "api_key": os.environ["ULISSY_API_KEY"],
+              "email": "ops@ulissy.grafomem",
+              "agents": {"gtm-outreach-agent@ulissy":
+                         {"agent_key": os.environ["ULISSY_AGENT_KEY"], "agent_tier": None}},
+          }
+          with open("ops/.ulissy_creds.json", "w") as f:
+              json.dump(creds, f)
+          os.chmod("ops/.ulissy_creds.json", 0o600)
+          PY
+          python ops/ingest_front.py ops/ledger.csv
+
+      - name: Snapshot the front-agent CGR tier
+        run: |
+          python - <<'PY'
+          import json, os, httpx
+          base = os.environ["GRAFOMEM_BASE"].rstrip("/")
+          r = httpx.get(f"{base}/v1/cgr/scores",
+                        headers={"X-API-Key": os.environ["ULISSY_API_KEY"]}, timeout=60.0)
+          r.raise_for_status()
+          body = r.json()
+          rows = [s for s in body.get("scores", []) if str(s.get("agent_handle","")).endswith("@ulissy")]
+          summary = os.environ.get("GITHUB_STEP_SUMMARY")
+          lines = [f"## Ulissy CGR snapshot ({body.get('as_of','?')})", "",
+                   "| agent | cgr_score | tier | n_resolved | n_pending |",
+                   "|---|---|---|---|---|"]
+          for s in rows or [{}]:
+              lines.append(f"| {s.get('agent_handle','—')} | {s.get('cgr_score','—')} | "
+                           f"{s.get('capability_tier','—')} | {s.get('n_resolved','—')} | "
+                           f"{s.get('n_pending','—')} |")
+          out = "\n".join(lines)
+          print(out)
+          if summary:
+              with open(summary, "a") as f:
+                  f.write(out + "\n")
+          with open("ulissy_cgr_snapshot.json", "w") as f:
+              json.dump({"as_of": body.get("as_of"), "scores": rows}, f, indent=2)
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ulissy-cgr-snapshot
+          path: ulissy_cgr_snapshot.json
+          if-no-files-found: warn

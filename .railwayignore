@@ -1,0 +1,12 @@
+# Never upload local secrets / PII / state to the Railway builder.
+# (The Dockerfile does not COPY ops/ into the image either — this is belt-and-suspenders.)
+ops/.ulissy_creds.json
+ops/.ulissy_ingest_state.json
+ops/ledger.csv
+ops/ledger.json
+.venv/
+.env
+.env.*
+*.db
+*.db-wal
+*.db-shm

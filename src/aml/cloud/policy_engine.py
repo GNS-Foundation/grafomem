@@ -258,11 +258,24 @@ class PolicyEngine:
         self, policy: Policy, operation: str, context: dict,
     ) -> tuple[EvaluationResult, str]:
         operations = policy.config.get("operations", [])
-        if not operations or operation in operations:
+        # PR-3: optional tool-name filter, so a policy can gate a NAMED tool (e.g. send_email
+        # to a named human) rather than a whole operation. Backward-compatible: empty `tools`
+        # keeps the operation-level behavior.
+        tools = policy.config.get("tools", [])
+        if operations and operation not in operations:
+            return EvaluationResult.ALLOWED, f"Operation '{operation}' not subject to HITL"
+        if tools:
+            tool_name = context.get("tool_name") or context.get("tool")
+            if tool_name not in tools:
+                return EvaluationResult.ALLOWED, (
+                    f"Tool '{tool_name}' not in HITL tool list for '{operation}'"
+                )
             return EvaluationResult.ESCALATED, (
-                f"HITL required for '{operation}' — awaiting human approval"
+                f"HITL required for tool '{tool_name}' ({operation}) — awaiting human approval"
             )
-        return EvaluationResult.ALLOWED, f"Operation '{operation}' not subject to HITL"
+        return EvaluationResult.ESCALATED, (
+            f"HITL required for '{operation}' — awaiting human approval"
+        )
 
     def _eval_pii_guard(
         self, policy: Policy, context: dict,

@@ -331,6 +331,12 @@ async def rotate_key(request: Request):
         conn = mgr._get_conn()
         conn.execute("DELETE FROM tenant_api_keys WHERE tenant_id = %s", (tenant_id,))
         new_key = mgr.create_api_key(tenant_id, name="default_admin", role="admin")
+        # Keep the legacy tenants.api_key in sync with the rotated key. /v1/portal/me (and
+        # therefore the console) reads the displayed key from tenants.api_key via
+        # _verify_legacy_token; create_api_key writes ONLY tenant_api_keys. Without this
+        # UPDATE, rotation appears to do nothing in the console ("the key stays the same")
+        # while the genuinely-new key lives only in this response body.
+        conn.execute("UPDATE tenants SET api_key = %s WHERE id = %s", (new_key["api_key"], tenant_id))
         if audit:
             audit.log(
                 tenant_id=tenant_id,
