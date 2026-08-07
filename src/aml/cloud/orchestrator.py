@@ -36,6 +36,8 @@ import functools
 import psycopg
 from psycopg.rows import dict_row
 
+from aml.cloud.invoice_pseudonym import pseudonymize
+
 _CANON = functools.partial(json.dumps, sort_keys=True, separators=(",", ":"), default=str)
 
 logger = logging.getLogger("grafomem.cloud.orchestrator")
@@ -482,6 +484,10 @@ class OrchestratorService:
         if not agent.agent_key:
             raise ValueError(f"agent {agent_id!r} has no agent_key — cannot attribute to CGR")
         handle = agent.agent_handle or agent.name
+        # PII (invoice_ref pseudonymization): store the per-tenant pseudonym, never the raw
+        # OUT-{company}-{person}. Applied HERE so parameters, the workflow_id, and the (encrypted)
+        # context all carry the pseudonym; CGR's equality-join is preserved (Step-0 confirmed).
+        invoice_ref = pseudonymize(invoice_ref, tenant_id)
         context = {
             "tool": tool, "args": args, "invoice_ref": invoice_ref,
             "dimension": "gtm-outreach", "edge_gate": True, "executed": False,

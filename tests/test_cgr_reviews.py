@@ -57,6 +57,18 @@ def _ep(router, path, method="POST"):
     raise KeyError(f"{method} {path} not found")
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _identity_invoice_ref():
+    """CGR-logic tests write synthetic raw refs and assert on them; pseudonymization
+    (and its join-survival) is covered by tests/test_invoice_pseudonym.py. Neutralize the
+    write-path transform here so these tests keep asserting the refs they wrote."""
+    import aml.cloud.demo_routes as _dr
+    _orig = _dr.pseudonymize
+    _dr.pseudonymize = lambda ref, tenant_id, **kw: ref
+    yield
+    _dr.pseudonymize = _orig
+
+
 @pytest.fixture(scope="module")
 def db():
     from aml.cloud.decision_trail import DecisionTrailService

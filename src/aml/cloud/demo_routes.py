@@ -35,6 +35,7 @@ from pydantic import BaseModel, Field
 
 from aml.backends.interface import Capability, WriteOptions
 from aml.cloud.execution_receipts import ExecutionReceiptService
+from aml.cloud.invoice_pseudonym import pseudonymize
 
 # The CGR outcome-store read/join is owned by aml.cgr.substrate (single source of
 # truth, shared with the scoring engine). The write path below reuses these.
@@ -151,6 +152,7 @@ def _record_and_sign(decision_trail, execution_receipts, signing_identity, *,
     Returns {decision_record, execution_receipt}."""
     if invoice_ref is None:
         logger.warning("CGR: governed decision recorded with no invoice_ref — will be unjoinable to outcome")
+    invoice_ref = pseudonymize(invoice_ref, tenant_id)   # PII: store the per-tenant pseudonym
 
     query = json.dumps(context, sort_keys=True, default=str)
     raw_output = json.dumps({"decision": decision, "reason": reason}, sort_keys=True, default=str)
@@ -229,6 +231,7 @@ def _record_outcome(backend, *, tenant_id, invoice_ref, outcome, outcome_date,
                     amount_recovered, source) -> dict:
     """Append-only write of an outcome. Idempotent on an identical re-post;
     supersedes the prior when it differs and the backend supports it."""
+    invoice_ref = pseudonymize(invoice_ref, tenant_id)   # PII: join key stored as the pseudonym (matches the decision side)
     existing = _tenant_outcomes(backend, tenant_id)
     current = _latest_for(existing, invoice_ref)
 
@@ -293,6 +296,7 @@ def _record_review(backend, *, tenant_id, invoice_ref, reviewer_handle, rating,
     """Append-only write of a review. Dedup/revision key is (invoice_ref,
     reviewer_handle): a reviewer re-rating supersedes their OWN prior; a different
     reviewer is a distinct record. Idempotent on an identical re-post."""
+    invoice_ref = pseudonymize(invoice_ref, tenant_id)   # PII: join key stored as the pseudonym
     existing = _tenant_reviews(backend, tenant_id)
     current = _latest_review_for(existing, invoice_ref, reviewer_handle)
 

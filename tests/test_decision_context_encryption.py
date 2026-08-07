@@ -31,6 +31,7 @@ from aml.cloud.decision_trail import DecisionTrailService
 from aml.cloud.orchestrator import AgentDefinition, OrchestratorService
 from aml.cloud.tenant_key_manager import FernetEncryptor
 from aml.server.stores import StoreManager
+from aml.cloud.invoice_pseudonym import pseudonymize, is_pseudonymized
 from ops.encrypt_decision_context import (
     ContentsParsedNotEmpty, count_plaintext, reencrypt_decision_context,
 )
@@ -111,7 +112,7 @@ def test_propose_action_leaves_no_plaintext_pii(monkeypatch):
 
     # (c) CGR join keys survive in parameters (JSONB, never encrypted)
     params = row["parameters"] if isinstance(row["parameters"], dict) else json.loads(row["parameters"])
-    assert params["invoice_ref"] == "OUT-0001"
+    assert params["invoice_ref"] == pseudonymize("OUT-0001", T) and is_pseudonymized(params["invoice_ref"])
     assert params["agent_key"] == KEY
     assert params["agent_handle"] == "gtm-outreach-agent@ulissy"
     # invoice_ref (the only plaintext identifier) is intentional and PII-free
@@ -138,7 +139,7 @@ def test_cgr_join_survives_encryption(monkeypatch):
     try:
         # before any outcome: the encrypted decision is visible with attribution intact
         rows = load_substrate(dt, sm, T)
-        mine = [r for r in rows if r.invoice_ref == INV]
+        mine = [r for r in rows if r.invoice_ref == pseudonymize(INV, T)]
         assert len(mine) == 1, "encrypted decision must be visible to the CGR join"
         assert mine[0].agent_key == KEY
         assert mine[0].agent_handle == "gtm-outreach-agent@ulissy"
@@ -146,12 +147,12 @@ def test_cgr_join_survives_encryption(monkeypatch):
 
         # write the ground-truth outcome, then the join must resolve it (scorer input)
         ob = sm.get_or_create_named(CGR_OUTCOMES_STORE).backend
-        meta = {"predicate": "receivable_outcome", "subject": INV, "object": "paid",
+        meta = {"predicate": "receivable_outcome", "subject": pseudonymize(INV, T), "object": "paid",
                 "cgr_schema": CGR_OUTCOME_SCHEMA, "source": "manual"}
-        ob.write(f"receivable_outcome | {INV} | paid", WriteOptions(tenant_id=T, metadata=meta))
+        ob.write(f"receivable_outcome | {pseudonymize(INV, T)} | paid", WriteOptions(tenant_id=T, metadata=meta))
 
         rows2 = load_substrate(dt, sm, T)
-        resolved = next(r for r in rows2 if r.invoice_ref == INV)
+        resolved = next(r for r in rows2 if r.invoice_ref == pseudonymize(INV, T))
         assert resolved.outcome == "paid", "encrypted decision must resolve against its outcome"
         assert resolved.agent_key == KEY
     finally:
