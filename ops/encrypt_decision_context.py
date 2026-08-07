@@ -28,8 +28,17 @@ import argparse
 import os
 import sys
 
-# The single corp/Ulissy tenant this backfill targets (override with --tenant).
+# Tenants carrying gtm-outreach-agent@ulissy plaintext PII (verified live 2026-08-07):
+#   corp keeper 5605470c (34 rows) + phase-0 machine tenants 600e0890 (21) / e1c5e06 (6).
+# All 61 rows are plaintext prospect company names; there is no tenant-purge path, so the
+# machine-tenant rows persist unless encrypted here. Default targets corp only; pass
+# --all-gtm (or a comma list to --tenant) to cover all three.
 CORP_TENANT_ID = "5605470cfa8e415ba418c9d8944abf9a"
+GTM_TENANTS = [
+    "5605470cfa8e415ba418c9d8944abf9a",   # corp (cayerbe@ulissy.app) — keeper
+    "600e0890aa9042acaabe4b1c3d4fbdc5",   # phase-0 machine tenant (the brief's "~21")
+    "e1c5e0619cdd42c38f59b5079e9d18e4",   # phase-0 orphaned throwaway
+]
 
 _SENTINEL = "[ENCRYPTED]"
 # The two content-bearing columns the write path encrypts and that these rows populate.
@@ -144,45 +153,65 @@ def _build_conn_and_encryptor(tenant_id):
     return conn, encryptor
 
 
+def _resolve_tenants(args) -> list[str]:
+    if args.all_gtm:
+        return list(GTM_TENANTS)
+    # --tenant accepts a single id or a comma-separated list.
+    return [t.strip() for t in args.tenant.split(",") if t.strip()]
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--tenant", default=CORP_TENANT_ID, help="tenant_id to backfill")
+    ap.add_argument("--tenant", default=CORP_TENANT_ID,
+                    help="tenant_id to backfill (comma-separated for multiple)")
+    ap.add_argument("--all-gtm", action="store_true",
+                    help=f"target all {len(GTM_TENANTS)} gtm-outreach tenants (corp + 2 machine)")
     ap.add_argument("--dry-run", action="store_true",
                     help="report the plaintext-context count + a redacted sample; NO writes")
     ap.add_argument("--verify", action="store_true",
                     help="assert 0 plaintext decision_records rows; also report plaintext llm_providers")
     args = ap.parse_args(argv)
+    tenants = _resolve_tenants(args)
 
     if args.verify:
         import psycopg
         db_url = os.environ.get("GRAFOMEM_DB_URL") or sys.exit("GRAFOMEM_DB_URL not set")
+        ok = True
         with psycopg.connect(db_url) as conn:
-            dr = count_plaintext(conn, args.tenant)
-            lp = count_plaintext_llm_providers(conn, args.tenant)
-            lp_all = count_plaintext_llm_providers(conn, None)
-        print(f"[verify] tenant={args.tenant}")
-        print(f"[verify] plaintext decision_records (query<>'{_SENTINEL}'): {dr}   (want 0)")
-        print(f"[verify] plaintext llm_providers (this tenant): {lp}   (want 0)")
-        print(f"[verify] plaintext llm_providers (ALL tenants): {lp_all}")
-        sys.exit(0 if dr == 0 and lp == 0 else 1)
+            for t in tenants:
+                dr = count_plaintext(conn, t)
+                lp = count_plaintext_llm_providers(conn, t)
+                print(f"[verify] tenant={t}")
+                print(f"[verify]   plaintext decision_records (query<>'{_SENTINEL}'): {dr}   (want 0)")
+                print(f"[verify]   plaintext llm_providers (this tenant): {lp}   (want 0)")
+                ok = ok and dr == 0 and lp == 0
+            print(f"[verify] plaintext llm_providers (ALL tenants): {count_plaintext_llm_providers(conn, None)}")
+        sys.exit(0 if ok else 1)
 
-    conn, encryptor = _build_conn_and_encryptor(args.tenant)
-    try:
-        stats = reencrypt_decision_context(conn, encryptor, args.tenant, dry_run=args.dry_run)
-    finally:
-        conn.close()
+    all_stats = []
+    for t in tenants:
+        conn, encryptor = _build_conn_and_encryptor(t)     # per-tenant DEK
+        try:
+            stats = reencrypt_decision_context(conn, encryptor, t, dry_run=args.dry_run)
+        finally:
+            conn.close()
+        all_stats.append(stats)
 
-    mode = "DRY-RUN (no writes)" if args.dry_run else "APPLIED"
-    print(f"[{mode}] tenant={stats['tenant_id']}")
-    print(f"  scanned (>=1 plaintext content col): {stats['scanned']}")
-    if args.dry_run:
-        print(f"  ⇒ would encrypt these rows. Sample (redacted):")
-        for s in stats["sample_plaintext"]:
-            print(f"    - {s['decision_id']}  plaintext={s['query_is_plaintext']}  q='{s['query_prefix']}'")
-    else:
-        print(f"  rows encrypted: {stats['encrypted_rows']}")
-        print(f"  columns written: {stats['columns_written']}")
-    return stats
+        mode = "DRY-RUN (no writes)" if args.dry_run else "APPLIED"
+        print(f"[{mode}] tenant={stats['tenant_id']}")
+        print(f"  scanned (>=1 plaintext content col): {stats['scanned']}")
+        if args.dry_run:
+            print(f"  ⇒ would encrypt these rows. Sample (redacted):")
+            for s in stats["sample_plaintext"]:
+                print(f"    - {s['decision_id']}  plaintext={s['query_is_plaintext']}  q='{s['query_prefix']}'")
+        else:
+            print(f"  rows encrypted: {stats['encrypted_rows']}   columns written: {stats['columns_written']}")
+
+    if len(all_stats) > 1:
+        tot_scanned = sum(s["scanned"] for s in all_stats)
+        tot_enc = sum(s["encrypted_rows"] for s in all_stats)
+        print(f"[TOTAL over {len(all_stats)} tenants] scanned={tot_scanned} encrypted={tot_enc}")
+    return all_stats
 
 
 if __name__ == "__main__":

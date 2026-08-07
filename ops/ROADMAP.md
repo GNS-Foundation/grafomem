@@ -82,14 +82,22 @@ CGR is provably unaffected: `load_substrate`/`join_decisions_to_outcomes` read d
 (the #13-correct pattern). Tests: `tests/test_decision_context_encryption.py` (no plaintext PII at
 rest, CGR join survives, migration idempotent).
 
-**Migration.** `ops/encrypt_decision_context.py` — idempotent, corp-scoped, reuses the tenant's
-existing DEK; `--dry-run` (step-0 count/sample) and `--verify` (zero plaintext decision_records +
-plaintext llm_providers heuristic). Runs INSIDE Railway (private DB + `GRAFOMEM_MASTER_KEY`).
-Gated: run against prod only AFTER Cowork adversarial review of the diff + script.
+**Migration.** `ops/encrypt_decision_context.py` — idempotent, reuses each tenant's existing DEK;
+`--dry-run` (step-0 count/sample), `--verify` (zero plaintext decision_records + plaintext
+llm_providers heuristic), `--all-gtm` (all 3 GTM tenants). Runs INSIDE Railway (private DB +
+`GRAFOMEM_MASTER_KEY`). Gated: run against prod only AFTER Cowork adversarial review of diff + script.
+
+**LIVE-VERIFIED SCOPE (2026-08-07, Railway console).** The brief's "~21 corp rows" was wrong. Real
+state: `decision_records` holds **424 rows, 383 plaintext**. The `gtm-outreach-agent@ulissy` PII
+(real prospect company names, e.g. "Abound (Fintern)") is **61 plaintext rows across 3 tenants** —
+corp `5605470c` (34), machine `600e0890` (21, = the brief's "~21"), orphaned `e1c5e06` (6). Decision
+(Camilo): migrate all 3 (no tenant-purge path ⇒ machine-tenant PII persists otherwise).
 
 **Follow-ups (NOT in this branch):**
+- **Systemic plaintext (~322 non-GTM rows).** 383 total plaintext − 61 GTM = ~322 rows from other
+  agents/demo/legacy paths (only 41 rows encrypted table-wide). Needs its OWN characterization
+  (which store_ids/tenants/paths; live PII vs dev/test) before any backfill. Do NOT fold into the
+  GTM migration.
 - `decision_routes` `/v1/decisions/log` — generic public decision API, same omission, but its GET
   routes return `query` un-decrypted, so encrypting writes there needs a **coordinated write+read**
-  change (API contract). Not the corp PII path — deferred as its own PR.
-- The corp-scoped migration leaves OTHER tenants' pre-existing plaintext rows (from
-  demo_routes/decision_routes) untouched. If any such tenant holds PII, a broader backfill is needed.
+  change (API contract). Deferred as its own PR.
