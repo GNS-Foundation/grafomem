@@ -506,6 +506,11 @@ class OrchestratorService:
                 "proposed": True,
             },
             signing_identity=self._signing_identity,
+            # PII-at-rest (#Mauricio gate B): encrypt the decision `query` (context — holds
+            # prospect company/person names). Mirrors execute_step's two log() calls. CGR is
+            # UNAFFECTED: it reads agent_key/invoice_ref from `parameters` (never encrypted),
+            # not from `query`. self._encryption is the TenantKeyManager (tkm) in prod.
+            encryption=self._encryption,
         )
 
         # PR-0 completion: evaluate the tool-action policy and, on ESCALATE, create the HITL

@@ -62,6 +62,18 @@ def _tenant_id(request: Request) -> str:
     return ctx.tenant_id
 
 
+def _tenant_encryption(request: Request):
+    """Best-effort per-tenant at-rest encryptor (TenantKeyManager) from app state.
+
+    Returns None when app state is absent (tests/dev with mock requests), so governed
+    writes fall back to plaintext exactly as before — backward-compatible. In prod
+    `app.state.encryption` is the TenantKeyManager, so the decision `query` (context)
+    is encrypted at rest. Accessed defensively: mock requests have `.state` but no `.app`."""
+    app = getattr(request, "app", None)
+    state = getattr(app, "state", None)
+    return getattr(state, "encryption", None)
+
+
 # ============================================================================
 # Request models
 # ============================================================================
@@ -133,7 +145,7 @@ class RotationProofRequest(BaseModel):
 def _record_and_sign(decision_trail, execution_receipts, signing_identity, *,
                      tenant_id, invoice_ref, context, decision, reason, model_id,
                      agent_handle, verifiability_tag, agent_tier, reason_code,
-                     agent_key=None):
+                     agent_key=None, encryption=None):
     """Record a governed decision as a signed decision_record + signed, chained
     execution_receipt, carrying the CGR substrate fields in `parameters`.
     Returns {decision_record, execution_receipt}."""
@@ -158,6 +170,10 @@ def _record_and_sign(decision_trail, execution_receipts, signing_identity, *,
             "cgr_schema": CGR_DECISION_SCHEMA,        # CGR: substrate version tag
         },
         signing_identity=signing_identity,
+        # PII-at-rest (#Mauricio gate B): encrypt the decision `query` (= the governed
+        # `context`, which may carry invoice/party PII). Same class as propose_action.
+        # CGR is unaffected — it reads `parameters` (never encrypted), not `query`.
+        encryption=encryption,
     )
     workflow_id = f"governed:{invoice_ref or tenant_id}"
     try:
@@ -387,6 +403,7 @@ def create_governed_router(decision_trail, execution_receipts, signing_identity,
             agent_handle=req.agent_handle, verifiability_tag=req.verifiability_tag,
             agent_tier=req.agent_tier, reason_code=None,  # judgment: no rule reason_code
             agent_key=req.agent_key,
+            encryption=_tenant_encryption(request),
         )
 
     @router.post("/v1/governed/verify-batch")
@@ -413,6 +430,7 @@ def create_governed_router(decision_trail, execution_receipts, signing_identity,
                 agent_handle=req.agent_handle, verifiability_tag="rule",
                 agent_tier=req.agent_tier, reason_code=reason_code,
                 agent_key=req.agent_key,
+                encryption=_tenant_encryption(request),
             )
             if decision == "certify":
                 certified.add(inv_id)

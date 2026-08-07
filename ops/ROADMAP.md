@@ -58,16 +58,38 @@ at the app layer, but there is no DB backstop.
 the proving pattern), so an app-layer scoping bug can't leak cross-tenant by construction.
 Prioritize before onboarding a 2nd tenant. Tracked as a session chip.
 
-## Encrypt decision-record context (PII) — MUST-FIX before Mauricio
+## Encrypt decision-record context (PII) — MUST-FIX before Mauricio — ADDRESSED (branch phase2/encrypt-decision-context)
 
-**Signal.** `OrchestratorService.propose_action` records governed decisions via
-`decision_trail.log` WITHOUT passing encryption (matching `demo_routes._record_and_sign`), so
-the decision `query`/context — which holds real prospect **company + person names** — is stored
-**plaintext** in `decision_records` on the corp tenant. Provider keys and governed memory are
-encrypted at rest (EnvIdentity/Fernet), so this is an inconsistency and a PII exposure.
+**Signal.** `OrchestratorService.propose_action` recorded governed decisions via
+`decision_trail.log` WITHOUT passing encryption, so the decision `query`/context — which holds
+real prospect **company + person names** — was stored **plaintext** in `decision_records` on the
+corp tenant. Provider keys and governed memory are encrypted at rest (EnvIdentity/Fernet), so this
+was an inconsistency and a PII exposure.
 
-**Roadmap.** Pass `encryption=self._encryption` in `propose_action` (verify CGR still reads
-`agent_key`/`invoice_ref` from `parameters`, which are separate from the encrypted query — see
-the #13 CGR+encryption fix), and re-encrypt the 21 rows already written for
-`gtm-outreach-agent@ulissy`. Consider the same for `demo_routes._record_and_sign`. Tracked as a
-session chip; parallel to the loop PRs — does not block the PR-4/5/6 review checkpoint.
+**Fix (class-wide audit of every governed decision_trail.log writer):**
+- `propose_action` (orchestrator.py) — **FIXED**: now passes `encryption=self._encryption` (the
+  prod TenantKeyManager). This is the path that wrote the corp GTM rows.
+- `execute_step` ×2 (orchestrator.py) — already correct (both passed encryption). No change.
+- `demo_routes._record_and_sign` (`/v1/governed/decisions`, `/verify-batch`) — **FIXED**: threads
+  `encryption` from `request.app.state.encryption` (safe helper `_tenant_encryption`, None in tests).
+- `landing` / `world_model` — **EXEMPT**: never call `decision_trail.log` (verified). Their
+  outcome/review writes go through the GMP `memories` store, already encrypted (#13).
+- `execution_receipts.issue_receipt` — **EXEMPT**: persists BLAKE2b **hashes** of input/output,
+  never the plaintext context.
+
+CGR is provably unaffected: `load_substrate`/`join_decisions_to_outcomes` read decisions ONLY from
+`parameters` (JSONB, never encrypted); `_row_to_record` decrypts keyed on `query_enc` presence
+(the #13-correct pattern). Tests: `tests/test_decision_context_encryption.py` (no plaintext PII at
+rest, CGR join survives, migration idempotent).
+
+**Migration.** `ops/encrypt_decision_context.py` — idempotent, corp-scoped, reuses the tenant's
+existing DEK; `--dry-run` (step-0 count/sample) and `--verify` (zero plaintext decision_records +
+plaintext llm_providers heuristic). Runs INSIDE Railway (private DB + `GRAFOMEM_MASTER_KEY`).
+Gated: run against prod only AFTER Cowork adversarial review of the diff + script.
+
+**Follow-ups (NOT in this branch):**
+- `decision_routes` `/v1/decisions/log` — generic public decision API, same omission, but its GET
+  routes return `query` un-decrypted, so encrypting writes there needs a **coordinated write+read**
+  change (API contract). Not the corp PII path — deferred as its own PR.
+- The corp-scoped migration leaves OTHER tenants' pre-existing plaintext rows (from
+  demo_routes/decision_routes) untouched. If any such tenant holds PII, a broader backfill is needed.
