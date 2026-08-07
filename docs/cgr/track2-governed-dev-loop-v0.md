@@ -73,6 +73,13 @@ choice. Phase 2 should introduce generic decision/outcome types (a `dimension` +
 subject/outcome) so engineering, GTM, and future domains share the scoring math without semantic
 overloading. Tracked here; no schema change in v0.
 
+**Phase-2 ROADMAP item — "outcome auto-resolve" (observation window).** The durability-dependent
+success labels (`merge_landed`, `deploy_succeeded`) currently rely on the operator manually waiting
+the observation window before posting `paid` (see the operator caveat above). Phase 2 should
+auto-resolve these: on a consequential action's approval, arm a window; post `paid` only if no
+revert/rollback signal arrives before it closes, else `default`. This removes the human timing
+precondition and the premature-`paid` inflation risk.
+
 ## Condition 4 — the eng → outcome mapping is **binary**
 
 `compute_scores` (`aml.cgr.scoring.score_agent`) treats outcomes **binary, at full weight**, and
@@ -94,7 +101,17 @@ the assignment explicit:
 | ambiguous / in-flight / unknown | → | `None` — **do not post** (leave pending; a mis-mapped label would falsely resolve the decision and corrupt the score — the Phase-0 synthetic-data lesson) |
 
 `merge_landed` (positive) is defined as *merged and not reverted within the observation window*; a
-later `merge_reverted` is the negative signal. Tests: `test_map_dev_outcome_binary_positive_negative`,
+later `merge_reverted` is the negative signal.
+
+> **Operator caveat (Cowork review of PR #22).** For the "success" labels whose truth depends on
+> *durability* — `merge_landed` and `deploy_succeeded` — the operator MUST wait out the observation
+> window before posting `paid`. Posting `paid` prematurely and then hitting a revert/rollback would
+> **inflate** the score (a `paid` that should have been `default`), and CGR outcomes are append-only
+> latest-wins — a wrong early resolution is corrective only by a later contradicting post, not by
+> deletion. Until auto-resolve exists, treat the observation window as a hard precondition for these
+> two labels. Folded into the Phase-2 **outcome auto-resolve** ROADMAP item below.
+
+Tests: `test_map_dev_outcome_binary_positive_negative`,
 `test_record_outcome_none_mapping_is_noop`, and the end-to-end `test_cgr_delta_on_eng_agent_after_outcome`
 (a `paid` outcome resolves the decision and lifts the score off the neutral 0.5 baseline on a test
 tenant). **This mapping is brought to Cowork for explicit sign-off before it is wired against any real
