@@ -127,6 +127,52 @@ def test_mechanism_enforces_isolation_and_fail_closed(enforcing):
 
 # ── each REAL table fails closed under the same policy ───────────────────────
 
+def test_e2e_authenticated_request_isolates_tenants(enforcing):
+    """THE Phase-C flip gate. A real authenticated request through TenantAuthMiddleware
+    (BaseHTTPMiddleware) → async endpoint → DatabasePool checkout must propagate the
+    ContextVar so RLS scopes to the request's tenant. This exercises the middleware→endpoint→
+    getconn path the direct-.set() proof BYPASSES. If ContextVar propagation is broken, tenant
+    A's request sees 0 rows (fail-closed) and this test FAILS — catching the Phase-C read outage."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from aml.server.auth import TenantAuthMiddleware
+    from aml.cloud.db_pool import DatabasePool
+
+    url, _role = enforcing
+    A, B = f"e2eA-{uuid.uuid4().hex[:6]}", f"e2eB-{uuid.uuid4().hex[:6]}"
+    tbl = f"rls_e2e_{uuid.uuid4().hex[:8]}"
+    with _owner() as c:
+        c.execute(f"CREATE TABLE {tbl} (tenant_id text NOT NULL, val text)")
+        if _role:
+            c.execute(f"GRANT SELECT,INSERT,UPDATE,DELETE ON {tbl} TO {_role}")
+        c.execute(f"INSERT INTO {tbl} VALUES (%s,'a'),(%s,'b')", (A, B))
+        c.execute(_POLICY.format(t=tbl, p=f"iso_{tbl}"))      # ENABLE+FORCE+policy (no admin)
+
+    pool = DatabasePool(url)                                   # non-super/non-bypass ⇒ FORCE enforces
+    pool.open()
+    app = FastAPI()
+    app.add_middleware(TenantAuthMiddleware, auth_mode="token", tokens={"tkA": A, "tkB": B})
+
+    @app.get("/rows")
+    async def rows():                                         # async endpoint → real checkout path
+        with pool.connection() as conn:                       # apply_tenant_context reads the ContextVar HERE
+            got = conn.execute(f"SELECT val FROM {tbl} ORDER BY val").fetchall()
+        return {"vals": [r["val"] for r in got]}              # DatabasePool uses dict_row
+
+    client = TestClient(app)
+    try:
+        ra = client.get("/rows", headers={"Authorization": "Bearer tkA"})
+        assert ra.status_code == 200, ra.text
+        assert ra.json()["vals"] == ["a"], \
+            "tenant A must see ONLY A's row — ContextVar must propagate middleware→endpoint→getconn"
+        rb = client.get("/rows", headers={"Authorization": "Bearer tkB"})
+        assert rb.json()["vals"] == ["b"], "tenant B must see ONLY B's row"
+    finally:
+        pool.close()
+        with _owner() as c:
+            c.execute(f"DROP TABLE IF EXISTS {tbl}")
+
+
 @pytest.mark.parametrize("table", REAL_TABLES)
 def test_real_table_fails_closed_under_rls(enforcing, table):
     """Apply ENABLE+FORCE+policy to the real table; the enforcing role with UNSET context

@@ -83,6 +83,16 @@ EXCEPTION WHEN duplicate_object THEN null; END $$;
 ALTER TABLE memories          FORCE ROW LEVEL SECURITY;
 ALTER TABLE memory_embeddings FORCE ROW LEVEL SECURITY;
 
+-- (review #2) Close the #12 'admin' OR-clause on memories/embeddings so the WHOLE policied
+-- surface is uniformly no-bypass before Phase C activates memories RLS. Replace the existing
+-- admin-carrying policies (prod already has them) with clean tenant-only ones.
+DROP POLICY IF EXISTS tenant_isolation_memories ON memories;
+CREATE POLICY tenant_isolation_memories ON memories
+  USING (tenant_id = current_setting('app.current_tenant', true));
+DROP POLICY IF EXISTS tenant_isolation_embeddings ON memory_embeddings;
+CREATE POLICY tenant_isolation_embeddings ON memory_embeddings
+  USING (tenant_id = current_setting('app.current_tenant', true));
+
 -- ── VERIFY (read-only; run after apply) ──
 -- SELECT c.relname, c.relrowsecurity AS rls, c.relforcerowsecurity AS force
 --   FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace

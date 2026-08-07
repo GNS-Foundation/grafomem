@@ -27,10 +27,10 @@ from typing import Optional
 # None ⇒ "no tenant established" ⇒ fail-closed ('' GUC ⇒ 0 rows).
 current_tenant: ContextVar[Optional[str]] = ContextVar("current_tenant", default=None)
 
-# Explicit sentinel for genuinely system/cross-tenant background work (anchor/Merkle).
-# NOT a read-all bypass: the RLS policies do NOT grant this value blanket SELECT — each
-# background path that needs it is enumerated and scoped (see push_service/erasure/anchor).
-SYSTEM_TENANT = "system"
+# NOTE: there is deliberately NO system/'admin' sentinel. Every policied-table access is
+# tenant-scoped: in-request paths inherit the request tenant; background paths (push_service,
+# erasure) set their own tenant; the Merkle/anchor job touches NO policied table (verified),
+# so no cross-tenant door exists. IDOR is closed by construction — do not add a blanket value.
 
 _GUC = "app.current_tenant"
 

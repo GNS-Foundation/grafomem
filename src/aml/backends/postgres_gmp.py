@@ -291,7 +291,7 @@ class PostgresGMPBackend:
                     """
                     DO $$ BEGIN
                         CREATE POLICY tenant_isolation_memories ON memories
-                            USING (tenant_id = current_setting('app.current_tenant', true) OR current_setting('app.current_tenant', true) = 'admin');
+                            USING (tenant_id = current_setting('app.current_tenant', true));
                     EXCEPTION
                         WHEN duplicate_object THEN null;
                     END $$;
@@ -301,7 +301,7 @@ class PostgresGMPBackend:
                     """
                     DO $$ BEGIN
                         CREATE POLICY tenant_isolation_embeddings ON memory_embeddings
-                            USING (tenant_id = current_setting('app.current_tenant', true) OR current_setting('app.current_tenant', true) = 'admin');
+                            USING (tenant_id = current_setting('app.current_tenant', true));
                     EXCEPTION
                         WHEN duplicate_object THEN null;
                     END $$;
