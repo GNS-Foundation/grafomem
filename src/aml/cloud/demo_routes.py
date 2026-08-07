@@ -170,7 +170,7 @@ def _record_and_sign(decision_trail, execution_receipts, signing_identity, *,
             "cgr_schema": CGR_DECISION_SCHEMA,        # CGR: substrate version tag
         },
         signing_identity=signing_identity,
-        # PII-at-rest (#Mauricio gate B): encrypt the decision `query` (= the governed
+        # PII-at-rest (#gate B): encrypt the decision `query` (= the governed
         # `context`, which may carry invoice/party PII). Same class as propose_action.
         # CGR is unaffected — it reads `parameters` (never encrypted), not `query`.
         encryption=encryption,

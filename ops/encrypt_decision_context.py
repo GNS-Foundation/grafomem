@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """One-off, idempotent re-encryption of plaintext decision-record context (PII) at rest.
 
-Mauricio gate B. Backfills `decision_records` rows whose context (`query`) — and the
+gate B. Backfills `decision_records` rows whose context (`query`) — and the
 paired `raw_output` — were written in PLAINTEXT before `propose_action` passed an
 encryptor (the class fix in this same PR). Encrypts them in place to the SAME shape the
 write path produces under encryption: the plaintext column becomes the "[ENCRYPTED]"
