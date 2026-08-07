@@ -164,7 +164,9 @@ def count_plaintext_llm_providers(conn, tenant_id=None) -> int:
     """Rows whose api_key is present but NOT a Fernet token (gAAAAA…) ⇒ stored plaintext.
     Scoped to a tenant if given, else global. Heuristic — Fernet tokens are the only
     ciphertext shape the provider write path produces."""
-    where = "api_key IS NOT NULL AND api_key NOT LIKE 'gAAAAA%'"
+    # NB: '%%' — psycopg is in param-parsing mode (a params list is always passed), so a bare
+    # '%' in the LIKE literal is misread as a placeholder. '%%' escapes to a literal '%'.
+    where = "api_key IS NOT NULL AND api_key NOT LIKE 'gAAAAA%%'"
     params: list = []
     if tenant_id:
         where += " AND tenant_id = %s"
