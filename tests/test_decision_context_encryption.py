@@ -327,6 +327,16 @@ def test_decision_log_route_encrypts_at_rest():
     assert PII_COMPANY in got.json()["query"]
 
 
+def test_count_plaintext_llm_providers_executes():
+    # regression: LIKE 'gAAAAA%' crashed psycopg ("only %s allowed") in param-parsing mode;
+    # the '%%' escape must let BOTH the tenant-scoped and global forms run.
+    from ops.encrypt_decision_context import count_plaintext_llm_providers
+    T = "enc-" + uuid.uuid4().hex[:8]
+    with psycopg.connect(TEST_DB_URL) as c:
+        assert count_plaintext_llm_providers(c, T) == 0            # tenant-scoped (params)
+        assert isinstance(count_plaintext_llm_providers(c, None), int)  # global (empty params)
+
+
 def count_plaintext_via_conn(tenant_id):
     with psycopg.connect(TEST_DB_URL) as c:
         return count_plaintext(c, tenant_id)
