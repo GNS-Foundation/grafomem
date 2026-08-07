@@ -142,3 +142,17 @@ def test_backfill_decisions_pseudonymizes_both_fields_idempotent():
     with psycopg.connect(TEST_DB_URL) as conn:
         s2 = backfill_decisions(conn, T, MK)
     assert s2["updated"] == 0 and s2["skipped_pseudo"] >= 1
+
+
+def test_scan_guard_aborts_on_shortfall(monkeypatch):
+    """The RLS fail-closed guard: if a per-tenant scan comes back below its Step-0 floor
+    (e.g. 0 rows because grafomem_rt has no tenant context), abort BEFORE any write."""
+    from ops import pseudonymize_invoice_ref as mod
+    T = "guard-" + uuid.uuid4().hex[:8]
+    monkeypatch.setitem(mod.EXPECTED_DECISIONS, T, 5)   # expect 5; seed only 1 → shortfall
+    dt = _dt()
+    dt.log(tenant_id=T, store_id="governed", query="{}", model_id="m", raw_output="{}",
+           parameters={"invoice_ref": "OUT-a-b", "invoice_id": "OUT-a-b", "agent_key": "k" * 64})
+    with psycopg.connect(TEST_DB_URL) as conn:
+        with pytest.raises(RuntimeError, match="SCAN GUARD"):
+            mod.backfill_decisions(conn, T, MK)

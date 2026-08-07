@@ -40,12 +40,33 @@ def _is_pseudo(ref):
     return is_pseudonymized(ref)
 
 
+# Step-0 ground-truth row counts per GTM tenant — the guard asserts the scan matches these, so
+# an RLS fail-closed (0-row) scan under grafomem_rt can't pass as a silent no-op.
+EXPECTED_DECISIONS = {
+    "5605470cfa8e415ba418c9d8944abf9a": 34,
+    "600e0890aa9042acaabe4b1c3d4fbdc5": 21,
+    "e1c5e0619cdd42c38f59b5079e9d18e4": 6,
+}
+EXPECTED_MEMORIES = {"e1c5e0619cdd42c38f59b5079e9d18e4": 7}
+
+
+def _set_tenant_ctx(conn, tenant_id):
+    """RLS: the backfill runs AS grafomem_rt (post-flip GRAFOMEM_DB_URL), so without the tenant
+    context every policied SELECT/UPDATE fail-closes to 0 rows. Set it before touching data."""
+    conn.execute("SELECT set_config('app.current_tenant', %s, false)", (tenant_id,))
+
+
 # ── A. decision_records.parameters (plaintext JSONB) ──────────────────────────
 def backfill_decisions(conn, tenant_id, master_key_hex, *, dry_run=False):
+    _set_tenant_ctx(conn, tenant_id)
     rows = conn.execute(
         "SELECT decision_id, parameters FROM decision_records "
         "WHERE tenant_id = %s AND parameters ? 'invoice_ref'", (tenant_id,),
     ).fetchall()
+    _exp = EXPECTED_DECISIONS.get(tenant_id)
+    if _exp is not None and len(rows) < _exp:            # floor: growth ok, a shortfall (esp. 0) is not
+        raise RuntimeError(f"SCAN GUARD (decisions): tenant {tenant_id} scanned={len(rows)} < Step-0 {_exp}. "
+                           f"Likely RLS fail-closed (no tenant context, running as grafomem_rt) — ABORT before any write.")
     stats = {"scanned": len(rows), "updated": 0, "skipped_pseudo": 0}
     for did, params in rows:
         p = params if isinstance(params, dict) else json.loads(params)
@@ -68,10 +89,15 @@ def backfill_decisions(conn, tenant_id, master_key_hex, *, dry_run=False):
 
 # ── B. CGR outcomes/reviews store (encrypted subject + content in `memories`) ──
 def backfill_cgr_memories(conn, encryptor, tenant_id, master_key_hex, *, dry_run=False):
+    _set_tenant_ctx(conn, tenant_id)                    # memories is FORCE RLS — context required
     rows = conn.execute(
         "SELECT ref, content_enc, metadata_enc FROM memories "
         "WHERE tenant_id = %s AND metadata_enc IS NOT NULL", (tenant_id,),
     ).fetchall()
+    _exp = EXPECTED_MEMORIES.get(tenant_id)              # only e1c5e06 has outcome/review copies
+    if _exp is not None and len(rows) < _exp:
+        raise RuntimeError(f"SCAN GUARD (memories): tenant {tenant_id} scanned={len(rows)} < Step-0 {_exp}. "
+                           f"Likely RLS fail-closed (memories is FORCE RLS) — ABORT before any write.")
     stats = {"scanned": len(rows), "updated": 0, "skipped": 0}
     for ref, content_enc, metadata_enc in rows:
         meta = json.loads(encryptor.decrypt(metadata_enc))
@@ -96,11 +122,15 @@ def backfill_cgr_memories(conn, encryptor, tenant_id, master_key_hex, *, dry_run
 
 def _build_conn_and_encryptor(tenant_id):
     import psycopg
-    from aml.cloud.tenant_key_manager import TenantKeyManager
+    from aml.cloud.identity import EnvIdentity
     db_url = os.environ.get("GRAFOMEM_DB_URL") or sys.exit("GRAFOMEM_DB_URL not set")
-    master = os.environ.get("GRAFOMEM_MASTER_KEY") or sys.exit("GRAFOMEM_MASTER_KEY not set")
+    master = os.environ.get("GRAFOMEM_MASTER_KEY") or sys.exit("GRAFOMEM_MASTER_KEY not set (pseudonym HMAC key)")
+    if not os.environ.get("PROVIDER_ENCRYPTION_KEY"):
+        sys.exit("PROVIDER_ENCRYPTION_KEY not set (the CGR memories store's encryptor)")
     conn = psycopg.connect(db_url)
-    enc = TenantKeyManager(master, db_url).get_encryptor(tenant_id)   # same DEK the store uses
+    # NB: the CGR outcome/review store (memories) is encrypted with EnvIdentity (PROVIDER_ENCRYPTION_KEY,
+    # tenant-agnostic) — NOT the per-tenant DEK that decision_records.query_enc uses. Verified empirically.
+    enc = EnvIdentity()
     return conn, enc, master
 
 
