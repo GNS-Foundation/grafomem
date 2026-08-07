@@ -177,7 +177,7 @@ def create_decision_router(decision_trail, store_manager=None, tenant_auth=None)
                 latency_ms=req.latency_ms,
                 signing_identity=request.app.state.signing_identity,
                 parent_decision_id=req.parent_decision_id,
-                # PII-at-rest (#Mauricio gate B): encrypt query/raw_output/contents at rest
+                # PII-at-rest (#gate B): encrypt query/raw_output/contents at rest
                 # (client-supplied, may carry PII). Mirrors demo_routes/propose_action. CGR
                 # reads `parameters` (never encrypted). The GET reads below pass the same
                 # encryption so authorized consumers still get plaintext (no read regression).

@@ -1,4 +1,4 @@
-"""Mauricio gate B — encrypt decision-record context (PII) at rest.
+"""gate B — encrypt decision-record context (PII) at rest.
 
 Runs the REAL DecisionTrailService against Postgres (CI provides it; matches the #13
 encrypted-Postgres test), with content encryption ENABLED — the prod config.

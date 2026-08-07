@@ -58,7 +58,7 @@ at the app layer, but there is no DB backstop.
 the proving pattern), so an app-layer scoping bug can't leak cross-tenant by construction.
 Prioritize before onboarding a 2nd tenant. Tracked as a session chip.
 
-## Encrypt decision-record context (PII) — MUST-FIX before Mauricio — ADDRESSED (branch phase2/encrypt-decision-context)
+## Encrypt decision-record context (PII) — MUST-FIX before gate B — ADDRESSED (branch phase2/encrypt-decision-context)
 
 **Signal.** `OrchestratorService.propose_action` recorded governed decisions via
 `decision_trail.log` WITHOUT passing encryption, so the decision `query`/context — which holds
