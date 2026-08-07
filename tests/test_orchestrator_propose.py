@@ -11,6 +11,9 @@ from datetime import datetime, timezone
 import pytest
 
 from aml.cloud.orchestrator import AgentDefinition, OrchestratorService
+from aml.cloud.invoice_pseudonym import pseudonymize, is_pseudonymized
+
+PSEUDO = pseudonymize("OUT-globex-ana", "corp")  # write-path pseudonymizes; corp is the test tenant
 
 KEY = "a" * 64
 _NOW = datetime(2026, 8, 6, tzinfo=timezone.utc)
@@ -56,7 +59,7 @@ def test_propose_action_records_cgr_attributed_decision(monkeypatch):
                               reason="fit: allocator")
     # return shape
     assert out["decision_id"] == "dec-123"
-    assert out["invoice_ref"] == "OUT-globex-ana"
+    assert out["invoice_ref"] == PSEUDO and is_pseudonymized(out["invoice_ref"]) and "globex" not in out["invoice_ref"]
     assert out["agent_handle"] == "gtm-outreach-agent@ulissy"
     assert out["decision"] == "certify" and out["proposed"] is True and out["executed"] is False
 
@@ -67,7 +70,7 @@ def test_propose_action_records_cgr_attributed_decision(monkeypatch):
     p = call["parameters"]
     assert p["agent_key"] == KEY
     assert p["agent_handle"] == "gtm-outreach-agent@ulissy"
-    assert p["invoice_ref"] == "OUT-globex-ana" and p["invoice_id"] == "OUT-globex-ana"
+    assert p["invoice_ref"] == PSEUDO and p["invoice_id"] == PSEUDO   # both pseudonymized
     assert p["cgr_schema"] == "cgr.decision.v1"
     assert p["decision"] == "certify" and p["verifiability_tag"] == "judgment"
     assert p["tool"] == "send_email"
@@ -121,11 +124,11 @@ def test_propose_action_escalates_send_email_to_hitl(monkeypatch):
                               {"to": "ana@globex.example", "subject": "hi"}, "OUT-globex-ana")
     assert out["escalated"] is True and out["hitl_request_id"] == "hitl-1"
     assert out["executed"] is False
-    assert captured["wf"] == "propose:OUT-globex-ana:dec-123"   # F3: decision_id folded in
+    assert captured["wf"] == f"propose:{PSEUDO}:dec-123"   # F3 + workflow_id uses the pseudonym
     assert captured["step_id"] == "dec-123"                 # linked to the decision record
     assert captured["proposed_action"] == {
         "tool": "send_email", "args": {"to": "ana@globex.example", "subject": "hi"},
-        "to": "ana@globex.example", "invoice_ref": "OUT-globex-ana",
+        "to": "ana@globex.example", "invoice_ref": PSEUDO,
     }
 
 
