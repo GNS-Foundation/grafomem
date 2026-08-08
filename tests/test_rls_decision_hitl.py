@@ -29,7 +29,8 @@ RT_ROLE = "rls_proof_rt"
 RT_PW = "rtpw"
 RT_URL = f"postgresql://{RT_ROLE}:{RT_PW}@localhost:5432/grafomem"
 
-REAL_TABLES = ["decision_records", "hitl_approval_requests", "hitl_approvers", "memories"]
+REAL_TABLES = ["decision_records", "hitl_approval_requests", "hitl_approvers", "memories",
+               "decision_embeddings"]
 
 _POLICY = """
     ALTER TABLE {t} ENABLE ROW LEVEL SECURITY;

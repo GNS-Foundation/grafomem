@@ -166,6 +166,40 @@ CREATE INDEX IF NOT EXISTS idx_dr_store
 
 
 # ============================================================================
+# Manifold Phase-0.5 — decision-embedding helpers (module-level)
+# ============================================================================
+
+# Parameter keys that are IDENTITY or the pseudonymized join-key — NEVER embedded (noise + would
+# cluster geometry by agent/ref rather than capability). invoice_ref confirmed excluded.
+_EMBED_EXCLUDE_KEYS = {"invoice_ref", "invoice_id", "agent_key", "agent_handle", "cgr_schema"}
+
+import re as _re
+
+_PII_PATTERNS = [
+    _re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+"),                 # emails
+    _re.compile(r"(?<!\d)(?:\+?\d[\s().-]?){9,}\d(?!\d)"),    # phone / long digit runs
+]
+
+
+def _redact_pii(text: str) -> str:
+    """Built-in defense-in-depth redactor (emails, phone/long-digit runs). The real privacy control
+    is the vault posture (RLS-FORCE + grafomem_rt-only + never-serialized + erasure-swept)."""
+    if not text:
+        return text
+    for pat in _PII_PATTERNS:
+        text = pat.sub("[REDACTED]", text)
+    return text
+
+
+def _embed_metric(result: str) -> None:
+    try:
+        from aml.cloud.metrics import DECISION_EMBEDDINGS
+        DECISION_EMBEDDINGS.labels(result=result).inc()
+    except Exception:
+        pass
+
+
+# ============================================================================
 # DecisionTrailService
 # ============================================================================
 
@@ -178,10 +212,20 @@ class DecisionTrailService:
         PostgreSQL connection URI.
     """
 
-    def __init__(self, db_url: str, pool=None) -> None:
+    def __init__(self, db_url: str, pool=None, *,
+                 embed_fn=None, redact_fn=None, tokenizer_id: str | None = None) -> None:
         self._db_url = db_url
         self._pool = pool
         self._conn: psycopg.Connection[dict[str, Any]] | None = None
+        # Manifold Phase-0.5 — capability-content embedding of governed decisions. When `embed_fn`
+        # is injected (prod wiring; None elsewhere ⇒ the hook is a NO-OP), log() embeds a redacted
+        # projection of the decision content into the VAULT-ONLY `decision_embeddings` table,
+        # best-effort/fail-open. `redact_fn(tenant_id, text)->text` is defense-in-depth over the
+        # built-in redactor; the real control is the table's RLS-FORCE + grafomem_rt-only +
+        # never-serialized + erasure-swept posture. NO plaintext is persisted — only the vector.
+        self._embed_fn = embed_fn
+        self._redact_fn = redact_fn
+        self._tokenizer_id = tokenizer_id or "BAAI/bge-small-en-v1.5"
 
     # ------------------------------------------------------------------
     # Connection helpers
@@ -317,6 +361,19 @@ class DecisionTrailService:
             decision_id, tenant_id, model_id,
         )
 
+        # Manifold Phase-0.5 — best-effort, FAIL-OPEN capability embedding (vault-only). Runs only
+        # when an embedder is wired AND this is a CGR-attributed decision. A failure here (missing
+        # table, model load, RLS) NEVER blocks or fails the governed decision above — it is caught,
+        # metered, and dropped. The plaintext query/raw_output are used HERE (already in hand); only
+        # the 384-d vector is persisted, never the text.
+        if self._embed_fn is not None and params.get("cgr_schema"):
+            try:
+                self._embed_decision(conn, tenant_id, decision_id, query, raw_output, params, now)
+                _embed_metric("ok")
+            except Exception as e:  # noqa: BLE001 — fail-open by design
+                logger.warning("decision embed failed (fail-open) id=%s: %s", decision_id, e)
+                _embed_metric("fail")
+
         try:
             from aml.cloud.metrics import DECISIONS_LOGGED
             DECISIONS_LOGGED.labels(model_id=model_id).inc()
@@ -345,6 +402,74 @@ class DecisionTrailService:
             public_key=public_key,
             parent_decision_id=parent_decision_id,
         )
+
+    # ------------------------------------------------------------------
+    # Manifold Phase-0.5 — capability-content embedding (vault-only)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def capability_text(query: str, raw_output: str, params: dict) -> str:
+        """Compose the capability-relevant text to embed from a governed decision. INCLUDES the
+        structured capability tags (decision-type, verifiability_tag, dimension, tool, reason_code)
+        + the situational content (query context) + the decision rationale. EXCLUDES the
+        pseudonymized invoice_ref/invoice_id (noise + join-key) and the agent identity keys. Shared
+        by the write-path hook and the backfill so both embed identical content."""
+        params = params or {}
+        tags = [
+            f"decision={params.get('decision','')}",
+            f"tag={params.get('verifiability_tag','')}",
+            f"dimension={params.get('cgr_schema','')}",
+        ]
+        if params.get("tool"):
+            tags.append(f"tool={params['tool']}")
+        if params.get("reason_code"):
+            tags.append(f"reason_code={params['reason_code']}")
+
+        # situational content from the query (drop identity/ref keys if it's JSON)
+        q_content = query or ""
+        try:
+            q = json.loads(query)
+            if isinstance(q, dict):
+                q_content = json.dumps({k: v for k, v in q.items() if k not in _EMBED_EXCLUDE_KEYS},
+                                       sort_keys=True, default=str)
+        except Exception:
+            pass
+        # rationale from raw_output (the reason/summary carries capability signal)
+        r_content = raw_output or ""
+        try:
+            r = json.loads(raw_output)
+            if isinstance(r, dict):
+                keys = ("reason", "rationale", "summary", "explanation", "justification")
+                picked = " ".join(str(r[k]) for k in keys if r.get(k))
+                r_content = picked or ""
+        except Exception:
+            pass
+
+        text = " | ".join(p for p in (" ".join(tags), q_content, r_content) if p)
+        # belt-and-suspenders: strip the exact pseudonym/identity TOKENS so they can never be embedded
+        for k in _EMBED_EXCLUDE_KEYS:
+            tok = params.get(k)
+            if tok:
+                text = text.replace(str(tok), "")
+        return text
+
+    def _embed_decision(self, conn, tenant_id: str, decision_id: str,
+                        query: str, raw_output: str, params: dict, now) -> None:
+        """Embed the redacted capability text and persist ONLY the vector to decision_embeddings.
+        Raises on any failure — the caller (log) is fail-open and swallows it."""
+        import numpy as np
+        text = self.capability_text(query, raw_output, params)
+        text = (self._redact_fn(tenant_id, text) if self._redact_fn else _redact_pii(text)) or ""
+        vec = np.asarray(self._embed_fn([text]), dtype=float).reshape(-1)
+        lit = "[" + ",".join(f"{float(x):.8g}" for x in vec) + "]"
+        conn.execute(
+            "INSERT INTO decision_embeddings "
+            "(tenant_id, decision_id, embedding, tokenizer_id, created_at, valid_from) "
+            "VALUES (%s, %s, %s::vector, %s, %s, %s) "
+            "ON CONFLICT (tenant_id, decision_id) DO NOTHING",
+            (tenant_id, decision_id, lit, self._tokenizer_id, now, now),
+        )
+        conn.commit()
 
     # ------------------------------------------------------------------
     # Queries

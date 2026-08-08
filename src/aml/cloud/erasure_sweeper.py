@@ -52,28 +52,45 @@ class ErasureSweeper:
         # and log specific tenant/fact_refs swept to update coverage records.
         # For the demo, we just sweep all eligible and return the count.
         with psycopg.connect(self._db_url, row_factory=dict_row, autocommit=True) as conn:
+            swept = 0
             # We want to fetch the refs before deleting so we can log them
             with conn.transaction():
-                cur = conn.execute(
+                rows = conn.execute(
                     f"SELECT ref, tenant_id FROM {table_name} "
                     "WHERE erasure_pending IS NOT NULL AND erasure_pending <= %s",
                     (cutoff,)
-                )
-                rows = cur.fetchall()
+                ).fetchall()
+                if rows:
+                    conn.execute(
+                        f"DELETE FROM {table_name} WHERE ref = ANY(%s)", ([r["ref"] for r in rows],)
+                    )
+                    for r in rows:
+                        logger.info("Swept orphaned embedding for tenant=%s ref=%s", r["tenant_id"], r["ref"])
+                    swept = len(rows)
 
-                if not rows:
-                    return 0
+            # Manifold Phase-0.5 — sweep the decision_embeddings vault on the same mark path
+            # (crypto-shred / erasure_pending). Hard-delete of a decision_record itself cascades via
+            # the FK; this covers the mark-based path, mirroring memory_embeddings. Best-effort: the
+            # table may not exist in every environment.
+            de_table = f"{self._table_prefix}decision_embeddings"
+            try:
+                with conn.transaction():
+                    de = conn.execute(
+                        f"SELECT tenant_id, decision_id FROM {de_table} "
+                        "WHERE erasure_pending IS NOT NULL AND erasure_pending <= %s", (cutoff,)
+                    ).fetchall()
+                    if de:
+                        conn.execute(
+                            f"DELETE FROM {de_table} WHERE (tenant_id, decision_id) IN "
+                            "(SELECT tenant_id, decision_id FROM " + de_table +
+                            " WHERE erasure_pending IS NOT NULL AND erasure_pending <= %s)", (cutoff,)
+                        )
+                        for r in de:
+                            logger.info("Swept decision embedding tenant=%s decision=%s",
+                                        r["tenant_id"], r["decision_id"])
+                        swept += len(de)
+            except Exception as e:  # pragma: no cover — table may be absent
+                logger.debug("decision_embeddings sweep skipped: %s", e)
 
-                refs = [r["ref"] for r in rows]
-                
-                # Hard delete
-                conn.execute(
-                    f"DELETE FROM {table_name} WHERE ref = ANY(%s)",
-                    (refs,)
-                )
-
-                for r in rows:
-                    logger.info("Swept orphaned embedding for tenant=%s ref=%s", r["tenant_id"], r["ref"])
-
-                return len(rows)
+            return swept
 
