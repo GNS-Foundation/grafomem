@@ -119,24 +119,32 @@ def create_hitl_router(db_pool: DatabasePool, orchestrator: OrchestratorService,
             raise HTTPException(401, "Invalid signature")
 
         with db_pool.connection() as conn:
+            # RLS: self-authenticated (Ed25519) → context is default_namespace. Resolve the
+            # request's owning tenant (SECURITY DEFINER, id only) and scope the connection so the
+            # row + approver lookups run under the correct tenant's RLS (see attest_request).
+            _resolved = conn.execute(
+                "SELECT public.hitl_request_tenant(%s) AS tid", (request_id,)
+            ).fetchone()
+            if _resolved and _resolved["tid"]:
+                conn.execute("SELECT set_config('app.current_tenant', %s, false)", (_resolved["tid"],))
+
             row = conn.execute(
                 "SELECT context_json, context_bytes, expires_at, status, tenant_id FROM hitl_approval_requests WHERE request_id = %s",
                 (request_id,)
             ).fetchone()
-        
-        if not row:
-            raise HTTPException(404, "Request not found")
-        
-        if row["status"] != "pending":
-            raise HTTPException(400, f"Request is no longer pending (status: {row['status']})")
 
-        # Verify the signer is an active approver for this tenant
-        with db_pool.connection() as conn:
+            if not row:
+                raise HTTPException(404, "Request not found")
+
+            if row["status"] != "pending":
+                raise HTTPException(400, f"Request is no longer pending (status: {row['status']})")
+
+            # Verify the signer is an active approver for this tenant (same connection/scope)
             approver = conn.execute(
                 "SELECT 1 FROM hitl_approvers WHERE approver_id = %s AND tenant_id = %s AND active = TRUE",
                 (signer_id, row["tenant_id"])
             ).fetchone()
-            
+
             if not approver and not _unsafe_dev_enabled():
                 raise HTTPException(403, "Not an active approver for this request")
 
@@ -153,6 +161,18 @@ def create_hitl_router(db_pool: DatabasePool, orchestrator: OrchestratorService,
             raise HTTPException(400, "Decision must be 'approve' or 'deny'")
 
         with db_pool.connection() as conn:
+            # RLS: this endpoint is self-authenticated (Ed25519, no API key), so the auth
+            # middleware pins app.current_tenant to default_namespace. Resolve the request's
+            # OWNING tenant via a SECURITY DEFINER function (returns ONLY the tenant id) and
+            # scope the connection to it, so the lookups below run under the correct tenant's
+            # RLS. Without this, WHERE request_id fail-closes under FORCE RLS → 404. A wrong
+            # resolution still fail-closes on the real fetch below (defence in depth).
+            _resolved = conn.execute(
+                "SELECT public.hitl_request_tenant(%s) AS tid", (request_id,)
+            ).fetchone()
+            if _resolved and _resolved["tid"]:
+                conn.execute("SELECT set_config('app.current_tenant', %s, false)", (_resolved["tid"],))
+
             # Atomic fetch and lock
             row = conn.execute(
                 "SELECT * FROM hitl_approval_requests WHERE request_id = %s FOR UPDATE",
@@ -301,35 +321,35 @@ def create_hitl_router(db_pool: DatabasePool, orchestrator: OrchestratorService,
             raise HTTPException(401, "Invalid signature")
 
         with db_pool.connection() as conn:
-            approver_rows = conn.execute(
-                """
-                SELECT tenant_id FROM hitl_approvers
-                WHERE approver_id = %s AND active = TRUE
-                """,
-                (approver_id,),
-            ).fetchall()
-
-            # A cryptographically valid signature from a key that is NOT an
-            # active approver is authenticated but not authorized. Return 403 so
-            # a revoked/unknown approver gets a clear signal instead of a
-            # silently-empty inbox (which would read as "nothing pending").
-            if not approver_rows:
+            # RLS: self-authenticated (Ed25519) → context is default_namespace, so a plain read of
+            # hitl_approvers fail-closes to 0 rows. Resolve the approver's active tenant(s) via a
+            # SECURITY DEFINER function (returns ONLY the tenant ids). This IS the registration
+            # check: no tenants ⇒ authenticated but not an active approver ⇒ 403.
+            _resolved = conn.execute(
+                "SELECT public.hitl_approver_tenants(%s) AS tids", (approver_id,)
+            ).fetchone()
+            tenant_ids = (_resolved["tids"] if _resolved else None) or []
+            if not tenant_ids:
                 raise HTTPException(403, "Not an active approver")
 
-            tenant_ids = [row["tenant_id"] for row in approver_rows]
-
-            rows = conn.execute(
-                """
-                SELECT request_id, action, resource, expires_at, tenant_id
-                FROM hitl_approval_requests
-                WHERE status = 'pending'
-                  AND expires_at > %s
-                  AND tenant_id = ANY(%s)
-                ORDER BY issued_at DESC
-                LIMIT 50
-                """,
-                (datetime.now(timezone.utc), tenant_ids),
-            ).fetchall()
+            # RLS scopes to ONE tenant per app.current_tenant, so fetch each resolved tenant's
+            # pending requests under its own context (a wrong resolution fail-closes on the fetch),
+            # then merge/sort/cap — preserving the original newest-first, top-50 semantics.
+            now = datetime.now(timezone.utc)
+            rows = []
+            for _tid in tenant_ids:
+                conn.execute("SELECT set_config('app.current_tenant', %s, false)", (_tid,))
+                rows.extend(conn.execute(
+                    """
+                    SELECT request_id, action, resource, expires_at, tenant_id, issued_at
+                    FROM hitl_approval_requests
+                    WHERE status = 'pending' AND expires_at > %s AND tenant_id = %s
+                    ORDER BY issued_at DESC
+                    """,
+                    (now, _tid),
+                ).fetchall())
+            rows.sort(key=lambda r: r["issued_at"], reverse=True)
+            rows = rows[:50]
 
         return {
             "requests": [

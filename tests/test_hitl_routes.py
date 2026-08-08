@@ -37,25 +37,26 @@ class MockCursor:
 
     def fetchall(self):
         q = self.query
-        if "FROM hitl_approvers" in q:
-            approver_id = self.params[0]
-            return [
-                {"tenant_id": t}
-                for t in self.parent.approver_tenants.get(approver_id, [])
-            ]
         if "FROM hitl_approval_requests" in q:
-            now_dt, tenant_ids = self.params[0], self.params[1]
+            # post-fix: the inbox fetches ONE tenant at a time (params = (now, tenant_id))
+            now_dt, tid = self.params[0], self.params[1]
             rows = [
                 r for r in self.parent.requests
                 if r["status"] == "pending"
                 and r["expires_at"] > now_dt
-                and r["tenant_id"] in tenant_ids
+                and r["tenant_id"] == tid
             ]
             rows.sort(key=lambda r: r["issued_at"], reverse=True)
-            return rows[:50]
+            return rows
         return []
 
     def fetchone(self):
+        q = self.query
+        # post-fix: the inbox resolves the approver's tenants via the SECURITY DEFINER function
+        if "hitl_approver_tenants" in q:
+            approver_id = self.params[0]
+            tids = self.parent.approver_tenants.get(approver_id)
+            return {"tids": tids or None}   # array_agg → NULL when the approver has no tenants
         return None
 
 
