@@ -120,6 +120,12 @@ if PROMETHEUS_AVAILABLE:
         ["model_id"],
     )
 
+    DECISION_EMBEDDINGS = Counter(
+        "grafomem_decision_embeddings_total",
+        "Manifold Phase-0.5 capability-embedding attempts on governed decisions (fail-open)",
+        ["result"],  # ok, fail
+    )
+
     MEMORY_OPERATIONS = Counter(
         "grafomem_memory_operations_total",
         "Memory store operations",
@@ -187,6 +193,7 @@ else:
     WORKFLOWS_TOTAL = _NoOpMetric()
     WORKFLOW_DURATION = _NoOpMetric()
     DECISIONS_LOGGED = _NoOpMetric()
+    DECISION_EMBEDDINGS = _NoOpMetric()
     TOKENS_CONSUMED = _NoOpMetric()
     MEMORY_OPERATIONS = _NoOpMetric()
     ERASURE_CERTIFICATES = _NoOpMetric()

@@ -92,6 +92,26 @@ def create_all_test_schema():
     except Exception as e:
         print(f"Warning: GMP construct failed: {e}")
     _ensure("erasure_ledger", lambda: ErasureLedger(LEDGER))          # ledger DB
+
+    # Manifold Phase-0.5 — decision_embeddings vault table (bare table + indexes; RLS is applied by
+    # the tests that need it, mirroring the other RLS-covered tables). Prod creates it via the
+    # superuser ops/decision_embeddings.sql; here the test role (CI superuser) creates it so the
+    # write-path hook + RLS-regression tests have it. Needs the vector ext + decision_records first.
+    try:
+        with psycopg.connect(DB, autocommit=True) as _c:
+            _c.execute("CREATE EXTENSION IF NOT EXISTS vector")
+            _c.execute("""
+                CREATE TABLE IF NOT EXISTS decision_embeddings (
+                    tenant_id text NOT NULL, decision_id text NOT NULL,
+                    embedding vector(384) NOT NULL, tokenizer_id text,
+                    created_at timestamptz NOT NULL DEFAULT now(),
+                    valid_from timestamptz NOT NULL DEFAULT now(),
+                    valid_until timestamptz, erasure_pending timestamptz,
+                    PRIMARY KEY (tenant_id, decision_id)
+                )""")
+    except Exception as e:
+        print(f"Warning: decision_embeddings ensure failed: {e}")
+
     if hasattr(_tkm, "close"):
         try:
             _tkm.close()
@@ -131,6 +151,7 @@ def transactional_rollback():
         "assurance_schedules",
         "erasure_certificates",
         "decision_records",
+        "decision_embeddings",
         "siem_audit_logs",
         "governance_policies",
         "compliance_reports",

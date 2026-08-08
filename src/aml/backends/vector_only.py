@@ -26,6 +26,7 @@ load the pinned reference model on first use.
 
 from __future__ import annotations
 
+import functools
 from collections.abc import Callable, Iterator
 from datetime import datetime, timezone
 
@@ -46,8 +47,13 @@ __grafomem_interface__ = "0.1.1"
 EmbedFn = Callable[[list[str]], np.ndarray]
 
 
+@functools.lru_cache(maxsize=1)
 def _default_embedder() -> EmbedFn:
-    """Lazily build the pinned BGE-small embedder (downloads ~130MB once)."""
+    """Lazily build the pinned BGE-small embedder (downloads ~130MB once).
+
+    Memoized so every caller (the GMP memory store AND the decision-embedding hook) shares ONE
+    model instance rather than loading a second ~130MB copy — the model is stateless for inference.
+    """
     try:
         from sentence_transformers import SentenceTransformer
     except ImportError as e:  # pragma: no cover

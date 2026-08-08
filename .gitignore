@@ -13,3 +13,6 @@ build/
 .env*
 env.txt
 uvicorn.log
+
+# local research/scratch exports (never commit)
+scratch/

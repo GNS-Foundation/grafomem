@@ -845,7 +845,18 @@ def create_app(
             from aml.cloud.decision_trail import DecisionTrailService
             from aml.cloud.decision_routes import create_decision_router
 
-            dt = DecisionTrailService(db_url, pool=pool)
+            # Manifold Phase-0.5 — wire the capability-embedding hook (vault-only). Shares the one
+            # memoized BGE embedder with the memory store; best-effort/fail-open, so a model-load or
+            # missing-table failure never blocks a governed decision. Built-in redactor is
+            # defense-in-depth; the vault posture (RLS-FORCE + grafomem_rt-only + never-serialized)
+            # is the real control.
+            _dec_embed_fn = None
+            try:
+                from aml.backends.vector_only import _default_embedder
+                _dec_embed_fn = _default_embedder()
+            except Exception as _emb_err:  # pragma: no cover — fail-open: no embedder ⇒ hook is a no-op
+                logger.warning("decision-embedding disabled (embedder unavailable): %s", _emb_err)
+            dt = DecisionTrailService(db_url, pool=pool, embed_fn=_dec_embed_fn)
             _init(dt)
             app.state.decision_trail = dt
 
