@@ -502,6 +502,35 @@ class WebhookService:
         self._deliver_with_retry(delivery_id, config, "test", payload)
         return self._get_delivery(delivery_id)
 
+    def retry_delivery(
+        self, webhook_id: str, delivery_id: str, tenant_id: str
+    ) -> WebhookDelivery | None:
+        """Re-send a past delivery as a NEW attempt (admin action). Returns the fresh
+        delivery record, or None if the delivery doesn't exist or isn't owned by the
+        caller.
+
+        IDOR guard (load-bearing): `_get_delivery` looks up by delivery_id ALONE, so
+        ownership is enforced HERE — the delivery must belong to `webhook_id`, and both
+        the delivery and the webhook must belong to the authenticated `tenant_id`. A
+        caller can never retry another tenant's (or another webhook's) delivery.
+
+        Faithful re-send: reuses the original `event_type` + stored `payload`, but
+        targets the webhook's CURRENT config (url/secret via `get_webhook`), not a
+        stale snapshot. Mints a NEW delivery row (history preserved; distinct
+        `X-Grafomem-Delivery` id), mirroring `send_test`."""
+        orig = self._get_delivery(delivery_id)
+        if orig is None or orig.webhook_id != webhook_id or orig.tenant_id != tenant_id:
+            return None
+        config = self.get_webhook(webhook_id)
+        if config is None or config.tenant_id != tenant_id:
+            return None
+
+        new_id = uuid.uuid4().hex[:24]
+        self._persist_delivery(new_id, config, orig.event_type, orig.payload)
+        # Deliver synchronously so the caller gets the outcome (like send_test).
+        self._deliver_with_retry(new_id, config, orig.event_type, orig.payload)
+        return self._get_delivery(new_id)
+
     # ------------------------------------------------------------------
     # Persistence helpers
     # ------------------------------------------------------------------

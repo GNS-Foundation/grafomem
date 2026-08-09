@@ -216,6 +216,29 @@ def create_webhook_router(webhook_service) -> APIRouter:
         }
 
     # ------------------------------------------------------------------
+    # POST /v1/webhooks/{webhook_id}/deliveries/{delivery_id}/retry
+    # ------------------------------------------------------------------
+
+    @router.post("/{webhook_id}/deliveries/{delivery_id}/retry")
+    async def retry_delivery(webhook_id: str, delivery_id: str, request: Request):
+        """Re-send a past delivery as a new attempt. Ownership is enforced in the
+        service (delivery ∈ webhook ∈ authenticated tenant) — a 404 covers both
+        'not found' and 'not yours' so cross-tenant probing can't distinguish them."""
+        tenant_id = _get_tenant_id(request)
+        require_scope(request, "webhooks:admin")
+        delivery = webhook_service.retry_delivery(webhook_id, delivery_id, tenant_id)
+
+        if delivery is None:
+            raise HTTPException(
+                404, f"Delivery '{delivery_id}' not found for webhook '{webhook_id}'"
+            )
+
+        return {
+            "retried": True,
+            "delivery": webhook_service.delivery_to_dict(delivery),
+        }
+
+    # ------------------------------------------------------------------
     # GET /v1/webhooks/events — list valid event types
     # ------------------------------------------------------------------
 
