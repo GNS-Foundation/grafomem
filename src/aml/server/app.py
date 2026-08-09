@@ -195,8 +195,6 @@ def _tenant_id(request: Request) -> str | None:
     return ctx.tenant_id
 
 def _require_role(request: Request, allowed_roles: set[str]) -> None:
-    ctx = getattr(request.state, "tenant", None)
-    print("DEBUG _require_role", getattr(ctx, "role", "NO_ROLE"), allowed_roles, getattr(ctx, "tenant_id", "NO_TENANT"))
     """Enforce RBAC on the current request."""
     ctx = getattr(request.state, "tenant", None)
     # If no auth middleware is running or it's default namespace, skip RBAC
@@ -239,7 +237,15 @@ async def create_store(request: Request):
 @router.get("/v1/stores")
 async def list_stores(request: Request):
     mgr: StoreManager = request.app.state.store_manager
-    return {"stores": mgr.list_stores()}
+    resp: dict[str, Any] = {"stores": mgr.list_stores()}
+    # Per-tenant fact rollup. Stores share one physical facts table (no store_id
+    # column), so this is TENANT-WIDE, not per-store — the console renders it as a
+    # rollup ("N facts · X across all stores"), not a per-card number. Skipped for
+    # the default namespace (unauthenticated / no tenant).
+    tenant = _tenant_id(request)
+    if tenant is not None:
+        resp["tenant_stats"] = mgr.tenant_stats(tenant)
+    return resp
 
 
 @router.get("/v1/stores/{store_id}/capabilities")

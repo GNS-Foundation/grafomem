@@ -91,6 +91,25 @@ class StoreManager:
                 for e in self._stores.values()
             ]
 
+    def tenant_stats(self, tenant_id: str) -> dict | None:
+        """Tenant-wide fact rollup (fact_count + total_bytes) for `tenant_id`.
+
+        Stores share one physical facts table (no per-store partition), so this is a
+        TENANT-LEVEL rollup, not a per-store metric — computed once against any backend
+        that can report it. Returns None when no backend supports `tenant_stats`
+        (e.g. sqlite dev backends) or none are registered."""
+        with self._lock:
+            entries = list(self._stores.values())
+        for e in entries:
+            fn = getattr(e.backend, "tenant_stats", None)
+            if callable(fn):
+                try:
+                    return fn(tenant_id)
+                except Exception:
+                    logger.warning("tenant_stats failed for tenant %s", tenant_id, exc_info=True)
+                    return None
+        return None
+
     @property
     def count(self) -> int:
         with self._lock:
