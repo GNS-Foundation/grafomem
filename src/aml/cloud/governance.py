@@ -520,10 +520,16 @@ class GovernanceGateway:
 
         eval_stats = self._evidence.get_stats(tenant_id)
 
+        # Map evidence_collector's result-status keys to the schema names. Without this
+        # the response_model (GovernanceStatsResponse) drops evaluations_denied/
+        # escalated (wrong names) and defaults denials_total/escalations_total to 0.
         return {
             "policies_total": pol_row["total"] if pol_row else 0,
             "policies_active": pol_row["active"] if pol_row else 0,
-            **eval_stats,
+            "evaluations_total": eval_stats.get("evaluations_total", 0),
+            "denials_total": eval_stats.get("evaluations_denied", 0),
+            "escalations_total": eval_stats.get("evaluations_escalated", 0),
+            "evaluations_by_type": self._evidence.evaluations_by_type(tenant_id),
         }
 
     # ------------------------------------------------------------------

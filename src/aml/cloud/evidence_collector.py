@@ -261,6 +261,32 @@ class EvidenceCollector:
             "evaluations_allowed": row["allowed"] if row else 0,
         }
 
+    def evaluations_by_type(self, tenant_id: str, top_n: int = 8) -> dict[str, int]:
+        """Evaluations grouped by policy_name for the analytics chart. The GROUP BY is
+        a FULL server-side aggregate (every row counted) — NOT a limited fetch — so a
+        busy tenant is never undercounted (the anti-undercount rationale). The tail
+        beyond the top `top_n` is folded into an "Other" bucket for categorical
+        hygiene, so the displayed counts still sum to the true total. Grouped by
+        policy_name (a NOT NULL log column) rather than policy_type-via-join, which is
+        58% 'unknown' on real data (deleted/foreign policy_ids)."""
+        conn = self._get_conn()
+        rows = conn.execute(
+            "SELECT policy_name AS k, COUNT(*) AS n "
+            "FROM governance_evaluation_log WHERE tenant_id = %s "
+            "GROUP BY policy_name ORDER BY n DESC",
+            (tenant_id,),
+        ).fetchall()
+        result: dict[str, int] = {}
+        other = 0
+        for i, r in enumerate(rows):
+            if i < top_n:
+                result[r["k"]] = r["n"]
+            else:
+                other += r["n"]
+        if other:
+            result["Other"] = other
+        return result
+
     # ------------------------------------------------------------------
     # Export
     # ------------------------------------------------------------------
