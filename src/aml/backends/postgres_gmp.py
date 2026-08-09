@@ -614,6 +614,31 @@ class PostgresGMPBackend:
             rows = cur.fetchall()
         return iter([self._row_to_memory(r) for r in rows])
 
+    def tenant_stats(self, tenant_id: str) -> dict:
+        """Per-tenant fact rollup over this backend's `memories` table: current fact
+        count + stored bytes. NOTE: stores share one physical table (no `store_id`
+        column), so this is TENANT-WIDE, not per-store — the caller presents it as a
+        rollup, not a per-store metric.
+
+        RLS-scoped via `_tenant_conn` AND an explicit `WHERE tenant_id = %s`: RLS is
+        ENABLE-not-FORCE and prod connects as an owner/BYPASSRLS role, so the WHERE is
+        load-bearing (same rationale as `scoped_audit`). Supported by the leading
+        `tenant_id` column of `idx_mem_tenant_valid` — not a full scan.
+
+        'Live' = current rows (`superseded_by IS NULL`), excluding bi-temporal history.
+        Bytes use `coalesce(content_enc, content)` so encryption-on rows measure the
+        real ciphertext, not the 11-byte `"[ENCRYPTED]"` sentinel stored in `content`."""
+        with self._tenant_conn(tenant_id) as (conn, cur):
+            cur.execute(
+                """SELECT count(*) FILTER (WHERE superseded_by IS NULL) AS fact_count,
+                          coalesce(sum(octet_length(coalesce(content_enc, content)))
+                                   FILTER (WHERE superseded_by IS NULL), 0) AS total_bytes
+                   FROM memories WHERE tenant_id = %s""",
+                (tenant_id,),
+            )
+            row = cur.fetchone()
+        return {"fact_count": int(row[0] or 0), "total_bytes": int(row[1] or 0)}
+
     def flush(self) -> None:
         # PostgreSQL with autocommit — each statement is already durable
         pass
