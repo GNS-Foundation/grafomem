@@ -133,6 +133,7 @@ class GovernanceStatsResponse(BaseModel):
     evaluations_total: int = 0
     denials_total: int = 0
     escalations_total: int = 0
+    evaluations_by_type: dict[str, int] = {}
 
 
 class PolicyListResponse(BaseModel):
