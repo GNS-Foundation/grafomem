@@ -88,11 +88,10 @@ def make_about_vectors(df: pd.DataFrame, fact_vec_lookup: dict, model: BgeEmbedd
     scores_col = df["retrieval_scores"] if "retrieval_scores" in df else [None] * len(df)
     out = np.zeros((len(df), EMB_DIM))
     for i, (facts, scores) in enumerate(zip(df.retrieved_facts, scores_col)):
-        # Only string fact-refs are hashable keys in fact_vec_lookup; a row's
-        # retrieved_facts may contain dicts, so guard with isinstance(f, str)
-        # (mirrors the lookup built in _compute_manifold_sync) to avoid
-        # "unhashable type: 'dict'" on the membership test.
-        vecs = [fact_vec_lookup[f] for f in (facts or []) if isinstance(f, str) and f in fact_vec_lookup]
+        # retrieved_facts elements are dicts {ref:int, content, ...}; the lookup is
+        # keyed by the int `ref` (mirrors _compute_manifold_sync). Extract f["ref"].
+        vecs = [fact_vec_lookup[f["ref"]] for f in (facts or [])
+                if isinstance(f, dict) and f.get("ref") in fact_vec_lookup]
         if vecs:
             V = np.vstack(vecs)
             wts = (np.asarray(scores[:len(vecs)], float) if scores else np.ones(len(vecs)))
@@ -148,7 +147,9 @@ def train_som(X: np.ndarray, seed: int = 42):
     bmu = np.array([som.winner(x) for x in X])
     return som, side, bmu, som.get_weights()
 
-def serialize_manifold(df: pd.DataFrame, bmu: np.ndarray, side: int, source: str = "synthetic", som_version: str = "unknown") -> dict[str, Any]:
+def serialize_manifold(df: pd.DataFrame, bmu: np.ndarray, side: int, source: str = "synthetic",
+                       som_version: str = "unknown", vectors_matched: int = 0,
+                       vectors_requested: int = 0) -> dict[str, Any]:
     hex_px = 60
     LENSES = ["compliance", "latency", "failover", "loop", "timeout"]
     d = df.reset_index(drop=True).copy()
@@ -215,7 +216,13 @@ def serialize_manifold(df: pd.DataFrame, bmu: np.ndarray, side: int, source: str
         generator = "som_seed@latest"
 
     provenance = dict(
-        vectors=dict(source=source, model="BAAI/bge-small-en-v1.5", dim=384),
+        # `source` reflects reality: "real-vectors" when fact embeddings resolved,
+        # "text-only" on fallback, "none" when there were no steps. `matched`/
+        # `requested` are the diagnostic whose absence hid the fact_ref bug.
+        # NOTE: only vectors.source (+ meta.source) change here — steps.source below
+        # is a separate, FE-consumed field and is left untouched.
+        vectors=dict(source=source, model="BAAI/bge-small-en-v1.5", dim=384,
+                     matched=int(vectors_matched), requested=int(vectors_requested)),
         steps=dict(
             source=steps_source,
             real_count=real_count,
@@ -460,7 +467,9 @@ class ManifoldService:
         if df is None or len(df) == 0:
             som_version = dt.datetime.utcnow().isoformat() + "Z"
             empty_df = pd.DataFrame(columns=["step_id", "agent_role", "workflow_id", "model_id", "governance_allowed", "tool_calls", "governance_logs", "retrieved_facts", "tokens_used", "latency_ms", "step_number", "created_at", "input_text", "raw_output", "parent_decision_id", "status", "is_synthetic"])
-            payload = serialize_manifold(empty_df, np.zeros((0, 2)), 6, source="live", som_version=som_version)
+            # No steps at all → no vectors of any kind; distinct from the text-only fallback.
+            payload = serialize_manifold(empty_df, np.zeros((0, 2)), 6, source="none",
+                                         som_version=som_version, vectors_matched=0, vectors_requested=0)
             return payload, som_version, b""
             
         # We need a new connection for embeddings because the first one is already closed/returned
@@ -470,15 +479,19 @@ class ManifoldService:
             conn = psycopg2.connect(self.db_url); apply_tenant_context(conn)
             
         try:
-            refs = sorted({r for fs in df.retrieved_facts for r in (fs or []) if isinstance(r, str)})
+            # retrieved_facts is a JSONB array of dicts {ref:int, content, ...}; extract
+            # the int refs (memory_embeddings.ref BIGINT PK). The old isinstance(r, str)
+            # filter dropped every dict → refs empty → fact-vectors never loaded.
+            refs = sorted({r["ref"] for fs in df.retrieved_facts for r in (fs or [])
+                           if isinstance(r, dict) and isinstance(r.get("ref"), int)})
             lookup = {}
             if refs:
                 cur = conn.cursor()
                 try:
-                    cur.execute("select fact_ref, embedding::text from memory_embeddings where fact_ref = any(%s)", (refs,))
+                    cur.execute("select ref, embedding::text from memory_embeddings where ref = any(%s)", (refs,))
                     for row in cur.fetchall():
                         # Handle both dict_row and tuple row
-                        k = row["fact_ref"] if isinstance(row, dict) else row[0]
+                        k = row["ref"] if isinstance(row, dict) else row[0]
                         v = row["embedding"] if isinstance(row, dict) else row[1]
                         vec_list = [float(x) for x in str(v).strip("[]").split(",")]
                         lookup[k] = np.asarray(vec_list, float)
@@ -490,13 +503,18 @@ class ManifoldService:
                 self.pool.putconn(conn)
             else:
                 conn.close()
-                
+
         about = make_about_vectors(df, lookup, self.embedder)
         X = build_features(df, about)
-        
+
         som, side, bmu, som_weights = train_som(X)
         som_version = dt.datetime.utcnow().isoformat() + "Z"
-        payload = serialize_manifold(df, bmu, side, source="live", som_version=som_version)
+        # Honest provenance: real fact-vectors only if any resolved; else text-only.
+        matched, requested = len(lookup), len(refs)
+        source = "real-vectors" if matched > 0 else "text-only"
+        logger.info("manifold vectors: %d/%d fact refs resolved (source=%s)", matched, requested, source)
+        payload = serialize_manifold(df, bmu, side, source=source, som_version=som_version,
+                                     vectors_matched=matched, vectors_requested=requested)
         return payload, som_version, som_weights.tobytes()
 
     def locate_step(self, step_id: str, tenant_id: str) -> dict[str, Any]:
@@ -516,12 +534,13 @@ class ManifoldService:
                 return {"error": "Step not found"}
                 
             # 2. Build features X
-            refs = sorted({r for fs in df.retrieved_facts for r in (fs or []) if isinstance(r, str)})
+            refs = sorted({r["ref"] for fs in df.retrieved_facts for r in (fs or [])
+                           if isinstance(r, dict) and isinstance(r.get("ref"), int)})
             lookup = {}
             if refs:
                 cur = conn.cursor()
                 try:
-                    cur.execute("select fact_ref, embedding::text from memory_embeddings where fact_ref = any(%s)", (refs,))
+                    cur.execute("select ref, embedding::text from memory_embeddings where ref = any(%s)", (refs,))
                     for k, v in cur.fetchall():
                         vec_list = [float(x) for x in str(v).strip("[]").split(",")]
                         lookup[k] = np.asarray(vec_list, float)
