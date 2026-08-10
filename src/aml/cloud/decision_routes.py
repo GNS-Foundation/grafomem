@@ -279,17 +279,26 @@ def create_decision_router(decision_trail, store_manager=None, tenant_auth=None)
         facts_used = []
         facts_since_deleted = []
 
+        # facts_used comes from the RECORD itself (retrieved refs/contents/scores) and
+        # must NOT depend on the store being registered — otherwise a decision whose
+        # store isn't in this process's registry (lazy registration) returns empty even
+        # though it has retrieved facts. Build it unconditionally.
+        for i, ref in enumerate(record.retrieved_refs or []):
+            facts_used.append({
+                "ref": ref,
+                "content": record.retrieved_contents[i] if i < len(record.retrieved_contents or []) else None,
+                "score": record.retrieval_scores[i] if i < len(record.retrieval_scores or []) else None,
+            })
+
+        # Store-dependent extras (best-effort): the store's current memory set, and which
+        # of the used refs have since been deleted. Empty when the store is unavailable.
         if store_manager is not None:
             entry = store_manager.get(record.store_id)
             if entry is not None:
                 backend = entry.backend
-
-                # Get all memories via audit to check which refs still exist
                 try:
                     all_memories = list(backend.audit())
                     current_refs = {m.ref for m in all_memories}
-
-                    # Convert memories to dicts for the response
                     for m in all_memories:
                         memory_state.append({
                             "ref": m.ref,
@@ -299,21 +308,11 @@ def create_decision_router(decision_trail, store_manager=None, tenant_auth=None)
                             "valid_from": m.valid_from.isoformat() if m.valid_from else None,
                             "valid_until": m.valid_until.isoformat() if m.valid_until else None,
                         })
-
-                    # Identify which retrieved facts still exist vs deleted
-                    for i, ref in enumerate(record.retrieved_refs):
-                        fact_info = {
-                            "ref": ref,
-                            "content": record.retrieved_contents[i] if i < len(record.retrieved_contents) else None,
-                            "score": record.retrieval_scores[i] if i < len(record.retrieval_scores) else None,
-                        }
-                        facts_used.append(fact_info)
-
-                        if ref not in current_refs:
-                            facts_since_deleted.append(ref)
-
+                    facts_since_deleted = [
+                        ref for ref in (record.retrieved_refs or []) if ref not in current_refs
+                    ]
                 except Exception as e:
-                    logger.warning("Could not replay memory state: %s", e)
+                    logger.warning("Could not reconstruct store memory state: %s", e)
 
         return ReplayResponse(
             decision=decision_resp,
