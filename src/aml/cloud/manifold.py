@@ -427,13 +427,22 @@ class ManifoldService:
         from aml.cloud.manifold_field import pca_2d, kernel_beta_field
 
         # 1) Embeddings — ONE RLS-scoped bulk query (app.current_tenant scopes rows).
+        #    Also count the total so a cap that bites is reported honestly (showing N
+        #    of M), never a silent sample.
         emb: dict[str, list[float]] = {}
+        emb_total = 0
         if self.pool:
             conn = self.pool.getconn(); apply_tenant_context(conn)
         else:
             conn = psycopg2.connect(self.db_url); apply_tenant_context(conn)
         try:
             with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT count(*) FROM decision_embeddings "
+                    "WHERE tenant_id = %s AND valid_until IS NULL",
+                    (tenant_id,),
+                )
+                emb_total = int(cur.fetchone()[0])
                 cur.execute(
                     "SELECT decision_id, embedding::text FROM decision_embeddings "
                     "WHERE tenant_id = %s AND valid_until IS NULL LIMIT %s",
@@ -511,18 +520,25 @@ class ManifoldService:
             })
         agents.sort(key=lambda a: (a["cgr_score"] is not None, a["cgr_score"] or 0), reverse=True)
 
+        truncated = emb_total > self._FIELD_MAX_POINTS
+        meta = {
+            "dimension": "receivables",
+            "n_points": len(points),
+            "n_resolved": int(resolved.sum()),
+            "n_embeddings_total": emb_total,        # M — full tenant embedding count
+            "truncated": truncated,                 # True ⇒ a representative subset is shown
+            "source": "decision_embeddings",
+            "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        }
+        if truncated:
+            meta["note"] = (f"showing {self._FIELD_MAX_POINTS} of {emb_total} embeddings "
+                            f"(sampled subset — increase the cap for full coverage)")
         return {
             "points": points,
             "field": field,
             "agents": agents,
             "variance_explained": [round(float(var[0]), 4), round(float(var[1]), 4)],
-            "meta": {
-                "dimension": "receivables",
-                "n_points": len(points),
-                "n_resolved": int(resolved.sum()),
-                "source": "decision_embeddings",
-                "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
-            },
+            "meta": meta,
         }
 
     def generate_manifold(self, tenant_id: str) -> dict[str, Any]:
