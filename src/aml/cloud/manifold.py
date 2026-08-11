@@ -437,18 +437,25 @@ class ManifoldService:
             conn = psycopg2.connect(self.db_url); apply_tenant_context(conn)
         try:
             with conn.cursor() as cur:
+                # Row access is dict/tuple-agnostic: the cloud RoutingPool yields
+                # psycopg3 dict_row cursors, the non-pool fallback yields psycopg2
+                # tuples. Explicit aliases + _cell() keep both working.
+                def _cell(row, name, idx):
+                    return row[name] if isinstance(row, dict) else row[idx]
                 cur.execute(
-                    "SELECT count(*) FROM decision_embeddings "
+                    "SELECT count(*) AS n FROM decision_embeddings "
                     "WHERE tenant_id = %s AND valid_until IS NULL",
                     (tenant_id,),
                 )
-                emb_total = int(cur.fetchone()[0])
+                emb_total = int(_cell(cur.fetchone(), "n", 0))
                 cur.execute(
-                    "SELECT decision_id, embedding::text FROM decision_embeddings "
+                    "SELECT decision_id, embedding::text AS emb FROM decision_embeddings "
                     "WHERE tenant_id = %s AND valid_until IS NULL LIMIT %s",
                     (tenant_id, self._FIELD_MAX_POINTS),
                 )
-                for did, vec in cur.fetchall():
+                for row in cur.fetchall():
+                    did = _cell(row, "decision_id", 0)
+                    vec = _cell(row, "emb", 1)
                     try:
                         emb[did] = [float(x) for x in str(vec).strip("[]").split(",")]
                     except Exception:
