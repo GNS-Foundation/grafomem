@@ -23,6 +23,27 @@ def create_manifold_router(manifold_svc: ManifoldService) -> APIRouter:
             from fastapi import HTTPException
             raise HTTPException(status_code=500, detail="Internal server error")
 
+    @router.get("/field")
+    async def manifold_field(request: Request):
+        """Redesigned manifold: PCA(decision_embeddings) → 2-D coords + kernel-Beta
+        CGR-outcome field + agent overlay. Read-only, tenant-scoped. Independent of
+        /export and /locate (which /live depends on)."""
+        ctx = getattr(request.state, "tenant", None)
+        tenant = ctx.tenant_id if ctx else "default"
+        require_scope(request, "manifold:read")
+        dt = getattr(request.app.state, "decision_trail", None)
+        sm = getattr(request.app.state, "store_manager", None)
+        if dt is None or sm is None:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=503, detail="Manifold field services not available")
+        try:
+            return manifold_svc.field(tenant, dt, sm)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("Manifold field error")
+            from fastapi import HTTPException
+            raise HTTPException(status_code=500, detail="Internal server error")
+
     @router.get("/locate/{step_id}")
     async def locate_manifold_step(step_id: str, request: Request):
         ctx = getattr(request.state, "tenant", None)

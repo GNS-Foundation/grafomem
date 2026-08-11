@@ -252,12 +252,19 @@ def serialize_manifold(df: pd.DataFrame, bmu: np.ndarray, side: int, source: str
     return manifold
 
 class ManifoldService:
+    # /field cache — IN-MEMORY per process, short TTL. Deploy-safe by construction: a
+    # new deploy is a new process → empty cache → recompute (no persistent DB cache, so
+    # NOT the manifold_cache stale-after-deploy class of bug). TTL bounds staleness.
+    _FIELD_TTL_S = 60.0
+    _FIELD_MAX_POINTS = 20000        # safety cap on the tenant-scoped embedding scan
+
     def __init__(self, db_url: str, pool: RoutingPool | None = None):
         self.db_url = db_url
         self.pool = pool
         self._embedder = None
         self._worker_thread = None
         self._stop_event = None
+        self._field_cache: dict[str, tuple[dict, float]] = {}  # tenant → (payload, expiry_monotonic)
 
     def ensure_schema(self):
         import psycopg2
@@ -381,6 +388,158 @@ class ManifoldService:
         if self._embedder is None:
             self._embedder = BgeEmbedder()
         return self._embedder
+
+    # ──────────────────────────────────────────────────────────────────
+    # /v1/manifold/field — redesigned view, re-sourced from decision_embeddings.
+    # Read-only, tenant-scoped (RLS). Independent of export/locate/serialize_manifold.
+    # ──────────────────────────────────────────────────────────────────
+
+    def field(self, tenant_id: str, decision_trail, store_manager) -> dict[str, Any]:
+        """PCA(decision_embeddings) → 2-D coords + a kernel-Beta CGR-outcome field +
+        per-agent aggregates. Cached in-memory per tenant with a short TTL (deploy-safe;
+        a new process starts empty). `decision_trail`/`store_manager` are the substrate
+        loader's deps (passed from the route's app.state)."""
+        import time
+        now = time.monotonic()
+        cached = self._field_cache.get(tenant_id)
+        if cached and cached[1] > now:
+            return cached[0]
+        payload = self._compute_field(tenant_id, decision_trail, store_manager)
+        self._field_cache[tenant_id] = (payload, now + self._FIELD_TTL_S)
+        return payload
+
+    def _empty_field(self, tenant_id: str, n_points: int, note: str) -> dict[str, Any]:
+        return {
+            "points": [], "agents": [],
+            "field": {"resolution": 0, "x_range": [0, 0], "y_range": [0, 0],
+                      "bandwidth": 0.0, "grid": [], "support": []},
+            "variance_explained": [0.0, 0.0],
+            "meta": {"dimension": "receivables", "n_points": n_points, "n_resolved": 0,
+                     "source": "decision_embeddings",
+                     "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(), "note": note},
+        }
+
+    def _compute_field(self, tenant_id: str, decision_trail, store_manager) -> dict[str, Any]:
+        import psycopg2
+        from collections import defaultdict
+        from aml.cgr.substrate import load_substrate
+        from aml.cgr.engine import compute_scores_from_rows
+        from aml.cloud.manifold_field import pca_2d, kernel_beta_field
+
+        # 1) Embeddings — ONE RLS-scoped bulk query (app.current_tenant scopes rows).
+        #    Also count the total so a cap that bites is reported honestly (showing N
+        #    of M), never a silent sample.
+        emb: dict[str, list[float]] = {}
+        emb_total = 0
+        if self.pool:
+            conn = self.pool.getconn(); apply_tenant_context(conn)
+        else:
+            conn = psycopg2.connect(self.db_url); apply_tenant_context(conn)
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT count(*) FROM decision_embeddings "
+                    "WHERE tenant_id = %s AND valid_until IS NULL",
+                    (tenant_id,),
+                )
+                emb_total = int(cur.fetchone()[0])
+                cur.execute(
+                    "SELECT decision_id, embedding::text FROM decision_embeddings "
+                    "WHERE tenant_id = %s AND valid_until IS NULL LIMIT %s",
+                    (tenant_id, self._FIELD_MAX_POINTS),
+                )
+                for did, vec in cur.fetchall():
+                    try:
+                        emb[did] = [float(x) for x in str(vec).strip("[]").split(",")]
+                    except Exception:
+                        pass
+        finally:
+            if self.pool:
+                self.pool.putconn(conn)
+            else:
+                conn.close()
+
+        if not emb:
+            return self._empty_field(tenant_id, 0, "no decision embeddings for tenant")
+
+        # 2) Outcome + agent join — SINGLE bulk pass (load_substrate reads all outcomes
+        #    once + all decisions in one query; NOT per-decision N+1). CGR posteriors
+        #    reuse those same rows (no extra reads).
+        rows = load_substrate(decision_trail, store_manager, tenant_id, limit=self._FIELD_MAX_POINTS)
+        cgr_by_handle = {r.agent_handle: r for r in compute_scores_from_rows(rows)}
+
+        # 3) Join decisions↔embeddings by decision_id; drop non-finite vectors.
+        pts, vecs = [], []
+        for r in rows:
+            v = emb.get(r.decision_id)
+            if v is None:
+                continue
+            pts.append(r); vecs.append(v)
+        if len(pts) < 3:
+            return self._empty_field(tenant_id, len(pts), "fewer than 3 embedded decisions (thin geometry)")
+        X = np.asarray(vecs, dtype=float)
+        finite = np.isfinite(X).all(axis=1)
+        if not finite.all():
+            X = X[finite]; pts = [p for p, f in zip(pts, finite) if f]
+        if len(pts) < 3:
+            return self._empty_field(tenant_id, len(pts), "fewer than 3 finite embeddings")
+
+        # 4) PCA → coords (sign-pinned, deterministic) + variance.
+        coords, var = pca_2d(X)
+        outcome = [p.outcome for p in pts]
+        paid = np.array([1 if o == "paid" else 0 for o in outcome])
+        resolved = np.array([o in ("paid", "default") for o in outcome])
+
+        # 5) Kernel-Beta outcome-posterior field over resolved points.
+        field = kernel_beta_field(coords, paid, resolved)
+
+        points = [{
+            "decision_id": p.decision_id,
+            "x": round(float(coords[i, 0]), 4), "y": round(float(coords[i, 1]), 4),
+            "outcome": p.outcome, "agent_handle": p.agent_handle, "agent_key": p.agent_key,
+            "verifiability_tag": p.verifiability_tag, "decision": p.decision,
+        } for i, p in enumerate(pts)]
+
+        # 6) Per-agent aggregate: centroid of the agent's decisions + CGR standing.
+        by_agent: dict[str, list[int]] = defaultdict(list)
+        for i, p in enumerate(pts):
+            if p.agent_handle:
+                by_agent[p.agent_handle].append(i)
+        agents = []
+        for handle, idxs in by_agent.items():
+            c = coords[idxs].mean(axis=0)
+            res = cgr_by_handle.get(handle)
+            agents.append({
+                "agent_handle": handle,
+                "x": round(float(c[0]), 4), "y": round(float(c[1]), 4),
+                "n_decisions": len(idxs),
+                "cgr_score": (round(float(res.cgr_score), 4) if res else None),
+                "capability_tier": (res.capability_tier if res else None),
+                "n_resolved": (res.n_resolved if res else 0),
+                "confidence": (round(float(res.confidence), 4) if res else None),
+            })
+        agents.sort(key=lambda a: (a["cgr_score"] is not None, a["cgr_score"] or 0), reverse=True)
+
+        truncated = emb_total > self._FIELD_MAX_POINTS
+        meta = {
+            "dimension": "receivables",
+            "n_points": len(points),
+            "n_resolved": int(resolved.sum()),
+            "n_embeddings_total": emb_total,        # M — full tenant embedding count
+            "truncated": truncated,                 # True ⇒ a representative subset is shown
+            "source": "decision_embeddings",
+            "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        }
+        if truncated:
+            meta["note"] = (f"showing {self._FIELD_MAX_POINTS} of {emb_total} embeddings "
+                            f"(sampled subset — increase the cap for full coverage)")
+        return {
+            "points": points,
+            "field": field,
+            "agents": agents,
+            "variance_explained": [round(float(var[0]), 4), round(float(var[1]), 4)],
+            "meta": meta,
+        }
 
     def generate_manifold(self, tenant_id: str) -> dict[str, Any]:
         """Fetch precomputed manifold from cache, fallback to sync compute if missing."""

@@ -152,17 +152,32 @@ def test_acceptance_paid_default_separation_beats_threshold():
 # ── vault-only: no API path / serializer returns decision vectors ──
 
 def test_vault_only_no_api_returns_decision_embeddings():
+    """The vault is read only by the sanctioned readers: (a) the write hook, (b) erasure,
+    and (c) the manifold /field re-source — which reads vectors for PCA but exports ONLY
+    derived geometry (2-D coords + kernel-Beta field + agent aggregates), NEVER the raw
+    embedding vectors. Any other route/exporter touching the vault, or the field path
+    leaking a raw vector into a response, is a regression."""
     import pathlib
     root = pathlib.Path(__file__).resolve().parents[1] / "src" / "aml"
-    # modules allowed to touch the vault table (write hook + erasure); NOT routes/exporters
-    allowed = {"decision_trail.py", "erasure_sweeper.py"}
+    # sanctioned readers: write hook + erasure + the manifold field re-source (derived-only).
+    allowed = {"decision_trail.py", "erasure_sweeper.py", "manifold.py", "manifold_routes.py"}
     offenders = []
     for p in root.rglob("*.py"):
         if "decision_embeddings" in p.read_text():
             is_route_or_export = ("routes" in p.name) or (p.name in {"manifold.py", "demo_routes.py"})
             if p.name not in allowed and is_route_or_export:
                 offenders.append(str(p.relative_to(root)))
-    assert not offenders, f"decision_embeddings must not be referenced by any route/exporter: {offenders}"
+    assert not offenders, (
+        f"decision_embeddings must not be referenced by any route/exporter except the "
+        f"sanctioned readers {sorted(allowed)}: {offenders}")
+
+    # Positive guard: the manifold field path must EXPORT derived geometry only. It may
+    # read `embedding::text` as PCA input, but must never emit a raw vector into any
+    # response dict (no "embedding"/"vector" response key).
+    field_src = ((root / "cloud" / "manifold_field.py").read_text()
+                 + (root / "cloud" / "manifold.py").read_text())
+    assert '"embedding":' not in field_src and '"vector":' not in field_src, (
+        "manifold field must export derived geometry only — no raw embedding vector in the response")
 
 
 # ── backfill: idempotent + scan-guarded ──
