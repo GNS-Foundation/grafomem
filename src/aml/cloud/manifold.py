@@ -717,16 +717,21 @@ class ManifoldService:
             about = make_about_vectors(df, lookup, self.embedder)
             X = build_features(df, about)
             
-            # 3. Load som_weights from manifold_cache
+            # 3. Load som_weights from manifold_cache. Row access is dict/tuple-agnostic:
+            # the cloud RoutingPool yields psycopg3 dict_row cursors (row[1] would
+            # KeyError), the non-pool fallback yields psycopg2 tuples.
+            def _cell(r, name, idx):
+                return r[name] if isinstance(r, dict) else r[idx]
             cur = conn.cursor()
             cur.execute("SELECT payload, som_version, som_weights FROM manifold_cache WHERE tenant_id = %s", (tenant_id,))
             row = cur.fetchone()
-            if not row or not row[1] or not row[2]:
+            if not row or not _cell(row, "som_version", 1) or not _cell(row, "som_weights", 2):
                 return {"error": "Manifold not trained yet"}
-                
-            payload = row[0] if isinstance(row[0], dict) else json.loads(row[0])
-            som_version = row[1]
-            som_weights_bytes = row[2]
+
+            payload_raw = _cell(row, "payload", 0)
+            payload = payload_raw if isinstance(payload_raw, dict) else json.loads(payload_raw)
+            som_version = _cell(row, "som_version", 1)
+            som_weights_bytes = _cell(row, "som_weights", 2)
             
             side = payload["meta"]["somGrid"][0]
             feature_dim = X.shape[1]
