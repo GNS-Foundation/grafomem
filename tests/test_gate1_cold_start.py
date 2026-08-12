@@ -14,7 +14,7 @@ from types import SimpleNamespace
 from aml.cgr.scoring import CGRResult, WeightingConfig, score_agent
 from aml.cgr.gate import build_review_gate, review_gate_g, newcomer_exclusion_pct
 
-TAU = 0.3
+TAU = 0.10   # locked B2b operating point (§8): soft ramp opens just above the floor
 CAP_K = 3.0
 
 
@@ -124,10 +124,22 @@ def test_divergence_moat():
     assert grafomem.cgr_score < local_stub.cgr_score - 0.3, "gate must be inside the moat (local ≠ grafomem)"
 
 
-# ── §6.5 newcomer-exclusion metric at τ=0.3 ──
+# ── §6.5 newcomer-exclusion metric on the locked mixed w-distribution (τ=0.10) ──
 def test_6_5_newcomer_exclusion_metric():
-    # 10 sources: 4 unknown + 3 below-τ + 3 above-τ ⇒ 7/10 excluded at τ=0.3.
-    cal = {"s0": 0.1, "s1": 0.2, "s2": 0.29, "s3": 0.5, "s4": 0.8, "s5": 1.0}
-    sources = [f"s{i}" for i in range(10)]  # s6..s9 unknown
+    # Operating-point population: ~70% newcomers Beta(1.5,4) (low, cold-start) + ~30%
+    # established Beta(5,2) (high). Report the fraction fully excluded (g(w)=0) at τ=0.10.
+    import numpy as np
+    rng = np.random.default_rng(42)  # deterministic
+    n = 4000
+    n_new = int(0.70 * n)
+    w = np.concatenate([
+        rng.beta(1.5, 4.0, size=n_new),        # newcomers (mean ≈ 0.27, long low tail)
+        rng.beta(5.0, 2.0, size=n - n_new),    # established (mean ≈ 0.71)
+    ])
+    cal = {f"src{i}": float(w[i]) for i in range(n)}
+    sources = [f"src{i}" for i in range(n)]
     pct = newcomer_exclusion_pct(cal, sources, TAU)
-    assert abs(pct - 0.7) < 1e-9, f"expected 70% newcomer-exclusion at τ={TAU}, got {pct:.3f}"
+    print(f"\n[§6.5] newcomer-exclusion at τ={TAU} on 70%·Beta(1.5,4)+30%·Beta(5,2): {pct * 100:.1f}%")
+    # The excluded set is the low tail of the newcomer component (established mass sits
+    # well above τ). Expect ~15–20% — a soft floor, NOT the τ=0.30 clamp (~70%).
+    assert 0.10 <= pct <= 0.22, f"expected ~15–20% exclusion at τ={TAU}, got {pct * 100:.1f}%"
