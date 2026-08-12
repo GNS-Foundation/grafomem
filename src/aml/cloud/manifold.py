@@ -693,9 +693,21 @@ class ManifoldService:
             conn = psycopg2.connect(self.db_url); apply_tenant_context(conn)
             
         try:
-            # 1. Load the step
+            # 1. Load the step. Mirror _compute_manifold_sync's pool branch: the cloud
+            # RoutingPool yields psycopg3 dict_row cursors, and pd.read_sql over such a
+            # connection mangles the frame (the header column names leak into the data →
+            # "could not convert string to float: 'tokens_used'" in build_features). So
+            # fetch the dict rows explicitly and build the DataFrame from them; only the
+            # local psycopg2 fallback uses pd.read_sql. THIS is the real /locate 500 cause
+            # (the failure dies here at step 2, before the manifold_cache read at step 3).
             query = EXTRACTION_SQL.replace("order by s.created_at;", "and s.step_id = %s")
-            df = pd.read_sql(query, conn, params=(tenant_id, step_id))
+            if self.pool:
+                with conn.cursor() as _c:
+                    _c.execute(query, (tenant_id, step_id))
+                    rows = _c.fetchall()
+                df = pd.DataFrame(rows)
+            else:
+                df = pd.read_sql(query, conn, params=(tenant_id, step_id))
             if len(df) == 0:
                 return {"error": "Step not found"}
                 
@@ -706,8 +718,12 @@ class ManifoldService:
             if refs:
                 cur = conn.cursor()
                 try:
-                    cur.execute("select ref, embedding::text from memory_embeddings where ref = any(%s)", (refs,))
-                    for k, v in cur.fetchall():
+                    cur.execute("select ref, embedding::text as emb from memory_embeddings where ref = any(%s)", (refs,))
+                    for rec in cur.fetchall():
+                        # dict/tuple-agnostic: a dict_row cursor would make `for k, v in ...`
+                        # unpack the column NAMES ("ref"/"emb"), silently zeroing the lookup.
+                        k = rec["ref"] if isinstance(rec, dict) else rec[0]
+                        v = rec["emb"] if isinstance(rec, dict) else rec[1]
                         vec_list = [float(x) for x in str(v).strip("[]").split(",")]
                         lookup[k] = np.asarray(vec_list, float)
                 except Exception as e:
