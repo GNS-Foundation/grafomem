@@ -114,6 +114,16 @@ class WeightingConfig:
     lam: float = 1.0                      # forgetting factor λ ∈ (0,1] on the prior carry-over
     n_lift: int = N_LIFT                  # evidence-gate lift point (design: ≈ k+2, adjusted for cap noise)
     stake_fn: Callable[[str], float] | None = None   # (ref) -> stake_i; None ⇒ 1.0 (no source yet — do not fabricate)
+    # Gate-1 (Ticket B2b) — REVIEW-CHANNEL ONLY calibration gate. Both None ⇒ NEUTRAL
+    # (byte-identical to v1). The verifiable channel (real resolved outcomes) is never
+    # gated — that surface is competence-fraud, not Sybil. review_gate maps a review's
+    # SOURCE id → a multiplicative factor g(w) ∈ [0,1] (the τ-thresholded calibration
+    # gate; unknown source ⇒ 0). review_cap_k caps a single source's total pseudo-count
+    # contribution to THIS target — per-(source, target), not a global reviewer budget.
+    # The gate math (g, τ, K, calibration lookup) lives in cgr/gate.py; this is only the
+    # injection seam, so score_agent stays a generic Beta scorer.
+    review_gate: Callable[[str], float] | None = None
+    review_cap_k: float | None = None
 
 
 DEFAULT_WEIGHTING = WeightingConfig()
@@ -277,17 +287,46 @@ def score_agent(
         else:
             n_pending += 1
 
-    # reviewer-weighted early signal on UNRESOLVED certifications only
-    for review in reviews:
-        ref, reviewer, rating = review[0], review[1], review[2]
-        if ref in resolved_refs:
-            continue
-        review_date = review[3] if len(review) > 3 else None
-        # feedback: calibration = reviewer weight (verifiability folded in); × stake × recency
-        w = (reviewer_w.get(reviewer, DEFAULT_REVIEWER_WEIGHT)
-             * float(stake_fn(ref)) * _recency(review_date, as_of_dt, tau))
-        alpha += w * float(rating)
-        beta += w * (1.0 - float(rating))
+    # reviewer-weighted early signal on UNRESOLVED certifications only. Gate-1 (B2b)
+    # gates ONLY this channel — the Sybil / review-farm surface — leaving the
+    # verifiable channel above untouched. Both knobs None ⇒ the off-path below is the
+    # v1 code, byte-identical (same order of accumulation).
+    review_gate = weighting.review_gate
+    cap_k = weighting.review_cap_k
+    if review_gate is None and cap_k is None:
+        for review in reviews:
+            ref, reviewer, rating = review[0], review[1], review[2]
+            if ref in resolved_refs:
+                continue
+            review_date = review[3] if len(review) > 3 else None
+            # feedback: calibration = reviewer weight (verifiability folded in); × stake × recency
+            w = (reviewer_w.get(reviewer, DEFAULT_REVIEWER_WEIGHT)
+                 * float(stake_fn(ref)) * _recency(review_date, as_of_dt, tau))
+            alpha += w * float(rating)
+            beta += w * (1.0 - float(rating))
+    else:
+        # Gate-1 active: scale each source's per-observation weight by g(w) ∈ [0,1]
+        # (unknown source ⇒ 0), then cap that source's TOTAL pseudo-count contribution
+        # to THIS target at K (per-(source, target)). Grouping is per source_id.
+        per_source: dict[str, list[tuple[float, float]]] = {}
+        for review in reviews:
+            ref, reviewer, rating = review[0], review[1], review[2]
+            if ref in resolved_refs:
+                continue
+            review_date = review[3] if len(review) > 3 else None
+            w = (reviewer_w.get(reviewer, DEFAULT_REVIEWER_WEIGHT)
+                 * float(stake_fn(ref)) * _recency(review_date, as_of_dt, tau))
+            if review_gate is not None:
+                w *= float(review_gate(reviewer))
+            per_source.setdefault(reviewer, []).append((w, float(rating)))
+        for _reviewer, obs in per_source.items():
+            total_w = sum(w for w, _ in obs)
+            scale = 1.0
+            if cap_k is not None and total_w > cap_k > 0.0:
+                scale = cap_k / total_w          # proportional per-(source,target) cap
+            for w, rating in obs:
+                alpha += scale * w * rating
+                beta += scale * w * (1.0 - rating)
 
     E = alpha / (alpha + beta)
     # capability ceiling — evidence-gated: tight when verifiable evidence is thin
