@@ -1,0 +1,62 @@
+"""CGR Gate-1 (Ticket B2b) — the review-channel calibration gate.
+
+PROPRIETARY. The soft-ramp g(w), the τ threshold, the per-source cap K, and the
+per-tenant `agent_calibration` lookup live HERE, behind the scoring.py injection seam
+(`WeightingConfig.review_gate` / `review_cap_k`), so `aml/cgr/scoring.py` stays a
+generic Beta scorer with no gate literals in it.
+
+Gate-1 hardens the SYBIL surface — review farms and uncalibrated cold-start sources —
+by weighting each review SOURCE by its proven calibration `w`. The verifiable channel
+(real resolved certify/judgment outcomes) is NEVER gated; that surface is
+competence-fraud (B2a), not Sybil.
+
+Boundary / moat: this logic lives ONLY in grafomem CGR, never in the meridian sim.
+The sim's local `Scorer` stub does not have it, so a farmed thin target that the local
+stub inflates is FLOORED by grafomem — the divergence is the moat
+(tests/test_gate1_cold_start.py::test_divergence_moat).
+
+Write authority (design): `agent_calibration.calibration_weight` is writable ONLY by
+the identity authority (sim operator / GEIANT) holding the privileged `calibration:write`
+scope — NEVER by an agent's own ingestion key. A self-assignable `w` defeats the gate.
+Populating `w` is gated on that write-path enforcement being reviewed and in place.
+"""
+from __future__ import annotations
+
+from typing import Callable, Mapping
+
+
+def review_gate_g(w: float | None, tau: float) -> float:
+    """Soft-ramp calibration gate  g(w) = max(0, (w − τ) / (1 − τ)), clamped to [0, 1].
+
+    * Unknown / absent `w` ⇒ 0 — the cold-start fail-safe: an unproven source
+      contributes nothing until it earns a calibration weight.
+    * A source at or below τ contributes nothing; contribution ramps linearly to 1 at w=1.
+    """
+    if w is None:
+        return 0.0
+    if not (0.0 <= tau < 1.0):
+        return 0.0
+    val = (float(w) - tau) / (1.0 - tau)
+    if val <= 0.0:
+        return 0.0
+    return 1.0 if val > 1.0 else val
+
+
+def build_review_gate(calibration: Mapping[str, float | None], tau: float) -> Callable[[str], float]:
+    """Return a `source_id → g(w)` callable for `WeightingConfig.review_gate`, backed by
+    the per-tenant calibration map (`source_id → w`). Sources absent from the map ⇒ g=0
+    (fail-safe). The engine builds `calibration` from the tenant's `agent_calibration`
+    rows (RLS-scoped) resolving each review source to its GEIANT `agent_key`."""
+    def _gate(source_id: str) -> float:
+        return review_gate_g(calibration.get(source_id), tau)
+    return _gate
+
+
+def newcomer_exclusion_pct(calibration: Mapping[str, float | None], sources, tau: float) -> float:
+    """Reported metric (§6.5): the fraction of `sources` fully excluded at τ (g(w)=0),
+    i.e. unknown or w ≤ τ. Surfaced by the offline gate to size the cold-start floor."""
+    srcs = list(sources)
+    if not srcs:
+        return 0.0
+    excluded = sum(1 for s in srcs if review_gate_g(calibration.get(s), tau) == 0.0)
+    return excluded / len(srcs)
