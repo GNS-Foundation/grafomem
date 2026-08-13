@@ -19,6 +19,14 @@ from dataclasses import asdict
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+
+class CalibrationBody(BaseModel):
+    """Body for PUT /v1/cgr/calibration/{agent_key} (module-level so FastAPI resolves it
+    as the request body, not a query param)."""
+    calibration_weight: float
+    n_observations: int = 0
+    method: str | None = None
+
 from aml.cgr.attestation import (
     CGR_ATTESTATION_SCHEMA,
     attestation_fingerprint,
@@ -187,13 +195,8 @@ def create_cgr_issuance_router(
                 pass
             pool.putconn(conn)
 
-    class _CalibrationBody(BaseModel):
-        calibration_weight: float
-        n_observations: int = 0
-        method: str | None = None
-
     @router.put("/calibration/{agent_key}")
-    async def put_calibration(agent_key: str, body: _CalibrationBody, request: Request):
+    async def put_calibration(agent_key: str, body: CalibrationBody, request: Request):
         require_scope(request, "calibration:write")
         pool = _calib_conn()
         ctx = getattr(request.state, "tenant", None)
