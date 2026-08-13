@@ -470,9 +470,9 @@ class TestScopedKeys:
             validate_scopes(["bogus:scope"])
 
     def test_scope_vocabulary_completeness(self):
-        """Scope vocabulary should have all 22 scopes."""
+        """Scope vocabulary should have all 23 scopes."""
         from aml.server.scopes import SCOPE_VOCABULARY
-        assert len(SCOPE_VOCABULARY) == 22
+        assert len(SCOPE_VOCABULARY) == 23
         assert "*" in SCOPE_VOCABULARY
         assert "memory:read" in SCOPE_VOCABULARY
         assert "orchestrator:run" in SCOPE_VOCABULARY
@@ -482,6 +482,8 @@ class TestScopedKeys:
         assert "artifacts:read" in SCOPE_VOCABULARY
         assert "manifold:read" in SCOPE_VOCABULARY
         assert "sso:admin" in SCOPE_VOCABULARY
+        # B2b Gate-1 — privileged calibration write authority
+        assert "calibration:write" in SCOPE_VOCABULARY
         # CGR Ticket #2 — scoring surface scope
         assert "cgr:read" in SCOPE_VOCABULARY
 

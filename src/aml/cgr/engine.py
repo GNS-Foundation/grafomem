@@ -194,9 +194,45 @@ def compute_scores(decision_trail, store_manager, tenant_id: str, *,
         reviews = load_reviews(store_manager, tenant_id)
     if rotations is None:
         rotations = load_rotations(store_manager, tenant_id)
+    # Gate-1 (B2b) — resolve the per-tenant REVIEW-channel calibration gate. Neutral
+    # (None, None) for any tenant without BOTH an enabled config AND ≥1 calibration
+    # row, so corp and every other tenant score byte-identically until w + config exist.
+    review_gate, cap_k = _resolve_gate_for(decision_trail, tenant_id)
+    if review_gate is not None:
+        weighting = replace(weighting or DEFAULT_WEIGHTING,
+                            review_gate=review_gate, review_cap_k=cap_k)
     return compute_scores_from_rows(rows, reviews=reviews, rotations=rotations,
                                     verify=_rotation_verifier, as_of=as_of,
                                     weighting=weighting, capability_profiles=capability_profiles)
+
+
+def _resolve_gate_for(decision_trail, tenant_id: str):
+    """(review_gate, cap_k) for the tenant, or (None, None) if the gate is off or the
+    cgr_gate_config / agent_calibration tables aren't migrated. NEVER raises — any
+    failure resolves to neutral, preserving byte-identical v1 scoring."""
+    from aml.cgr.gate import resolve_review_gate
+    pool = getattr(decision_trail, "_pool", None)
+    if pool is None:
+        return None, None
+    conn = None
+    try:
+        conn = pool.getconn()
+        with conn.cursor() as cur:                       # RLS-scope this read to the tenant
+            cur.execute("SELECT set_config('app.current_tenant', %s, false)", (tenant_id,))
+        return resolve_review_gate(conn, tenant_id)
+    except Exception:
+        return None, None
+    finally:
+        if conn is not None:
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT set_config('app.current_tenant', '', false)")
+            except Exception:
+                pass
+            try:
+                pool.putconn(conn)
+            except Exception:
+                pass
 
 
 def to_tiergate(r: CGRResult, *, min_resolved: int = MIN_RESOLVED_PROVEN) -> dict:
