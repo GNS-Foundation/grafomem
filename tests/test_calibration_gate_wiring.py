@@ -91,6 +91,27 @@ def _cert(ref):
     return SimpleNamespace(decision="certify", verifiability_tag="judgment", invoice_ref=ref)
 
 
+def test_kill_switch_enabled_false_is_byte_identical():
+    """Kill-switch: an enabled=false config with live calibration data still resolves to
+    NEUTRAL, and a gate built from that resolution scores byte-identically to v1 — so
+    flipping enabled=false is a safe, instant, reversible off-switch."""
+    conn = _FakeConn({"gate_config": {"tau": 0.10, "cap_k": 3.0, "enabled": False},
+                      "calibration": [("k1", 0.9), ("k2", 0.05)]})
+    gate, cap_k = resolve_review_gate(conn, "t")
+    assert (gate, cap_k) == (None, None)               # disabled ⇒ off despite calibration
+    refs = [f"i-{i}" for i in range(4)]
+    outcomes = {r: ("paid" if i % 2 == 0 else "default") for i, r in enumerate(refs)}
+    reviews = [("i-x", "rev", 1.0)]
+    reviewer_w = {"rev": 0.6}
+    decisions = [_cert(r) for r in refs] + [_cert("i-x")]
+    v1 = score_agent("a", decisions, outcomes, reviews, reviewer_w, None,
+                     as_of="2026-08-13T00:00:00+00:00", weighting=WeightingConfig())
+    killed = score_agent("a", decisions, outcomes, reviews, reviewer_w, None,
+                         as_of="2026-08-13T00:00:00+00:00",
+                         weighting=WeightingConfig(review_gate=gate, review_cap_k=cap_k))
+    assert v1.cgr_score == killed.cgr_score and v1.confidence == killed.confidence
+
+
 def test_gate_off_is_byte_identical_to_v1():
     refs = [f"inv-{i}" for i in range(6)]
     outcomes = {r: ("paid" if i % 2 == 0 else "default") for i, r in enumerate(refs)}
