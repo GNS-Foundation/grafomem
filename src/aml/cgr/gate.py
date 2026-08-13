@@ -22,6 +22,7 @@ Populating `w` is gated on that write-path enforcement being reviewed and in pla
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Callable, Mapping
 
 
@@ -60,3 +61,69 @@ def newcomer_exclusion_pct(calibration: Mapping[str, float | None], sources, tau
         return 0.0
     excluded = sum(1 for s in srcs if review_gate_g(calibration.get(s), tau) == 0.0)
     return excluded / len(srcs)
+
+
+# ── engine resolution: per-tenant config + calibration → gate (or NEUTRAL) ──────
+@dataclass(frozen=True)
+class GateConfig:
+    """Per-tenant Gate-1 operating point (τ, K). Loaded from cgr_gate_config."""
+    tau: float
+    cap_k: float
+
+
+def _cell(row, name, idx):
+    return row[name] if isinstance(row, dict) else row[idx]
+
+
+def load_gate_config(conn, tenant_id: str) -> "GateConfig | None":
+    """Read the per-tenant Gate-1 config. None ⇒ gate OFF. Missing table (not yet
+    migrated), no row, a disabled row, or ANY error ⇒ None (fail-safe to neutral so
+    prod is byte-identical until config exists)."""
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT tau, cap_k, enabled FROM cgr_gate_config WHERE tenant_id = %s",
+                (tenant_id,))
+            row = cur.fetchone()
+    except Exception:
+        return None
+    if not row or not _cell(row, "enabled", 2):
+        return None
+    tau, cap_k = _cell(row, "tau", 0), _cell(row, "cap_k", 1)
+    if tau is None or cap_k is None:
+        return None
+    return GateConfig(tau=float(tau), cap_k=float(cap_k))
+
+
+def load_calibration(conn, tenant_id: str) -> dict[str, float]:
+    """Read {agent_key: calibration_weight} for the tenant (RLS-scoped). Empty on any error."""
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT agent_key, calibration_weight FROM agent_calibration "
+                "WHERE tenant_id = %s AND calibration_weight IS NOT NULL",
+                (tenant_id,))
+            rows = cur.fetchall()
+    except Exception:
+        return {}
+    out: dict[str, float] = {}
+    for r in rows:
+        k, w = _cell(r, "agent_key", 0), _cell(r, "calibration_weight", 1)
+        if k is not None and w is not None:
+            out[str(k)] = float(w)
+    return out
+
+
+def resolve_review_gate(conn, tenant_id: str):
+    """Return (review_gate callable | None, cap_k | None) for WeightingConfig.
+
+    (None, None) ⇒ NEUTRAL — no config, OR config present but zero calibration rows.
+    The gate turns on ONLY when a tenant has BOTH an enabled config AND ≥1 calibration
+    weight, so every other tenant (incl. corp) scores byte-identically to v1."""
+    cfg = load_gate_config(conn, tenant_id)
+    if cfg is None:
+        return None, None
+    calibration = load_calibration(conn, tenant_id)
+    if not calibration:
+        return None, None
+    return build_review_gate(calibration, cfg.tau), cfg.cap_k
