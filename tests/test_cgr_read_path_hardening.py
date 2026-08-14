@@ -40,8 +40,14 @@ def setup_function(_):
     invalidate_substrate_cache(None)  # clean slate per test
 
 
+def _enable_cache(monkeypatch, ttl=10.0):
+    # cache ships DEFAULT OFF (TTL=0); tests that exercise it opt in explicitly
+    monkeypatch.setattr(substrate, "_SUBSTRATE_CACHE_TTL_S", ttl)
+
+
 # ── F2: cache bounds repeat decrypt cost without dropping rows ──
-def test_scoped_audit_caches_within_ttl():
+def test_scoped_audit_caches_within_ttl(monkeypatch):
+    _enable_cache(monkeypatch)
     b = _CountingBackend([_Mem("t")])
     r1 = _scoped_audit(b, "t")
     r2 = _scoped_audit(b, "t")
@@ -50,7 +56,8 @@ def test_scoped_audit_caches_within_ttl():
     assert len(list(_scoped_audit(b, "t"))) == 1
 
 
-def test_invalidate_forces_rescan():
+def test_invalidate_forces_rescan(monkeypatch):
+    _enable_cache(monkeypatch)
     b = _CountingBackend([_Mem("t")])
     _scoped_audit(b, "t")
     invalidate_substrate_cache("t")
@@ -58,12 +65,18 @@ def test_invalidate_forces_rescan():
     assert b.scoped_audit_calls == 2          # invalidation dropped the cache
 
 
-def test_cache_is_per_tenant():
+def test_cache_is_per_tenant(monkeypatch):
+    _enable_cache(monkeypatch)
     b = _CountingBackend([_Mem("t1"), _Mem("t2")])
     _scoped_audit(b, "t1")
     _scoped_audit(b, "t2")
     _scoped_audit(b, "t1")                     # t1 cached; only t1+t2 first reads scanned
     assert b.scoped_audit_calls == 2
+
+
+def test_default_is_cache_off():
+    # ships disabled: correctness never depends on the cache unless a deploy opts in
+    assert substrate._SUBSTRATE_CACHE_TTL_S == 0.0
 
 
 def test_ttl_zero_disables_cache(monkeypatch):

@@ -89,12 +89,19 @@ def _sort_key(m):
 # scan (every row is still materialized once per TTL window, never dropped). The
 # write path (aml.cloud.demo_routes) calls `invalidate_substrate_cache(tenant_id)`
 # after every outcome/review write, so a post-then-read (e.g. a live sim run) never
-# observes a stale substrate. TTL=0 disables the cache entirely (safety escape hatch).
+# observes a stale substrate.
+#
+# DEFAULT OFF (TTL=0): the cache is correct ONLY if every outcome/review write goes
+# through the invalidating helpers. That holds for the HTTP write path but NOT for
+# tests / fixtures that write directly to the backend — so it ships DISABLED and is
+# enabled per-deploy via CGR_SUBSTRATE_CACHE_TTL_S once a deploy confirms all its
+# write paths invalidate. Finding 3 (manifold no longer starves HTTP) is what makes
+# reads stable by default; this cache is an opt-in cost bound on top.
 import os as _os
 import threading as _threading
 import time as _time
 
-_SUBSTRATE_CACHE_TTL_S = float(_os.environ.get("CGR_SUBSTRATE_CACHE_TTL_S", "10"))
+_SUBSTRATE_CACHE_TTL_S = float(_os.environ.get("CGR_SUBSTRATE_CACHE_TTL_S", "0"))
 _SUBSTRATE_CACHE: dict[str, tuple[float, list]] = {}
 _SUBSTRATE_CACHE_LOCK = _threading.Lock()
 
