@@ -80,17 +80,64 @@ def _sort_key(m):
     return (_effective_at(m), m.ref or 0)
 
 
+# ── decrypted-substrate cache (perf hardening, CGR read path) ────────────────
+# `scoped_audit` materializes + DECRYPTS every tenant memory. On a large tenant a
+# single /v1/cgr/scores read decrypts thousands of rows; under load (many concurrent
+# reads, or a background sweep competing for CPU) the decrypt storm made reads slow
+# and — worse — return an INCOMPLETE join, so agent scores/n_resolved swung between
+# reads. This short-TTL cache bounds the repeated decrypt cost WITHOUT capping the
+# scan (every row is still materialized once per TTL window, never dropped). The
+# write path (aml.cloud.demo_routes) calls `invalidate_substrate_cache(tenant_id)`
+# after every outcome/review write, so a post-then-read (e.g. a live sim run) never
+# observes a stale substrate. TTL=0 disables the cache entirely (safety escape hatch).
+import os as _os
+import threading as _threading
+import time as _time
+
+_SUBSTRATE_CACHE_TTL_S = float(_os.environ.get("CGR_SUBSTRATE_CACHE_TTL_S", "10"))
+_SUBSTRATE_CACHE: dict[str, tuple[float, list]] = {}
+_SUBSTRATE_CACHE_LOCK = _threading.Lock()
+
+
+def invalidate_substrate_cache(tenant_id: str | None = None) -> None:
+    """Drop cached decrypted substrate for a tenant (or all tenants if None). Called
+    by the write path so a just-written outcome/review is immediately visible."""
+    with _SUBSTRATE_CACHE_LOCK:
+        if tenant_id is None:
+            _SUBSTRATE_CACHE.clear()
+        else:
+            _SUBSTRATE_CACHE.pop(tenant_id, None)
+
+
+def _materialize_scoped_audit(backend, tenant_id: str) -> list:
+    fn = getattr(backend, "scoped_audit", None)
+    if callable(fn):
+        return list(fn(tenant_id))
+    return [m for m in backend.audit() if m.tenant_id == tenant_id]
+
+
 def _scoped_audit(backend, tenant_id: str):
     """Tenant-scoped audit (CGR #12). Prefer the backend's RLS-aware
     `scoped_audit` — Postgres routes it through the REAL tenant RLS context, so the
     DATABASE enforces isolation under the restricted runtime role — and fall back
     to filtering `audit()` for backends that don't implement it (sqlite/reference).
     This replaces the `audit()` (admin/all-tenant) dumps for tenant reads; callers
-    keep their own `tenant_id ==` check as belt-and-suspenders. Stdlib-only (getattr)."""
-    fn = getattr(backend, "scoped_audit", None)
-    if callable(fn):
-        return fn(tenant_id)
-    return (m for m in backend.audit() if m.tenant_id == tenant_id)
+    keep their own `tenant_id ==` check as belt-and-suspenders. Stdlib-only (getattr).
+
+    Returns a fully-materialized list (never a single-use generator) so callers and
+    the TTL cache can iterate it repeatedly. Completeness is preserved — the whole
+    tenant scan is materialized; only the *repeat decrypt cost* is bounded."""
+    if _SUBSTRATE_CACHE_TTL_S <= 0:
+        return _materialize_scoped_audit(backend, tenant_id)
+    now = _time.monotonic()
+    with _SUBSTRATE_CACHE_LOCK:
+        hit = _SUBSTRATE_CACHE.get(tenant_id)
+        if hit is not None and (now - hit[0]) < _SUBSTRATE_CACHE_TTL_S:
+            return hit[1]
+    rows = _materialize_scoped_audit(backend, tenant_id)
+    with _SUBSTRATE_CACHE_LOCK:
+        _SUBSTRATE_CACHE[tenant_id] = (now, rows)
+    return rows
 
 
 def _tenant_outcomes(backend, tenant_id: str) -> list:

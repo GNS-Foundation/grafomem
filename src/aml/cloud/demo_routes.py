@@ -44,7 +44,7 @@ from aml.cgr.substrate import (
     CGR_ROTATION_STORE, CGR_ROTATION_SCHEMA,
     _effective_at, _latest_for, _latest_review_for, _sort_key,
     _tenant_outcomes, _tenant_reviews, export_reviews, export_rotations, export_rows,
-    load_substrate,
+    invalidate_substrate_cache, load_substrate,
 )
 
 logger = logging.getLogger("grafomem.cloud.demo_routes")
@@ -228,11 +228,16 @@ def _outcome_metadata(invoice_ref: str, outcome: str, amount_recovered, source: 
 
 
 def _record_outcome(backend, *, tenant_id, invoice_ref, outcome, outcome_date,
-                    amount_recovered, source) -> dict:
+                    amount_recovered, source, existing=None) -> dict:
     """Append-only write of an outcome. Idempotent on an identical re-post;
-    supersedes the prior when it differs and the backend supports it."""
+    supersedes the prior when it differs and the backend supports it.
+
+    Perf: `existing` (the tenant's current outcome rows) may be passed in by a bulk
+    caller that scanned ONCE — otherwise each write re-scans + re-decrypts every
+    tenant memory (O(memories) per write → an N-item bulk was O(N·memories))."""
     invoice_ref = pseudonymize(invoice_ref, tenant_id)   # PII: join key stored as the pseudonym (matches the decision side)
-    existing = _tenant_outcomes(backend, tenant_id)
+    if existing is None:
+        existing = _tenant_outcomes(backend, tenant_id)
     current = _latest_for(existing, invoice_ref)
 
     # (3) Idempotent: an identical (outcome, amount_recovered, source) re-post is a no-op.
@@ -271,6 +276,7 @@ def _record_outcome(backend, *, tenant_id, invoice_ref, outcome, outcome_date,
     else:
         backend.write(content, opts)
 
+    invalidate_substrate_cache(tenant_id)   # a just-written outcome must be visible to the next /scores read
     return {"invoice_ref": invoice_ref, "outcome": outcome, "recorded_at": vf.isoformat(),
             "superseded_prior": superseded, "idempotent": False}
 
@@ -292,12 +298,17 @@ def _review_metadata(invoice_ref, reviewer_handle, rating, agent_handle, decisio
 
 
 def _record_review(backend, *, tenant_id, invoice_ref, reviewer_handle, rating,
-                   agent_handle, decision_id, review_date, source) -> dict:
+                   agent_handle, decision_id, review_date, source, existing=None) -> dict:
     """Append-only write of a review. Dedup/revision key is (invoice_ref,
     reviewer_handle): a reviewer re-rating supersedes their OWN prior; a different
-    reviewer is a distinct record. Idempotent on an identical re-post."""
+    reviewer is a distinct record. Idempotent on an identical re-post.
+
+    Perf: `existing` (the tenant's current review rows) may be passed in by a bulk
+    caller that scanned ONCE — otherwise each write re-scans + re-decrypts every
+    tenant memory (O(memories) per write → a 200-item bulk hung for minutes)."""
     invoice_ref = pseudonymize(invoice_ref, tenant_id)   # PII: join key stored as the pseudonym
-    existing = _tenant_reviews(backend, tenant_id)
+    if existing is None:
+        existing = _tenant_reviews(backend, tenant_id)
     current = _latest_review_for(existing, invoice_ref, reviewer_handle)
 
     # Idempotent: identical (rating, agent_handle, source) from the same reviewer is a no-op.
@@ -336,6 +347,7 @@ def _record_review(backend, *, tenant_id, invoice_ref, reviewer_handle, rating,
     else:
         backend.write(content, opts)
 
+    invalidate_substrate_cache(tenant_id)   # a just-written review must be visible to the next /scores read
     return {"invoice_ref": invoice_ref, "reviewer_handle": reviewer_handle,
             "rating": rating, "recorded_at": vf.isoformat(),
             "superseded_prior": superseded, "idempotent": False}
@@ -468,6 +480,8 @@ def create_governed_router(decision_trail, execution_receipts, signing_identity,
     async def post_outcomes_bulk(events: list[OutcomeEvent], request: Request):
         tenant_id = _tenant_id(request)
         backend = _outcomes_backend()
+        # Scan the tenant's existing outcomes ONCE for the whole batch (was O(N·memories)).
+        existing = _tenant_outcomes(backend, tenant_id)
         recorded = []
         for ev in events:
             if ev.outcome not in _VALID_OUTCOMES:
@@ -475,7 +489,7 @@ def create_governed_router(decision_trail, execution_receipts, signing_identity,
             recorded.append(_record_outcome(
                 backend, tenant_id=tenant_id, invoice_ref=ev.invoice_ref,
                 outcome=ev.outcome, outcome_date=ev.outcome_date,
-                amount_recovered=ev.amount_recovered, source=ev.source))
+                amount_recovered=ev.amount_recovered, source=ev.source, existing=existing))
         return {"count": len(recorded), "recorded": recorded}
 
     def _validate_rating(rating: float):
@@ -547,6 +561,10 @@ def create_governed_router(decision_trail, execution_receipts, signing_identity,
     async def post_reviews_bulk(reviews: list[ReviewRecord], request: Request):
         tenant_id = _tenant_id(request)
         backend = _reviews_backend()
+        # Scan the tenant's existing reviews ONCE for the whole batch (was O(N·memories),
+        # which hung a 200-item bulk). Append-only + latest-by-valid_from at read time
+        # means intra-batch re-rates still resolve correctly without a per-item rescan.
+        existing = _tenant_reviews(backend, tenant_id)
         recorded = []
         for rv in reviews:
             _validate_rating(rv.rating)
@@ -554,7 +572,7 @@ def create_governed_router(decision_trail, execution_receipts, signing_identity,
                 backend, tenant_id=tenant_id, invoice_ref=rv.invoice_ref,
                 reviewer_handle=rv.reviewer_handle, rating=rv.rating,
                 agent_handle=rv.agent_handle, decision_id=rv.decision_id,
-                review_date=rv.review_date, source=rv.source))
+                review_date=rv.review_date, source=rv.source, existing=existing))
         return {"count": len(recorded), "recorded": recorded}
 
     return router
