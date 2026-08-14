@@ -482,15 +482,20 @@ def create_governed_router(decision_trail, execution_receipts, signing_identity,
         backend = _outcomes_backend()
         # Scan the tenant's existing outcomes ONCE for the whole batch (was O(N·memories)).
         existing = _tenant_outcomes(backend, tenant_id)
-        recorded = []
+        # Collapse intra-batch duplicates by invoice_ref, keeping the LAST (reproduces the
+        # old per-write-rescan's final state; one current outcome per invoice). Validate all.
+        deduped: dict = {}
         for ev in events:
             if ev.outcome not in _VALID_OUTCOMES:
                 raise HTTPException(400, f"outcome must be one of {sorted(_VALID_OUTCOMES)}")
-            recorded.append(_record_outcome(
-                backend, tenant_id=tenant_id, invoice_ref=ev.invoice_ref,
-                outcome=ev.outcome, outcome_date=ev.outcome_date,
-                amount_recovered=ev.amount_recovered, source=ev.source, existing=existing))
-        return {"count": len(recorded), "recorded": recorded}
+            deduped[ev.invoice_ref] = ev
+        recorded = [_record_outcome(
+            backend, tenant_id=tenant_id, invoice_ref=ev.invoice_ref,
+            outcome=ev.outcome, outcome_date=ev.outcome_date,
+            amount_recovered=ev.amount_recovered, source=ev.source, existing=existing)
+            for ev in deduped.values()]
+        return {"count": len(recorded), "recorded": recorded,
+                "collapsed_in_batch": len(events) - len(deduped)}
 
     def _validate_rating(rating: float):
         if not (0.0 <= rating <= 1.0):
@@ -562,18 +567,24 @@ def create_governed_router(decision_trail, execution_receipts, signing_identity,
         tenant_id = _tenant_id(request)
         backend = _reviews_backend()
         # Scan the tenant's existing reviews ONCE for the whole batch (was O(N·memories),
-        # which hung a 200-item bulk). Append-only + latest-by-valid_from at read time
-        # means intra-batch re-rates still resolve correctly without a per-item rescan.
+        # which hung a 200-item bulk).
         existing = _tenant_reviews(backend, tenant_id)
-        recorded = []
+        # Collapse intra-batch duplicates by (invoice_ref, reviewer_handle), keeping the
+        # LAST — this reproduces the old per-write-rescan's final state (a later re-rate
+        # supersedes an earlier one in the same batch) and guarantees exactly one current
+        # record per key, WITHOUT rescanning per item. Validation runs on every input.
+        deduped: dict = {}
         for rv in reviews:
             _validate_rating(rv.rating)
-            recorded.append(_record_review(
-                backend, tenant_id=tenant_id, invoice_ref=rv.invoice_ref,
-                reviewer_handle=rv.reviewer_handle, rating=rv.rating,
-                agent_handle=rv.agent_handle, decision_id=rv.decision_id,
-                review_date=rv.review_date, source=rv.source, existing=existing))
-        return {"count": len(recorded), "recorded": recorded}
+            deduped[(rv.invoice_ref, rv.reviewer_handle)] = rv
+        recorded = [_record_review(
+            backend, tenant_id=tenant_id, invoice_ref=rv.invoice_ref,
+            reviewer_handle=rv.reviewer_handle, rating=rv.rating,
+            agent_handle=rv.agent_handle, decision_id=rv.decision_id,
+            review_date=rv.review_date, source=rv.source, existing=existing)
+            for rv in deduped.values()]
+        return {"count": len(recorded), "recorded": recorded,
+                "collapsed_in_batch": len(reviews) - len(deduped)}
 
     return router
 

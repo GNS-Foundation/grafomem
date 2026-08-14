@@ -185,6 +185,24 @@ async def test_reviews_bulk(db):
     assert {e.invoice_ref for e in load_reviews(db.sm, T)} == {"INV1", "INV2"}
 
 
+@pytest.mark.asyncio
+async def test_reviews_bulk_collapses_intrabatch_duplicates(db):
+    """Perf-hardening (F1): the single-scan bulk must still dedup a (invoice, reviewer)
+    that repeats WITHIN one batch (keep-last), not only against pre-existing rows —
+    exactly one current record per key, with the last in-batch rating winning."""
+    T = _tenant()
+    out = await db.post_reviews_bulk([
+        db.RR(invoice_ref="INV1", reviewer_handle="rev-a", rating=0.2, agent_handle=AGENT),
+        db.RR(invoice_ref="INV1", reviewer_handle="rev-a", rating=0.9, agent_handle=AGENT),  # supersedes prior line
+        db.RR(invoice_ref="INV2", reviewer_handle="rev-a", rating=0.4, agent_handle=AGENT),
+    ], _req(T))
+    assert out["count"] == 2 and out["collapsed_in_batch"] == 1
+    evs = {(e.invoice_ref, e.reviewer): e for e in load_reviews(db.sm, T)}
+    assert len(evs) == 2                                   # one current record per key
+    assert evs[("INV1", "rev-a")].rating == 0.9           # LAST in-batch rating wins
+    assert evs[("INV2", "rev-a")].rating == 0.4
+
+
 # ============================================================================
 # Export — additive reviews[]
 # ============================================================================
