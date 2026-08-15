@@ -103,6 +103,13 @@ class WriteOptions:
     region: str | None = None               # honored if DATA_RESIDENCY
     signing_identity: SigningIdentity | None = None  # if set, backend MUST sign (§4.1)
     metadata: dict = field(default_factory=dict)
+    # Perf: skip the vector-embedding side of a write. For fact-shaped records that are
+    # only ever read by exact metadata scan (CGR outcomes/reviews/rotations — the join
+    # is by metadata.subject, never by semantic similarity), computing + storing a BGE
+    # embedding is pure cost. When True the backend writes the `memories` row but no
+    # `memory_embeddings` row, so the record is invisible to vector `retrieve` (correct)
+    # and still visible to `scoped_audit`/scoring (which read `memories` directly).
+    skip_embedding: bool = False
 
 
 @dataclass(slots=True)

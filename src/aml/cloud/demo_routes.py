@@ -251,7 +251,7 @@ def _record_outcome(backend, *, tenant_id, invoice_ref, outcome, outcome_date,
 
     vf = _parse_dt(outcome_date)
     meta = _outcome_metadata(invoice_ref, outcome, amount_recovered, source)
-    opts = WriteOptions(valid_from=vf, tenant_id=tenant_id, metadata=meta)
+    opts = WriteOptions(valid_from=vf, tenant_id=tenant_id, metadata=meta, skip_embedding=True)
     content = f"{_OUTCOME_PREDICATE} | {invoice_ref} | {outcome}"
 
     superseded = current is not None
@@ -322,7 +322,7 @@ def _record_review(backend, *, tenant_id, invoice_ref, reviewer_handle, rating,
 
     vf = _parse_dt(review_date)
     meta = _review_metadata(invoice_ref, reviewer_handle, rating, agent_handle, decision_id, source)
-    opts = WriteOptions(valid_from=vf, tenant_id=tenant_id, metadata=meta)
+    opts = WriteOptions(valid_from=vf, tenant_id=tenant_id, metadata=meta, skip_embedding=True)
     content = f"{_REVIEW_PREDICATE} | {invoice_ref} | {reviewer_handle} | {rating}"
 
     superseded = current is not None
@@ -374,7 +374,7 @@ def _record_rotation(backend, *, tenant_id, p: RotationProofRequest) -> dict:
     folding keys). Append, latest valid_from wins if a (prev,new) is re-posted."""
     vf = _parse_dt(p.not_before)
     meta = _rotation_metadata(p)
-    opts = WriteOptions(valid_from=vf, tenant_id=tenant_id, metadata=meta)
+    opts = WriteOptions(valid_from=vf, tenant_id=tenant_id, metadata=meta, skip_embedding=True)
     content = f"key_rotation | {p.prev_key} | {p.new_key} | seq={p.seq}"
     backend.write(content, opts)
     return {"prev_key": p.prev_key, "new_key": p.new_key, "seq": p.seq,
