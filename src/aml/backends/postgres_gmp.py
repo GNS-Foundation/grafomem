@@ -343,9 +343,11 @@ class PostgresGMPBackend:
             return content, None, meta_canon, None
 
     def write(self, content: str, options: WriteOptions) -> int:
-        emb = _normalize(self._embed(content))
-        if emb.shape[0] != self._dim:
-            raise ValueError(f"embedding dim {emb.shape[0]} != store dim {self._dim}")
+        skip_emb = getattr(options, "skip_embedding", False)
+        if not skip_emb:
+            emb = _normalize(self._embed(content))
+            if emb.shape[0] != self._dim:
+                raise ValueError(f"embedding dim {emb.shape[0]} != store dim {self._dim}")
 
         written_by, signature, public_key = self._provenance(content, options)
         
@@ -367,19 +369,20 @@ class PostgresGMPBackend:
             )
             ref = cur.fetchone()[0]
 
-            token_count = len(_tokenizer.encode(content))
-            tokenizer_id = "tiktoken/cl100k_base"
-            # Insert embedding with sentinel-encoded metadata
-            cur.execute(
-                """INSERT INTO memory_embeddings
-                   (ref, embedding, tenant_id, valid_from, valid_until, region, token_count, tokenizer_id)
-                   VALUES (%s, %s::vector, %s, %s, %s, %s, %s, %s)""",
-                (ref, emb.tolist(),
-                 _vec_tenant(options.tenant_id),
-                 _vec_from(options.valid_from),
-                 OPEN_UNTIL_TS, options.region or 'global',
-                 token_count, tokenizer_id),
-            )
+            if not skip_emb:
+                token_count = len(_tokenizer.encode(content))
+                tokenizer_id = "tiktoken/cl100k_base"
+                # Insert embedding with sentinel-encoded metadata
+                cur.execute(
+                    """INSERT INTO memory_embeddings
+                       (ref, embedding, tenant_id, valid_from, valid_until, region, token_count, tokenizer_id)
+                       VALUES (%s, %s::vector, %s, %s, %s, %s, %s, %s)""",
+                    (ref, emb.tolist(),
+                     _vec_tenant(options.tenant_id),
+                     _vec_from(options.valid_from),
+                     OPEN_UNTIL_TS, options.region or 'global',
+                     token_count, tokenizer_id),
+                )
         return ref
 
     @staticmethod
@@ -445,8 +448,10 @@ class PostgresGMPBackend:
         db_content, enc_content, db_meta, enc_meta = self._encrypt_memory(content, metadata, options.tenant_id)
 
         close_at = options.valid_from or datetime.now(timezone.utc)
-        
-        emb = _normalize(self._embed(content))
+
+        skip_emb = getattr(options, "skip_embedding", False)
+        if not skip_emb:
+            emb = _normalize(self._embed(content))
         written_by, signature, public_key = self._provenance(content, options)
 
         with self._tenant_conn(options.tenant_id) as (conn, cur):
@@ -466,19 +471,19 @@ class PostgresGMPBackend:
             )
             new_ref = cur.fetchone()[0]
 
-            token_count = len(_tokenizer.encode(content))
-            tokenizer_id = "tiktoken/cl100k_base"
-
-            cur.execute(
-                """INSERT INTO memory_embeddings
-                   (ref, embedding, tenant_id, valid_from, valid_until, region, token_count, tokenizer_id)
-                   VALUES (%s, %s::vector, %s, %s, %s, %s, %s, %s)""",
-                (new_ref, emb.tolist(),
-                 _vec_tenant(options.tenant_id),
-                 _vec_from(options.valid_from),
-                 OPEN_UNTIL_TS, options.region or 'global',
-                 token_count, tokenizer_id),
-            )
+            if not skip_emb:
+                token_count = len(_tokenizer.encode(content))
+                tokenizer_id = "tiktoken/cl100k_base"
+                cur.execute(
+                    """INSERT INTO memory_embeddings
+                       (ref, embedding, tenant_id, valid_from, valid_until, region, token_count, tokenizer_id)
+                       VALUES (%s, %s::vector, %s, %s, %s, %s, %s, %s)""",
+                    (new_ref, emb.tolist(),
+                     _vec_tenant(options.tenant_id),
+                     _vec_from(options.valid_from),
+                     OPEN_UNTIL_TS, options.region or 'global',
+                     token_count, tokenizer_id),
+                )
 
             # Close predecessor's interval in memories table
             cur.execute(
