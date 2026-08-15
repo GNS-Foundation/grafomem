@@ -16,6 +16,11 @@ from aml.server.tenant_context import apply_tenant_context
 
 logger = logging.getLogger("grafomem.cloud.manifold")
 
+# Perf hardening: seconds the background sweep yields between tenants so it can't
+# monopolise the GIL/CPU and starve HTTP handlers during a large multi-tenant sweep.
+import os as _os
+_MANIFOLD_SWEEP_YIELD_S = float(_os.environ.get("MANIFOLD_SWEEP_YIELD_S", "0.25"))
+
 AGENT_ROLES = ["planner", "retriever", "critic", "executor", "agent"]
 WORKFLOWS = ["sprint_planning", "code_review", "deployment_check", "default"]
 MODELS = ["mock-model", "opus-4", "sonnet-4", "haiku-4", "gpt-4o", "claude-3-5-sonnet"]
@@ -324,15 +329,28 @@ class ManifoldService:
                 self.ensure_schema()
             except Exception as e:
                 logger.warning(f"Manifold worker pre-flight ensure_schema failed: {e}")
+            import psycopg2
+
+            def _borrow():
+                """Acquire a SHORT-LIVED connection. Perf hardening: the worker must
+                NOT hold a shared-pool connection across the whole sweep — a full sweep
+                is minutes of CPU-heavy compute, and pinning one of a small pool's
+                connections that long starved request handlers (HTTP timeouts)."""
+                if self.pool:
+                    c = self.pool.getconn(); apply_tenant_context(c); return c
+                c = psycopg2.connect(self.db_url); apply_tenant_context(c); return c
+
+            def _return(c):
+                if self.pool:
+                    self.pool.putconn(c)
+                else:
+                    c.close()
+
             while not self._stop_event.is_set():
                 try:
-                    import psycopg2
-                    if self.pool:
-                        conn = self.pool.getconn(); apply_tenant_context(conn)
-                    else:
-                        conn = psycopg2.connect(self.db_url); apply_tenant_context(conn)
-                        
+                    # tenant list — short conn, released immediately (not held over compute)
                     tenants = ["default"]
+                    conn = _borrow()
                     try:
                         with conn.cursor() as cur:
                             cur.execute("SELECT DISTINCT tenant_id FROM orchestrator_steps")
@@ -340,34 +358,41 @@ class ManifoldService:
                     except Exception as e:
                         logger.error(f"Failed to fetch active tenants: {e}")
                         conn.rollback()
+                    finally:
+                        _return(conn)
 
                     for tenant_id in tenants:
+                        if self._stop_event.is_set():
+                            break
                         try:
+                            # CPU-heavy PCA/SOM runs with NO connection held.
                             payload, som_version, som_weights = self._compute_manifold_sync(tenant_id)
-                            with conn.cursor() as cur:
-                                cur.execute("""
-                                    INSERT INTO manifold_cache (tenant_id, payload, updated_at, som_version, som_weights)
-                                    VALUES (%s, %s, NOW(), %s, %s)
-                                    ON CONFLICT (tenant_id) DO UPDATE SET 
-                                    payload = EXCLUDED.payload, 
-                                    updated_at = NOW(),
-                                    som_version = EXCLUDED.som_version,
-                                    som_weights = EXCLUDED.som_weights
-                                """, (tenant_id, json.dumps(payload), som_version, som_weights if self.pool else psycopg2.Binary(som_weights)))
-                            conn.commit()
+                            conn = _borrow()
+                            try:
+                                with conn.cursor() as cur:
+                                    cur.execute("""
+                                        INSERT INTO manifold_cache (tenant_id, payload, updated_at, som_version, som_weights)
+                                        VALUES (%s, %s, NOW(), %s, %s)
+                                        ON CONFLICT (tenant_id) DO UPDATE SET
+                                        payload = EXCLUDED.payload,
+                                        updated_at = NOW(),
+                                        som_version = EXCLUDED.som_version,
+                                        som_weights = EXCLUDED.som_weights
+                                    """, (tenant_id, json.dumps(payload), som_version, som_weights if self.pool else psycopg2.Binary(som_weights)))
+                                conn.commit()
+                            finally:
+                                _return(conn)
                             logger.info(f"Manifold background cache updated for {tenant_id}.")
                         except Exception as e:
                             logger.error(f"Error saving manifold cache for {tenant_id}: {e}")
-                            conn.rollback()
-                    
-                    if self.pool:
-                        self.pool.putconn(conn)
-                    else:
-                        conn.close()
-                            
+                        # Yield between tenants so a large sweep can't monopolise the
+                        # GIL/CPU and starve HTTP request handlers (/healthz stayed
+                        # responsive under a sweep once this yield was added).
+                        self._stop_event.wait(_MANIFOLD_SWEEP_YIELD_S)
+
                 except Exception as e:
                     logger.error(f"Manifold worker iteration failed: {e}")
-                
+
                 # Sleep in short bursts to allow clean exit
                 for _ in range(interval_seconds):
                     if self._stop_event.is_set():
