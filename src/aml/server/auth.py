@@ -235,14 +235,25 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
         # routes added under them. This bypass is necessary for self-authenticated
         # endpoints like /attest and the Inbox, but sensitive routes (like /verify)
         # must be explicitly carved out to enforce API-key scopes.
-        if (path in _SKIP_AUTH_PATHS
+        skip_auth = (path in _SKIP_AUTH_PATHS
             or path.startswith("/portal")
             or path.startswith("/verify")
             or path.startswith("/v1/portal")
             or path.startswith("/v1/cloud/billing/webhook")
             or path.startswith("/v1/cloud/compliance/badge")
             or (path.startswith("/v1/hitl/requests/") and not path.endswith("/verify"))
-            or path.startswith("/v1/hitl/approvers/")):
+            or path.startswith("/v1/hitl/approvers/"))
+
+        # `/v1/gcrumbs/verify` is method-overloaded: the POST is a STATELESS receipt
+        # verifier (no DB, legitimately anonymous), but the GET is a DB-backed chain
+        # verification that reads the CALLER'S tenant. Skipping auth on the GET left it
+        # with no tenant context, so it fell back to the "default" namespace and
+        # silently verified the wrong (empty) chain instead of the caller's. Require
+        # auth on the GET so it runs under the caller's tenant; keep the POST public.
+        if path == "/v1/gcrumbs/verify" and request.method != "POST":
+            skip_auth = False
+
+        if skip_auth:
             request.state.tenant = TenantContext(
                 tenant_id=DEFAULT_NAMESPACE, authenticated=False
             )
