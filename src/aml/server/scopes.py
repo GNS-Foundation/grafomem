@@ -60,6 +60,10 @@ SCOPE_VOCABULARY: frozenset[str] = frozenset(
         "artifacts:admin",
         # Manifold & templates
         "manifold:read",
+        # CGR calibration authority (Gate-1) — privileged WRITE of agent_calibration.
+        # Held ONLY by the identity authority (sim operator / GEIANT); NEVER granted to
+        # any role default or agent ingestion key. A self-assignable w defeats the gate.
+        "calibration:write",
         # SSO / SAML configuration
         "sso:admin",
         # Superuser
