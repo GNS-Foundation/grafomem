@@ -443,6 +443,21 @@ class PortalAuth:
         )
         logger.info("Password changed for tenant %s", tenant_id)
 
+    def update_profile(self, tenant_id: str, *, name: str) -> dict:
+        """Update the authed tenant's editable profile fields. Only the display `name`
+        is editable here — email is the login identity (changing it needs re-verification)
+        and plan is billing-owned, so both stay read-only. Returns the updated fields."""
+        name = (name or "").strip()
+        if not (1 <= len(name) <= 120):
+            raise ValueError("Name must be between 1 and 120 characters")
+        conn = self._get_conn()
+        row = conn.execute("SELECT id FROM tenants WHERE id = %s", (tenant_id,)).fetchone()
+        if not row:
+            raise ValueError("Account not found")
+        conn.execute("UPDATE tenants SET name = %s WHERE id = %s", (name, tenant_id))
+        logger.info("Profile updated for tenant %s", tenant_id)
+        return {"name": name}
+
     # ------------------------------------------------------------------
     # JWT (legacy self-issued + Supabase verification)
     # ------------------------------------------------------------------
