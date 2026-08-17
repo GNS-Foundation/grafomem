@@ -69,3 +69,27 @@ def test_no_password_account_rejected():
         (tid, "SSO User", "gfm_" + uuid.uuid4().hex, f"sso-{tid[:8]}@example.com"))
     with pytest.raises(ValueError, match="[Nn]o password"):
         pa.change_password(tid, "whatever1", "newpassword2")
+
+
+# ── update_profile (editable display name) ──
+def test_update_profile_changes_name():
+    pa = _pa()
+    _, tid = _signup(pa)
+    out = pa.update_profile(tid, name="  Renamed Org  ")
+    assert out == {"name": "Renamed Org"}          # trimmed
+    row = pa._get_conn().execute("SELECT name FROM tenants WHERE id=%s", (tid,)).fetchone()
+    assert row["name"] == "Renamed Org"
+
+
+def test_update_profile_rejects_empty():
+    pa = _pa()
+    _, tid = _signup(pa)
+    with pytest.raises(ValueError, match="1 and 120"):
+        pa.update_profile(tid, name="   ")
+
+
+def test_update_profile_rejects_too_long():
+    pa = _pa()
+    _, tid = _signup(pa)
+    with pytest.raises(ValueError, match="1 and 120"):
+        pa.update_profile(tid, name="x" * 121)

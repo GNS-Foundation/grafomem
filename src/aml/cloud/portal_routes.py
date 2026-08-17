@@ -44,6 +44,11 @@ class ChangePasswordRequest(BaseModel):
     new_password: str
 
 
+class UpdateProfileRequest(BaseModel):
+    """Editable profile fields (display name only; email/plan are read-only)."""
+    name: str
+
+
 class TokenResponse(BaseModel):
     """Returned after successful signup or login."""
     token: str
@@ -325,6 +330,31 @@ async def create_api_key(req: CreateApiKeyRequest, request: Request):
     except ValueError as e:
         raise HTTPException(400, str(e))
     return key_info
+
+@router.post("/profile")
+async def update_profile(req: UpdateProfileRequest, request: Request):
+    """Update the signed-in user's editable profile (display name). Auth: portal
+    session; acts only on the caller's tenant. Email/plan are read-only."""
+    tenant = _require_portal_auth(request)
+    audit = _audit_logger(request)
+    pa = _portal_auth(request)
+    try:
+        result = pa.update_profile(tenant["tenant_id"], name=req.name)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"update-profile error: {exc}")
+        raise HTTPException(500, "Profile update failed")
+    if audit:
+        try:
+            audit.log(tenant_id=tenant["tenant_id"], actor=tenant["email"],
+                      action="update_profile", resource="account")
+        except Exception:
+            pass
+    return {"status": "ok", **result}
+
 
 @router.post("/change-password")
 async def change_password(req: ChangePasswordRequest, request: Request):
