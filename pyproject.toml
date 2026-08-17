@@ -66,7 +66,12 @@ where = ["src"]
 # the source tree). Without this, importlib.resources.files("aml")/"static" is
 # missing and the mount is silently skipped.
 [tool.setuptools.package-data]
-aml = ["static/portal/*", "static/landing/*", "static/verify/*"]
+# Deployed containers run the INSTALLED wheel, not the source tree — so any non-.py
+# runtime file the app reads by path must be shipped here or it is silently absent.
+# The OntologyTemplate YAMLs are read at runtime by aml.cloud.templates.registry
+# (os.listdir on the package dir); without this line the installed package had only
+# engine.py/registry.py, so /v1/templates listed nothing and install 404'd.
+aml = ["static/portal/*", "static/landing/*", "static/verify/*", "cloud/templates/*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
