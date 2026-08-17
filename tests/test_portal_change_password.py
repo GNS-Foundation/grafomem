@@ -93,3 +93,38 @@ def test_update_profile_rejects_too_long():
     _, tid = _signup(pa)
     with pytest.raises(ValueError, match="1 and 120"):
         pa.update_profile(tid, name="x" * 121)
+
+
+# ── update_profile timezone ──
+def test_update_profile_sets_valid_timezone():
+    pa = _pa()
+    _, tid = _signup(pa)
+    out = pa.update_profile(tid, name="Org", timezone="America/New_York")
+    assert out == {"name": "Org", "timezone": "America/New_York"}
+    row = pa._get_conn().execute("SELECT timezone FROM tenants WHERE id=%s", (tid,)).fetchone()
+    assert row["timezone"] == "America/New_York"
+
+
+def test_update_profile_rejects_invalid_timezone():
+    pa = _pa()
+    _, tid = _signup(pa)
+    with pytest.raises(ValueError, match="[Ii]nvalid timezone"):
+        pa.update_profile(tid, name="Org", timezone="Mars/Phobos")
+
+
+def test_update_profile_empty_timezone_clears():
+    pa = _pa()
+    _, tid = _signup(pa)
+    pa.update_profile(tid, name="Org", timezone="Europe/Madrid")
+    pa.update_profile(tid, name="Org", timezone="")   # clear
+    row = pa._get_conn().execute("SELECT timezone FROM tenants WHERE id=%s", (tid,)).fetchone()
+    assert row["timezone"] is None
+
+
+def test_update_profile_name_only_leaves_timezone():
+    pa = _pa()
+    _, tid = _signup(pa)
+    pa.update_profile(tid, name="Org", timezone="Asia/Tokyo")
+    pa.update_profile(tid, name="Renamed")            # timezone omitted ⇒ unchanged
+    row = pa._get_conn().execute("SELECT name, timezone FROM tenants WHERE id=%s", (tid,)).fetchone()
+    assert row["name"] == "Renamed" and row["timezone"] == "Asia/Tokyo"

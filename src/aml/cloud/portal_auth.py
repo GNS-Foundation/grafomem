@@ -74,6 +74,13 @@ BEGIN
     ) THEN
         ALTER TABLE tenants ADD COLUMN supabase_uid TEXT UNIQUE;
     END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'tenants' AND column_name = 'timezone'
+    ) THEN
+        ALTER TABLE tenants ADD COLUMN timezone TEXT;
+    END IF;
 END $$;
 """
 
@@ -443,20 +450,38 @@ class PortalAuth:
         )
         logger.info("Password changed for tenant %s", tenant_id)
 
-    def update_profile(self, tenant_id: str, *, name: str) -> dict:
-        """Update the authed tenant's editable profile fields. Only the display `name`
-        is editable here — email is the login identity (changing it needs re-verification)
-        and plan is billing-owned, so both stay read-only. Returns the updated fields."""
+    def update_profile(self, tenant_id: str, *, name: str, timezone: str | None = None) -> dict:
+        """Update the authed tenant's editable profile fields — display `name` and an
+        optional IANA `timezone` preference (used to render timestamps in the caller's
+        local time). Email (login identity) and plan (billing) stay read-only. Pass
+        timezone="" to clear it. Returns the updated fields."""
         name = (name or "").strip()
         if not (1 <= len(name) <= 120):
             raise ValueError("Name must be between 1 and 120 characters")
+        tz_norm: str | None = None
+        if timezone is not None:
+            tz = timezone.strip()
+            if tz:
+                from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+                try:
+                    ZoneInfo(tz)              # validate against the IANA tz database
+                except (ZoneInfoNotFoundError, ValueError):
+                    raise ValueError(f"Invalid timezone: {tz!r}")
+                tz_norm = tz
+            # tz == "" ⇒ clear (tz_norm stays None)
         conn = self._get_conn()
         row = conn.execute("SELECT id FROM tenants WHERE id = %s", (tenant_id,)).fetchone()
         if not row:
             raise ValueError("Account not found")
-        conn.execute("UPDATE tenants SET name = %s WHERE id = %s", (name, tenant_id))
+        if timezone is None:
+            conn.execute("UPDATE tenants SET name = %s WHERE id = %s", (name, tenant_id))
+            out = {"name": name}
+        else:
+            conn.execute("UPDATE tenants SET name = %s, timezone = %s WHERE id = %s",
+                         (name, tz_norm, tenant_id))
+            out = {"name": name, "timezone": tz_norm}
         logger.info("Profile updated for tenant %s", tenant_id)
-        return {"name": name}
+        return out
 
     # ------------------------------------------------------------------
     # JWT (legacy self-issued + Supabase verification)
