@@ -45,8 +45,9 @@ class ChangePasswordRequest(BaseModel):
 
 
 class UpdateProfileRequest(BaseModel):
-    """Editable profile fields (display name only; email/plan are read-only)."""
+    """Editable profile fields (display name + IANA timezone; email/plan read-only)."""
     name: str
+    timezone: str | None = None
 
 
 class TokenResponse(BaseModel):
@@ -90,6 +91,7 @@ class DashboardResponse(BaseModel):
     email: str
     api_key: str
     plan: str
+    timezone: str | None = None
     usage: UsageSummaryOut
     compliance: ComplianceOut | None = None
     billing: BillingOut | None = None
@@ -240,6 +242,17 @@ async def get_dashboard(request: Request):
     tenant = _require_portal_auth(request)
     tenant_id = tenant["tenant_id"]
 
+    # Timezone preference (best-effort; column exists via ensure_schema)
+    timezone = None
+    try:
+        pa = _portal_auth(request)
+        row = pa._get_conn().execute(
+            "SELECT timezone FROM tenants WHERE id = %s", (tenant_id,)).fetchone()
+        if row:
+            timezone = row.get("timezone")
+    except Exception:
+        pass
+
     # Usage
     usage = UsageSummaryOut()
     ms = _metering(request)
@@ -291,6 +304,7 @@ async def get_dashboard(request: Request):
         email=tenant["email"],
         api_key=tenant["api_key"],
         plan=tenant["plan"],
+        timezone=timezone,
         usage=usage,
         compliance=compliance,
         billing=billing,
@@ -339,7 +353,7 @@ async def update_profile(req: UpdateProfileRequest, request: Request):
     audit = _audit_logger(request)
     pa = _portal_auth(request)
     try:
-        result = pa.update_profile(tenant["tenant_id"], name=req.name)
+        result = pa.update_profile(tenant["tenant_id"], name=req.name, timezone=req.timezone)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     except HTTPException:
