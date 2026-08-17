@@ -1,0 +1,111 @@
+apiVersion: grafomem.com/v1alpha1
+kind: OntologyTemplate
+metadata:
+  name: virtualbank-receivables
+  version: 1.0.0
+  description: "Receivables / invoice-financing world-model for the virtualbank tenant.
+    Names mirror the vocabulary the Reputation and Decision-Trail views already display
+    (agent_handle, invoice_ref, decision certify/reject, outcome paid/default), so the
+    Ontology surface reads as the declared schema behind the same substrate."
+
+# ── Object types (9) — the entities the sim underwrites over ──────────────────
+classes:
+  - name: Client
+    properties:
+      client_id: { type: string, required: true }   # the seller/borrower who owns the receivable
+      name: { type: string }
+      sector: { type: string }
+      country: { type: string }
+  - name: Counterparty
+    properties:
+      counterparty_id: { type: string, required: true }   # the debtor who pays the invoice
+      name: { type: string }
+      sector: { type: string }
+  - name: Invoice
+    properties:
+      invoice_ref: { type: string, required: true }   # == the CGR join key
+      amount: { type: number }
+      currency: { type: string }
+      tenor_days: { type: number }
+      sector: { type: string }
+      risk_signal: { type: number }
+  - name: Advance
+    properties:
+      advance_id: { type: string, required: true }   # funding extended against the receivable
+      amount: { type: number }
+      facility: { type: string }
+      status: { type: string }
+  - name: Agent
+    properties:
+      agent_handle: { type: string, required: true }   # the underwriting agent (facet@virtualbank)
+      agent_key: { type: string }                      # GEIANT Ed25519 pubkey (CGR identity)
+      model_id: { type: string }
+  - name: Decision
+    properties:
+      decision: { type: string, required: true }       # certify | reject
+      verifiability_tag: { type: string }              # judgment | rule
+      reason_code: { type: string }
+      agent_handle: { type: string }
+  - name: Outcome
+    properties:
+      outcome: { type: string, required: true }        # paid | default
+      amount_recovered: { type: number }
+      outcome_date: { type: string }
+  - name: AMLAlert
+    properties:
+      alert_id: { type: string, required: true }
+      risk_score: { type: number }
+      reason: { type: string }
+  - name: Disposition
+    properties:
+      disposition: { type: string, required: true }    # clear | escalate | file_SAR
+      notes: { type: string }
+
+# ── Link types (7) — how the entities relate ─────────────────────────────────
+relationships:
+  - name: owns          # Client owns the receivable
+    from: Client
+    to: Invoice
+    cardinality: one_to_many
+  - name: drawnOn       # Invoice is drawn on the debtor
+    from: Invoice
+    to: Counterparty
+    cardinality: many_to_one
+  - name: fundedBy      # Invoice funded by an advance
+    from: Invoice
+    to: Advance
+    cardinality: one_to_one
+  - name: decidedBy     # Decision made by an agent
+    from: Decision
+    to: Agent
+    cardinality: many_to_one
+  - name: resolvesTo    # Decision resolves to a paid/default outcome
+    from: Decision
+    to: Outcome
+    cardinality: one_to_one
+  - name: triggers      # Invoice triggers an AML alert
+    from: Invoice
+    to: AMLAlert
+    cardinality: one_to_many
+  - name: resolvedBy    # AML alert resolved by a disposition
+    from: AMLAlert
+    to: Disposition
+    cardinality: one_to_one
+
+# ── Action types (5) — governed actions, gated by trust tier ─────────────────
+axioms:
+  - name: certify          # certify/fund an invoice (the underwriter's judgment call)
+    subject: Invoice
+    required_trust_tier: verified
+  - name: reject           # decline funding
+    subject: Invoice
+    required_trust_tier: verified
+  - name: record_outcome   # post the realized paid/default outcome (ground truth)
+    subject: Advance
+    required_trust_tier: trusted
+  - name: clear_alert      # clear an AML alert
+    subject: AMLAlert
+    required_trust_tier: verified
+  - name: escalate_alert   # escalate an AML alert
+    subject: AMLAlert
+    required_trust_tier: trusted
