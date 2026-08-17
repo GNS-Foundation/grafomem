@@ -38,6 +38,12 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class ChangePasswordRequest(BaseModel):
+    """Authenticated password change: current password re-verified, new one set."""
+    current_password: str
+    new_password: str
+
+
 class TokenResponse(BaseModel):
     """Returned after successful signup or login."""
     token: str
@@ -319,6 +325,31 @@ async def create_api_key(req: CreateApiKeyRequest, request: Request):
     except ValueError as e:
         raise HTTPException(400, str(e))
     return key_info
+
+@router.post("/change-password")
+async def change_password(req: ChangePasswordRequest, request: Request):
+    """Change the signed-in user's password. Re-verifies the current password before
+    setting the new one. Auth: portal session (JWT); acts only on the caller's tenant."""
+    tenant = _require_portal_auth(request)
+    audit = _audit_logger(request)
+    pa = _portal_auth(request)
+    try:
+        pa.change_password(tenant["tenant_id"], req.current_password, req.new_password)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"change-password error: {exc}")
+        raise HTTPException(500, "Password change failed")
+    if audit:
+        try:
+            audit.log(tenant_id=tenant["tenant_id"], actor=tenant["email"],
+                      action="change_password", resource="account")
+        except Exception:
+            pass
+    return {"status": "ok"}
+
 
 @router.post("/rotate-key")
 async def rotate_key(request: Request):

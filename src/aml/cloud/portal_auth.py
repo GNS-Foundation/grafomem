@@ -407,6 +407,42 @@ class PortalAuth:
         token = self._issue_jwt(row["id"], row["email"])
         return info, token
 
+    def change_password(self, tenant_id: str, current_password: str, new_password: str) -> None:
+        """Change the legacy email/password for an already-authenticated tenant.
+
+        Verifies `current_password` against the stored bcrypt hash before setting the
+        new one — the caller is authenticated (portal JWT), but re-verifying the
+        current password is the standard guard against session-hijack password takeover.
+        Raises ValueError (→ HTTP 400) on any failure; never reveals more than needed."""
+        if _bcrypt is None:
+            raise RuntimeError("bcrypt not installed — cannot change password")
+        if not new_password or len(new_password) < 8:
+            raise ValueError("New password must be at least 8 characters")
+        if new_password == current_password:
+            raise ValueError("New password must differ from the current password")
+
+        conn = self._get_conn()
+        row = conn.execute(
+            "SELECT password_hash FROM tenants WHERE id = %s", (tenant_id,),
+        ).fetchone()
+        if not row:
+            raise ValueError("Account not found")
+        ph = row.get("password_hash")
+        if not ph:
+            # SSO / Supabase-managed account — no local password to change here.
+            raise ValueError("No password is set for this account (managed via SSO)")
+        if not _bcrypt.checkpw(current_password.encode("utf-8"), ph.encode("ascii")):
+            raise ValueError("Current password is incorrect")
+
+        new_hash = _bcrypt.hashpw(
+            new_password.encode("utf-8"), _bcrypt.gensalt(),
+        ).decode("ascii")
+        conn.execute(
+            "UPDATE tenants SET password_hash = %s WHERE id = %s",
+            (new_hash, tenant_id),
+        )
+        logger.info("Password changed for tenant %s", tenant_id)
+
     # ------------------------------------------------------------------
     # JWT (legacy self-issued + Supabase verification)
     # ------------------------------------------------------------------
