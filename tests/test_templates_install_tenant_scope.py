@@ -60,6 +60,18 @@ def test_install_requires_auth_context():
     assert wm.calls == []                       # nothing written
 
 
+def test_install_fails_closed_on_present_ctx_but_empty_tenant_id():
+    # Authed context present (scopes pass require_scope) but tenant_id is blank ⇒ MUST
+    # 401 and write nothing — never fall back to any default/hardcoded tenant.
+    wm = _FakeWM()
+    install = _install_ep(get_template_routes(wm))
+    req = SimpleNamespace(state=SimpleNamespace(tenant=SimpleNamespace(tenant_id="", scopes=["*"])))
+    with pytest.raises(HTTPException) as ei:
+        install(_body("virtualbank-receivables"), req)
+    assert ei.value.status_code == 401
+    assert wm.calls == []
+
+
 def test_receivables_template_compiles_to_21_types():
     wm = _FakeWM()
     install = _install_ep(get_template_routes(wm))
