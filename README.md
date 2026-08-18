@@ -142,6 +142,25 @@ python -m scripts.run_w3               # F6, F7 — distractor noise; the embedd
 python -m scripts.scale_probe          # corpus latency + sqlite-vec vs brute force
 ```
 
+### Secret scanning
+
+Custom [gitleaks](https://github.com/gitleaks/gitleaks) rules (`.gitleaks.toml`) catch the
+two grafomem-specific traps — the Fernet **provider-encryption key** and the **master key /
+KEK** — with keyword/context anchoring (the repo is full of legit 64-hex and base64, so
+bare-format rules are avoided). This runs alongside the GitGuardian app; CI enforces it
+diff-scoped (blocking).
+
+Enable the local pre-commit hook once per clone (needs `gitleaks` installed —
+`brew install gitleaks`):
+
+```bash
+make secret-hooks        # = git config core.hooksPath .githooks
+make secret-corpus       # self-test: rules catch positives, ignore negatives
+```
+
+The hook blocks a commit if a secret is found in your **staged** diff. CI runs the same
+rules diff-scoped on every PR (see the `secret-scan` job).
+
 ---
 
 ## Status & roadmap
