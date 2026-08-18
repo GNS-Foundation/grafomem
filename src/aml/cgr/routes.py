@@ -33,6 +33,7 @@ from aml.cgr.attestation import (
     build_attestation,
 )
 from aml.cgr.engine import compute_scores, to_tiergate
+from aml.cgr.gate import calibration_tenant_tx
 from aml.cgr.issuance import ISSUER, issuer_key_id, make_signer
 from aml.cgr.scoring import DIMENSION_RECEIVABLES, _now_iso
 
@@ -42,6 +43,42 @@ def _tenant_id(request: Request) -> str:
     if ctx is None:
         raise HTTPException(401, "Authentication required")
     return ctx.tenant_id
+
+
+def _write_calibration_audited(pool, gcrumbs, tenant_id: str, agent_key: str, w: float,
+                               n_obs: int, method: str | None, key_id) -> str:
+    """Write agent_calibration AND emit the audit gcrumb in ONE transaction-local scope
+    — a reputation-affecting write can never persist without its audit trail (or vice
+    versa). `agent_calibration` is RLS FORCE + WITH CHECK, so the single
+    transaction-local tenant GUC (= tenant_id) both authorizes the upsert (WITH CHECK)
+    and scopes the breadcrumb write, which joins this same connection/transaction
+    (`gcrumbs_breadcrumbs` is same-tenant, RLS-off, explicit `WHERE tenant_id`). gcrumbs
+    is REQUIRED (503 upstream if absent); the payload carries only public identifiers
+    (the agent_key pubkey) + the weight — no tenant content.
+
+    Module-level (not nested in the router factory) so the real write path is unit
+    testable under a restricted RLS role. Transaction-local GUC via
+    ``calibration_tenant_tx`` — the fragile session-scoped setter + finally-reset was
+    removed here to match the world-model pattern (grafomem PR #46)."""
+    with calibration_tenant_tx(pool, tenant_id) as conn:     # atomic: both INSERTs or neither
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO agent_calibration (tenant_id, agent_key, calibration_weight, "
+                "n_observations, method, as_of) VALUES (%s,%s,%s,%s,%s, now()) "
+                "ON CONFLICT (tenant_id, agent_key) DO UPDATE SET "
+                "calibration_weight=EXCLUDED.calibration_weight, "
+                "n_observations=EXCLUDED.n_observations, method=EXCLUDED.method, as_of=now()",
+                (tenant_id, agent_key, w, int(n_obs), method))
+        payload = {
+            "agent_key": agent_key, "calibration_weight": w,
+            "n_observations": int(n_obs), "method": method or "",
+            "authority_key_id": key_id or "", "schema": "cgr.calibration.v1",
+        }
+        # same conn ⇒ the breadcrumb write joins this transaction (no self-commit).
+        # bc is a plain dict materialized inside the scope — the return does NOT read
+        # the DB after commit, so there is no post-transaction GUC-dependent read.
+        bc = gcrumbs.append_breadcrumb(tenant_id, "cgr:calibration:write", payload, conn=conn)
+        return bc.get("breadcrumb_id")
 
 
 def create_cgr_scoring_router(decision_trail, store_manager) -> APIRouter:
@@ -161,40 +198,6 @@ def create_cgr_issuance_router(
         if not is_sa:
             raise HTTPException(403, "calibration:write is restricted to the service-account identity authority")
 
-    def _write_calibration_audited(pool, tenant_id: str, agent_key: str, w: float,
-                                   n_obs: int, method: str | None, key_id) -> str:
-        """Write agent_calibration AND emit the audit gcrumb in ONE transaction — a
-        reputation-affecting write can never persist without its audit trail (or vice
-        versa). gcrumbs is REQUIRED (503 upstream if absent); the payload carries only
-        public identifiers (the agent_key pubkey) + the weight — no tenant content."""
-        conn = pool.getconn()
-        try:
-            with conn.transaction():                     # atomic: both INSERTs or neither
-                with conn.cursor() as cur:
-                    cur.execute("SELECT set_config('app.current_tenant', %s, false)", (tenant_id,))
-                    cur.execute(
-                        "INSERT INTO agent_calibration (tenant_id, agent_key, calibration_weight, "
-                        "n_observations, method, as_of) VALUES (%s,%s,%s,%s,%s, now()) "
-                        "ON CONFLICT (tenant_id, agent_key) DO UPDATE SET "
-                        "calibration_weight=EXCLUDED.calibration_weight, "
-                        "n_observations=EXCLUDED.n_observations, method=EXCLUDED.method, as_of=now()",
-                        (tenant_id, agent_key, w, int(n_obs), method))
-                payload = {
-                    "agent_key": agent_key, "calibration_weight": w,
-                    "n_observations": int(n_obs), "method": method or "",
-                    "authority_key_id": key_id or "", "schema": "cgr.calibration.v1",
-                }
-                # same conn ⇒ the breadcrumb write joins this transaction (no self-commit)
-                bc = gcrumbs.append_breadcrumb(tenant_id, "cgr:calibration:write", payload, conn=conn)
-            return bc.get("breadcrumb_id")
-        finally:
-            try:
-                with conn.cursor() as cur:
-                    cur.execute("SELECT set_config('app.current_tenant', '', false)")
-            except Exception:
-                pass
-            pool.putconn(conn)
-
     @router.put("/calibration/{agent_key}")
     async def put_calibration(agent_key: str, body: CalibrationBody, request: Request):
         require_scope(request, "calibration:write")
@@ -213,7 +216,7 @@ def create_cgr_issuance_router(
             raise HTTPException(503, "calibration:write requires the audit chain (gcrumbs) — refusing an unaudited write")
         actor = request.headers.get("X-Actor-Agent-Key")  # belt-and-suspenders self-guard
         _require_calibration_authority(pool, tenant_id, key_id, agent_key, actor)
-        evidence_ref = _write_calibration_audited(pool, tenant_id, agent_key, w,
+        evidence_ref = _write_calibration_audited(pool, gcrumbs, tenant_id, agent_key, w,
                                                   body.n_observations, body.method, key_id)
         return {"tenant_id": tenant_id, "agent_key": agent_key, "calibration_weight": w,
                 "n_observations": body.n_observations, "evidence_ref": evidence_ref}

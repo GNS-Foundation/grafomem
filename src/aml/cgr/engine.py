@@ -210,29 +210,19 @@ def _resolve_gate_for(decision_trail, tenant_id: str):
     """(review_gate, cap_k) for the tenant, or (None, None) if the gate is off or the
     cgr_gate_config / agent_calibration tables aren't migrated. NEVER raises — any
     failure resolves to neutral, preserving byte-identical v1 scoring."""
-    from aml.cgr.gate import resolve_review_gate
+    from aml.cgr.gate import calibration_tenant_tx, resolve_review_gate
     pool = getattr(decision_trail, "_pool", None)
     if pool is None:
         return None, None
-    conn = None
     try:
-        conn = pool.getconn()
-        with conn.cursor() as cur:                       # RLS-scope this read to the tenant
-            cur.execute("SELECT set_config('app.current_tenant', %s, false)", (tenant_id,))
-        return resolve_review_gate(conn, tenant_id)
+        # Transaction-local tenant GUC (RLS-scoped read of cgr_gate_config +
+        # agent_calibration). The gate/cap_k are materialized INSIDE the scope — the
+        # returned review_gate closes over a plain dict, so nothing reads the DB after
+        # the transaction commits. Any failure ⇒ neutral (never raises).
+        with calibration_tenant_tx(pool, tenant_id) as conn:
+            return resolve_review_gate(conn, tenant_id)
     except Exception:
         return None, None
-    finally:
-        if conn is not None:
-            try:
-                with conn.cursor() as cur:
-                    cur.execute("SELECT set_config('app.current_tenant', '', false)")
-            except Exception:
-                pass
-            try:
-                pool.putconn(conn)
-            except Exception:
-                pass
 
 
 def to_tiergate(r: CGRResult, *, min_resolved: int = MIN_RESOLVED_PROVEN) -> dict:
