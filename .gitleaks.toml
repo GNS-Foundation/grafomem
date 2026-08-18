@@ -1,0 +1,51 @@
+title = "grafomem custom secret rules"
+
+# Division of labour: GitGuardian (SaaS app, already on PRs) is the BROAD net for
+# generic secrets (AWS/GCP keys, private keys, tokens). This gitleaks config is the
+# TARGETED net for the two grafomem-specific traps GitGuardian doesn't know about —
+# the Fernet provider-encryption key and the master key / KEK. Rules are
+# keyword/context-anchored, NOT bare-format: the repo is full of legit 64-hex
+# (payload_hash, schema_digest, breadcrumb_id, BLAKE2b digests) and 44-char base64, so
+# a bare-format rule would false-positive itself into being disabled.
+#
+# useDefault = true: run gitleaks' curated default ruleset (AWS/GCP/GitHub tokens,
+# private keys, …) IN ADDITION to the three grafomem-specific rules below. The win is
+# OFFLINE, catch-before-push coverage in the pre-commit hook — GitGuardian only scans
+# server-side after push. The three custom rules still add the two formats defaults miss
+# (the Fernet provider-encryption key and the grafomem master key / KEK). Diff-scoped, so
+# defaults only ever evaluate NEW changes — never the existing tree/history.
+[extend]
+useDefault = true
+
+# ── Trap 1: Fernet / provider-encryption key (44-char urlsafe base64), keyword-anchored ──
+[[rules]]
+id = "grafomem-fernet-encryption-key"
+description = "Fernet/provider encryption key assigned near a known env var"
+keywords = ["provider_encryption_key", "fernet", "encryption_key"]
+regex = '''(?i)(?:PROVIDER_ENCRYPTION_KEY|FERNET|ENCRYPTION_KEY)[^\r\n]{0,25}?['"]?([A-Za-z0-9_-]{43}=)['"]?'''
+
+# ── Trap 2: grafomem master key / KEK (32-byte hex = 64 hex chars), keyword-anchored ──
+[[rules]]
+id = "grafomem-master-key-hex"
+description = "grafomem master key / KEK (64 hex chars) assigned near a known env var"
+keywords = ["grafomem_master_key", "master_key", "grafomem_kek"]
+regex = '''(?i)(?:GRAFOMEM_MASTER_KEY|MASTER_KEY|GRAFOMEM_KEK)[^\r\n]{0,25}?['"]?([0-9a-fA-F]{64})\b'''
+
+# ── Trap 3: Fernet token (gAAAAA… prefix). High-confidence, low-FP. Source-scoped —
+#    real ciphertext lives in encrypted DB columns, never in committed source. ──
+[[rules]]
+id = "grafomem-fernet-token"
+description = "Fernet token (gAAAAA… base64) present in source"
+keywords = ["gaaaaa"]
+regex = '''\b(gAAAAA[A-Za-z0-9_\-]{10,}={0,2})'''
+
+[allowlist]
+# No secret-shaped fixtures are committed — the corpus verifier generates its
+# positives/negatives at runtime — so there is nothing there to allowlist.
+description = "Non-source data/binary"
+paths = [
+  '''\.(png|jpe?g|gif|pdf|ipynb|parquet|bin|whl|so|dylib)$''',
+]
+
+# NOTE: the known dead key at scripts/migrate_prod_keys.py:7 is deliberately NOT
+# baselined here — it stays catchable. Its removal is task (b)'s job.

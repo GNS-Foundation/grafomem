@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# grafomem secret-scanner pre-commit hook (task d).
+# Blocks a local commit when gitleaks finds a secret in the STAGED diff, using the
+# repo's keyword-anchored rules (.gitleaks.toml). Complements GitGuardian + the CI job.
+#
+# Enable once per clone:   git config core.hooksPath .githooks
+# (see `make secret-hooks` / README "Secret scanning").
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+CONFIG="$REPO_ROOT/.gitleaks.toml"
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "⚠️  gitleaks not installed — skipping the local secret scan."
+  echo "    The CI 'secret-scan' job still enforces this on your PR (blocking)."
+  echo "    Install locally: brew install gitleaks  |  https://github.com/gitleaks/gitleaks"
+  exit 0
+fi
+
+# --redact so a detected secret is never echoed into the terminal / hook output.
+if ! gitleaks git --staged --config "$CONFIG" --no-banner --redact; then
+  echo ""
+  echo "❌ gitleaks: a secret was detected in your STAGED changes — commit blocked."
+  echo "   • Remove the secret; use an env var / secret manager instead."
+  echo "   • Real false positive? Tighten the ANCHOR in .gitleaks.toml — never blanket-ignore."
+  exit 1
+fi
