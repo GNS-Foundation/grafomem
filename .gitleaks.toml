@@ -8,11 +8,14 @@ title = "grafomem custom secret rules"
 # (payload_hash, schema_digest, breadcrumb_id, BLAKE2b digests) and 44-char base64, so
 # a bare-format rule would false-positive itself into being disabled.
 #
-# useDefault = false on purpose (generic-secret coverage is GitGuardian's job; keeps
-# this net deterministic + low-FP). Flip to true later if you want gitleaks' curated
-# ruleset on top.
+# useDefault = true: run gitleaks' curated default ruleset (AWS/GCP/GitHub tokens,
+# private keys, …) IN ADDITION to the three grafomem-specific rules below. The win is
+# OFFLINE, catch-before-push coverage in the pre-commit hook — GitGuardian only scans
+# server-side after push. The three custom rules still add the two formats defaults miss
+# (the Fernet provider-encryption key and the grafomem master key / KEK). Diff-scoped, so
+# defaults only ever evaluate NEW changes — never the existing tree/history.
 [extend]
-useDefault = false
+useDefault = true
 
 # ── Trap 1: Fernet / provider-encryption key (44-char urlsafe base64), keyword-anchored ──
 [[rules]]

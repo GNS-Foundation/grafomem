@@ -66,9 +66,15 @@ def _build_corpus(dirpath: str) -> tuple[set[int], set[int]]:
         # ordinary base64 (decodes to readable text) and a 40-char git SHA
         'config_blob_b64 = "dGhlIHF1aWNrIGJyb3duIGZveCBqdW1wcyBvdg=="',
         'commit_sha = "15385815b1c1ffb78a4ae15d03f873861f07aea2"',
-        # adversarial: contains "key" but NOT an anchored env var → must stay silent
+        # adversarial: "key" in the name + a Fernet-shaped value, but no fernet env-var
+        # anchor → our fernet rule must stay silent (and it's clean under defaults too).
         f'public_key_fingerprint = "{_fernet_key()}"',
-        f'api_key_hash = "{secrets.token_hex(32)}"',
+        # plain 64-hex content hash outside any master-key context — silent under our
+        # master rule AND unambiguously not-a-secret to gitleaks' default rules.
+        # (An `api_key_hash = <hex>` here would legitimately trip the DEFAULT
+        # generic-api-key rule — reshaped rather than allow-listed, so the corpus stays
+        # a clean "zero negatives under the full ruleset" guarantee.)
+        f'content_sha256 = "{secrets.token_hex(32)}"',
     ]
 
     def _write(name: str, lines: list[str]) -> set[int]:
