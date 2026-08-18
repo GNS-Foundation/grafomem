@@ -22,8 +22,36 @@ Populating `w` is gated on that write-path enforcement being reviewed and in pla
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Callable, Mapping
+
+
+@contextmanager
+def calibration_tenant_tx(pool, tenant_id: str):
+    """Transaction-local tenant scope for the RLS-FORCEd calibration tables
+    (`agent_calibration`, `cgr_gate_config`), plus the same-tenant audit write that
+    joins the scope (`gcrumbs_breadcrumbs`).
+
+    Opens ``conn.transaction()`` FIRST, then sets ``app.current_tenant`` with
+    ``is_local=True`` so Postgres auto-resets the GUC at COMMIT/ROLLBACK — no
+    session-scoped setter, no ``finally``-reset, no risk of the tenant GUC leaking to
+    the next borrower of a pooled connection. Yields the connection so a single scope
+    can cover a read (config + calibration) OR an atomic write (calibration upsert +
+    audit breadcrumb).
+
+    Canonical pattern: ``aml.cloud.world_model.WorldModelService._tenant_tx``
+    (grafomem PR #46). TODO(cleanup): unify these two into one shared db helper —
+    deferred; do NOT re-touch the shipped WorldModelService in this change.
+    """
+    conn = pool.getconn()
+    try:
+        with conn.transaction():                                   # opens FIRST
+            with conn.cursor() as cur:
+                cur.execute("SELECT set_config('app.current_tenant', %s, true)", (tenant_id,))
+            yield conn
+    finally:
+        pool.putconn(conn)
 
 
 def review_gate_g(w: float | None, tau: float) -> float:
