@@ -562,6 +562,49 @@ class DecisionTrailService:
             "total_tokens": row["total_tokens"],
         }
 
+    def get_usage(
+        self,
+        tenant_id: str,
+        period_start: "datetime",
+        period_end: "datetime",
+    ) -> dict[str, Any]:
+        """Period-scoped count of GOVERNED decisions for a tenant (Cloud Metering
+        Phase 1). Distinct from ``get_stats`` (lifetime aggregate) — this is a
+        billing-usage read-model over a half-open window ``[period_start, period_end)``.
+
+        Governed-decision predicate: ``parameters->>'cgr_schema' = 'cgr.decision.v1'``
+        — the governance-event marker, deliberately NOT ``decision IN ('certify',
+        'reject')`` so a future decision verb still counts. A ``{certify, reject}``
+        breakdown is returned for display only.
+
+        No replay/dry-run exclusion is needed: replays (``GET /{id}/replay``) are
+        read-only reconstructions and never INSERT a row (the sole insert path is
+        ``log()``), so ``decision_records`` contains no replay rows. ``parent_decision_id``
+        marks real orchestrator workflow steps (genuine governed decisions), not replays,
+        so it is intentionally NOT excluded.
+
+        Uses ``idx_dr_tenant_time (tenant_id, created_at DESC)`` for the range scan;
+        the ``parameters->>'cgr_schema'`` filter is applied on the range-scanned rows.
+        """
+        conn = self._get_conn()
+        row = conn.execute(
+            "SELECT "
+            "  COUNT(*)                                                                    AS governed_decisions, "
+            "  COALESCE(SUM(CASE WHEN parameters->>'decision' = 'certify' THEN 1 ELSE 0 END), 0) AS certify, "
+            "  COALESCE(SUM(CASE WHEN parameters->>'decision' = 'reject'  THEN 1 ELSE 0 END), 0) AS reject "
+            "FROM decision_records "
+            "WHERE tenant_id = %s "
+            "  AND created_at >= %s AND created_at < %s "
+            "  AND parameters->>'cgr_schema' = 'cgr.decision.v1'",
+            (tenant_id, period_start, period_end),
+        ).fetchone()
+        if row is None:
+            return {"governed_decisions": 0, "breakdown": {"certify": 0, "reject": 0}}
+        return {
+            "governed_decisions": row["governed_decisions"],
+            "breakdown": {"certify": row["certify"], "reject": row["reject"]},
+        }
+
     def export(
         self,
         tenant_id: str,

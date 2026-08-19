@@ -872,6 +872,12 @@ def create_app(
             app.include_router(decision_router)
             logger.info("Decision Trail enabled (/v1/decisions)")
 
+            # Cloud Metering Phase 1 — governed-decision usage read-model (additive,
+            # read-only; reads decision_trail/tenant_manager/stripe_billing lazily).
+            from aml.cloud.usage_routes import create_usage_router
+            app.include_router(create_usage_router())
+            logger.info("Usage read-model enabled (/v1/usage)")
+
             # Erasure Proof — GDPR Article 17 signed certificates
             from aml.cloud.erasure_proof import ErasureProofService
             from aml.cloud.erasure_routes import create_erasure_router
