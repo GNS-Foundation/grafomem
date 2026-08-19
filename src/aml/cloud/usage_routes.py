@@ -17,15 +17,16 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request
 
+from aml.cloud.plan_config import (
+    INCLUDED_ALLOTMENT,
+    INCLUDED_ALLOTMENT_IS_PLACEHOLDER,
+    WARN_PCT,
+)
 from aml.server.scopes import require_scope
 
-# PLACEHOLDER allotments — display anchors for the usage bar ONLY. NOT final pricing,
-# NOT enforced. Real allotments/pricing are a later, separately-attested step.
-PLACEHOLDER_INCLUDED_ALLOTMENT: dict[str, int | None] = {
-    "starter": 10_000,
-    "pro": 100_000,
-    "enterprise": None,  # unlimited / custom — no numeric allotment
-}
+# Back-compat alias for the Phase-1 name; the canonical tunables now live in plan_config
+# (INCLUDED_ALLOTMENT + WARN_PCT). Still display-only, still not enforced.
+PLACEHOLDER_INCLUDED_ALLOTMENT = INCLUDED_ALLOTMENT
 
 
 def _minus_one_month(dt: datetime) -> datetime:
@@ -65,6 +66,76 @@ def resolve_current_period(
     return start, end, "calendar_month"
 
 
+def _compute_state(
+    governed_decisions: int,
+    included_allotment: int | None,
+    warn_pct: float = WARN_PCT,
+) -> tuple[str, float | None]:
+    """Classify a period's governed-decision count → ``(state, pct_used)``.
+
+    ``state ∈ {"normal", "approaching", "at_or_over"}``. ``included_allotment`` of
+    ``None`` (or 0) — enterprise/custom, or no allotment configured — yields
+    ``("normal", None)``: nothing to be near, and no divide-by-None.
+
+    DISPLAY/UX ONLY. This CLASSIFIES usage for the console; it computes no limit and
+    NEVER blocks, denies, or throttles a decision. ``at_or_over`` is informational.
+    """
+    if not included_allotment:  # None or 0
+        return "normal", None
+    pct_used = round(100.0 * governed_decisions / included_allotment, 1)
+    if governed_decisions >= included_allotment:
+        return "at_or_over", pct_used
+    if governed_decisions >= warn_pct * included_allotment:
+        return "approaching", pct_used
+    return "normal", pct_used
+
+
+def resolve_usage_state(
+    tenant_id: str,
+    decision_trail,
+    tenant_manager=None,
+    stripe_billing=None,
+) -> dict:
+    """Full current-period usage-state read-model for a tenant (Metering Phase 2).
+
+    Reuses the Phase-1 ``DecisionTrailService.get_usage`` (UNMODIFIED) and adds the
+    display-only ``state`` / ``pct_used`` classification. No enforcement, no ceiling —
+    a tenant ``at_or_over`` its (placeholder) allotment is never blocked.
+    """
+    plan = "starter"
+    if tenant_manager is not None:
+        try:
+            info = tenant_manager.get_tenant(tenant_id)
+            if info is not None and info.plan:
+                plan = info.plan
+        except Exception:
+            pass
+
+    sub_end = None
+    if stripe_billing is not None:
+        try:
+            sub = stripe_billing.get_subscription(tenant_id)
+            sub_end = sub.current_period_end if sub else None
+        except Exception:
+            sub_end = None
+
+    start, end, source = resolve_current_period(tenant_id, sub_end)
+    usage = decision_trail.get_usage(tenant_id, start, end)
+    allotment = INCLUDED_ALLOTMENT.get(plan)
+    state, pct_used = _compute_state(usage["governed_decisions"], allotment)
+
+    return {
+        "plan": plan,
+        "period": {"start": start.isoformat(), "end": end.isoformat(), "source": source},
+        "governed_decisions": usage["governed_decisions"],
+        "breakdown": usage["breakdown"],
+        "included_allotment": allotment,
+        "is_placeholder": INCLUDED_ALLOTMENT_IS_PLACEHOLDER,
+        "pct_used": pct_used,
+        "state": state,
+    }
+
+
 def create_usage_router() -> APIRouter:
     """Mount ``/v1/usage``. Services are read LAZILY from ``request.app.state`` so this
     is safe to include before ``tenant_manager`` / ``stripe_billing`` are constructed."""
@@ -81,38 +152,11 @@ def create_usage_router() -> APIRouter:
         decision_trail = getattr(request.app.state, "decision_trail", None)
         if decision_trail is None:
             raise HTTPException(503, "Decision trail not available")
-
-        # plan — source of truth is tenants.plan (via TenantManager)
-        plan = "starter"
         tm = getattr(request.app.state, "tenant_manager", None)
-        if tm is not None:
-            try:
-                info = tm.get_tenant(tenant_id)
-                if info is not None and info.plan:
-                    plan = info.plan
-            except Exception:
-                pass
-
-        # optional subscription anchor for the billing period
-        sub_end = None
         sb = getattr(request.app.state, "stripe_billing", None)
-        if sb is not None:
-            try:
-                sub = sb.get_subscription(tenant_id)
-                sub_end = sub.current_period_end if sub else None
-            except Exception:
-                sub_end = None
 
-        start, end, source = resolve_current_period(tenant_id, sub_end)
-        usage = decision_trail.get_usage(tenant_id, start, end)
-
-        return {
-            "period": {"start": start.isoformat(), "end": end.isoformat(), "source": source},
-            "governed_decisions": usage["governed_decisions"],
-            "breakdown": usage["breakdown"],
-            "plan": plan,
-            "included_allotment": PLACEHOLDER_INCLUDED_ALLOTMENT.get(plan),
-            "included_allotment_is_placeholder": True,
-        }
+        s = resolve_usage_state(tenant_id, decision_trail, tenant_manager=tm, stripe_billing=sb)
+        # Additive: Phase-1 shape preserved (incl. the old key) + state/pct_used/is_placeholder.
+        return {**s, "included_allotment_is_placeholder": s["is_placeholder"]}
 
     return router
