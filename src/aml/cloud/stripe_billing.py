@@ -316,30 +316,22 @@ class StripeBillingService:
     # ------------------------------------------------------------------
     # Phase 3b additive webhook handlers
     #
-    # These use bracket access + membership tests, NOT ``.get`` — a StripeObject
-    # (``event["data"]["object"]``) raises ``AttributeError`` on ``.get`` in the
-    # installed stripe lib. Kept separate from the four legacy handlers.
+    # These use the module-level ``_sg`` (bracket access + membership test), NOT
+    # ``.get`` — a StripeObject (``event["data"]["object"]``) raises ``AttributeError``
+    # on ``.get`` in the installed stripe lib. Kept separate from the four legacy handlers.
     # ------------------------------------------------------------------
-
-    @staticmethod
-    def _sg(obj, key, default=None):
-        """Safe StripeObject/dict get (``.get`` is unavailable on StripeObject)."""
-        try:
-            return obj[key] if (obj is not None and key in obj) else default
-        except Exception:  # noqa: BLE001
-            return default
 
     def _on_subscription_updated(self, subscription) -> None:
         """Additive: keep the local mirror's status / period_end fresh. Never destructive."""
-        customer_id = self._sg(subscription, "customer")
+        customer_id = _sg(subscription, "customer")
         if not customer_id:
             return
-        status = self._sg(subscription, "status")
-        cpe = self._sg(subscription, "current_period_end")
+        status = _sg(subscription, "status")
+        cpe = _sg(subscription, "current_period_end")
         if not cpe:  # newer API nests period end per item
-            items = self._sg(self._sg(subscription, "items", {}), "data", []) or []
+            items = _sg(_sg(subscription, "items", {}), "data", []) or []
             if items:
-                cpe = self._sg(items[0], "current_period_end")
+                cpe = _sg(items[0], "current_period_end")
         period_end = datetime.fromtimestamp(cpe, tz=timezone.utc) if cpe else None
         conn = self._get_conn()
         conn.execute(
@@ -361,7 +353,7 @@ class StripeBillingService:
         period-end upkeep continues to flow through invoice.payment_succeeded as before."""
         logger.info(
             "invoice.finalized: customer=%s id=%s total=%s",
-            self._sg(invoice, "customer"), self._sg(invoice, "id"), self._sg(invoice, "total"),
+            _sg(invoice, "customer"), _sg(invoice, "id"), _sg(invoice, "total"),
         )
 
     # ------------------------------------------------------------------
