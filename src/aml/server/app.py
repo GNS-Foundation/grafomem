@@ -599,6 +599,15 @@ def create_app(
                     "startup ✖ assurance_scheduler.start failed/timed out: %s — continuing", e,
                 )
 
+        # Start Usage Reporter (Phase 3b) — self-guards to a no-op unless metered-enabled;
+        # never blocks startup.
+        usage_reporter = getattr(app.state, "usage_reporter", None)
+        if usage_reporter is not None:
+            try:
+                await asyncio.wait_for(usage_reporter.start(), timeout=step_timeout)
+            except Exception as e:
+                logger.error("startup ✖ usage_reporter.start failed/timed out: %s — continuing", e)
+
         # Start DEK Invalidation Listener (background task; never blocks startup)
         tkm = getattr(app.state, "tenant_key_manager", None)
         invalidation_task = None
@@ -615,7 +624,8 @@ def create_app(
                          "decision_trail", "erasure_proof", "governance_gateway",
                          "regulatory_reports", "llm_registry", "tool_registry",
                          "orchestrator", "portal_auth", "stripe_billing",
-                         "webhook_service", "assurance_service", "push_dispatch"):
+                         "webhook_service", "assurance_service", "push_dispatch",
+                         "usage_reporter"):
             svc = getattr(app.state, svc_name, None)
             if svc is not None and hasattr(svc, "close"):
                 svc.close()
@@ -624,6 +634,11 @@ def create_app(
         assurance_scheduler = getattr(app.state, "assurance_scheduler", None)
         if assurance_scheduler is not None:
             await assurance_scheduler.stop()
+
+        # Stop usage reporter (Phase 3b)
+        usage_reporter = getattr(app.state, "usage_reporter", None)
+        if usage_reporter is not None:
+            await usage_reporter.stop()
         
         manifold_svc = getattr(app.state, "manifold_service", None)
         if manifold_svc is not None and hasattr(manifold_svc, "stop_background_worker"):
@@ -1249,6 +1264,23 @@ def create_app(
                 _init(sb)
                 app.state.stripe_billing = sb
                 logger.info("Stripe billing enabled")
+
+                # Phase 3b (DARK): governed-decision → Stripe usage reporter.
+                # Registered unconditionally, but its start() is a no-op unless
+                # metered_enabled() (all three STRIPE_METER_ID/BASE/OVERAGE set), so
+                # this is fully inert until those env vars are present.
+                try:
+                    from aml.cloud.usage_reporter import UsageReporter
+                    _dt = getattr(app.state, "decision_trail", None)
+                    if _dt is not None:
+                        app.state.usage_reporter = UsageReporter(
+                            db_url, _dt, sb,
+                            tenant_manager=getattr(app.state, "tenant_manager", None),
+                            pool=pool,
+                        )
+                        logger.info("Usage reporter registered (dark unless metered-enabled)")
+                except Exception as e:
+                    logger.warning("Usage reporter registration skipped: %s", e)
         except ImportError as e:
             logger.warning("Stripe billing unavailable (missing deps): %s", e)
         except Exception as e:

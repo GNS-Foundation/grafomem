@@ -206,12 +206,26 @@ class StripeBillingService:
             If the plan has no associated Stripe Price ID.
         """
         stripe = _get_stripe()
-        price_id = _price_ids().get(plan)
-        if not price_id:
-            raise ValueError(
-                f"No Stripe Price ID configured for plan {plan!r}. "
-                "Set STRIPE_{PLAN}_PRICE_ID environment variable."
-            )
+
+        # Metered branch (Phase 3b, DARK): only when all three metered env vars are
+        # present AND this is the self-serve Pro upgrade. Builds a two-item subscription
+        # — flat licensed base ($) + a metered overage item tied to the sum-meter. When
+        # metered is not enabled the `else` below is byte-for-byte the legacy flat flow.
+        from aml.cloud.usage_reporter import metered_enabled, meter_config
+        if metered_enabled() and plan == "pro":
+            cfg = meter_config()
+            line_items = [
+                {"price": cfg["base_price_id"], "quantity": 1},
+                {"price": cfg["overage_price_id"]},  # metered item — no quantity
+            ]
+        else:
+            price_id = _price_ids().get(plan)
+            if not price_id:
+                raise ValueError(
+                    f"No Stripe Price ID configured for plan {plan!r}. "
+                    "Set STRIPE_{PLAN}_PRICE_ID environment variable."
+                )
+            line_items = [{"price": price_id, "quantity": 1}]
 
         # Find or create Stripe customer for this tenant
         customer_id = self._get_or_create_customer(tenant_id)
@@ -219,7 +233,7 @@ class StripeBillingService:
         session = stripe.checkout.Session.create(
             customer=customer_id,
             payment_method_types=["card"],
-            line_items=[{"price": price_id, "quantity": 1}],
+            line_items=line_items,
             mode="subscription",
             success_url=success_url,
             cancel_url=cancel_url,
@@ -287,10 +301,68 @@ class StripeBillingService:
             self._on_payment_failed(data)
         elif event_type == "customer.subscription.deleted":
             self._on_subscription_deleted(data)
+        # ── Phase 3b additive handlers (existing four above are untouched) ──
+        elif event_type == "customer.subscription.updated":
+            self._on_subscription_updated(data)
+        elif event_type == "billing.meter.error_report_triggered":
+            self._on_meter_error(data)
+        elif event_type == "invoice.finalized":
+            self._on_invoice_finalized(data)
         else:
             logger.debug("Unhandled Stripe event: %s", event_type)
 
         return {"status": "ok", "event_type": event_type}
+
+    # ------------------------------------------------------------------
+    # Phase 3b additive webhook handlers
+    #
+    # These use bracket access + membership tests, NOT ``.get`` — a StripeObject
+    # (``event["data"]["object"]``) raises ``AttributeError`` on ``.get`` in the
+    # installed stripe lib. Kept separate from the four legacy handlers.
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _sg(obj, key, default=None):
+        """Safe StripeObject/dict get (``.get`` is unavailable on StripeObject)."""
+        try:
+            return obj[key] if (obj is not None and key in obj) else default
+        except Exception:  # noqa: BLE001
+            return default
+
+    def _on_subscription_updated(self, subscription) -> None:
+        """Additive: keep the local mirror's status / period_end fresh. Never destructive."""
+        customer_id = self._sg(subscription, "customer")
+        if not customer_id:
+            return
+        status = self._sg(subscription, "status")
+        cpe = self._sg(subscription, "current_period_end")
+        if not cpe:  # newer API nests period end per item
+            items = self._sg(self._sg(subscription, "items", {}), "data", []) or []
+            if items:
+                cpe = self._sg(items[0], "current_period_end")
+        period_end = datetime.fromtimestamp(cpe, tz=timezone.utc) if cpe else None
+        conn = self._get_conn()
+        conn.execute(
+            "UPDATE subscriptions SET "
+            "  status = COALESCE(%s, status), "
+            "  current_period_end = COALESCE(%s, current_period_end) "
+            "WHERE stripe_customer_id = %s",
+            (status, period_end, customer_id),
+        )
+        logger.info("subscription.updated: customer=%s status=%s", customer_id, status)
+
+    def _on_meter_error(self, data) -> None:
+        """Additive: Stripe rejected/malformed meter events surface here. Log loudly; no
+        state change (the reporter's own reconcile is the corrective path)."""
+        logger.error("STRIPE METER ERROR report_triggered: %s", data)
+
+    def _on_invoice_finalized(self, invoice) -> None:
+        """Additive: an invoice (incl. metered overage lines) was finalized. Log for audit;
+        period-end upkeep continues to flow through invoice.payment_succeeded as before."""
+        logger.info(
+            "invoice.finalized: customer=%s id=%s total=%s",
+            self._sg(invoice, "customer"), self._sg(invoice, "id"), self._sg(invoice, "total"),
+        )
 
     # ------------------------------------------------------------------
     # Subscription queries
