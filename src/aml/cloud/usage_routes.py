@@ -40,22 +40,37 @@ def _minus_one_month(dt: datetime) -> datetime:
 
 def resolve_current_period(
     tenant_id: str,
+    subscription_period_start: datetime | None = None,
     subscription_period_end: datetime | None = None,
     now: datetime | None = None,
 ) -> tuple[datetime, datetime, str]:
     """Return ``(period_start, period_end, source)`` for the tenant's current usage
     window, half-open ``[start, end)`` to match ``DecisionTrailService.get_usage``.
 
-    * subscription anchor — when ``subscription_period_end`` is known, the monthly
-      window ending at it: ``[end - 1 month, end)``, source ``"subscription"``.
-    * else — the UTC calendar month containing ``now()``, source ``"calendar_month"``.
+    * subscription — when BOTH real Stripe ``current_period_start`` and ``…_end`` are
+      known, use them verbatim: ``[start, end)``, source ``"subscription"``. This is the
+      Phase-3d fix: the true billing window (correct for annual/any interval), not an
+      assumed monthly span.
+    * subscription (end only) — legacy/back-compat when only the end is known (start not
+      yet populated from webhooks): the monthly window ``[end - 1 month, end)``, source
+      ``"subscription_end_only"``.
+    * else — the UTC calendar month containing ``now()``, source ``"calendar_month"``
+      (free/no-sub tenants).
     """
     now = now or datetime.now(tz=timezone.utc)
+    if subscription_period_start is not None and subscription_period_end is not None:
+        start = subscription_period_start
+        end = subscription_period_end
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=timezone.utc)
+        if end.tzinfo is None:
+            end = end.replace(tzinfo=timezone.utc)
+        return start, end, "subscription"
     if subscription_period_end is not None:
         end = subscription_period_end
         if end.tzinfo is None:
             end = end.replace(tzinfo=timezone.utc)
-        return _minus_one_month(end), end, "subscription"
+        return _minus_one_month(end), end, "subscription_end_only"
 
     now = now.astimezone(timezone.utc)
     start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -111,15 +126,17 @@ def resolve_usage_state(
         except Exception:
             pass
 
-    sub_end = None
+    sub_start = sub_end = None
     if stripe_billing is not None:
         try:
             sub = stripe_billing.get_subscription(tenant_id)
-            sub_end = sub.current_period_end if sub else None
+            if sub:
+                sub_start = getattr(sub, "current_period_start", None)
+                sub_end = sub.current_period_end
         except Exception:
-            sub_end = None
+            sub_start = sub_end = None
 
-    start, end, source = resolve_current_period(tenant_id, sub_end)
+    start, end, source = resolve_current_period(tenant_id, sub_start, sub_end)
     usage = decision_trail.get_usage(tenant_id, start, end)
     allotment = INCLUDED_ALLOTMENT.get(plan)
     state, pct_used = _compute_state(usage["governed_decisions"], allotment)
