@@ -103,16 +103,18 @@ _SCHEMA_SQL = """\
 CREATE TABLE IF NOT EXISTS usage_report_cursor (
     tenant_id       TEXT        NOT NULL,
     period_start    TIMESTAMPTZ NOT NULL,
-    last_reported   BIGINT      NOT NULL DEFAULT 0,
-    last_identifier TEXT,
+    last_reported   BIGINT      NOT NULL DEFAULT 0,    -- committed high-water-mark (write-ahead intent)
+    last_identifier TEXT,                              -- identifier of the last emit (= H(period, last_reported))
+    last_delta      BIGINT      NOT NULL DEFAULT 0,    -- value of the last emit (for idempotent recovery re-emit)
+    last_confirmed  BOOLEAN     NOT NULL DEFAULT TRUE, -- did the last emit confirm (accepted OR dup-rejected)?
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (tenant_id, period_start)
 );
 """
 
-# Grace window: a Stripe meter summary lags aggregation by ~1 min. Only flag a
-# "stripe_behind_cursor" (lost-event) drift once the cursor is older than this, so
-# normal in-flight aggregation is never misreported as drift.
+# Grace window: a Stripe meter summary lags aggregation by ~1 min. Only *alert* on a
+# persistent shortfall once the cursor is older than this, so normal in-flight
+# aggregation is never misreported as drift.
 _RECONCILE_GRACE_SEC = 300
 
 
@@ -170,38 +172,55 @@ class UsageReporter:
 
     # ---- cursor read/write -------------------------------------------------
 
-    def _read_cursor(self, tenant_id: str, period_start: datetime) -> tuple[int, str | None, datetime | None]:
+    def _read_cursor(self, tenant_id: str, period_start: datetime):
+        """Return ``(committed, last_identifier, last_delta, last_confirmed, updated_at)``."""
         row = self._get_conn().execute(
-            "SELECT last_reported, last_identifier, updated_at FROM usage_report_cursor "
-            "WHERE tenant_id = %s AND period_start = %s",
+            "SELECT last_reported, last_identifier, last_delta, last_confirmed, updated_at "
+            "FROM usage_report_cursor WHERE tenant_id = %s AND period_start = %s",
             (tenant_id, period_start),
         ).fetchone()
         if not row:
-            return 0, None, None
-        return int(row["last_reported"]), row["last_identifier"], row["updated_at"]
+            return 0, None, 0, True, None
+        return (int(row["last_reported"]), row["last_identifier"], int(row["last_delta"]),
+                bool(row["last_confirmed"]), row["updated_at"])
 
-    def _write_cursor(self, tenant_id: str, period_start: datetime, last_reported: int, identifier: str | None) -> None:
+    def _write_cursor(self, tenant_id: str, period_start: datetime, committed: int,
+                      identifier: str | None, delta: int, confirmed: bool) -> None:
+        """Durable write of the committed high-water-mark + last-emit metadata (write-ahead)."""
         self._get_conn().execute(
-            "INSERT INTO usage_report_cursor (tenant_id, period_start, last_reported, last_identifier, updated_at) "
-            "VALUES (%s, %s, %s, %s, now()) "
+            "INSERT INTO usage_report_cursor "
+            "  (tenant_id, period_start, last_reported, last_identifier, last_delta, last_confirmed, updated_at) "
+            "VALUES (%s, %s, %s, %s, %s, %s, now()) "
             "ON CONFLICT (tenant_id, period_start) DO UPDATE SET "
             "  last_reported = EXCLUDED.last_reported, "
             "  last_identifier = EXCLUDED.last_identifier, "
+            "  last_delta = EXCLUDED.last_delta, "
+            "  last_confirmed = EXCLUDED.last_confirmed, "
             "  updated_at = now()",
-            (tenant_id, period_start, last_reported, identifier),
+            (tenant_id, period_start, committed, identifier, delta, confirmed),
+        )
+
+    def _mark_confirmed(self, tenant_id: str, period_start: datetime) -> None:
+        """Flag the last emit as confirmed (landed or dup-rejected)."""
+        self._get_conn().execute(
+            "UPDATE usage_report_cursor SET last_confirmed = TRUE "
+            "WHERE tenant_id = %s AND period_start = %s",
+            (tenant_id, period_start),
         )
 
     # ---- idempotency key ---------------------------------------------------
 
     @staticmethod
-    def _identifier(tenant_id: str, period_start: datetime, current: int) -> str:
+    def _identifier(tenant_id: str, period_start: datetime, hwm: int) -> str:
         """Deterministic MeterEvent identifier keyed on the TARGET high-water-mark.
 
-        Two ticks that observe the same ``current`` produce the same identifier, so a
-        retry of an already-landed report is deduplicated by Stripe. A grown ``current``
-        yields a new identifier, but the Stripe-total guard keeps the delta correct.
+        The high-water-mark is monotonic within a period, so each hwm maps to exactly one
+        emit. A recovery re-emit for the same hwm reuses this identifier: if the original
+        landed, Stripe rejects the duplicate (no double count); if it never landed, the
+        identifier is still free and the re-emit lands. This is what makes recovery an
+        idempotent replay rather than a gap-fill against a lagging total.
         """
-        raw = f"{tenant_id}:{int(period_start.timestamp())}:{current}"
+        raw = f"{tenant_id}:{int(period_start.timestamp())}:{hwm}"
         return "gm3b-" + hashlib.sha256(raw.encode()).hexdigest()[:40]
 
     # ---- reconcile ---------------------------------------------------------
@@ -230,35 +249,69 @@ class UsageReporter:
             return None
 
     @staticmethod
-    def _classify_drift(current: int, last_reported: int, stripe_total: int | None,
-                        cursor_age_sec: float | None) -> dict | None:
-        """Surface (never correct) meter/authoritative drift.
+    def _classify_drift(current: int, committed: int, stripe_total: int | None,
+                        last_confirmed: bool, cursor_age_sec: float | None) -> dict | None:
+        """ALERT-only drift classification (never corrects downward).
 
-        * ``stripe_ahead`` — Stripe aggregated MORE than the authoritative count. An
-          over-report already happened; the delta path will freeze (report_base>current).
-        * ``stripe_behind_cursor`` — Stripe shows LESS than we recorded as reported, and
-          the cursor is past the aggregation grace window ⇒ a reported event appears lost
-          (under-billing). Surfaced for manual review; NEVER auto-topped-up.
+        * ``stripe_ahead`` — Stripe aggregated MORE than the authoritative count. This is
+          the only true over-report; it must never happen under the write-ahead scheme, so
+          it is surfaced loudly and NEVER corrected.
+        * ``stripe_behind_confirmed`` — Stripe shows LESS than the committed high-water-mark,
+          the last emit is already CONFIRMED, and the cursor is past the aggregation grace
+          window ⇒ a *confirmed* emit appears to have been reversed/lost (beyond the single
+          unconfirmed emit that per-tick recovery already re-sends). Surfaced for review.
 
-        A Stripe total between ``last_reported`` and ``current`` is normal in-flight
-        aggregation, not drift.
+        A shortfall while ``last_confirmed`` is False is the expected pending emit, which
+        per-tick recovery re-sends — not drift. A Stripe total between ``committed`` and
+        ``current`` is normal in-flight aggregation, not drift.
         """
         if stripe_total is None:
             return None
         if stripe_total > current:
             return {"type": "stripe_ahead", "stripe_total": stripe_total, "authoritative": current}
-        if stripe_total < last_reported and (cursor_age_sec is None or cursor_age_sec > _RECONCILE_GRACE_SEC):
-            return {"type": "stripe_behind_cursor", "stripe_total": stripe_total,
-                    "last_reported": last_reported, "gap": last_reported - stripe_total}
+        if (last_confirmed and stripe_total < committed
+                and (cursor_age_sec is None or cursor_age_sec > _RECONCILE_GRACE_SEC)):
+            return {"type": "stripe_behind_confirmed", "stripe_total": stripe_total,
+                    "committed": committed, "gap": committed - stripe_total}
         return None
 
     # ---- the core: report one tenant --------------------------------------
 
+    def _emit(self, cfg: dict, customer_id: str, identifier: str, value: int) -> str:
+        """Emit one MeterEvent. Returns 'accepted' or 'duplicate'; re-raises other errors.
+
+        A duplicate-identifier rejection is a SUCCESS for our purposes — it proves the
+        event with this identifier already landed, so the caller may treat it as confirmed.
+        """
+        stripe = _get_stripe()
+        try:
+            stripe.billing.MeterEvent.create(
+                event_name=cfg["event_name"],
+                identifier=identifier,
+                payload={"stripe_customer_id": customer_id, "value": str(value)},
+            )
+            return "accepted"
+        except Exception as e:  # noqa: BLE001
+            if _is_duplicate_identifier(e):
+                return "duplicate"
+            raise
+
     def report_tenant(self, tenant_id: str, *, now: datetime | None = None) -> dict:
         """Report the current-period governed-decision delta for one tenant.
 
-        Idempotent and over-bill-safe. Returns a structured result dict (never raises
-        for expected skips; Stripe emit failures propagate so the cursor is NOT advanced).
+        Over-bill-safe by construction (write-ahead intent + idempotent recovery):
+
+        1. Recover any UNCONFIRMED prior emit first by re-emitting the exact stored
+           (identifier, value). If it already landed, Stripe rejects the duplicate; if it
+           never landed, it lands. If this re-emit hard-errors, the tick ABORTS without
+           advancing — preserving the single-unconfirmed-emit invariant.
+        2. Compute the new delta against the COMMITTED cursor (never the lagging Stripe
+           total). WRITE the new high-water-mark to the cursor BEFORE emitting, so a crash
+           anywhere after this leaves the cursor already advanced — a retry then computes
+           the correct incremental delta with a fresh identifier and cannot double-report.
+        3. Emit; mark confirmed on accept/duplicate.
+
+        Returns a structured result dict. Expected skips never raise.
         """
         cfg = meter_config()
         if cfg is None:
@@ -273,67 +326,58 @@ class UsageReporter:
             tenant_id, _to_utc(sub.current_period_end) if sub.current_period_end else None, now=now,
         )
 
-        usage = self._decision_trail.get_usage(tenant_id, start, end)
-        current = int(usage["governed_decisions"])
-
-        last_reported, _last_id, updated_at = self._read_cursor(tenant_id, start)
+        committed, last_id, last_delta, last_confirmed, updated_at = self._read_cursor(tenant_id, start)
         stripe_total = self._stripe_meter_total(customer_id, cfg["meter_id"], start, end)
-
-        cursor_age = None
-        if updated_at is not None:
-            cursor_age = (datetime.now(tz=timezone.utc) - _to_utc(updated_at)).total_seconds()
-        drift = self._classify_drift(current, last_reported, stripe_total, cursor_age)
-        if drift is not None:
-            logger.warning("USAGE DRIFT tenant=%s %s", tenant_id, drift)
-
-        # Guard: never re-send what Stripe already aggregated.
-        report_base = max(last_reported, stripe_total if stripe_total is not None else 0)
-        delta = current - report_base
 
         result = {
             "tenant_id": tenant_id, "period_start": start.isoformat(), "source": source,
-            "current": current, "last_reported": last_reported,
-            "stripe_total": stripe_total, "report_base": report_base, "drift": drift,
+            "committed": committed, "stripe_total": stripe_total, "reported": 0,
         }
 
-        if delta <= 0:
-            # Nothing to bill. Keep the cursor honest (advance to reflect a landed total),
-            # but NEVER move it downward and NEVER emit.
-            new_hwm = max(last_reported, report_base if stripe_total is not None else last_reported)
-            if new_hwm > last_reported:
-                self._write_cursor(tenant_id, start, new_hwm, _last_id)
-            result["reported"] = 0
+        # ── Step 1: recover any unconfirmed prior emit (idempotent re-emit) ──
+        if last_id is not None and not last_confirmed and last_delta > 0:
+            outcome = self._emit(cfg, customer_id, last_id, last_delta)  # may raise → abort tick
+            self._mark_confirmed(tenant_id, start)
+            last_confirmed = True
+            result["recovered"] = {"identifier": last_id, "value": last_delta, "outcome": outcome}
+            logger.info("recovered unconfirmed emit tenant=%s id=%s value=%s (%s)",
+                        tenant_id, last_id, last_delta, outcome)
+
+        usage = self._decision_trail.get_usage(tenant_id, start, end)
+        current = int(usage["governed_decisions"])
+        result["current"] = current
+
+        # ── Drift is ALERT-only; never a correction ──
+        cursor_age = None
+        if updated_at is not None:
+            cursor_age = (datetime.now(tz=timezone.utc) - _to_utc(updated_at)).total_seconds()
+        drift = self._classify_drift(current, committed, stripe_total, last_confirmed, cursor_age)
+        result["drift"] = drift
+        if drift is not None:
+            logger.warning("USAGE DRIFT tenant=%s %s", tenant_id, drift)
+
+        # Defensive freeze: if Stripe already reports >= current (only possible if it is
+        # genuinely ahead — the summary lags LOW, never high), advance the cursor to stop
+        # emitting and do NOT pile on. Over-report is surfaced by the drift alert above.
+        if stripe_total is not None and stripe_total >= current:
+            if current > committed:
+                self._write_cursor(tenant_id, start, current, last_id, 0, True)
             return result
 
+        if current <= committed:
+            return result  # nothing new to bill
+
+        # ── Step 2: write-ahead the new high-water-mark BEFORE emitting ──
+        delta = current - committed
         identifier = self._identifier(tenant_id, start, current)
-        stripe = _get_stripe()
-        try:
-            stripe.billing.MeterEvent.create(
-                event_name=cfg["event_name"],
-                identifier=identifier,
-                payload={"stripe_customer_id": customer_id, "value": str(delta)},
-            )
-        except Exception as e:  # noqa: BLE001
-            if _is_duplicate_identifier(e):
-                # Stripe rejects a repeated identifier outright — which is PROOF the
-                # event for this exact high-water-mark already landed. Treat as an
-                # idempotent replay: advance the cursor, emit nothing more. This closes
-                # the crash-after-emit gap even inside the meter-summary aggregation lag,
-                # where the reconcile guard has not yet caught up. No double count possible.
-                logger.info(
-                    "meter event already exists (idempotent replay) tenant=%s id=%s — advancing cursor",
-                    tenant_id, identifier,
-                )
-                self._write_cursor(tenant_id, start, current, identifier)
-                result["reported"] = 0
-                result["idempotent_replay"] = True
-                result["identifier"] = identifier
-                return result
-            raise
-        # Advance cursor ONLY after Stripe confirms the emit.
-        self._write_cursor(tenant_id, start, current, identifier)
-        result["reported"] = delta
+        self._write_cursor(tenant_id, start, current, identifier, delta, False)
+
+        # ── Step 3: emit, then confirm ──
+        outcome = self._emit(cfg, customer_id, identifier, delta)  # may raise → cursor stays advanced+unconfirmed
+        self._mark_confirmed(tenant_id, start)
+        result["reported"] = 0 if outcome == "duplicate" else delta
         result["identifier"] = identifier
+        result["outcome"] = outcome
         return result
 
     # ---- batch + loop ------------------------------------------------------
