@@ -80,6 +80,7 @@ class SubscriptionInfo:
     status: str  # active, past_due, canceled, trialing
     current_period_end: datetime | None
     created_at: datetime
+    current_period_start: datetime | None = None  # Phase 3d — real Stripe window start
 
 
 # ============================================================================
@@ -101,6 +102,8 @@ CREATE INDEX IF NOT EXISTS idx_subscriptions_tenant
     ON subscriptions (tenant_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_stripe_customer
     ON subscriptions (stripe_customer_id);
+-- Phase 3d: real Stripe window start (additive; idempotent for existing tables).
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS current_period_start TIMESTAMPTZ;
 """
 
 
@@ -322,24 +325,29 @@ class StripeBillingService:
     # ------------------------------------------------------------------
 
     def _on_subscription_updated(self, subscription) -> None:
-        """Additive: keep the local mirror's status / period_end fresh. Never destructive."""
+        """Additive: keep the local mirror's status / period start+end fresh (Phase 3d).
+        Never destructive."""
         customer_id = _sg(subscription, "customer")
         if not customer_id:
             return
         status = _sg(subscription, "status")
+        cps = _sg(subscription, "current_period_start")
         cpe = _sg(subscription, "current_period_end")
-        if not cpe:  # newer API nests period end per item
+        if not cpe or not cps:  # newer API nests the window per item
             items = _sg(_sg(subscription, "items", {}), "data", []) or []
             if items:
-                cpe = _sg(items[0], "current_period_end")
+                cps = cps or _sg(items[0], "current_period_start")
+                cpe = cpe or _sg(items[0], "current_period_end")
+        period_start = datetime.fromtimestamp(cps, tz=timezone.utc) if cps else None
         period_end = datetime.fromtimestamp(cpe, tz=timezone.utc) if cpe else None
         conn = self._get_conn()
         conn.execute(
             "UPDATE subscriptions SET "
             "  status = COALESCE(%s, status), "
+            "  current_period_start = COALESCE(%s, current_period_start), "
             "  current_period_end = COALESCE(%s, current_period_end) "
             "WHERE stripe_customer_id = %s",
-            (status, period_end, customer_id),
+            (status, period_start, period_end, customer_id),
         )
         logger.info("subscription.updated: customer=%s status=%s", customer_id, status)
 
@@ -463,24 +471,29 @@ class StripeBillingService:
         )
 
     def _on_payment_succeeded(self, invoice) -> None:
-        """Handle successful payment — update period end."""
+        """Handle successful payment — update period start/end (Phase 3d: real window)."""
         customer_id = _sg(invoice, "customer")
         if not customer_id:
             return
 
         conn = self._get_conn()
         lines = _sg(_sg(invoice, "lines", {}), "data", [])
-        period_end = None
+        period_start = period_end = None
         if lines:
-            period_end_ts = _sg(_sg(lines[0], "period", {}), "end")
-            if period_end_ts:
-                period_end = datetime.fromtimestamp(period_end_ts, tz=timezone.utc)
+            period = _sg(lines[0], "period", {})
+            start_ts, end_ts = _sg(period, "start"), _sg(period, "end")
+            if start_ts:
+                period_start = datetime.fromtimestamp(start_ts, tz=timezone.utc)
+            if end_ts:
+                period_end = datetime.fromtimestamp(end_ts, tz=timezone.utc)
 
+        # COALESCE keeps a known start/end when a particular invoice omits it.
         conn.execute(
             "UPDATE subscriptions SET status = 'active', "
-            "  current_period_end = %s "
+            "  current_period_start = COALESCE(%s, current_period_start), "
+            "  current_period_end = COALESCE(%s, current_period_end) "
             "WHERE stripe_customer_id = %s",
-            (period_end, customer_id),
+            (period_start, period_end, customer_id),
         )
 
     def _on_payment_failed(self, invoice) -> None:
@@ -533,5 +546,6 @@ class StripeBillingService:
             plan=row["plan"],
             status=row["status"],
             current_period_end=row.get("current_period_end"),
+            current_period_start=row.get("current_period_start"),
             created_at=row["created_at"],
         )

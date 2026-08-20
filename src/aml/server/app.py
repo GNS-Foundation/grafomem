@@ -608,6 +608,15 @@ def create_app(
             except Exception as e:
                 logger.error("startup ✖ usage_reporter.start failed/timed out: %s — continuing", e)
 
+        # Start Free Ceiling refresh (Phase 3c) — self-guards to a no-op unless
+        # FREE_CEILING_ENABLED; never blocks startup.
+        free_ceiling = getattr(app.state, "free_ceiling", None)
+        if free_ceiling is not None:
+            try:
+                await asyncio.wait_for(free_ceiling.start(), timeout=step_timeout)
+            except Exception as e:
+                logger.error("startup ✖ free_ceiling.start failed/timed out: %s — continuing", e)
+
         # Start DEK Invalidation Listener (background task; never blocks startup)
         tkm = getattr(app.state, "tenant_key_manager", None)
         invalidation_task = None
@@ -625,7 +634,7 @@ def create_app(
                          "regulatory_reports", "llm_registry", "tool_registry",
                          "orchestrator", "portal_auth", "stripe_billing",
                          "webhook_service", "assurance_service", "push_dispatch",
-                         "usage_reporter"):
+                         "usage_reporter", "free_ceiling"):
             svc = getattr(app.state, svc_name, None)
             if svc is not None and hasattr(svc, "close"):
                 svc.close()
@@ -639,6 +648,11 @@ def create_app(
         usage_reporter = getattr(app.state, "usage_reporter", None)
         if usage_reporter is not None:
             await usage_reporter.stop()
+
+        # Stop free ceiling refresh (Phase 3c)
+        free_ceiling = getattr(app.state, "free_ceiling", None)
+        if free_ceiling is not None:
+            await free_ceiling.stop()
         
         manifold_svc = getattr(app.state, "manifold_service", None)
         if manifold_svc is not None and hasattr(manifold_svc, "stop_background_worker"):
@@ -686,6 +700,24 @@ def create_app(
         ],
         lifespan=lifespan,
     )
+
+    # Metering Phase 3c (DARK) — translate a Free-tier ceiling block into HTTP 402 at the
+    # single choke point, uniformly across API / orchestrator / demo. Only ever raised when
+    # FREE_CEILING_ENABLED and an over-ceiling free-tier tenant is authoritatively confirmed.
+    from aml.cloud.free_ceiling import FreeCeilingExceeded
+
+    @app.exception_handler(FreeCeilingExceeded)
+    async def _free_ceiling_handler(request: Request, exc: FreeCeilingExceeded):
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=402,
+            content={
+                "error": "free_ceiling_reached",
+                "message": str(exc),
+                "ceiling": exc.ceiling,
+                "upgrade_url": "https://cloud.grafomem.com/dashboard/settings",
+            },
+        )
 
     # Initialize connection pool synchronously BEFORE instantiating services
     if db_url and not spec_only:
@@ -880,6 +912,20 @@ def create_app(
             dt = DecisionTrailService(db_url, pool=pool, embed_fn=_dec_embed_fn)
             _init(dt)
             app.state.decision_trail = dt
+
+            # Metering Phase 3c (DARK) — Free-tier hard ceiling. Registered unconditionally
+            # but inert unless FREE_CEILING_ENABLED: check() short-circuits on the flag, the
+            # refresh loop declines to start, and the cache table is never created. Wired
+            # onto decision_trail post-construction (mutual dep) so log() enforces it at the
+            # single cgr.decision.v1 choke.
+            try:
+                from aml.cloud.free_ceiling import FreeCeilingService
+                fc = FreeCeilingService(db_url, dt, getattr(app.state, "tenant_manager", None), pool=pool)
+                dt.free_ceiling = fc
+                app.state.free_ceiling = fc
+                logger.info("Free ceiling registered (dark unless FREE_CEILING_ENABLED)")
+            except Exception as e:
+                logger.warning("Free ceiling registration skipped: %s", e)
 
             decision_router = create_decision_router(
                 dt, app.state.store_manager,

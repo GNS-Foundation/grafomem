@@ -226,6 +226,10 @@ class DecisionTrailService:
         self._embed_fn = embed_fn
         self._redact_fn = redact_fn
         self._tokenizer_id = tokenizer_id or "BAAI/bge-small-en-v1.5"
+        # Metering Phase 3c (DARK) — optional Free-tier ceiling enforcer, wired in
+        # post-construction (mutual dependency: it reads get_usage; log() calls its check).
+        # None ⇒ the ceiling hook is a NO-OP. Gated internally on FREE_CEILING_ENABLED.
+        self.free_ceiling = None
 
     # ------------------------------------------------------------------
     # Connection helpers
@@ -311,6 +315,15 @@ class DecisionTrailService:
         scores = retrieval_scores or []
         ret_opts = retrieval_options or {}
         params = parameters or {}
+
+        # Metering Phase 3c (DARK) — Free-tier hard ceiling. Single choke point for the
+        # billable governed unit: enforce ONLY for `cgr.decision.v1` records, so this
+        # covers the API, the orchestrator, and the demo router without touching
+        # outcomes/reviews/reads. NO-OP unless a ceiling enforcer is wired AND
+        # FREE_CEILING_ENABLED; fail-open inside check(); raises FreeCeilingExceeded to
+        # abort the decision (→ HTTP 402) only for an over-ceiling free-tier tenant.
+        if self.free_ceiling is not None and params.get("cgr_schema") == "cgr.decision.v1":
+            self.free_ceiling.check(tenant_id)
 
         # Resolve per-tenant encryptor if possible
         if encryption and hasattr(encryption, "get_encryptor"):

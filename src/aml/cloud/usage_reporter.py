@@ -322,8 +322,12 @@ class UsageReporter:
             return {"skipped": "no_customer", "tenant_id": tenant_id}
         customer_id = sub.stripe_customer_id
 
+        _cps = getattr(sub, "current_period_start", None)
         start, end, source = resolve_current_period(
-            tenant_id, _to_utc(sub.current_period_end) if sub.current_period_end else None, now=now,
+            tenant_id,
+            _to_utc(_cps) if _cps else None,
+            _to_utc(sub.current_period_end) if sub.current_period_end else None,
+            now=now,
         )
 
         committed, last_id, last_delta, last_confirmed, updated_at = self._read_cursor(tenant_id, start)
