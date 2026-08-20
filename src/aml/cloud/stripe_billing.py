@@ -39,6 +39,19 @@ def _get_stripe():
     return _stripe
 
 
+def _sg(obj, key, default=None):
+    """Safe get for a StripeObject or plain dict.
+
+    ``event["data"]["object"]`` is a ``StripeObject`` in stripe>=15, and ``StripeObject``
+    does NOT expose ``dict.get`` — ``obj.get(...)`` raises ``AttributeError``. Use bracket
+    access with a membership test instead. Works for both StripeObjects and dicts.
+    """
+    try:
+        return obj[key] if (obj is not None and key in obj) else default
+    except Exception:  # noqa: BLE001 — never let webhook parsing raise
+        return default
+
+
 # ============================================================================
 # Plan → Price mapping
 # ============================================================================
@@ -346,12 +359,13 @@ class StripeBillingService:
         )
         return customer.id
 
-    def _on_checkout_completed(self, session: dict) -> None:
+    def _on_checkout_completed(self, session) -> None:
         """Handle successful checkout — activate subscription."""
-        tenant_id = session.get("metadata", {}).get("tenant_id")
-        plan = session.get("metadata", {}).get("plan", "starter")
-        customer_id = session.get("customer")
-        subscription_id = session.get("subscription")
+        metadata = _sg(session, "metadata", {})
+        tenant_id = _sg(metadata, "tenant_id")
+        plan = _sg(metadata, "plan", "starter")
+        customer_id = _sg(session, "customer")
+        subscription_id = _sg(session, "subscription")
 
         if not tenant_id:
             logger.warning("Checkout completed without tenant_id metadata")
@@ -384,17 +398,17 @@ class StripeBillingService:
             "Subscription activated: tenant=%s plan=%s", tenant_id, plan,
         )
 
-    def _on_payment_succeeded(self, invoice: dict) -> None:
+    def _on_payment_succeeded(self, invoice) -> None:
         """Handle successful payment — update period end."""
-        customer_id = invoice.get("customer")
+        customer_id = _sg(invoice, "customer")
         if not customer_id:
             return
 
         conn = self._get_conn()
-        lines = invoice.get("lines", {}).get("data", [])
+        lines = _sg(_sg(invoice, "lines", {}), "data", [])
         period_end = None
         if lines:
-            period_end_ts = lines[0].get("period", {}).get("end")
+            period_end_ts = _sg(_sg(lines[0], "period", {}), "end")
             if period_end_ts:
                 period_end = datetime.fromtimestamp(period_end_ts, tz=timezone.utc)
 
@@ -405,9 +419,9 @@ class StripeBillingService:
             (period_end, customer_id),
         )
 
-    def _on_payment_failed(self, invoice: dict) -> None:
+    def _on_payment_failed(self, invoice) -> None:
         """Handle failed payment — mark as past_due."""
-        customer_id = invoice.get("customer")
+        customer_id = _sg(invoice, "customer")
         if not customer_id:
             return
 
@@ -419,9 +433,9 @@ class StripeBillingService:
         )
         logger.warning("Payment failed for customer %s", customer_id)
 
-    def _on_subscription_deleted(self, subscription: dict) -> None:
+    def _on_subscription_deleted(self, subscription) -> None:
         """Handle subscription cancellation — downgrade to starter."""
-        customer_id = subscription.get("customer")
+        customer_id = _sg(subscription, "customer")
         if not customer_id:
             return
 
