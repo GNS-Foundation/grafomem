@@ -76,20 +76,49 @@ def _specs(meter_id_placeholder: str = "<meter.id>") -> dict:
 
 
 def _resolve_key(live: bool) -> str:
-    """Return the key for the requested mode, ABORTING if its prefix disagrees."""
+    """Return the key for the requested mode, ABORTING if its prefix disagrees.
+
+    Accepts BOTH standard (``sk_*``) and RESTRICTED (``rk_*``) keys for each mode — our
+    key policy uses restricted keys, so the creation run uses a temporarily-broader
+    ``rk_live_`` key scoped to write Products / Prices / Billing Meters (NOT the runtime
+    read-only key). The API ``livemode`` cross-check in ``main`` is the authoritative
+    confirmation on top of this prefix gate.
+    """
     if live:
         key = (os.environ.get("STRIPE_LIVE_SECRET_KEY") or os.environ.get("STRIPE_SECRET_KEY") or "").strip()
         if not key:
             sys.exit("ABORT: --live requested but no STRIPE_LIVE_SECRET_KEY / STRIPE_SECRET_KEY set")
-        if not key.startswith(("sk_live_", "rk_live_")):
+        if not key.startswith(("sk_live_", "rk_live_")):  # standard OR restricted live key
             sys.exit(f"ABORT: --live requested but key is not a live key (prefix {key[:8]!r}) — refusing")
         return key
     key = (os.environ.get("STRIPE_TEST_SECRET_KEY") or "").strip()
     if not key:
         sys.exit("ABORT: no STRIPE_TEST_SECRET_KEY set (test mode is the default)")
-    if not key.startswith(("sk_test_", "rk_test_")):
+    if not key.startswith(("sk_test_", "rk_test_")):  # standard OR restricted test key
         sys.exit(f"ABORT: test mode requested but key is not a test key (prefix {key[:8]!r}) — refusing")
     return key
+
+
+def _confirm_livemode_via_api(stripe, expect_live: bool) -> None:
+    """Authoritatively resolve live-vs-test via the Stripe API (not just the key prefix).
+
+    Every Stripe object carries ``livemode``; a one-item Product.list reveals it. If it
+    disagrees with the requested mode we ABORT before creating anything. If the account is
+    empty (no object to read), we fall back to the key-prefix gate (which is deterministic:
+    ``*_live_`` keys never operate in test mode).
+    """
+    try:
+        data = stripe.Product.list(limit=1)["data"]
+        if data:
+            api_live = bool(data[0]["livemode"])
+            if api_live != expect_live:
+                sys.exit(f"ABORT: key prefix says {'live' if expect_live else 'test'} but the API "
+                         f"reports livemode={api_live} — refusing to create")
+            print(f"API livemode confirmed: {api_live}")
+            return
+    except Exception as e:  # noqa: BLE001 — best-effort; prefix gate already guarantees mode
+        print(f"(API livemode check skipped: {e})")
+    print("API livemode: unconfirmed (empty account / no read) — relying on the key-prefix gate")
 
 
 def main() -> None:
@@ -117,6 +146,8 @@ def main() -> None:
 
     import stripe
     stripe.api_key = key
+    # Authoritative mode resolution via the API (layered on the key-prefix gate) before any write.
+    _confirm_livemode_via_api(stripe, args.live)
     print(f"\nCreating objects in {mode} mode…")
 
     product = stripe.Product.create(**specs["product"])
