@@ -194,9 +194,21 @@ class FreeCeilingService:
     # ---- background refresh ----------------------------------------------
 
     def refresh_once(self) -> int:
-        """Recompute free_usage_cache for CURRENT starter tenants. Returns rows written."""
+        """Recompute free_usage_cache for CURRENT starter tenants. Returns rows written.
+
+        Cross-replica singleton: guarded by a Postgres advisory lock so only ONE instance
+        refreshes per tick under horizontal scaling (idempotent, but avoids redundant work).
+        """
         if not free_ceiling_enabled():
             return 0
+        from aml.cloud.singleton import cycle_singleton, LOCK_ID_FREE_CEILING_REFRESH
+        with cycle_singleton(self._db_url, LOCK_ID_FREE_CEILING_REFRESH, "free-ceiling-refresh") as won:
+            if not won:
+                return 0
+            return self._refresh_body()
+
+    def _refresh_body(self) -> int:
+        """Core refresh sweep — runs only after winning the singleton lock."""
         start, end = _calendar_period()
         conn = self._get_conn()
         try:
