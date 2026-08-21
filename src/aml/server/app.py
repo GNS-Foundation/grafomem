@@ -715,7 +715,7 @@ def create_app(
                 "error": "free_ceiling_reached",
                 "message": str(exc),
                 "ceiling": exc.ceiling,
-                "upgrade_url": "https://cloud.grafomem.com/dashboard/settings",
+                "upgrade_url": "https://cloud.grafomem.com/settings",
             },
         )
 
