@@ -416,12 +416,42 @@ class UsageReporter:
                     out.append({"tenant_id": tid, "error": str(e)})
             return out
 
+    def _cursor_table_exists(self) -> bool:
+        """True when usage_report_cursor is present (e.g. provisioned by a superuser
+        migration). Never raises — a probe failure is treated as 'absent' (safe: the
+        reporter then declines to start rather than run against an unknown table)."""
+        try:
+            row = self._get_conn().execute(
+                "SELECT to_regclass('public.usage_report_cursor') IS NOT NULL AS present"
+            ).fetchone()
+            return bool(row and row["present"])
+        except Exception:  # noqa: BLE001
+            return False
+
     async def start(self) -> None:
         """Start the periodic reporter — no-op unless metered-enabled."""
         if not metered_enabled():
             logger.info("usage reporter dark (metered_enabled=False) — not starting")
             return
-        self.ensure_schema()
+        # ensure_schema() self-migrates the cursor table, which requires CREATE on schema
+        # public. Under the least-privilege runtime role (e.g. grafomem_rt) that raises
+        # "permission denied for schema public" — the SAME error every other service's
+        # ensure_schema raises and which the app tolerates at startup. Mirror that tolerance:
+        # if the table is already present (provisioned by a superuser migration), start on it;
+        # only decline when there is genuinely no cursor table to write to.
+        try:
+            self.ensure_schema()
+        except Exception as e:  # noqa: BLE001
+            if self._cursor_table_exists():
+                logger.warning(
+                    "usage reporter: ensure_schema could not run DDL (%s); usage_report_cursor "
+                    "already present — starting on the pre-provisioned table", e)
+            else:
+                logger.error(
+                    "usage reporter: ensure_schema failed and usage_report_cursor is absent (%s) "
+                    "— NOT starting. Provision it via a superuser migration and grant the runtime "
+                    "role DML.", e)
+                return
         self._running = True
         self._task = asyncio.create_task(self._loop(), name="usage-reporter")
         logger.info("usage reporter started (interval=%dm)", self._interval_min)
