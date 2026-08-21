@@ -141,6 +141,14 @@ def resolve_usage_state(
     allotment = INCLUDED_ALLOTMENT.get(plan)
     state, pct_used = _compute_state(usage["governed_decisions"], allotment)
 
+    # Metered-billing arm signal (Phase-3 cutover). Lazy import avoids a circular import
+    # (usage_reporter imports resolve_current_period from this module). While metering is
+    # dark this is False → the console must not open self-serve checkout and should present
+    # the numbers as indicative; once the cutover env vars are set it flips to True and the
+    # console lights up real $20 + metered checkout with live (non-placeholder) numbers.
+    from aml.cloud.usage_reporter import metered_enabled
+    armed = metered_enabled()
+
     return {
         "plan": plan,
         "period": {"start": start.isoformat(), "end": end.isoformat(), "source": source},
@@ -150,6 +158,7 @@ def resolve_usage_state(
         "is_placeholder": INCLUDED_ALLOTMENT_IS_PLACEHOLDER,
         "pct_used": pct_used,
         "state": state,
+        "metered_enabled": armed,
     }
 
 
