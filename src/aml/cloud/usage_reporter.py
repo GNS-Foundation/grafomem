@@ -186,11 +186,14 @@ class UsageReporter:
     # (which go stale across the 15-min idle gap and — for RLS tables — carry no tenant GUC).
 
     def _read_subscription(self, tenant_id: str) -> dict | None:
-        """Active-subscription facts (customer id + period window) for one tenant, or None.
-        ``subscriptions`` has no RLS, so no tenant GUC is needed here."""
+        """Active-subscription facts (customer id + period end) for one tenant, or None.
+        ``subscriptions`` has no RLS, so no tenant GUC is needed here. NOTE the table has
+        ``current_period_end`` but NO ``current_period_start`` column; resolve_current_period
+        derives the start when its hint is None (matching the request-path behaviour)."""
         row = self._get_conn().execute(
-            "SELECT stripe_customer_id, current_period_start, current_period_end "
-            "FROM subscriptions WHERE tenant_id = %s AND status = 'active'",
+            "SELECT stripe_customer_id, current_period_end "
+            "FROM subscriptions WHERE tenant_id = %s AND status = 'active' "
+            "ORDER BY created_at DESC LIMIT 1",
             (tenant_id,),
         ).fetchone()
         if not row or not row.get("stripe_customer_id"):
