@@ -329,10 +329,9 @@ class LLMRegistry:
         if not config.api_key:
             raise ValueError("API key is required for OpenAI provider but was not provided.")
 
-        import httpx
         client = openai.OpenAI(
             api_key=config.api_key,
-            http_client=httpx.Client(timeout=60.0)
+            timeout=60.0,
         )
 
         kwargs: dict[str, Any] = {
@@ -395,10 +394,9 @@ class LLMRegistry:
         if not config.api_key:
             raise ValueError("API key is required for Anthropic provider but was not provided.")
 
-        import httpx
         client = anthropic.Anthropic(
             api_key=config.api_key,
-            http_client=httpx.Client(timeout=60.0)
+            timeout=60.0,
         )
 
         # Floor max_tokens at 1024 — Anthropic can truncate short budgets
