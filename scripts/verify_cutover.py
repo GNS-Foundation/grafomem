@@ -34,15 +34,28 @@ from aml.cloud.plan_config import (  # noqa: E402
 from aml.cloud.usage_reporter import metered_enabled, meter_config  # noqa: E402
 from aml.cloud.free_ceiling import free_ceiling_enabled  # noqa: E402
 
-# The seven live webhook event types the handlers cover (4 legacy + 3 added in 3b).
+# Live webhook event types the handlers cover.
+#
+# REQUIRED (6): money- or state-relevant. Their handlers mutate the local subscription
+# mirror, record payment state, or reconcile invoices — a missing one degrades billing
+# correctness, so absence is a FAIL.
+#
+# OPTIONAL (1): billing.meter.error_report_triggered is observability-only — its handler
+# (_on_meter_error) does a loud log and NO state change; the reporter's own reconcile
+# (check 6, meter-total == get_usage) is the corrective path, and a rejected meter event
+# under-bills (the safe direction). It also needs a recent Stripe API version to even
+# appear in the dashboard event picker; when the endpoint's API version predates it, it
+# is simply not selectable. Absence is a WARN (add it later), never a cutover blocker.
 REQUIRED_WEBHOOK_EVENTS = [
     "checkout.session.completed",
     "invoice.payment_succeeded",
     "invoice.payment_failed",
     "customer.subscription.deleted",
     "customer.subscription.updated",
-    "billing.meter.error_report_triggered",
     "invoice.finalized",
+]
+OPTIONAL_WEBHOOK_EVENTS = [
+    "billing.meter.error_report_triggered",
 ]
 
 _results: list[tuple[str, str, str]] = []  # (check, status, detail)
@@ -50,7 +63,7 @@ _results: list[tuple[str, str, str]] = []  # (check, status, detail)
 
 def record(check: str, status: str, detail: str = "") -> None:
     _results.append((check, status, detail))
-    icon = {"PASS": "✅", "FAIL": "❌", "SKIP": "⏭"}.get(status, "?")
+    icon = {"PASS": "✅", "FAIL": "❌", "SKIP": "⏭", "WARN": "⚠"}.get(status, "?")
     print(f"  {icon} [{status}] {check}" + (f" — {detail}" if detail else ""))
 
 
@@ -186,29 +199,42 @@ def check_four_surface(objs: dict) -> None:
 # ── check 5: webhook coverage ────────────────────────────────────────────────
 
 def check_webhooks(stripe) -> None:
-    print("\n5) Webhook coverage (7 events)")
+    print("\n5) Webhook coverage (6 required + 1 optional)")
     try:
         eps = stripe.WebhookEndpoint.list(limit=100)["data"]
     except Exception as e:  # noqa: BLE001
-        record("live webhook endpoint covers 7 events", "SKIP",
+        record("live webhook endpoint covers required events", "SKIP",
                f"cannot list endpoints with this key ({e}). MANUAL: confirm the live endpoint's "
-               f"enabled events include all of: {', '.join(REQUIRED_WEBHOOK_EVENTS)}")
+               f"enabled events include all of: {', '.join(REQUIRED_WEBHOOK_EVENTS)} "
+               f"(optional: {', '.join(OPTIONAL_WEBHOOK_EVENTS)})")
         return
-    covered = False
+    covered_ep = None
     for ep in eps:
         events = set(_g(ep, "enabled_events", []) or [])
         if "*" in events or all(e in events for e in REQUIRED_WEBHOOK_EVENTS):
-            covered = True
-            record("live webhook endpoint covers all 7 events", "PASS",
-                   f"{_g(ep,'url')} ({'*' if '*' in events else 'explicit 7'})")
+            covered_ep = ep
+            record("live webhook endpoint covers all 6 required events", "PASS",
+                   f"{_g(ep,'url')} ({'*' if '*' in events else 'explicit 6'})")
             break
-    if not covered:
+    if covered_ep is None:
         missing = {}
         for ep in eps:
             events = set(_g(ep, "enabled_events", []) or [])
             missing[_g(ep, "url")] = [e for e in REQUIRED_WEBHOOK_EVENTS if e not in events]
-        record("live webhook endpoint covers all 7 events", "FAIL",
-               f"no endpoint has all 7; missing per endpoint: {json.dumps(missing)}")
+        record("live webhook endpoint covers all 6 required events", "FAIL",
+               f"no endpoint has all 6 required; missing per endpoint: {json.dumps(missing)}")
+        return
+    # Optional observability events — WARN if absent, never block the cutover.
+    ev = set(_g(covered_ep, "enabled_events", []) or [])
+    opt_missing = [] if "*" in ev else [e for e in OPTIONAL_WEBHOOK_EVENTS if e not in ev]
+    if opt_missing:
+        record("optional observability events present", "WARN",
+               f"missing {', '.join(opt_missing)} — observability only (loud-log, no state/money; "
+               f"reconcile in check 6 is the corrective path). Add once the endpoint's Stripe API "
+               f"version exposes it.")
+    else:
+        record("optional observability events present", "PASS",
+               ", ".join(OPTIONAL_WEBHOOK_EVENTS) if "*" not in ev else "*")
 
 
 # ── check 6: reconcile sanity (meter total == get_usage) ─────────────────────
@@ -304,11 +330,13 @@ def main() -> None:
     n_fail = sum(1 for _, s, _ in _results if s == "FAIL")
     n_pass = sum(1 for _, s, _ in _results if s == "PASS")
     n_skip = sum(1 for _, s, _ in _results if s == "SKIP")
-    print(f"\n=== {n_pass} PASS, {n_fail} FAIL, {n_skip} SKIP ===")
+    n_warn = sum(1 for _, s, _ in _results if s == "WARN")
+    print(f"\n=== {n_pass} PASS, {n_fail} FAIL, {n_warn} WARN, {n_skip} SKIP ===")
     if n_fail:
         print("CUTOVER NOT VERIFIED — resolve the FAILs above.")
         sys.exit(1)
-    print("CUTOVER VERIFIED (all checks pass; skips are optional/needs-input).")
+    tail = " (WARNs are observability-only; safe to arm)" if n_warn else ""
+    print(f"CUTOVER VERIFIED (all required checks pass; skips are optional/needs-input){tail}.")
 
 
 if __name__ == "__main__":
