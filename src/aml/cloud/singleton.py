@@ -44,6 +44,10 @@ def cycle_singleton(db_url: str, lock_id: int, label: str):
     conn = None
     got = False
     try:
+        # DEDICATED connection — deliberately NOT from the pool. A session-level advisory
+        # lock is bound to its connection; if we used a pooled conn that got returned to the
+        # pool mid-cycle, the hold window would break. This conn is held for the whole `with`
+        # block (the cycle body runs inside it) and closed in the finally below.
         conn = psycopg.connect(db_url, autocommit=True)
         got = bool(
             conn.execute("SELECT pg_try_advisory_lock(%s, %s)", (_LOCK_NS, lock_id)).fetchone()[0]
