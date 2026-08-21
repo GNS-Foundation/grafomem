@@ -152,18 +152,70 @@ class UsageReporter:
     # ---- connection helpers ------------------------------------------------
 
     def _get_conn(self) -> psycopg.Connection[dict[str, Any]]:
-        if self._pool is not None:
-            return self._pool.getconn()
+        # Dedicated, self-owned connection — NOT the shared request pool. The reporter is a
+        # low-frequency background job (default 15-min interval); a pooled connection borrowed
+        # across that idle gap is closed by the server/proxy, so the next cycle would get a
+        # dead socket ("connection socket closed" / "flushing failed: the connection is
+        # closed"). run_once opens a fresh connection per cycle (_open_cycle_conn); this lazily
+        # (re)opens for out-of-cycle callers too (e.g. _cursor_table_exists at startup).
+        # self._pool is intentionally ignored (kept only for constructor compatibility).
         if self._conn is None or self._conn.closed:
             self._conn = psycopg.connect(self._db_url, row_factory=dict_row, autocommit=True)
         return self._conn
 
-    def close(self) -> None:
-        if self._pool is not None:
-            self._conn = None
-            return
+    def _open_cycle_conn(self) -> None:
+        """Open a fresh dedicated connection for one reporting cycle. Closing any prior one
+        first guarantees the cycle never runs on a connection that idled since the last tick."""
+        self._close_cycle_conn()
+        self._conn = psycopg.connect(self._db_url, row_factory=dict_row, autocommit=True)
+
+    def _close_cycle_conn(self) -> None:
         if self._conn is not None and not self._conn.closed:
-            self._conn.close()
+            try:
+                self._conn.close()
+            except Exception:  # noqa: BLE001 — best-effort close
+                pass
+        self._conn = None
+
+    def close(self) -> None:
+        self._close_cycle_conn()
+
+    # ---- tenant reads on the reporter's OWN connection ----------------------
+    # A background job has no request context, so it reads what it needs directly on its
+    # dedicated per-cycle connection rather than through the shared request-pool services
+    # (which go stale across the 15-min idle gap and — for RLS tables — carry no tenant GUC).
+
+    def _read_subscription(self, tenant_id: str) -> dict | None:
+        """Active-subscription facts (customer id + period window) for one tenant, or None.
+        ``subscriptions`` has no RLS, so no tenant GUC is needed here."""
+        row = self._get_conn().execute(
+            "SELECT stripe_customer_id, current_period_start, current_period_end "
+            "FROM subscriptions WHERE tenant_id = %s AND status = 'active'",
+            (tenant_id,),
+        ).fetchone()
+        if not row or not row.get("stripe_customer_id"):
+            return None
+        return row
+
+    def _current_governed_decisions(self, tenant_id: str, start: datetime, end: datetime) -> int:
+        """Period governed-decision COUNT on the reporter's own connection.
+
+        ``decision_records`` has FORCED row-level security
+        (``tenant_id = current_setting('app.current_tenant')``) and grafomem_rt does NOT
+        bypass RLS, so the background reporter — which has no request context — MUST set the
+        tenant GUC itself, or the query returns ZERO rows (and nothing would ever be billed).
+        Mirrors the governed-decision predicate of ``DecisionTrailService.get_usage``
+        (``parameters->>'cgr_schema' = 'cgr.decision.v1'``) — keep the two in sync.
+        """
+        conn = self._get_conn()
+        conn.execute("SELECT set_config('app.current_tenant', %s, false)", (tenant_id,))
+        row = conn.execute(
+            "SELECT COUNT(*) AS n FROM decision_records "
+            "WHERE tenant_id = %s AND created_at >= %s AND created_at < %s "
+            "AND parameters->>'cgr_schema' = 'cgr.decision.v1'",
+            (tenant_id, start, end),
+        ).fetchone()
+        return int(row["n"]) if row else 0
 
     def ensure_schema(self) -> None:
         """Create the cursor table — caller must gate on ``metered_enabled()``."""
@@ -317,16 +369,17 @@ class UsageReporter:
         if cfg is None:
             return {"skipped": "not_metered"}
 
-        sub = self._stripe_billing.get_subscription(tenant_id)
-        if not sub or not sub.stripe_customer_id:
+        sub = self._read_subscription(tenant_id)
+        if sub is None:
             return {"skipped": "no_customer", "tenant_id": tenant_id}
-        customer_id = sub.stripe_customer_id
+        customer_id = sub["stripe_customer_id"]
 
-        _cps = getattr(sub, "current_period_start", None)
+        _cps = sub.get("current_period_start")
+        _cpe = sub.get("current_period_end")
         start, end, source = resolve_current_period(
             tenant_id,
             _to_utc(_cps) if _cps else None,
-            _to_utc(sub.current_period_end) if sub.current_period_end else None,
+            _to_utc(_cpe) if _cpe else None,
             now=now,
         )
 
@@ -347,8 +400,7 @@ class UsageReporter:
             logger.info("recovered unconfirmed emit tenant=%s id=%s value=%s (%s)",
                         tenant_id, last_id, last_delta, outcome)
 
-        usage = self._decision_trail.get_usage(tenant_id, start, end)
-        current = int(usage["governed_decisions"])
+        current = self._current_governed_decisions(tenant_id, start, end)
         result["current"] = current
 
         # ── Drift is ALERT-only; never a correction ──
@@ -407,14 +459,19 @@ class UsageReporter:
         with cycle_singleton(self._db_url, LOCK_ID_USAGE_REPORTER, "usage-reporter") as won:
             if not won:
                 return []
-            out = []
-            for tid in self._active_tenants():
-                try:
-                    out.append(self.report_tenant(tid))
-                except Exception as e:  # noqa: BLE001 — one tenant must not sink the sweep
-                    logger.error("usage report failed tenant=%s: %s", tid, e)
-                    out.append({"tenant_id": tid, "error": str(e)})
-            return out
+            # Fresh connection for THIS cycle — never reuse one that idled since the last tick.
+            self._open_cycle_conn()
+            try:
+                out = []
+                for tid in self._active_tenants():
+                    try:
+                        out.append(self.report_tenant(tid))
+                    except Exception as e:  # noqa: BLE001 — one tenant must not sink the sweep
+                        logger.error("usage report failed tenant=%s: %s", tid, e)
+                        out.append({"tenant_id": tid, "error": str(e)})
+                return out
+            finally:
+                self._close_cycle_conn()
 
     def _cursor_table_exists(self) -> bool:
         """True when usage_report_cursor is present (e.g. provisioned by a superuser
