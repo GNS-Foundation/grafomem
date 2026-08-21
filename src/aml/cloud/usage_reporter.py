@@ -395,17 +395,26 @@ class UsageReporter:
         return [r["tenant_id"] for r in rows]
 
     def run_once(self) -> list[dict]:
-        """One reporting sweep over all active tenants. Per-tenant errors are isolated."""
+        """One reporting sweep over all active tenants. Per-tenant errors are isolated.
+
+        Cross-replica singleton: guarded by a Postgres advisory lock so that under
+        horizontal scaling only ONE instance emits per tick (losers skip), removing the
+        double-report / double-charge risk on the shared cursor.
+        """
         if not metered_enabled():
             return []
-        out = []
-        for tid in self._active_tenants():
-            try:
-                out.append(self.report_tenant(tid))
-            except Exception as e:  # noqa: BLE001 — one tenant must not sink the sweep
-                logger.error("usage report failed tenant=%s: %s", tid, e)
-                out.append({"tenant_id": tid, "error": str(e)})
-        return out
+        from aml.cloud.singleton import cycle_singleton, LOCK_ID_USAGE_REPORTER
+        with cycle_singleton(self._db_url, LOCK_ID_USAGE_REPORTER, "usage-reporter") as won:
+            if not won:
+                return []
+            out = []
+            for tid in self._active_tenants():
+                try:
+                    out.append(self.report_tenant(tid))
+                except Exception as e:  # noqa: BLE001 — one tenant must not sink the sweep
+                    logger.error("usage report failed tenant=%s: %s", tid, e)
+                    out.append({"tenant_id": tid, "error": str(e)})
+            return out
 
     async def start(self) -> None:
         """Start the periodic reporter — no-op unless metered-enabled."""
