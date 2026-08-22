@@ -18,7 +18,7 @@ keywords = ["agent-memory", "langgraph", "checkpointer", "governance", "erasure"
 
 [project.urls]
 Homepage = "https://grafomem.com"
-Repository = "https://github.com/cayerbe/grafomem"
+Repository = "https://github.com/GNS-Foundation/grafomem"
 
 [project.optional-dependencies]
 dev = [
