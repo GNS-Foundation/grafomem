@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "grafomem"
 version = "0.4.0"
-description = "GRAFOMEM — agent-memory conformance benchmark and compliance toolkit"
+description = "GRAFOMEM — the governed memory runtime for agents"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
