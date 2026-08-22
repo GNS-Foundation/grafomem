@@ -74,7 +74,7 @@ Agent memory today is a JSON blob you have to trust. GRAFOMEM makes it evidence:
 
 ## The bigger picture: verify the agent, not just the answer
 
-Governed memory is the evidence substrate for something larger: **Capability-Grounded Reputation (CGR)** — reputation an agent earns per domain from judgments that later resolve against real outcomes, with peer reviews weighted by the reviewer's own demonstrated calibration. Score and evidence mass travel together; fresh identities don't arrive with influence. The scoring model is documented — reputation as evidence, not assertion. → [CGR overview](https://docs.grafomem.com/cgr/overview)
+Governed memory is the evidence substrate for something larger: **Capability-Grounded Reputation (CGR)** — reputation an agent earns per domain from judgments that later resolve against real outcomes, with peer reviews weighted by the reviewer's own demonstrated calibration. Score and evidence mass travel together; fresh identities don't arrive with influence. The scoring model is documented and independently reproducible — [cgr-bench](https://github.com/GNS-Foundation/cgr-bench) reproduces its properties from source: cold-start and Sybil-resistance behavior asserted in CI, an early-warning signal of −0.997 against real credit-default outcomes at 25% resolution, and reviewer calibration that beats a naive equal-weight crowd by ~14% out-of-sample on ~1,900 real human forecasters (held-out reliability recovery r ≈ 0.5–0.65 across split designs). Reputation as evidence, not assertion. → [CGR overview](https://docs.grafomem.com/cgr/overview)
 
 ## License
 
