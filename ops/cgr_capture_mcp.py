@@ -345,7 +345,10 @@ def build_mcp_server(cfg: Config):
                 res = client.record_outcome(**arguments)
             else:
                 res = {"error": f"unknown tool {name!r}"}
-        except Exception as e:  # surface errors as tool output, don't crash the session
+        except (Exception, SystemExit) as e:
+            # surface ALL errors as tool output — including a guard's SystemExit (never-corp /
+            # tenant-mismatch) — so a refused call returns gracefully and never crashes the
+            # session's MCP server. (Does not catch CancelledError/KeyboardInterrupt.)
             res = {"error": f"{type(e).__name__}: {e}"}
         return [TextContent(type="text", text=json.dumps(res, default=str))]
 
