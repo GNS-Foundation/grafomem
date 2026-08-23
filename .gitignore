@@ -16,3 +16,4 @@ uvicorn.log
 
 # local research/scratch exports (never commit)
 scratch/
+clients/cgr-verify/node_modules/
