@@ -239,6 +239,36 @@ class CaptureClient:
         return {"posted": True, "result": result, "outcome": outcome,
                 "work_item_id": work_item_id, "response": body}
 
+    # ── durability guard: prove the DEPLOYED API actually persisted cgr_domain ──────
+    def verify_domain_durable(self, decision_id: str, expected_domain: str) -> dict:
+        """Confirm the just-recorded decision came back from the server with cgr_domain ==
+        expected. Guards the silent-drop class: if the deployed API predates the
+        domain-durability change, Pydantic drops the unknown `domain` field and the decision
+        lands WITHOUT cgr_domain — quietly defeating durability. This makes that loud.
+
+        Reads /v1/cgr/substrate/export (needs decisions:read) and matches on decision_id."""
+        code, body = self._api("GET", "/v1/cgr/substrate/export")
+        if code != 200 or not isinstance(body, dict):
+            raise SystemExit(
+                f"cgr-capture: DURABILITY GUARD could not run — /v1/cgr/substrate/export "
+                f"returned HTTP {code}. Ensure the dogfood key has decisions:read and that "
+                "the domain-durability change (PR #67) is merged + DEPLOYED before capturing.")
+        rows = body.get("decisions") or []
+        row = next((r for r in rows if r.get("decision_id") == decision_id), None)
+        if row is None:
+            raise SystemExit(
+                f"cgr-capture: DURABILITY GUARD — decision {decision_id} not found in the "
+                "substrate export; cannot confirm cgr_domain persisted.")
+        got = row.get("cgr_domain")
+        if got != expected_domain:
+            raise SystemExit(
+                "cgr-capture: DURABILITY GUARD FAILED — the deployed API did NOT echo "
+                f"cgr_domain (expected {expected_domain!r}, got {got!r}). The deployed API "
+                "predates the domain-durability change (PR #67): it silently dropped the "
+                "unknown `domain` field. Do NOT capture until #67 is merged + deployed, or "
+                "the domain is lost — exactly the silent drop this guard exists to prevent.")
+        return {"durable": True, "decision_id": decision_id, "cgr_domain": got}
+
     # ── reads (for selftest / acceptance — NOT part of the public read surface, ticket 2) ──
     def get_score(self, agent_handle: str) -> tuple[int, object]:
         return self._api("GET", f"/v1/cgr/scores/{agent_handle}")
@@ -381,6 +411,13 @@ def cmd_selftest(cfg: Config, *, handle: str, domain: str, work_item_id: str) ->
         work_item_id=work_item_id, agent_handle=handle, domain=domain,
         decision="certify", verifiability_tag="judgment",
         reason_code="clean", reason_text="selftest judgment")
+
+    # DURABILITY GUARD (runs BEFORE the outcome/score claim): prove the deployed API
+    # actually persisted cgr_domain. If it didn't (deploy behind the durability change),
+    # this aborts loudly rather than quietly recording a domainless decision.
+    result["durability"] = client.verify_domain_durable(
+        result["decision"]["decision_id"], domain)
+
     result["outcome"] = client.record_outcome(work_item_id=work_item_id, result="deploy_succeeded")
 
     _, after = client.get_score(handle)

@@ -178,6 +178,46 @@ def test_domains_are_the_locked_taxonomy():
 # ── domain durability: it survives the CGR-readable loader → export projection ──
 # (the field per-domain re-scoring reads; not a client-side log)
 
+# ── durability guard: selftest proves the DEPLOYED API round-tripped cgr_domain ──
+
+def _client_with_export(monkeypatch, export_body, export_code=200):
+    client = CaptureClient(_cfg())
+
+    def fake_api(method, path, body=None):
+        if path == "/v1/cgr/substrate/export":
+            return export_code, export_body
+        return 200, {}
+    monkeypatch.setattr(client, "_api", fake_api)
+    return client
+
+
+def test_verify_domain_durable_passes_when_echoed(monkeypatch):
+    client = _client_with_export(monkeypatch, {"decisions": [
+        {"decision_id": "d1", "cgr_domain": "deploy-verification"}]})
+    out = client.verify_domain_durable("d1", "deploy-verification")
+    assert out["durable"] is True and out["cgr_domain"] == "deploy-verification"
+
+
+def test_verify_domain_durable_fails_on_silent_drop(monkeypatch):
+    # deployed API predates the change → Pydantic dropped `domain` → row has no cgr_domain
+    client = _client_with_export(monkeypatch, {"decisions": [
+        {"decision_id": "d1", "cgr_domain": None}]})
+    with pytest.raises(SystemExit):
+        client.verify_domain_durable("d1", "deploy-verification")
+
+
+def test_verify_domain_durable_fails_when_row_missing(monkeypatch):
+    client = _client_with_export(monkeypatch, {"decisions": []})
+    with pytest.raises(SystemExit):
+        client.verify_domain_durable("d1", "deploy-verification")
+
+
+def test_verify_domain_durable_fails_when_export_unreadable(monkeypatch):
+    client = _client_with_export(monkeypatch, {"error": "forbidden"}, export_code=403)
+    with pytest.raises(SystemExit):
+        client.verify_domain_durable("d1", "deploy-verification")
+
+
 def test_cgr_domain_is_durable_in_substrate_export():
     from aml.cgr.substrate import DecisionRow, export_rows
     row = DecisionRow(

@@ -20,13 +20,22 @@ Key custody: this config holds **only** the dogfood role public keys + the dogfo
 
 Billing: governed decisions **meter as real usage** on the dogfood tenant's plan (~a handful/day — trivially inside any allotment). `serve` and `selftest` print `GET /v1/usage/current` so it's never a surprise.
 
+## Sequencing (matters — the domain-durability change is server-side)
+
+`domain` durability lives in the deployed API, not just this client. Run in this order:
+
+1. launch window closes → **merge** the branch → **deploy** (Railway) so the API has the `domain` field.
+2. **then** `setup` + `selftest` with the dogfood creds.
+
+Do **not** run `selftest`/`serve` against an API that predates the change: Pydantic would silently ignore the unknown `domain` field and decisions would land **without** `cgr_domain`. `selftest` has a **durability guard** that catches exactly this — after recording the decision it re-reads it from `/v1/cgr/substrate/export` and **aborts loudly** if `cgr_domain` didn't round-trip (before recording the outcome / claiming a score).
+
 ## Commands
 
 ```bash
-# 1) (optional) register the role identities on the dogfood tenant — idempotent, never corp
+# 1) (after deploy) register the role identities on the dogfood tenant — idempotent, never corp
 python ops/cgr_capture_mcp.py setup
 
-# 2) full-loop acceptance: decision → outcome → score movement (the "first real CGR evidence" moment)
+# 2) full-loop acceptance (with durability guard): decision → verify cgr_domain persisted → outcome → score movement
 python ops/cgr_capture_mcp.py selftest --handle cc-builder@ulissy --domain deploy-verification
 
 # 3) run the MCP server over stdio (connect from Claude Code / Cowork)
