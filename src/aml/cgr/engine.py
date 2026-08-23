@@ -251,8 +251,18 @@ def to_tiergate(r: CGRResult, *, min_resolved: int = MIN_RESOLVED_PROVEN) -> dic
         "tier": tier,
         "cgr_score": r.cgr_score,
         "confidence": r.confidence,
-        "n_resolved": r.n_resolved,
+        "n_resolved": r.n_resolved,             # POOLED evidence mass — backs cgr_score (all judgment evidence, one dimension)
         "capability_tier": r.capability_tier,
         "as_of": r.as_of,
+        "last_resolved_at": r.last_resolved_at,   # #2 (v3): freshness — most recent resolved-outcome time (or null)
+        # Scoring-scope markers (Ticket 2), SIGNED so a stripped envelope can never turn a
+        # pooled score into a domain-specific one. `dimension` above is the scoring dimension
+        # (receivables, v0). `scoring_scope="pooled"` states cgr_score/n_resolved pool ALL of
+        # the subject's judgment evidence into that one dimension — NOT a per-domain score.
+        # requested_domain/domain_n_resolved default null here; the read surface overrides them
+        # (before signing) when a capability domain is requested. Per-domain SCORING = Ticket 3.
+        "scoring_scope": "pooled",
+        "requested_domain": None,               # the capability domain a read was scoped to (or null)
+        "domain_n_resolved": None,              # resolved-outcome count in requested_domain — backs the domain MATCH (or null)
         "rationale": rationale,
     }

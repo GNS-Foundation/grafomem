@@ -8,9 +8,11 @@ Shape of an attestation::
 
     {
       # --- signed body (the substantive claim, from to_tiergate) ---
-      "agent_handle", "dimension", "tier", "cgr_score", "confidence",
-      "n_resolved", "capability_tier", "as_of", "rationale",
-      "schema": "cgr.attestation.v1",
+      "agent_handle", "subject_key", "subject_did", "dimension", "tier",
+      "cgr_score", "confidence", "n_resolved", "capability_tier", "as_of",
+      "last_resolved_at",          # v3 (#2): freshness, signed (most recent resolved outcome | null)
+      "rationale",
+      "schema": "cgr.attestation.v3",
       "issuer": "gns-foundation",
       "issuer_key_id": <foundation pubkey hex>,
       # --- envelope (NOT signed) ---
@@ -30,7 +32,7 @@ import hashlib
 
 import rfc8785
 
-CGR_ATTESTATION_SCHEMA = "cgr.attestation.v2"   # v2 (#5): signed body now carries subject_key (the bound GEIANT identity key)
+CGR_ATTESTATION_SCHEMA = "cgr.attestation.v3"   # v3 (#2): signed body adds last_resolved_at (freshness). v2 added subject_key (#5).
 ISSUER = "gns-foundation"
 
 # Fields present in the envelope but excluded from the signed / fingerprinted body.

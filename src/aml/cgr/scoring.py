@@ -95,6 +95,11 @@ class CGRResult:
     cap_d: float | None = None
     cap_source: str | None = None
     cap_confidence: float | None = None
+    # Freshness (Ticket #2, attestation schema v3): ISO-8601 UTC of the most recent
+    # RESOLVED outcome feeding this score — how fresh the evidence is (distinct from
+    # `as_of`, the computation time). None when nothing has resolved yet. Signed into
+    # the attestation body so staleness cannot be doctored/replayed by an intermediary.
+    last_resolved_at: str | None = None
 
 
 def _now_iso() -> str:
@@ -339,6 +344,14 @@ def score_agent(
         ceiling = float(tier) + CEILING_EPS + (1.0 - float(tier) - CEILING_EPS) * s
         E = min(E, ceiling)
 
+    # Freshness (#2, v3): most recent resolved-outcome timestamp among this agent's
+    # resolved refs. Consulted unconditionally (independent of the recency τ knob).
+    _resolved_dates = [dt for dt in (outcome_dates.get(r) for r in resolved_refs) if dt is not None]
+    last_resolved_at = None
+    if _resolved_dates:
+        _m = max(_resolved_dates)
+        last_resolved_at = _m.isoformat() if hasattr(_m, "isoformat") else str(_m)
+
     return CGRResult(
         agent_handle=agent_handle,
         cgr_score=float(E),
@@ -353,4 +366,5 @@ def score_agent(
         post_alpha=float(alpha),
         post_beta=float(beta),
         cap_d=(None if tier is None else float(tier)),
+        last_resolved_at=last_resolved_at,
     )
