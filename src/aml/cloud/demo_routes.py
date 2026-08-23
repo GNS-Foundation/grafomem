@@ -93,6 +93,11 @@ class GovernedDecisionRequest(BaseModel):
     # (64-hex), supplied by the emitter at decision time. Irreversible; NEVER
     # back-resolved from agent_handle. Absent ⇒ null ⇒ unbindable (unproven).
     agent_key: str | None = None
+    # CGR capability domain (optional) — the domain string for this judgment, stored
+    # DURABLY in the never-encrypted, CGR-readable `parameters` (as `cgr_domain`) so that
+    # per-domain scoring can attribute it later. v1 scoring is single-dimension and does
+    # not read it yet; capturing it now is "capture now, score later" for the domain axis.
+    domain: str | None = None
 
 
 class VerifyBatchRequest(BaseModel):
@@ -146,7 +151,7 @@ class RotationProofRequest(BaseModel):
 def _record_and_sign(decision_trail, execution_receipts, signing_identity, *,
                      tenant_id, invoice_ref, context, decision, reason, model_id,
                      agent_handle, verifiability_tag, agent_tier, reason_code,
-                     agent_key=None, encryption=None):
+                     agent_key=None, domain=None, encryption=None):
     """Record a governed decision as a signed decision_record + signed, chained
     execution_receipt, carrying the CGR substrate fields in `parameters`.
     Returns {decision_record, execution_receipt}."""
@@ -169,6 +174,7 @@ def _record_and_sign(decision_trail, execution_receipts, signing_identity, *,
             "agent_key": agent_key,                  # CGR: GEIANT identity pubkey — the binding subject (#5)
             "verifiability_tag": verifiability_tag,  # CGR: "rule" | "judgment"
             "agent_tier": agent_tier,                # CGR: optional TierGate snapshot (nullable)
+            "cgr_domain": domain,                     # CGR: capability domain (durable, for per-domain scoring later; nullable)
             "cgr_schema": CGR_DECISION_SCHEMA,        # CGR: substrate version tag
         },
         signing_identity=signing_identity,
@@ -418,7 +424,7 @@ def create_governed_router(decision_trail, execution_receipts, signing_identity,
             decision=req.decision, reason=req.reason, model_id=req.model_id,
             agent_handle=req.agent_handle, verifiability_tag=req.verifiability_tag,
             agent_tier=req.agent_tier, reason_code=None,  # judgment: no rule reason_code
-            agent_key=req.agent_key,
+            agent_key=req.agent_key, domain=req.domain,
             encryption=_tenant_encryption(request),
         )
 

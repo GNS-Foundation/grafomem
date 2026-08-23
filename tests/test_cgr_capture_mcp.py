@@ -133,8 +133,10 @@ def test_record_decision_injects_key_and_captures_domain(monkeypatch):
     assert b["agent_handle"] == "cc-builder@ulissy"
     assert b["verifiability_tag"] == "judgment"
     assert b["invoice_id"] == "pr-42"
-    # domain captured as metadata (v0 — not yet a CGR dimension)
-    assert b["context"]["cgr_domain"] == "deploy-verification"
+    # domain sent as the DEDICATED durable field (→ server stores parameters.cgr_domain),
+    # NOT hidden in the (encrypted) context. A human-readable trail rides `reason`.
+    assert b["domain"] == "deploy-verification"
+    assert "cgr_domain" not in b["context"]      # single source of truth is the durable field
     assert "[deploy-verification]" in b["reason"]
     assert out["recorded"] is True and out["decision_id"] == "d1"
 
@@ -171,3 +173,22 @@ def test_record_outcome_unmapped_is_noop(monkeypatch):
 
 def test_domains_are_the_locked_taxonomy():
     assert DEV_DOMAINS == ("deploy-verification", "security-scan", "adversarial-review")
+
+
+# ── domain durability: it survives the CGR-readable loader → export projection ──
+# (the field per-domain re-scoring reads; not a client-side log)
+
+def test_cgr_domain_is_durable_in_substrate_export():
+    from aml.cgr.substrate import DecisionRow, export_rows
+    row = DecisionRow(
+        decision_id="d1", invoice_ref="pr-42", agent_handle="cc-builder@ulissy",
+        agent_tier=None, decision="certify", reason_code=None,
+        verifiability_tag="judgment", created_at=None, outcome=None, outcome_date=None,
+        agent_key="bb" * 32, cgr_domain="deploy-verification",
+    )
+    out = export_rows([row])[0]
+    assert out["cgr_domain"] == "deploy-verification"          # surfaced, durable, CGR-readable
+    assert list(out.keys())[-1] == "cgr_domain"               # appended (12th) — historical shape intact
+    assert list(out.keys())[:10] == [                          # first 10 keys unchanged
+        "decision_id", "invoice_ref", "agent_handle", "agent_tier", "decision",
+        "reason_code", "verifiability_tag", "created_at", "outcome", "outcome_date"]

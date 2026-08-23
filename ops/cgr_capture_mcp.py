@@ -39,14 +39,18 @@ HARD INVARIANTS (mirror govern_dev.py + ticket-1 notes):
       decision time. An outcome result with no scored mapping is a NO-OP (decision left
       PENDING) — a falsely-resolved decision corrupts the score.
 
-⚠ v0 SCOPE — single-dimension (build-step-0 finding, flagged in the ticket): CGR scoring
-  is single-dimension today (all judgment-certify decisions score under one dimension,
-  reported as "receivables"); there is NO per-decision dimension in the CGR-readable
-  parameters, and adding one is the Phase-2 "generalize substrate schema" work (it touches
-  the SERVED scoring surface, out of this ops-only ticket). So `domain` is CAPTURED here as
-  decision metadata (context + reason) — irreversibly, per "capture now, score later" — but
-  it does NOT yet become a separate CGR dimension. Per-domain scoring is a follow-up ticket;
-  the captured domain lets it re-score history when it lands.
+⚠ v0 SCOPE — single-dimension SCORING, but domain is stored DURABLY (build-step-0 finding):
+  CGR *scoring* is single-dimension today (all judgment-certify decisions score under one
+  dimension, reported as "receivables"). Per-domain *scoring* is the Phase-2 "generalize
+  substrate schema" work (it touches the served scoring surface, out of this ops-only
+  ticket). BUT the domain string IS captured durably right now: `cgr_record_decision` sends
+  `domain` as a dedicated field and grafomem stores it server-side, per decision, in the
+  never-encrypted, CGR-readable decision `parameters` as `cgr_domain` (surfaced by the
+  substrate loader as `DecisionRow.cgr_domain` and in `/v1/cgr/substrate/export`). So
+  per-domain re-scoring later is TRUE, not a hope — the domain lives in the signed decision
+  record, not in any client-side log. (This required a small, additive, backward-compatible
+  server change to the governed-decision write — see the PR; it is not launch-visible and
+  merges post-launch.)
 """
 from __future__ import annotations
 
@@ -198,16 +202,19 @@ class CaptureClient:
                 f"no configured role key for {agent_handle!r}; known roles: "
                 f"{sorted(self._cfg.role_keys)}")
 
-        # v0: `domain` is captured as metadata (context + reason) — see module note. It is
-        # NOT yet a CGR dimension (single-dimension scoring). context rides the (encrypted)
-        # decision query; the structured reason keeps a human-readable trail.
-        context = {"cgr_domain": domain, "work_item_id": work_item_id,
-                   "reason_code": reason_code, "captured_at": _now_iso()}
+        # `domain` is sent as the dedicated field → stored DURABLY server-side in the
+        # never-encrypted, CGR-readable `parameters` as `cgr_domain` (single source of
+        # truth), so per-domain re-scoring can attribute it later. v1 scoring is
+        # single-dimension and does not read it yet ("capture now, score later"). The
+        # context/reason carry only a human-readable trail (NOT the durable domain record).
+        context = {"work_item_id": work_item_id, "reason_code": reason_code,
+                   "captured_at": _now_iso()}
         reason = f"[{domain}] {reason_text}".strip()
         payload = {
             "decision": decision, "reason": reason, "invoice_id": work_item_id,
             "context": context, "agent_handle": agent_handle, "agent_key": agent_key,
             "verifiability_tag": verifiability_tag, "agent_tier": agent_tier,
+            "domain": domain,   # durable → parameters.cgr_domain (the field per-domain scoring reads)
         }
         code, body = self._api("POST", "/v1/governed/decisions", payload)
         if code != 200:

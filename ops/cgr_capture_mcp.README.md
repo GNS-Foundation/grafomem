@@ -61,4 +61,6 @@ Then the session can call `cgr_record_decision` at judgment time and `cgr_record
 
 ## v0 scope (flagged)
 
-CGR scoring is **single-dimension** today, so `domain` is **captured as metadata** (irreversibly, per capture-now-score-later) but does **not yet** become a separate CGR dimension — per-domain scoring is the Phase-2 "generalize substrate schema" follow-up (it touches the served scoring surface, out of this ops-only ticket). The role's score currently appears under the existing dimension; the captured domain lets the follow-up re-score history.
+CGR **scoring** is single-dimension today, so per-domain *scoring* is the Phase-2 "generalize substrate schema" follow-up (it touches the served scoring surface). The role's score currently appears under the existing dimension.
+
+**Domain durability (this is the load-bearing part):** the `domain` string is stored **durably server-side, per decision, in the never-encrypted CGR-readable decision `parameters` as `cgr_domain`** — surfaced by the substrate loader as `DecisionRow.cgr_domain` and in `/v1/cgr/substrate/export`. It lives in the **signed decision record**, not in any client-side log or config mapping. So per-domain re-scoring later is real, not a hope. (This needed a small, additive, backward-compatible change to the governed-decision write; the historical export shape is unchanged — `cgr_domain` is appended.)
