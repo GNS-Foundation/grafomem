@@ -51,6 +51,10 @@ class DecisionRow:
     # CGR identity binding (Ticket #5): the acting agent's GEIANT Ed25519 pubkey,
     # captured at decision time. None on legacy rows → aggregate by handle, unbound.
     agent_key: str | None = None
+    # CGR capability domain: the domain string captured at decision time (Track C).
+    # v1 scoring is single-dimension and ignores it; per-domain scoring reads it later
+    # ("capture now, score later" for the domain axis). None on rows captured without one.
+    cgr_domain: str | None = None
 
 
 @dataclass
@@ -334,6 +338,7 @@ def load_substrate(decision_trail, store_manager, tenant_id: str, *,
             outcome=(om.metadata or {}).get("object") if om else None,
             outcome_date=_effective_at(om) if om else None,
             agent_key=p.get("agent_key"),            # CGR #5: captured at decision time, never back-resolved
+            cgr_domain=p.get("cgr_domain"),          # Track C: domain captured at decision time (per-domain scoring later)
         ))
     return rows
 
@@ -341,7 +346,8 @@ def load_substrate(decision_trail, store_manager, tenant_id: str, *,
 def export_rows(rows: list[DecisionRow]) -> list[dict]:
     """Serialize DecisionRows to the export's JSON shape, byte-for-byte (datetimes
     → isoformat or None). Guarded by a regression test. The first 10 keys are the
-    historical contract, in order; `agent_key` (Ticket #5) is appended as the 11th."""
+    historical contract, in order; `agent_key` (Ticket #5) is the 11th; `cgr_domain`
+    (Track C) is appended as the 12th — both additive, so the historical shape is intact."""
     return [{
         "decision_id": r.decision_id,
         "invoice_ref": r.invoice_ref,
@@ -354,4 +360,5 @@ def export_rows(rows: list[DecisionRow]) -> list[dict]:
         "outcome": r.outcome,
         "outcome_date": r.outcome_date.isoformat() if r.outcome_date else None,
         "agent_key": r.agent_key,                    # 11th key (appended, Ticket #5)
+        "cgr_domain": r.cgr_domain,                  # 12th key (appended, Track C)
     } for r in rows]

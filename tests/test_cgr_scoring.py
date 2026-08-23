@@ -255,7 +255,8 @@ def _ep(router, needle, method="GET"):
 
 _EXPORT_KEYS = ["decision_id", "invoice_ref", "agent_handle", "agent_tier", "decision",
                 "reason_code", "verifiability_tag", "created_at", "outcome", "outcome_date",
-                "agent_key"]   # 11th key appended (Ticket #5 identity binding)
+                "agent_key",    # 11th key appended (Ticket #5 identity binding)
+                "cgr_domain"]   # 12th key appended (Track C capability domain)
 
 
 @pytest.fixture(scope="module")
