@@ -7,6 +7,7 @@ Pure-logic coverage — no network, no DB. The integration/full-loop acceptance
 from __future__ import annotations
 
 import json
+import os
 
 import pytest
 
@@ -36,7 +37,7 @@ def test_outcome_mapping_unmapped_is_none():
     assert map_dev_outcome("") is None
 
 
-# ── never-corp guard (invariant 1) ───────────────────────────────────────────
+# ── tenant guard: pin + denylist (invariant 1) ───────────────────────────────────────────
 
 def test_assert_not_corp_refuses_corp():
     with pytest.raises(SystemExit):
@@ -47,11 +48,13 @@ def test_assert_not_corp_allows_other():
     _assert_not_corp("some-dogfood-tenant", where="test")  # no raise
 
 
-def _cfg(tenant="dogfood-t", roles=None):
+def _cfg(tenant="dogfood-t", roles=None, forbidden=None):
     c = Config.__new__(Config)
     c.base_url = "https://api.grafomem.com"
     c.tenant_key = "k"
-    c.dogfood_tenant = tenant
+    c.expected_tenant = tenant
+    # ops/ always denies corp (see ops.cgr_capture_mcp.main); mirror that policy here.
+    c.forbidden_tenants = {CORP_TENANT} if forbidden is None else set(forbidden)
     c.role_keys = roles if roles is not None else {"cc-builder@ulissy": "aa" * 32}
     return c
 
@@ -232,3 +235,62 @@ def test_cgr_domain_is_durable_in_substrate_export():
     assert list(out.keys())[:10] == [                          # first 10 keys unchanged
         "decision_id", "invoice_ref", "agent_handle", "agent_tier", "decision",
         "reason_code", "verifiability_tag", "created_at", "outcome", "outcome_date"]
+
+
+# ── packaging generalization: pin + denylist, env-only role keys ──────────────
+# (the guard that was hardcoded to GRAFOMEM's corp tenant now generalizes to any
+# tenant, with ops/ supplying corp as its own denylist entry)
+
+def test_forbidden_denylist_generalizes_beyond_corp():
+    from ops.cgr_capture_mcp import _assert_not_forbidden
+    with pytest.raises(SystemExit):
+        _assert_not_forbidden("someone-elses-prod", {"someone-elses-prod"}, where="test")
+    _assert_not_forbidden("capture-tenant", {"someone-elses-prod"}, where="test")  # no raise
+
+
+def test_ops_entry_point_always_denies_corp(monkeypatch):
+    """ops/ must inject corp into the denylist even if the env sets something else."""
+    import ops.cgr_capture_mcp as ops_mcp
+
+    monkeypatch.setenv("GRAFOMEM_CGR_FORBIDDEN_TENANTS", "other-tenant")
+    seen = {}
+    monkeypatch.setattr(ops_mcp, "_pkg_main", lambda argv: seen.update(
+        env=os.environ["GRAFOMEM_CGR_FORBIDDEN_TENANTS"]))
+    ops_mcp.main([])
+    assert CORP_TENANT in seen["env"].split(",")
+    assert "other-tenant" in seen["env"].split(",")
+
+
+def test_guard_refuses_tenant_not_pinned_even_if_not_denylisted():
+    """The pin is the primary guard: an unexpected tenant is refused on its own."""
+    client = CaptureClient(_cfg(tenant="capture-t", forbidden=set()))
+    with pytest.raises(SystemExit):
+        client._guard_response_tenant({"decision_record": {"tenant_id": "unexpected-t"}})
+
+
+def test_role_keys_can_come_from_inline_env_json(monkeypatch):
+    """A stranger's config is env vars only — no role-keys file on disk."""
+    monkeypatch.setenv("GRAFOMEM_CGR_TENANT_KEY", "k")
+    monkeypatch.setenv("GRAFOMEM_CGR_TENANT", "capture-t")
+    monkeypatch.setenv("GRAFOMEM_CGR_ROLE_KEYS_JSON", json.dumps({"cc-builder@acme": "cc" * 32}))
+    monkeypatch.delenv("GRAFOMEM_CGR_ROLE_KEYS", raising=False)
+    monkeypatch.delenv("GRAFOMEM_CGR_FORBIDDEN_TENANTS", raising=False)
+    cfg = Config()
+    cfg.validate()  # no raise
+    assert cfg.role_keys == {"cc-builder@acme": "cc" * 32}
+    assert cfg.expected_tenant == "capture-t"
+
+
+def test_legacy_dogfood_tenant_env_still_honoured(monkeypatch):
+    monkeypatch.delenv("GRAFOMEM_CGR_TENANT", raising=False)
+    monkeypatch.setenv("GRAFOMEM_CGR_DOGFOOD_TENANT", "legacy-t")
+    assert Config().expected_tenant == "legacy-t"
+
+
+def test_config_missing_tenant_pin_fails_closed(monkeypatch):
+    monkeypatch.setenv("GRAFOMEM_CGR_TENANT_KEY", "k")
+    monkeypatch.delenv("GRAFOMEM_CGR_TENANT", raising=False)
+    monkeypatch.delenv("GRAFOMEM_CGR_DOGFOOD_TENANT", raising=False)
+    monkeypatch.setenv("GRAFOMEM_CGR_ROLE_KEYS_JSON", json.dumps({"a@b": "aa" * 32}))
+    with pytest.raises(SystemExit):
+        Config().validate()

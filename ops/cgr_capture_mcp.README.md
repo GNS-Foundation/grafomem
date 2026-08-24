@@ -1,5 +1,18 @@
 # grafomem-cgr capture MCP server (dogfood)
 
+> **Where the code lives (changed).** The implementation moved to the publishable package
+> [`packages/grafomem-cgr/`](../packages/grafomem-cgr/), which is what ships to PyPI and the
+> MCP Registry as `com.grafomem/cgr-capture`. `ops/cgr_capture_mcp.py` is now GRAFOMEM's
+> **internal wrapper**: it adds our own policy — the corp tenant on the forbidden denylist —
+> and is what the dogfood launcher points at. **The dogfood loop is unchanged**: the launcher,
+> its env vars, and every guard behave exactly as before.
+>
+> The never-corp guard generalized: instead of a hardcoded corp constant, the package takes a
+> required tenant **pin** (`GRAFOMEM_CGR_TENANT`) plus an optional **denylist**
+> (`GRAFOMEM_CGR_FORBIDDEN_TENANTS`). `ops/` always injects corp into that denylist, so corp is
+> refused here exactly as it was. `GRAFOMEM_CGR_DOGFOOD_TENANT` is still honoured as the
+> pre-1.0 name of the pin.
+
 Track C, ticket 1. Lets GRAFOMEM's own Claude agents (Claude Code / Cowork sessions) accumulate CGR substrate from their dev-loop judgments — **capture now, score later.** Wraps the existing governed HTTP path; no new endpoints, no scoring change, no new crypto.
 
 ## Config (env)
@@ -8,7 +21,9 @@ Track C, ticket 1. Lets GRAFOMEM's own Claude agents (Claude Code / Cowork sessi
 |---|---|
 | `GRAFOMEM_API` | base URL (default `https://api.grafomem.com`) |
 | `GRAFOMEM_CGR_TENANT_KEY` | the **dogfood** tenant's `X-API-Key` (the sensitive secret) |
-| `GRAFOMEM_CGR_DOGFOOD_TENANT` | the expected dogfood tenant_id (never-corp guard, verified at runtime against the API key's real tenant) |
+| `GRAFOMEM_CGR_TENANT` | the expected tenant_id (tenant pin, verified at runtime against the API key's real tenant). `GRAFOMEM_CGR_DOGFOOD_TENANT` is the pre-1.0 name and still works — the dogfood launcher uses it. |
+| `GRAFOMEM_CGR_FORBIDDEN_TENANTS` | comma-separated tenant_ids always refused. `ops/` injects corp automatically. |
+| `GRAFOMEM_CGR_ROLE_KEYS_JSON` | the role-keys mapping inline as JSON, instead of a file path (used by the public env-only config) |
 | `GRAFOMEM_CGR_ROLE_KEYS` | path to JSON mapping role handles → `agent_key` (public Ed25519 hex) |
 
 Example `role_keys.json`:
