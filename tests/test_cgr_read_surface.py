@@ -136,6 +136,22 @@ def test_freshness_old_is_stale_recent_is_fresh():
 
 # ── advisory continuity ─────────────────────────────────────────────────────────
 
+def test_issuance_path_emits_null_domain_scope_fields():
+    """The ISSUANCE path (/v1/cgr/attestation(s), TierGate, 8b dashboard) uses to_tiergate
+    WITHOUT a domain override. It must emit the SAME key set as the read path — the three
+    scope fields are always PRESENT, with the domain fields NULL (never absent). This is the
+    shape a v3-accepting consumer must tolerate; the keys never vary, only their values."""
+    from aml.cgr.engine import to_tiergate
+    tg = to_tiergate(_result())
+    assert tg["scoring_scope"] == "pooled"
+    assert tg["requested_domain"] is None
+    assert tg["domain_n_resolved"] is None
+    # identical key set to a read-path attestation body (minus envelope-only keys)
+    read_att, _ = _env(requested_domain="deploy-verification", domain_n_resolved=2)
+    read_body_keys = set(read_att["attestation"]) - {"signature", "evidence_ref", "schema", "issuer", "issuer_key_id"}
+    assert set(tg) == read_body_keys
+
+
 def test_continuity_states():
     k = "97" * 32
     assert _read_continuity(k, did_key(k))["status"] == "verified"     # no rotation

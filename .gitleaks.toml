@@ -47,6 +47,11 @@ regex = '''\b(gAAAAA[A-Za-z0-9_\-]{10,}={0,2})'''
 # committed (the deterministic test signing seed lives in test code, never in the
 # JSON), so there is nothing secret to catch here; the Fernet/master-key rules above
 # still apply everywhere else.
+#
+# CONVENTION (do not break): files matching the `cgr_attestation_*_jcs.golden.json`
+# pattern are gitleaks-blind by this allowlist, so they MUST hold public cryptographic
+# material ONLY — never a private key, signing seed, API key, or any secret. Put no
+# secret in these paths. (GitGuardian still scans them, so this is defense-in-depth.)
 description = "Non-source data/binary + CGR public-key golden fixtures"
 paths = [
   '''\.(png|jpe?g|gif|pdf|ipynb|parquet|bin|whl|so|dylib)$''',
