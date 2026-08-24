@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "grafomem-cgr"
+version = "0.1.0"
+description = "MCP server that captures agent judgments and outcomes as CGR substrate on GRAFOMEM Cloud"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Camilo Ayerbe Posada" }]
+keywords = ["mcp", "model-context-protocol", "grafomem", "cgr", "agent-reputation"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Quality Assurance",
+]
+# Deliberately minimal: the client is stdlib-only (urllib/json) apart from the MCP
+# server runtime. mcp 1.x has the low-level Server.list_tools API used here; 2.0 removed it.
+dependencies = ["mcp>=1.0,<2"]
+
+[project.urls]
+Homepage = "https://grafomem.com"
+Documentation = "https://docs.grafomem.com"
+Repository = "https://github.com/GNS-Foundation/grafomem"
+Issues = "https://github.com/GNS-Foundation/grafomem/issues"
+
+[project.scripts]
+grafomem-cgr = "grafomem_cgr.capture:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

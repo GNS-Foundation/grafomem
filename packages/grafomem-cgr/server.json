@@ -1,0 +1,60 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "com.grafomem/cgr-capture",
+  "title": "GRAFOMEM CGR Capture",
+  "description": "Record agent judgments and their real outcomes on GRAFOMEM Cloud. Capture now, score later.",
+  "version": "0.1.0",
+  "websiteUrl": "https://grafomem.com",
+  "repository": {
+    "url": "https://github.com/GNS-Foundation/grafomem",
+    "source": "github",
+    "subfolder": "packages/grafomem-cgr"
+  },
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "grafomem-cgr",
+      "version": "0.1.0",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "GRAFOMEM_CGR_TENANT_KEY",
+          "description": "Your GRAFOMEM Cloud tenant API key (X-API-Key). Needs decisions:read for the durability guard.",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "GRAFOMEM_CGR_TENANT",
+          "description": "The tenant id you expect that key to resolve to. If the key resolves to any other tenant, every write is refused.",
+          "isRequired": true
+        },
+        {
+          "name": "GRAFOMEM_CGR_ROLE_KEYS_JSON",
+          "description": "Role handles to public agent_key (64-hex Ed25519), inline as JSON. Example: {\"cc-builder@acme\":\"<64-hex>\"}. Use this or GRAFOMEM_CGR_ROLE_KEYS.",
+          "isRequired": false
+        },
+        {
+          "name": "GRAFOMEM_CGR_ROLE_KEYS",
+          "description": "Path to a JSON file with the same role-handle to public agent_key mapping. Use this or GRAFOMEM_CGR_ROLE_KEYS_JSON.",
+          "isRequired": false,
+          "format": "filepath"
+        },
+        {
+          "name": "GRAFOMEM_CGR_FORBIDDEN_TENANTS",
+          "description": "Comma-separated tenant ids to always refuse, even if pinned by mistake. Put your production tenant here.",
+          "isRequired": false
+        },
+        {
+          "name": "GRAFOMEM_API",
+          "description": "GRAFOMEM Cloud base URL. Defaults to https://api.grafomem.com.",
+          "isRequired": false,
+          "default": "https://api.grafomem.com"
+        }
+      ]
+    }
+  ]
+}
