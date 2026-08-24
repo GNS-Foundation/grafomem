@@ -1,0 +1,35 @@
+{
+  "provenance": {
+    "ticket": "grafomem #7a (cgr/identity-continuity)",
+    "schema": "cgr.attestation.v3",
+    "canonicalization": "RFC 8785 (JCS); subject_did is a signed-body field",
+    "note": "CGR attestation v3 golden \u2014 deterministic test fixture (repeating-byte test issuer); JCS-canonical cross-language wire lock.",
+    "cross_language": "GEIANT #7b copies .attestation + .canonical_body_utf8 + .issuer_key_id; binds cgrBand on subject_key; displays subject_did as the stable identity anchor."
+  },
+  "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+  "subject_key": "d759793bbc13a2819a827c76adb6fba8a49aee007f49f2d0992d99b825ad2c48",
+  "subject_did": "did:key:z6Mkg49NtQR2LyYRDCQFK4w1VVHqhypZSSRo7HsyuN7SV7v5",
+  "canonical_body_utf8": "{\"agent_handle\":\"analyst-a@example\",\"as_of\":\"2026-01-01T00:00:00Z\",\"capability_tier\":0.75,\"cgr_score\":0.6666666666666666,\"confidence\":6,\"dimension\":\"receivables\",\"domain_n_resolved\":null,\"issuer\":\"gns-foundation\",\"issuer_key_id\":\"d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737\",\"last_resolved_at\":\"2026-01-01T00:00:00Z\",\"n_resolved\":12,\"rationale\":\"score 0.667 \u2265 0.65 and n_resolved 12 \u2265 10\",\"requested_domain\":null,\"schema\":\"cgr.attestation.v3\",\"scoring_scope\":\"pooled\",\"subject_did\":\"did:key:z6Mkg49NtQR2LyYRDCQFK4w1VVHqhypZSSRo7HsyuN7SV7v5\",\"subject_key\":\"d759793bbc13a2819a827c76adb6fba8a49aee007f49f2d0992d99b825ad2c48\",\"tier\":\"silver\"}",
+  "attestation": {
+    "agent_handle": "analyst-a@example",
+    "subject_key": "d759793bbc13a2819a827c76adb6fba8a49aee007f49f2d0992d99b825ad2c48",
+    "subject_did": "did:key:z6Mkg49NtQR2LyYRDCQFK4w1VVHqhypZSSRo7HsyuN7SV7v5",
+    "dimension": "receivables",
+    "tier": "silver",
+    "cgr_score": 0.6666666666666666,
+    "confidence": 6.0,
+    "n_resolved": 12,
+    "capability_tier": 0.75,
+    "as_of": "2026-01-01T00:00:00Z",
+    "last_resolved_at": "2026-01-01T00:00:00Z",
+    "scoring_scope": "pooled",
+    "requested_domain": null,
+    "domain_n_resolved": null,
+    "rationale": "score 0.667 \u2265 0.65 and n_resolved 12 \u2265 10",
+    "schema": "cgr.attestation.v3",
+    "issuer": "gns-foundation",
+    "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "signature": "34e04fafdc6fa7302b06eb92f1db45bfb31d9bff658bcbc3cb6f51d5eb97f9c0041cc0dd7cd75a206a09abaa300474957f6f19aeb6e3f7ba306ce22f1bacba0b",
+    "evidence_ref": null
+  }
+}

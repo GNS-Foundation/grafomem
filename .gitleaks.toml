@@ -40,11 +40,22 @@ keywords = ["gaaaaa"]
 regex = '''\b(gAAAAA[A-Za-z0-9_\-]{10,}={0,2})'''
 
 [allowlist]
-# No secret-shaped fixtures are committed — the corpus verifier generates its
-# positives/negatives at runtime — so there is nothing there to allowlist.
-description = "Non-source data/binary"
+# Non-source binaries, plus the CGR attestation golden fixtures. Those fixtures
+# contain ONLY public cryptographic material by design — issuer/subject Ed25519
+# PUBLIC keys, did:key identifiers, and detached signatures — needed so a verifier
+# can reproduce and check the wire format offline. No PRIVATE key material is
+# committed (the deterministic test signing seed lives in test code, never in the
+# JSON), so there is nothing secret to catch here; the Fernet/master-key rules above
+# still apply everywhere else.
+#
+# CONVENTION (do not break): files matching the `cgr_attestation_*_jcs.golden.json`
+# pattern are gitleaks-blind by this allowlist, so they MUST hold public cryptographic
+# material ONLY — never a private key, signing seed, API key, or any secret. Put no
+# secret in these paths. (GitGuardian still scans them, so this is defense-in-depth.)
+description = "Non-source data/binary + CGR public-key golden fixtures"
 paths = [
   '''\.(png|jpe?g|gif|pdf|ipynb|parquet|bin|whl|so|dylib)$''',
+  '''cgr_attestation_v[0-9]+_jcs\.golden\.json$''',
 ]
 
 # NOTE: the known dead key at scripts/migrate_prod_keys.py:7 is deliberately NOT

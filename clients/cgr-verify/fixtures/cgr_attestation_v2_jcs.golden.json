@@ -1,0 +1,31 @@
+{
+  "provenance": {
+    "ticket": "grafomem #7a (cgr/identity-continuity)",
+    "schema": "cgr.attestation.v2 (subject_did now populated \u2014 identity continuity)",
+    "canonicalization": "RFC 8785 (JCS); subject_did is a signed-body field",
+    "note": "CGR attestation v2 golden \u2014 deterministic test fixture (repeating-byte test issuer); JCS-canonical cross-language wire lock.",
+    "cross_language": "GEIANT #7b copies .attestation + .canonical_body_utf8 + .issuer_key_id; binds cgrBand on subject_key; displays subject_did as the stable identity anchor."
+  },
+  "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+  "subject_key": "d759793bbc13a2819a827c76adb6fba8a49aee007f49f2d0992d99b825ad2c48",
+  "subject_did": "did:key:z6Mkg49NtQR2LyYRDCQFK4w1VVHqhypZSSRo7HsyuN7SV7v5",
+  "canonical_body_utf8": "{\"agent_handle\":\"analyst-a@example\",\"as_of\":\"2026-01-01T00:00:00Z\",\"capability_tier\":0.75,\"cgr_score\":0.6666666666666666,\"confidence\":6,\"dimension\":\"receivables\",\"issuer\":\"gns-foundation\",\"issuer_key_id\":\"d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737\",\"n_resolved\":12,\"rationale\":\"score 0.667 \u2265 0.65 and n_resolved 12 \u2265 10\",\"schema\":\"cgr.attestation.v2\",\"subject_did\":\"did:key:z6Mkg49NtQR2LyYRDCQFK4w1VVHqhypZSSRo7HsyuN7SV7v5\",\"subject_key\":\"d759793bbc13a2819a827c76adb6fba8a49aee007f49f2d0992d99b825ad2c48\",\"tier\":\"silver\"}",
+  "attestation": {
+    "agent_handle": "analyst-a@example",
+    "subject_key": "d759793bbc13a2819a827c76adb6fba8a49aee007f49f2d0992d99b825ad2c48",
+    "subject_did": "did:key:z6Mkg49NtQR2LyYRDCQFK4w1VVHqhypZSSRo7HsyuN7SV7v5",
+    "dimension": "receivables",
+    "tier": "silver",
+    "cgr_score": 0.6666666666666666,
+    "confidence": 6.0,
+    "n_resolved": 12,
+    "capability_tier": 0.75,
+    "as_of": "2026-01-01T00:00:00Z",
+    "rationale": "score 0.667 \u2265 0.65 and n_resolved 12 \u2265 10",
+    "schema": "cgr.attestation.v2",
+    "issuer": "gns-foundation",
+    "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "signature": "38a842593800f12caac37b5898f9772639f32a3774d179a4b79fbe47d3c0ea68fc9051240c00774ccb48ac7fb12531bab361e87f56730ee7f403e5d53f35ca04",
+    "evidence_ref": null
+  }
+}

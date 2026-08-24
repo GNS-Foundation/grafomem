@@ -27,6 +27,8 @@ class CalibrationBody(BaseModel):
     n_observations: int = 0
     method: str | None = None
 
+from datetime import datetime, timezone
+
 from aml.cgr.attestation import (
     CGR_ATTESTATION_SCHEMA,
     attestation_fingerprint,
@@ -34,8 +36,87 @@ from aml.cgr.attestation import (
 )
 from aml.cgr.engine import compute_scores, to_tiergate
 from aml.cgr.gate import calibration_tenant_tx
+from aml.cgr.identity import did_key
 from aml.cgr.issuance import ISSUER, issuer_key_id, make_signer
 from aml.cgr.scoring import DIMENSION_RECEIVABLES, _now_iso
+from aml.cgr.substrate import load_substrate
+
+# Ticket 2 — external READ surface.
+READ_SURFACE_VERSION = "cgr-read/1"
+# Staleness threshold for the freshness envelope. Served config, NOT signed — `stale` is an
+# advisory hint a policy engine may override; the signed `last_resolved_at` is the fact.
+READ_STALE_AFTER_DAYS = 30
+_VERIFY_RECIPE_URL = "https://docs.grafomem.com/cgr/verify"
+_VERIFIER_LIB = "@gns-foundation/cgr-verify"
+
+
+def _read_freshness(last_resolved_at: str | None, *, now: datetime | None = None) -> dict:
+    """Freshness block for the read envelope. `stale` is advisory (threshold is served
+    config); the authoritative, signed fact is `last_resolved_at` in the attestation body.
+    No resolved evidence yet ⇒ stale by definition."""
+    now = now or datetime.now(timezone.utc)
+    out = {"as_of": now.isoformat(), "last_resolved_at": last_resolved_at,
+           "age_ms": None, "stale": True}
+    if last_resolved_at:
+        try:
+            dt = datetime.fromisoformat(last_resolved_at.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            age_ms = (now - dt).total_seconds() * 1000.0
+            out["age_ms"] = age_ms
+            out["stale"] = age_ms > READ_STALE_AFTER_DAYS * 86400_000
+        except Exception:
+            pass  # unparseable timestamp ⇒ leave stale=True (fail-safe)
+    return out
+
+
+def _read_continuity(subject_key: str | None, subject_did: str | None) -> dict:
+    """ADVISORY continuity status for the read envelope — the consumer MUST re-verify
+    independently (fetch /v1/cgr/rotations + run the verifier). verified = no rotation
+    (anchor == current); asserted = a rotation occurred, server asserts continuity but
+    the consumer must re-walk the chain; unverified = no bound key."""
+    if not subject_key:
+        return {"status": "unverified", "advisory": True,
+                "note": "no bound subject_key — unbindable"}
+    if subject_did and did_key(subject_key) == subject_did:
+        return {"status": "verified", "advisory": True,
+                "note": "no rotation (anchor == current); re-verify via /v1/cgr/rotations"}
+    return {"status": "asserted", "advisory": True,
+            "note": "rotation present — re-walk the chain via /v1/cgr/rotations + the verifier"}
+
+
+def build_read_envelope(match, requested_domain, domain_n_resolved, *, signer,
+                        issuer_key_id_hex: str, issuer_pubkey_hex: str, anchor=None,
+                        now: datetime | None = None) -> dict:
+    """Pure envelope assembly (no DB/routing) — unit-testable. Mints the fresh v3
+    attestation with the SIGNED scope fields (requested_domain, domain_n_resolved),
+    then wraps it so `score` is INSEPARABLE from its two evidence masses + freshness:
+    the pooled `evidence_mass`/`n_resolved` back the score, `domain_n_resolved` backs the
+    domain match, and the authoritative copies of all of these live signed inside `att`.
+    `anchor(tiergate, att) -> evidence_ref` is optional (the gcrumbs pointer)."""
+    tg = to_tiergate(match)
+    tg["requested_domain"] = requested_domain
+    tg["domain_n_resolved"] = domain_n_resolved
+    att = build_attestation(tg, signer=signer, issuer_key_id=issuer_key_id_hex, evidence_ref=None)
+    if anchor is not None:
+        att["evidence_ref"] = anchor(tg, att)
+    return {
+        "surface_version": READ_SURFACE_VERSION,
+        "result": "attestation",
+        "attestation": att,
+        "score": match.cgr_score,
+        "evidence_mass": match.confidence,        # pooled n = α+β — backs the score
+        "n_resolved": match.n_resolved,           # pooled resolved count — backs the score
+        "scoring_scope": "pooled",                # NOT a per-domain score
+        "requested_domain": requested_domain,     # convenience copy (authoritative copy signed in att)
+        "domain_n_resolved": domain_n_resolved,   # backs the domain MATCH (convenience copy; signed in att)
+        "freshness": _read_freshness(match.last_resolved_at, now=now),
+        "issuer": {"issuer": ISSUER, "issuer_key_id": issuer_key_id_hex,
+                   "schema": CGR_ATTESTATION_SCHEMA},
+        "continuity": _read_continuity(match.subject_key, match.subject_did),
+        "verify": {"recipe_url": _VERIFY_RECIPE_URL, "lib": _VERIFIER_LIB,
+                   "issuer_pubkey": issuer_pubkey_hex},
+    }
 
 
 def _tenant_id(request: Request) -> str:
@@ -260,5 +341,76 @@ def create_cgr_issuance_router(
             raise HTTPException(404, f"No CGR score for agent_handle {agent_handle!r}")
         # An `unproven` agent still gets a valid signed attestation (honest cold-start).
         return _issue(tenant_id, match)
+
+    # ── Ticket 2: the external READ surface (AUTHENTICATED ONLY) ───────────────
+    # Public/unauthenticated serving of dogfood (real-work) attestations is a HARD STOP
+    # until the public-safe boundary spec is signed off — this endpoint requires cgr:read
+    # + tenant exactly like the rest. Honest-scope by construction: score is only ever
+    # returned INSIDE an envelope that also carries evidence mass + freshness; a bare
+    # score is structurally unobtainable. Unknown subject / domain ⇒ explicit no_evidence.
+    def _no_evidence(reason: str) -> dict:
+        return {"surface_version": READ_SURFACE_VERSION, "result": "no_evidence",
+                "reason": reason, "score": None, "evidence_mass": None}
+
+    @router.get("/read/attestation")
+    async def read_attestation(request: Request, subject: str = "", domain: str = "",
+                               key: str = "", did: str = "", handle: str = "",
+                               limit: int = 500, offset: int = 0):
+        tenant_id = _tenant_id(request)
+        require_scope(request, "cgr:read")          # authenticated only — public path is gated
+        _scoring_guard()
+        identity = _foundation()
+
+        # resolve the subject: explicit key/did/handle, or a heuristic on ?subject=
+        want_key, want_did, want_handle = (key or None), (did or None), (handle or None)
+        if subject and not (want_key or want_did or want_handle):
+            s = subject.strip()
+            if s.startswith("did:key:"):
+                want_did = s
+            elif len(s) == 64 and all(c in "0123456789abcdefABCDEF" for c in s):
+                want_key = s.lower()
+            else:
+                want_handle = s
+        if not (want_key or want_did or want_handle):
+            raise HTTPException(400, "provide subject via ?subject= (key|did|handle) or ?key=/?did=/?handle=")
+
+        results = compute_scores(decision_trail, store_manager, tenant_id, limit=limit, offset=offset)
+
+        def _match(r):
+            return ((want_key and r.subject_key == want_key)
+                    or (want_did and r.subject_did == want_did)
+                    or (want_handle and r.agent_handle == want_handle))
+
+        match = next((r for r in results if _match(r)), None)
+        if match is None:
+            return _no_evidence("no CGR score for the requested subject on this tenant")
+
+        # domain match (against CAPTURED cgr_domain evidence) + the domain's own evidence mass.
+        # The pooled score (cgr_score / n_resolved) is unchanged and single-dimension; the
+        # domain only gates the MATCH and reports its own resolved count. Per-domain SCORING
+        # is Ticket 3 — this must not imply a per-domain score exists.
+        requested_domain = domain or None
+        domain_n_resolved = None
+        if requested_domain is not None:
+            rows = load_substrate(decision_trail, store_manager, tenant_id, limit=limit, offset=offset)
+            subj_rows = [rw for rw in rows if (
+                (match.subject_key and rw.agent_key == match.subject_key)
+                or (not match.subject_key and rw.agent_handle == match.agent_handle))]
+            dom_rows = [rw for rw in subj_rows if rw.cgr_domain == requested_domain]
+            if not dom_rows:
+                return _no_evidence(
+                    f"subject has no captured evidence in domain {requested_domain!r}")
+            domain_n_resolved = sum(
+                1 for rw in dom_rows
+                if rw.decision == "certify" and rw.verifiability_tag == "judgment"
+                and rw.outcome in ("paid", "default"))
+
+        # mint (fresh-mint, no store) via the pure envelope builder; anchor into gcrumbs.
+        return build_read_envelope(
+            match, requested_domain, domain_n_resolved,
+            signer=make_signer(identity), issuer_key_id_hex=issuer_key_id(identity),
+            issuer_pubkey_hex=identity.public_key().hex(),
+            anchor=lambda tg, att: _anchor(tenant_id, tg, att),
+        )
 
     return router

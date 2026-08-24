@@ -171,9 +171,11 @@ def test_fingerprint_changes_on_tamper():
 # JCS (RFC 8785) golden fixture — the cross-language wire-format contract (#4a.1)
 # ============================================================================
 
-_GOLDEN = pathlib.Path(__file__).resolve().parent / "fixtures" / "cgr_attestation_v2_jcs.golden.json"
+_GOLDEN = pathlib.Path(__file__).resolve().parent / "fixtures" / "cgr_attestation_v3_jcs.golden.json"
+_GOLDEN_V2 = pathlib.Path(__file__).resolve().parent / "fixtures" / "cgr_attestation_v2_jcs.golden.json"
 _TIERGATE_KEYS = ("agent_handle", "subject_key", "subject_did", "dimension", "tier", "cgr_score",
-                  "confidence", "n_resolved", "capability_tier", "as_of", "rationale")
+                  "confidence", "n_resolved", "capability_tier", "as_of", "last_resolved_at",
+                  "scoring_scope", "requested_domain", "domain_n_resolved", "rationale")
 
 
 def test_binding_invariant_subject_key_distinct():
@@ -194,21 +196,28 @@ def test_binding_invariant_subject_key_distinct():
 
 
 def test_jcs_golden_fixture_wire_format_locked():
-    """The committed JCS canonical bytes are the v2 contract GEIANT (#5b) mirrors.
-    Locks: exact canonical byte string (incl. subject_key inside the signed body),
-    signature verifies over raw bytes under the pinned Foundation key, one-byte
-    tamper fails, and signing is deterministic."""
+    """The committed JCS canonical bytes are the v3 contract external consumers mirror.
+    Locks: exact canonical byte string (incl. subject_key AND last_resolved_at inside
+    the signed body), signature verifies over raw bytes under the pinned Foundation
+    key, one-byte tamper fails, and signing is deterministic."""
     fx = json.loads(_GOLDEN.read_text())
     att = fx["attestation"]
 
     # 1. wire format locked — JCS canonical bytes equal the committed string
     assert canonical_body(att).decode("utf-8") == fx["canonical_body_utf8"]
-    # v2: subject_key (current op key) AND subject_did (identity anchor, #7) are
-    # both INSIDE the signed body — a rotated identity (subject_key ≠ anchor).
-    assert att["schema"] == "cgr.attestation.v2"
+    # v3: subject_key (current op key), subject_did (identity anchor, #7), AND
+    # last_resolved_at (freshness, #2) are all INSIDE the signed body.
+    assert att["schema"] == "cgr.attestation.v3"
     assert f'"subject_key":"{fx["subject_key"]}"' in fx["canonical_body_utf8"]
     assert f'"subject_did":"{fx["subject_did"]}"' in fx["canonical_body_utf8"]
     assert fx["subject_did"].startswith("did:key:z")
+    # #2 (v3): freshness is signed — last_resolved_at is inside the canonical body.
+    assert '"last_resolved_at":"' in fx["canonical_body_utf8"]
+    assert att["last_resolved_at"]  # present, non-null in the golden
+    # Ticket 2: scoring-scope markers are SIGNED — a stripped envelope can't fake domain-scoping.
+    assert '"scoring_scope":"pooled"' in fx["canonical_body_utf8"]
+    assert '"requested_domain":' in fx["canonical_body_utf8"]
+    assert '"domain_n_resolved":' in fx["canonical_body_utf8"]
     # JCS number formatting: integer-valued float serialized WITHOUT ".0"
     assert '"confidence":6,' in fx["canonical_body_utf8"]
     # JCS strings are raw UTF-8, not \uXXXX ascii-escaped
@@ -218,15 +227,36 @@ def test_jcs_golden_fixture_wire_format_locked():
     verify = make_verifier(bytes.fromhex(fx["issuer_key_id"]))
     assert verify_attestation(att, verify) is True
 
-    # 3. one-byte tamper of subject_key → signature fails (proves it's in the body)
+    # 3. one-byte tamper of subject_key / score / freshness / scope fields → signature fails.
+    #    The scope-field tampers are the load-bearing ones: a MITM must not be able to flip a
+    #    pooled score into a domain-specific claim by editing the (signed) scope markers.
     assert verify_attestation({**att, "subject_key": "00" * 32}, verify) is False
     assert verify_attestation({**att, "cgr_score": 0.99}, verify) is False
+    assert verify_attestation({**att, "last_resolved_at": "2020-01-01T00:00:00Z"}, verify) is False
+    assert verify_attestation({**att, "scoring_scope": "domain-specific"}, verify) is False
+    assert verify_attestation({**att, "requested_domain": "security-scan"}, verify) is False
+    assert verify_attestation({**att, "domain_n_resolved": 999}, verify) is False
 
-    # 4. determinism — re-signing the same seed reproduces the exact signature
-    ident = FoundationIdentity(bytes.fromhex(fx["provenance"]["foundation_signing_seed_hex"]))
+    # 4. determinism — re-signing the same seed reproduces the exact signature.
+    # The seed is the module test constant (NOT stored in the fixture — secret-shaped
+    # test material is kept out of committed JSON per the repo's secret-scan guidance).
+    ident = FoundationIdentity(bytes.fromhex(FOUNDATION_SEED))
     tiergate = {k: att[k] for k in _TIERGATE_KEYS}
     resigned = build_attestation(tiergate, signer=make_signer(ident), issuer_key_id=issuer_key_id(ident))
     assert resigned["signature"] == att["signature"]
+
+
+def test_legacy_v2_attestation_still_verifies():
+    """Backward-compat: an existing v2 attestation (no last_resolved_at) still verifies
+    under the pinned key — verify_attestation is schema-agnostic (re-canon + Ed25519),
+    so v1/v2/v3 all verify. Only the freshness field differs across versions."""
+    fx = json.loads(_GOLDEN_V2.read_text())
+    att = fx["attestation"]
+    assert att["schema"] == "cgr.attestation.v2"
+    assert "last_resolved_at" not in att
+    verify = make_verifier(bytes.fromhex(fx["issuer_key_id"]))
+    assert verify_attestation(att, verify) is True
+    assert verify_attestation({**att, "cgr_score": 0.99}, verify) is False
 
 
 # ============================================================================
