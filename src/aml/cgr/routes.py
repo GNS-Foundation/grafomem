@@ -46,7 +46,7 @@ READ_SURFACE_VERSION = "cgr-read/1"
 # Staleness threshold for the freshness envelope. Served config, NOT signed — `stale` is an
 # advisory hint a policy engine may override; the signed `last_resolved_at` is the fact.
 READ_STALE_AFTER_DAYS = 30
-_VERIFY_RECIPE_URL = "https://docs.grafomem.com/cgr/verify"
+_VERIFY_RECIPE_URL = "https://docs.grafomem.com/cgr/verify/"  # canonical trailing-slash (avoids a 308 redirect hop)
 _VERIFIER_LIB = "@gns-foundation/cgr-verify"
 
 
