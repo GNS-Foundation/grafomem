@@ -1158,9 +1158,14 @@ def create_app(
                         gcrumbs=getattr(app.state, "gcrumbs", None),
                     )
                 )
+                # Phase 2 — remote CGR read MCP server (com.grafomem/cgr-read) at POST /mcp.
+                # Same service, bearer auth via the shared middleware, tools wrap the read-core.
+                from aml.cgr.mcp_server import create_cgr_mcp_router
+                app.include_router(create_cgr_mcp_router(dt, store_mgr, foundation_identity))
                 logger.info(
                     "Governed-decision + verify + CGR substrate + CGR scoring + CGR issuance "
-                    "routes enabled (foundation_issuer=%s)", foundation_identity is not None,
+                    "+ CGR read MCP (/mcp) routes enabled (foundation_issuer=%s)",
+                    foundation_identity is not None,
                 )
             except Exception as e:
                 logger.warning("Demo routes not enabled: %s", e)

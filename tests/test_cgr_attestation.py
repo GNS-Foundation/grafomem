@@ -379,20 +379,22 @@ async def test_attestation_endpoint_verifiable_over_substrate(harness):
 
 
 @pytest.mark.asyncio
-async def test_fingerprint_anchored_in_breadcrumb_when_gcrumbs_present(harness):
+async def test_reads_do_not_anchor_to_chain(harness):
+    """Phase 2 — uniform no-per-read-anchor. A READ must not write to the gcrumbs chain:
+    the attestation is re-minted deterministically over evidence already anchored at
+    issuance and is Foundation-signed + offline-verifiable, so no read-time crumb is
+    written and `evidence_ref` is None. Applies uniformly to get_attestation,
+    list_attestations, and the /read/attestation surface. (Integrity is the signature,
+    not the anchor; an optional out-of-band access-audit log may be added later.)"""
     T = _tenant()
     await _seed_agent(harness, T, inv="INV-2")
     n_before = len(harness.gcrumbs.calls)
     att = await harness.get_attestation(CERTIFIER, _req(T))
 
-    assert len(harness.gcrumbs.calls) == n_before + 1
-    tenant_id, event_type, payload = harness.gcrumbs.calls[-1]
-    assert tenant_id == T
-    assert event_type == "cgr:attestation:issued"
-    # The breadcrumb carries the fingerprint of exactly what was issued.
-    assert payload["attestation_fingerprint"] == attestation_fingerprint(att)
-    assert payload["signature"] == att["signature"]
-    assert att["evidence_ref"] == "bc-1"
+    assert len(harness.gcrumbs.calls) == n_before      # a read writes NO breadcrumb
+    assert att["evidence_ref"] is None
+    # still a valid signed attestation — the read loses audit-of-access, not integrity.
+    assert verify_attestation(att, make_verifier(harness.foundation.public_key())) is True
 
 
 @pytest.mark.asyncio
