@@ -14,8 +14,10 @@ app factory.
 """
 from __future__ import annotations
 
+import functools
 from dataclasses import asdict
 
+import anyio
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
@@ -31,7 +33,6 @@ from datetime import datetime, timezone
 
 from aml.cgr.attestation import (
     CGR_ATTESTATION_SCHEMA,
-    attestation_fingerprint,
     build_attestation,
 )
 from aml.cgr.engine import compute_scores, to_tiergate
@@ -117,6 +118,92 @@ def build_read_envelope(match, requested_domain, domain_n_resolved, *, signer,
         "verify": {"recipe_url": _VERIFY_RECIPE_URL, "lib": _VERIFIER_LIB,
                    "issuer_pubkey": issuer_pubkey_hex},
     }
+
+
+# ── Shared read-core (Phase 2) ────────────────────────────────────────────────
+# The SAME logic behind GET /v1/cgr/read/attestation, factored out so the REST route
+# AND the remote MCP tool call it — the signed envelope is then identical by
+# construction, not "kept in sync". fastapi-free (returns dicts / raises ValueError),
+# so a sidecar could host it unchanged. NO per-read anchor (uniform policy, Phase 2 Q1).
+
+def read_no_evidence(reason: str) -> dict:
+    """The explicit no-evidence result — never a default score, never 0.5."""
+    return {"surface_version": READ_SURFACE_VERSION, "result": "no_evidence",
+            "reason": reason, "score": None, "evidence_mass": None}
+
+
+def resolve_subject(subject: str, key: str, did: str, handle: str):
+    """(want_key, want_did, want_handle) from an explicit key/did/handle or the
+    ?subject= heuristic (64-hex ⇒ key, did:key: ⇒ did, else handle). ValueError if none."""
+    want_key, want_did, want_handle = (key or None), (did or None), (handle or None)
+    if subject and not (want_key or want_did or want_handle):
+        s = subject.strip()
+        if s.startswith("did:key:"):
+            want_did = s
+        elif len(s) == 64 and all(c in "0123456789abcdefABCDEF" for c in s):
+            want_key = s.lower()
+        else:
+            want_handle = s
+    if not (want_key or want_did or want_handle):
+        raise ValueError("provide subject via subject (key|did|handle) or key/did/handle")
+    return want_key, want_did, want_handle
+
+
+def build_read_result(decision_trail, store_manager, foundation_identity, tenant_id: str, *,
+                      subject: str = "", key: str = "", did: str = "", handle: str = "",
+                      domain: str = "", limit: int = 500, offset: int = 0) -> dict:
+    """Envelope for (subject, domain) or an explicit no_evidence dict. Caller guarantees
+    foundation_identity is not None (503 upstream otherwise). No anchor (Phase 2 Q1)."""
+    want_key, want_did, want_handle = resolve_subject(subject, key, did, handle)
+    results = compute_scores(decision_trail, store_manager, tenant_id, limit=limit, offset=offset)
+
+    def _match(r):
+        return ((want_key and r.subject_key == want_key)
+                or (want_did and r.subject_did == want_did)
+                or (want_handle and r.agent_handle == want_handle))
+
+    match = next((r for r in results if _match(r)), None)
+    if match is None:
+        return read_no_evidence("no CGR score for the requested subject on this tenant")
+
+    requested_domain = domain or None
+    domain_n_resolved = None
+    if requested_domain is not None:
+        rows = load_substrate(decision_trail, store_manager, tenant_id, limit=limit, offset=offset)
+        subj_rows = [rw for rw in rows if (
+            (match.subject_key and rw.agent_key == match.subject_key)
+            or (not match.subject_key and rw.agent_handle == match.agent_handle))]
+        dom_rows = [rw for rw in subj_rows if rw.cgr_domain == requested_domain]
+        if not dom_rows:
+            return read_no_evidence(
+                f"subject has no captured evidence in domain {requested_domain!r}")
+        domain_n_resolved = sum(
+            1 for rw in dom_rows
+            if rw.decision == "certify" and rw.verifiability_tag == "judgment"
+            and rw.outcome in ("paid", "default"))
+
+    return build_read_envelope(
+        match, requested_domain, domain_n_resolved,
+        signer=make_signer(foundation_identity),
+        issuer_key_id_hex=issuer_key_id(foundation_identity),
+        issuer_pubkey_hex=foundation_identity.public_key().hex(),
+        anchor=None,   # uniform no-per-read-anchor (Phase 2 Q1)
+    )
+
+
+def list_subject_domains(decision_trail, store_manager, tenant_id: str, *,
+                         subject: str = "", key: str = "", did: str = "", handle: str = "",
+                         limit: int = 500, offset: int = 0) -> dict:
+    """Distinct captured cgr_domain values for a subject (read-only, no scores)."""
+    want_key, want_did, want_handle = resolve_subject(subject, key, did, handle)
+    rows = load_substrate(decision_trail, store_manager, tenant_id, limit=limit, offset=offset)
+    subj_rows = [rw for rw in rows if (
+        (want_key and rw.agent_key == want_key)
+        or (want_handle and rw.agent_handle == want_handle)
+        or (want_did and rw.agent_key and did_key(rw.agent_key) == want_did))]
+    domains = sorted({rw.cgr_domain for rw in subj_rows if rw.cgr_domain})
+    return {"surface_version": READ_SURFACE_VERSION, "result": "domains",
+            "subject": subject or key or did or handle, "domains": domains}
 
 
 def _tenant_id(request: Request) -> str:
@@ -221,36 +308,19 @@ def create_cgr_issuance_router(
             raise HTTPException(503, "CGR scoring services not available")
 
     def _issue(tenant_id: str, result) -> dict:
-        """Score result -> to_tiergate -> Foundation-signed attestation, anchored
-        into gcrumbs (best-effort) with the attestation fingerprint."""
+        """Score result -> to_tiergate -> Foundation-signed attestation.
+
+        Phase 2 (uniform no-per-read-anchor): reads do NOT write to the gcrumbs chain.
+        The attestation is deterministically re-minted over evidence already anchored at
+        issuance and is Foundation-signed + offline-verifiable, so nothing is lost by not
+        anchoring the read; `evidence_ref` is therefore None. (A read is not a state change
+        — an optional out-of-band access-audit log may be added later, non-gating.)"""
         identity = _foundation()
         signer = make_signer(identity)
         kid = issuer_key_id(identity)
         tiergate = to_tiergate(result)
         att = build_attestation(tiergate, signer=signer, issuer_key_id=kid, evidence_ref=None)
-        att["evidence_ref"] = _anchor(tenant_id, tiergate, att)
         return att
-
-    def _anchor(tenant_id: str, tiergate: dict, att: dict):
-        """Anchor the attestation fingerprint into the gcrumbs chain. Returns the
-        breadcrumb_id (evidence_ref) or None if gcrumbs is unavailable / errors —
-        gcrumbs is the audit anchor, not a hard dependency for the POC."""
-        if gcrumbs is None:
-            return None
-        try:
-            payload = {
-                "agent_handle": tiergate["agent_handle"],
-                "band": tiergate["tier"],
-                "cgr_score": tiergate["cgr_score"],
-                "as_of": tiergate["as_of"],
-                "schema": CGR_ATTESTATION_SCHEMA,
-                "attestation_fingerprint": attestation_fingerprint(att),
-                "signature": att["signature"],
-            }
-            bc = gcrumbs.append_breadcrumb(tenant_id, "cgr:attestation:issued", payload)
-            return bc.get("breadcrumb_id")
-        except Exception:
-            return None
 
     # ── Gate-1 calibration authority (privileged WRITE) ──────────────────────
     def _calib_conn():
@@ -348,10 +418,6 @@ def create_cgr_issuance_router(
     # + tenant exactly like the rest. Honest-scope by construction: score is only ever
     # returned INSIDE an envelope that also carries evidence mass + freshness; a bare
     # score is structurally unobtainable. Unknown subject / domain ⇒ explicit no_evidence.
-    def _no_evidence(reason: str) -> dict:
-        return {"surface_version": READ_SURFACE_VERSION, "result": "no_evidence",
-                "reason": reason, "score": None, "evidence_mass": None}
-
     @router.get("/read/attestation")
     async def read_attestation(request: Request, subject: str = "", domain: str = "",
                                key: str = "", did: str = "", handle: str = "",
@@ -360,57 +426,16 @@ def create_cgr_issuance_router(
         require_scope(request, "cgr:read")          # authenticated only — public path is gated
         _scoring_guard()
         identity = _foundation()
-
-        # resolve the subject: explicit key/did/handle, or a heuristic on ?subject=
-        want_key, want_did, want_handle = (key or None), (did or None), (handle or None)
-        if subject and not (want_key or want_did or want_handle):
-            s = subject.strip()
-            if s.startswith("did:key:"):
-                want_did = s
-            elif len(s) == 64 and all(c in "0123456789abcdefABCDEF" for c in s):
-                want_key = s.lower()
-            else:
-                want_handle = s
-        if not (want_key or want_did or want_handle):
-            raise HTTPException(400, "provide subject via ?subject= (key|did|handle) or ?key=/?did=/?handle=")
-
-        results = compute_scores(decision_trail, store_manager, tenant_id, limit=limit, offset=offset)
-
-        def _match(r):
-            return ((want_key and r.subject_key == want_key)
-                    or (want_did and r.subject_did == want_did)
-                    or (want_handle and r.agent_handle == want_handle))
-
-        match = next((r for r in results if _match(r)), None)
-        if match is None:
-            return _no_evidence("no CGR score for the requested subject on this tenant")
-
-        # domain match (against CAPTURED cgr_domain evidence) + the domain's own evidence mass.
-        # The pooled score (cgr_score / n_resolved) is unchanged and single-dimension; the
-        # domain only gates the MATCH and reports its own resolved count. Per-domain SCORING
-        # is Ticket 3 — this must not imply a per-domain score exists.
-        requested_domain = domain or None
-        domain_n_resolved = None
-        if requested_domain is not None:
-            rows = load_substrate(decision_trail, store_manager, tenant_id, limit=limit, offset=offset)
-            subj_rows = [rw for rw in rows if (
-                (match.subject_key and rw.agent_key == match.subject_key)
-                or (not match.subject_key and rw.agent_handle == match.agent_handle))]
-            dom_rows = [rw for rw in subj_rows if rw.cgr_domain == requested_domain]
-            if not dom_rows:
-                return _no_evidence(
-                    f"subject has no captured evidence in domain {requested_domain!r}")
-            domain_n_resolved = sum(
-                1 for rw in dom_rows
-                if rw.decision == "certify" and rw.verifiability_tag == "judgment"
-                and rw.outcome in ("paid", "default"))
-
-        # mint (fresh-mint, no store) via the pure envelope builder; anchor into gcrumbs.
-        return build_read_envelope(
-            match, requested_domain, domain_n_resolved,
-            signer=make_signer(identity), issuer_key_id_hex=issuer_key_id(identity),
-            issuer_pubkey_hex=identity.public_key().hex(),
-            anchor=lambda tg, att: _anchor(tenant_id, tg, att),
-        )
+        # Shared read-core, offloaded to a thread so the blocking sync-psycopg scan does not
+        # stall the event loop (Phase 2 Q2A). This is the SAME core the remote MCP tool calls,
+        # so the signed envelope is identical by construction. No per-read anchor (Phase 2 Q1).
+        try:
+            return await anyio.to_thread.run_sync(
+                functools.partial(
+                    build_read_result, decision_trail, store_manager, identity, tenant_id,
+                    subject=subject, key=key, did=did, handle=handle, domain=domain,
+                    limit=limit, offset=offset))
+        except ValueError as e:
+            raise HTTPException(400, str(e))
 
     return router
