@@ -32,7 +32,7 @@ Honest-scope by construction: a **bare score is unobtainable**. `score` is only 
   "freshness": { "as_of": "…", "last_resolved_at": "…", "age_ms": 123, "stale": false },
   "issuer": { "issuer": "gns-foundation", "issuer_key_id": "<hex>", "schema": "cgr.attestation.v3" },
   "continuity": { "status": "verified|asserted|unverified", "advisory": true },
-  "verify": { "recipe_url": "…/cgr/verify", "lib": "@gns-foundation/cgr-verify", "issuer_pubkey": "<hex>" }
+  "verify": { "recipe_url": "…/cgr/verify/", "lib": "@gns-foundation/cgr-verify", "issuer_pubkey": "<hex>" }
 }
 ```
 
