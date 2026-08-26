@@ -2,7 +2,7 @@
     "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
     "name": "com.grafomem/cgr-read",
     "title": "GRAFOMEM CGR Read",
-    "description": "Read Foundation-signed, offline-verifiable Capability-Grounded Reputation (CGR) attestations for an agent. No install — connect to the URL.",
+    "description": "Read Foundation-signed, offline-verifiable CGR agent-reputation attestations. No install.",
     "version": "0.1.0",
     "websiteUrl": "https://grafomem.com",
     "repository": {
@@ -15,6 +15,5 @@
             "type": "streamable-http",
             "url": "https://mcp.grafomem.com/mcp"
         }
-    ],
-    "_publish_gate": "DRAFT — DO NOT PUBLISH until (1) Camilo signs the listing copy, and (2) mcp.grafomem.com is live (Cloudflare CNAME + Railway custom domain → same service). The published URL is the vanity mcp.grafomem.com, NOT api.grafomem.com/mcp (which is where 2a/dev serves). See claude/track-c-phase2-cgr-read-remote-mcp-PLAN.md Sequence step 5."
+    ]
 }
