@@ -133,12 +133,39 @@ def test_initialize_handshake(wired):
     assert "tools" in res["capabilities"]
 
 
-def test_initialize_echoes_older_client_version(wired):
+def test_initialize_version_negotiation(wired):
+    """Reply with the highest version we support that is <= the client's offer, so
+    real clients on an INTERMEDIATE revision (e.g. Claude Code's 2025-11-25) connect
+    instead of being handed 2026-07-28 they don't speak. Exact match echoes."""
     c = _client(wired.mcp, wired.tenant, ["cgr:read"])
-    res = _rpc(c, "initialize", {"protocolVersion": "2025-06-18"}).json()["result"]
-    assert res["protocolVersion"] == "2025-06-18"        # supported → echoed
-    res2 = _rpc(c, "initialize", {"protocolVersion": "1999-01-01"}).json()["result"]
-    assert res2["protocolVersion"] == "2026-07-28"       # unknown → our latest
+
+    def offer(pv):
+        params = {} if pv is None else {"protocolVersion": pv}
+        return _rpc(c, "initialize", params).json()["result"]["protocolVersion"]
+
+    # exact matches echo
+    assert offer("2025-03-26") == "2025-03-26"
+    assert offer("2025-06-18") == "2025-06-18"
+    assert offer("2026-07-28") == "2026-07-28"
+    # intermediate (unclaimed) → highest supported <= offer  (the reported bug)
+    assert offer("2025-11-05") == "2025-06-18"
+    assert offer("2025-11-25") == "2025-06-18"
+    # future → our highest
+    assert offer("2026-11-05") == "2026-07-28"
+    # older than everything we support → our lowest (client may then disconnect)
+    assert offer("2024-01-01") == "2025-03-26"
+    # no offer → our latest
+    assert offer(None) == "2026-07-28"
+
+
+def test_negotiate_protocol_unit():
+    from aml.cgr.mcp_server import negotiate_protocol
+    assert negotiate_protocol("2025-06-18") == "2025-06-18"
+    assert negotiate_protocol("2025-11-25") == "2025-06-18"   # regression: the Claude Code case
+    assert negotiate_protocol("2026-07-28") == "2026-07-28"
+    assert negotiate_protocol("2027-01-01") == "2026-07-28"
+    assert negotiate_protocol("2020-01-01") == "2025-03-26"
+    assert negotiate_protocol(None) == "2026-07-28"
 
 
 def test_tools_list(wired):
