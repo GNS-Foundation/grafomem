@@ -38,10 +38,30 @@ from aml.cgr.routes import (
     list_subject_domains,
 )
 
-# Advertise the current spec; still accept clients that negotiate older revisions
-# (the ecosystem SDKs lag). We echo the client's version when it is one we support.
-_PROTOCOL_VERSION = "2026-07-28"
-_SUPPORTED_PROTOCOL_VERSIONS = {"2026-07-28", "2025-06-18", "2025-03-26"}
+# Versions we KNOW our stateless POST→JSON behavior complies with, ascending. ISO
+# YYYY-MM-DD dates sort lexically, so string comparison is date comparison.
+_SUPPORTED_SORTED = ["2025-03-26", "2025-06-18", "2026-07-28"]
+_SUPPORTED_PROTOCOL_VERSIONS = set(_SUPPORTED_SORTED)
+_PROTOCOL_VERSION = _SUPPORTED_SORTED[-1]  # our highest
+
+
+def negotiate_protocol(client_ver: str | None) -> str:
+    """Pick the initialize-response protocolVersion.
+
+    Real clients lag: Claude Code (and most SDKs) offer an INTERMEDIATE revision
+    (e.g. 2025-11-25) we don't claim. Echoing the client's version when we support it,
+    else replying with our *highest* (2026-07-28), makes those clients disconnect —
+    they don't speak 2026-07-28. Spec-correct negotiation is: reply with the highest
+    version WE support that is **≤** the client's offer (they always support versions at
+    or below what they offered). Missing offer ⇒ our latest; client older than all we
+    support ⇒ our lowest (they'll likely disconnect, which is honest — we don't speak it).
+    """
+    if client_ver in _SUPPORTED_PROTOCOL_VERSIONS:      # exact match ⇒ echo
+        return client_ver
+    if not client_ver:
+        return _SUPPORTED_SORTED[-1]
+    at_or_below = [v for v in _SUPPORTED_SORTED if v <= client_ver]
+    return at_or_below[-1] if at_or_below else _SUPPORTED_SORTED[0]
 _SERVER_NAME = "com.grafomem/cgr-read"
 _SERVER_VERSION = "0.1.0"
 
@@ -197,8 +217,7 @@ def create_cgr_mcp_router(decision_trail, store_manager, foundation_identity) ->
 
     async def _handle(request: Request, method: str, params: dict) -> dict:
         if method == "initialize":
-            client_ver = (params or {}).get("protocolVersion")
-            ver = client_ver if client_ver in _SUPPORTED_PROTOCOL_VERSIONS else _PROTOCOL_VERSION
+            ver = negotiate_protocol((params or {}).get("protocolVersion"))
             return {
                 "protocolVersion": ver,
                 "capabilities": {"tools": {"listChanged": False}},
