@@ -252,7 +252,14 @@ def test_verify_instructions_no_scope_needed(wired):
     c = _client(wired.mcp, wired.tenant, ["something-else"])
     env = _rpc(c, "tools/call", {"name": "cgr_verify_instructions"}).json()["result"]["structuredContent"]
     assert env["lib"] == "@gns-foundation/cgr-verify"
-    assert env["issuer_pubkey"] == wired.foundation.public_key().hex()
+    # steers to an INDEPENDENT pin, not the server's own key
+    assert env["pin_the_key_from"].endswith("/cgr/verify/")
+    assert "cross_check" in env
+    # the server-advertised key is present but labeled as a cross-check, NOT the pin,
+    # and the warning tells clients not to pin it
+    assert env["issuer_pubkey_advertised"] == wired.foundation.public_key().hex()
+    assert "issuer_pubkey" not in env            # no field that looks pinnable
+    assert "do not pin" in env["warning"].lower()
 
 
 # ── boundaries ───────────────────────────────────────────────────────────────

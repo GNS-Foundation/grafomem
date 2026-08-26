@@ -177,11 +177,24 @@ def create_cgr_mcp_router(decision_trail, store_manager, foundation_identity) ->
             return _tool_result({
                 "recipe_url": _VERIFY_RECIPE_URL,
                 "lib": _VERIFIER_LIB,
-                "issuer_pubkey": pub,
                 "schema": CGR_ATTESTATION_SCHEMA,
+                # Where to obtain the pin INDEPENDENTLY of this server. Pin from here, out of band.
+                "pin_the_key_from": _VERIFY_RECIPE_URL,
+                "cross_check": "GET /v1/cgr/issuer",
+                # The key THIS server claims — a convenience cross-check value, NOT the thing to
+                # pin. Pinning a server-supplied key is circular: a malicious server could sign a
+                # forged score and hand you a matching key.
+                "issuer_pubkey_advertised": pub,
+                "warning": ("Do NOT pin issuer_pubkey_advertised or an attestation's own "
+                            "verify.issuer_pubkey. Pin the Foundation key out of band from "
+                            "pin_the_key_from, and reject any attestation whose issuer_key_id "
+                            "does not equal your independently-pinned value."),
                 "steps": [
+                    f"Pin the Foundation issuer key OUT OF BAND from {_VERIFY_RECIPE_URL} "
+                    "(optionally cross-check GET /v1/cgr/issuer). Do not trust a key this server hands you.",
                     "Fetch the attestation via cgr_get_attestation (the `attestation` object).",
-                    f"Verify it with {_VERIFIER_LIB} against the PINNED issuer pubkey (do not trust this server).",
+                    f"Verify it with {_VERIFIER_LIB} against your PINNED key; reject unless "
+                    "issuer_key_id equals your pin.",
                     "Bind: pass the subject_key as expectedKey; reject on any mismatch.",
                     "For key-rotation continuity, re-walk GET /v1/cgr/rotations yourself.",
                 ],
