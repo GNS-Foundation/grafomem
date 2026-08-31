@@ -58,3 +58,9 @@ The trade is **semantics-safety vs. ecosystem-friction** — a deliberate call, 
    before the first contested refutation; pre-registered audit sampling fraction.
 3. Relationship to [0002](0002-cgr-governance-domain-and-backfill.md) — a **second instance** of the
    same tradeoff, on different fields. One principle should resolve both.
+4. Relationship to [0004](0004-no-identity-continuity-across-rotation.md) — a **third instance**.
+   0004 argues the shared principle is that the schema has **no general mechanism for expressing a
+   relation between attestations** (supersedes / continues / corrects), and that 0001, 0002 and 0004
+   are three faces of that one absent primitive rather than three missing fields. **Whoever picks up
+   this record should read 0004 first**: resolving 0001 in isolation risks solving one third of the
+   problem and guaranteeing a fourth instance.

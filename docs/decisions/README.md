@@ -2,11 +2,16 @@
 
 Decision records for the **standard**: the CGR attestation schema (`cgr.attestation.v3` and
 successors), the verification recipe, the conformance suite, and the governance choices that
-shape them. This is the Foundation's record of *why the standard is the way it is* — distinct
-from product decisions, which live with the products (per the standard↔products split).
+shape them — **and for the reference implementations that exercise the standard**, where those
+implementations reveal something about the standard's expressive limits. This is the
+Foundation's record of *why the standard is the way it is*.
 
-Scope note: records here concern the **standard**. Commercial/product decisions live in their own
-repos; where the two touch, they cross-reference.
+Scope note: records here concern the **standard and its reference implementations**. A record
+belongs here when the finding is about what the schema can or cannot express — even when it
+surfaced in an implementation (e.g. GEIANT delegation certificates in
+[0003](0003-principal-identity-is-not-stable.md) and
+[0004](0004-no-identity-continuity-across-rotation.md)). **Commercial/product decisions still
+live in their own repos**; where the two touch, they cross-reference.
 
 ## Convention
 
