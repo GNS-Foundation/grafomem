@@ -95,4 +95,4 @@ Add one read path so the validated `cgr_substrate.py` logic can run on real data
 - No changes to the signing/gcrumbs receipt logic — only the recorded `parameters` + a new outcomes store + two read/write endpoints.
 
 ## Hand-off
-When done, produce: the diff summary (files touched + new endpoints), the test output, and a 3-line note on any deviation from this ticket. Camilo will bring the diff back to the Cowork chat for architecture review against `claude/cgr-substrate-instrumentation-spec.md`.
+When done, produce: the diff summary (files touched + new endpoints), the test output, and a 3-line note on any deviation from this ticket. Camilo will bring the diff back to the Cowork chat for architecture review against `docs/cgr/cgr-substrate-instrumentation-spec.md`.

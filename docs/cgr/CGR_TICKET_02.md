@@ -75,4 +75,4 @@ Print a short report. This is how we confirm CGR works on real data as outcomes 
 - No prompt/scaffold "elicitation" work — this is scoring over captured data only.
 
 ## Hand-off
-Produce: diff summary (new `src/aml/cgr/` files + route registration), the `validate` report on the synthetic fixture, test output, and a 3-line note on any deviation + which scope you used. Camilo brings the diff to the Cowork chat for review against `claude/reputation-score-design.md` + `claude/cgr-substrate-instrumentation-spec.md`.
+Produce: diff summary (new `src/aml/cgr/` files + route registration), the `validate` report on the synthetic fixture, test output, and a 3-line note on any deviation + which scope you used. Camilo brings the diff to the Cowork chat for review against `docs/cgr/reputation-score-design.md` + `docs/cgr/cgr-substrate-instrumentation-spec.md`.
