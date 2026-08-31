@@ -13,6 +13,20 @@ surfaced in an implementation (e.g. GEIANT delegation certificates in
 [0004](0004-no-identity-continuity-across-rotation.md)). **Commercial/product decisions still
 live in their own repos**; where the two touch, they cross-reference.
 
+## Records
+
+| # | Title | Status |
+|---|---|---|
+| [0001](0001-cgr-grounding-dimension-additive-vs-schema-bump.md) | Grounding dimension: true-additive vs schema-bump | proposed |
+| [0002](0002-cgr-governance-domain-and-backfill.md) | Governance domain + backfill expression | proposed |
+| [0003](0003-principal-identity-is-not-stable.md) | Principal identity is not stable | **accepted** 2026-08-31 |
+| [0004](0004-no-identity-continuity-across-rotation.md) | No identity-continuity across rotation | proposed |
+| [0005](0005-custody-managed-principals.md) | Custody-managed principals (target design) | proposed — blocked on 0004 |
+
+Worth knowing before picking any of these up: **0001, 0002 and 0004 are three faces of one absent
+primitive** (no general way to express a relation between attestations), and **0005 is blocked on
+0004**. Read 0004 first.
+
 ## Convention
 
 - **One numbered record per decision or open question**, `NNNN-short-slug.md`, starting at

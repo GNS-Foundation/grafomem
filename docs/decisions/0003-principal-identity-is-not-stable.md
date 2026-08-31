@@ -1,6 +1,6 @@
 ---
-status: proposed
-decision_date: "—"
+status: accepted
+decision_date: 2026-08-31
 record_date: 2026-08-31
 provenance: surfaced during the geiant .env.agent exposure response (2026-08-31)
 scope: geiant delegation certificates; agent/principal identity (reference implementation)
@@ -8,7 +8,9 @@ scope: geiant delegation certificates; agent/principal identity (reference imple
 
 # 0003 — Principal identity is not stable
 
-- **Status:** **Proposed** (open — describes current behaviour, does not bless it)
+- **Status:** **Accepted** 2026-08-31 — resolved to **(b)**, as a *description of what the
+  system does*, not an endorsement of it. The target design is
+  [0005](0005-custody-managed-principals.md).
 - **Record date:** 2026-08-31
 
 ## Context
@@ -46,30 +48,64 @@ and would have been registered on first use by the insert-on-first-sight path.
   can mint a fresh principal, self-sign a new certificate for the same `agent_pk` at any scope, and
   pass verification. Revocation must therefore bind to the **agent**, not the certificate.
 
-## Decision (open — two options, not resolved here)
+## Decision — resolved to (b), 2026-08-31
 
-**(a) Principals become custody-managed.** `setup-agent.ts` refuses to run without an explicit
-`PRINCIPAL_SK`, or an explicit `--new-principal` flag, and emits the secret once for custody
-handoff. Preserves the delegation model's intent: a principal is a durable root that vouches for
-agents over time.
+**Under the current implementation, principals are formally ephemeral and per-generation.
+Nothing may anchor trust to `principal_pk` as it stands.**
 
-**(b) Principals are formally declared ephemeral and per-generation.** Nothing is permitted to
-anchor trust to `principal_pk`, and the standard says so. Honest about current behaviour, but it
-concedes that the principal layer carries no continuity meaning.
+This is a statement of fact about the system as built, adopted so that downstream work stops
+assuming a property the code does not provide. **It is not an endorsement.** The principal layer as
+implemented carries no continuity meaning, and this record does not argue it should stay that way.
 
-**This record does not pick one.** It does argue that the status quo is the worst available option:
-it *looks* like (a) — a named principal, a signature, a registry column — and *behaves* like (b).
+What follows from accepting (b):
 
-Either path additionally requires a **trusted-principal allowlist** at verification time; without
-one, neither (a) nor (b) yields a meaningful trust root.
+- `delegation_certificates.principal_pk` is **descriptive metadata, not a trust anchor.** Verifiers
+  MUST NOT treat two certificates sharing a `principal_pk` as related, nor treat a change of
+  `principal_pk` as meaningful. It records which ephemeral key signed a given certificate, nothing more.
+- A certificate is **self-vouching**: `verifyDelegationCert()` checks the signature against the
+  `principal_pk` inside the certificate, and no trusted-principal allowlist exists. Under (b) this is
+  not a bug to be patched in isolation — it is the honest consequence of ephemeral principals.
+  Certificate validity therefore says only "this was signed by whoever claims to have signed it."
+- **Revocation cannot bind to a certificate.** It must bind to the `agent_pk`. Implemented in
+  GNS-Foundation/geiant#9 (`agent_registry.revoked_at`) after the certificate-level approach was
+  demonstrated bypassable in production: two valid certificates existed for one compromised
+  `agent_pk`, one revoked and one not.
+- Rotation produces an identity with **no expressible link** to its predecessor — see
+  [0004](0004-no-identity-continuity-across-rotation.md).
+
+### Why (a) was not adopted now
+
+**(a) custody-managed principals is the better design and remains the target** — recorded separately
+as [0005](0005-custody-managed-principals.md). It was not adopted here because it is **not yet
+survivable**: a stable, custody-held principal is only worth having if an identity can carry its
+history across a rotation, and no `continues` relation exists to express that
+([0004](0004-no-identity-continuity-across-rotation.md)). Adopting (a) today would make rotation
+*more* painful — a custody ceremony on top of an already-orphaned chain — which in practice means it
+gets routed around. 0005 is therefore explicitly blocked on 0004.
+
+Accepting (b) is the accurate description of today. It is not the destination.
 
 ## Open questions
 
-1. Does anything today anchor trust to `principal_pk`? (Registry rows exist; no verifier consults them.)
-2. What is the intended relationship to the GCRUMBS identity key that the script's own comment
-   recommends for production use?
-3. Should the standard require a trusted-principal set as a conformance condition, rather than
-   leaving it to implementations?
-4. Relationship to [0004](0004-no-identity-continuity-across-rotation.md): principal instability is
-   *why* rotation continuity cannot currently be expressed. If principals are ephemeral (b), a
-   continuity relation is the only remaining way to link identities across a rotation.
+Closed by this decision:
+
+- ~~Does anything today anchor trust to `principal_pk`?~~ **Nothing may, as of 2026-08-31.**
+  Registry rows exist and no verifier consults them; under (b) none should.
+
+Carried forward to [0005](0005-custody-managed-principals.md):
+
+1. What is the intended relationship to the GCRUMBS identity key that `setup-agent.ts`'s own comment
+   recommends for production use? Under (b) it is simply another ephemeral signer; under (a) it is
+   the natural custody root.
+2. Should the standard require a trusted-principal set as a conformance condition, rather than
+   leaving it to implementations? Only meaningful once principals are stable.
+
+Dependency chain — read in this order:
+
+> **0003** (accepted, describes today: ephemeral principals)
+> → **[0005](0005-custody-managed-principals.md)** (proposed target: custody-managed principals)
+> → **[0004](0004-no-identity-continuity-across-rotation.md)** (blocker: no `continues` relation)
+
+Principal instability is *why* rotation continuity cannot currently be expressed. Under (b) a
+continuity relation is the **only** remaining way to link identities across a rotation — and 0005
+cannot be adopted until that relation exists.
