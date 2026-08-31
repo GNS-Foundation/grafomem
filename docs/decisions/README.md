@@ -5,8 +5,8 @@ successors), the verification recipe, the conformance suite, and the governance 
 shape them. This is the Foundation's record of *why the standard is the way it is* — distinct
 from product decisions, which live with the products (per the standard↔products split).
 
-Scope note: records here concern the **standard**. Commercial/product decisions (e.g. the EU
-governed agent) live in their own repos; where the two touch, they cross-reference by path.
+Scope note: records here concern the **standard**. Commercial/product decisions live in their own
+repos; where the two touch, they cross-reference.
 
 ## Convention
 
@@ -32,9 +32,9 @@ governed agent) live in their own repos; where the two touch, they cross-referen
   **not** pick one — it is resolved by a later edit that flips `status` to `accepted` with a
   `decision_date`, or by a superseding record.
 
-This format is deliberately legible alongside the ADRs in the EU governed-agent repo
-(`~/eu-governed-agent/docs/decisions/`), but it is the Foundation's own convention, not an import:
-records here are numeric (`0001`), product ADRs there are `ADR-000N`, and the two cross-link.
+This format is deliberately legible alongside the ADR-style records used in product repos, but it
+is the Foundation's own convention, not an import: records here are numeric (`0001`), product ADRs
+are `ADR-000N`, and the two cross-link.
 
 ## Index
 
