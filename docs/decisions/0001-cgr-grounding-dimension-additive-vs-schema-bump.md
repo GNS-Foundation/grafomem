@@ -1,14 +1,16 @@
 ---
-status: proposed
-decision_date: "—"
+status: accepted
+decision_date: 2026-08-31
 record_date: 2026-08-31
-provenance: promoted-from-working-draft (internal CGR delta spec, draft-0.2, 2026-08-27)
-scope: cgr.attestation.v3
+provenance: promoted-from-working-draft (internal CGR delta spec, draft-0.2, 2026-08-27); resolved at P0.4 under 0004
+scope: cgr.attestation.v3 → cgr.attestation.v4
 ---
 
 # 0001 — Grounding dimension: true-additive vs schema-bump
 
-- **Status:** **Proposed** (unresolved — a deliberate call, not a default)
+- **Status:** **Accepted** 2026-08-31 (P0.4) — resolved to **Option B (schema-bump)**: grounding
+  fields ship in `cgr.attestation.v4`. The shared versioning decision is
+  [0004](0004-no-identity-continuity-across-rotation.md).
 - **Record date:** 2026-08-31
 
 ## Context
@@ -20,15 +22,24 @@ and an audit-policy digest, plus an optional uncertainty-mass count). Adding fie
 body forces a wire-format choice.
 
 Whether those fields can be carried under the **existing** schema version rather than a **new** one
-is **empirically constrained** — see the internal probe (2026-08-28) for the constraint. The design
-question below is what remains.
+is **empirically constrained**, and the constraint is **re-derivable from the public verifier
+source**: the deployed verifiers (e.g. `@gns-foundation/cgr-verify`) verify over the whole
+non-envelope signed body and gate acceptance only on the schema string — so additive fields verify,
+but a new schema string does not until verifiers widen their accepted set. The design question below
+is what remains.
 
 **Prior art:** the internal working draft *"Grounding-Audit Outcome Type — CGR Delta Spec"*
 (draft-0.2, 2026-08-27), which specifies the dimension and its resolution semantics. That draft is
 the authoritative technical content; this record promotes only its open wire-format question and
 otherwise stands alone.
 
-## Decision (open — two options, not resolved here)
+## Decision — resolved at P0.4 (2026-08-31)
+
+**Resolved: Option B (schema-bump).** Grounding's new signed fields ship in a new
+`cgr.attestation.v4` schema string, not additive under `v3`. This follows the shared versioning
+decision in [0004](0004-no-identity-continuity-across-rotation.md): the relation edge is
+validity-affecting, so old verifiers must fail closed rather than silently ignore — and grounding
+rides the same bump. The options, as considered:
 
 How to ship the new signed-body fields:
 
@@ -40,7 +51,7 @@ How to ship the new signed-body fields:
   friction (every verifier must widen its accepted-schema set first, expand-contract).
 
 The trade is **semantics-safety vs. ecosystem-friction** — a deliberate call, not a default.
-**This record does not pick one.**
+*(Picked at P0.4, 2026-08-31: Option B, via a `v4` bump — see the resolution above.)*
 
 ## Consequences
 

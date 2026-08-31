@@ -1,14 +1,16 @@
 ---
-status: proposed
-decision_date: "—"
+status: accepted
+decision_date: 2026-08-31
 record_date: 2026-08-31
-provenance: surfaced during the geiant .env.agent exposure response (2026-08-31)
-scope: cgr.attestation.v3; geiant agent identity (reference implementation)
+provenance: surfaced during the geiant .env.agent exposure response (2026-08-31); resolved at P0.4 (roadmap docs/roadmap.md)
+scope: cgr.attestation.v3 → cgr.attestation.v4; geiant agent identity (reference implementation)
 ---
 
 # 0004 — No identity-continuity mechanism across rotation
 
-- **Status:** **Proposed** (open — and the third instance of one underlying gap)
+- **Status:** **Accepted** 2026-08-31 (P0.4) — adopt **option (a)**, a generic relation edge,
+  shipped via a **schema bump to `cgr.attestation.v4`** (not additive under `v3`). See
+  [Decision — P0.4](#decision--p04-2026-08-31).
 - **Record date:** 2026-08-31
 
 ## Context
@@ -54,7 +56,42 @@ one absent primitive: **a typed, signed edge from one attestation to another.**
 
 Treating them separately guarantees a fourth instance.
 
-## Decision (open — two options, not resolved here)
+## Decision — P0.4, 2026-08-31
+
+**Resolved: option (a), a generic relation edge, shipped via a schema bump to
+`cgr.attestation.v4`.** The relation is expressed in the **signed body** as a typed edge, carried
+under a **new schema string** rather than added true-additive under `v3`.
+
+**Why a bump, not additive.** The P0 spike established (unknown-field probe, 2026-08-28, re-derivable
+from the public verifier source) that new signed fields *do* verify true-additive under the unchanged
+`v3` string — every deployed verifier recanonicalizes the whole non-envelope body and gates only on
+the schema string. But a relation edge is **validity-affecting**: a verifier that ignores
+`supersedes`/`revokes` silently treats superseded or revoked data as current. For that class of
+field, **old verifiers must fail closed, not fail silent** — which the schema bump provides and pure
+additive does not. Safety over friction.
+
+**The `continues` signer is the Foundation issuer, not the agent principal.** This breaks the
+0004↔0005 loop from the 0004 side: a `continues` edge is a Foundation-issued attestation signed by
+the stable, custody-held issuer key, so it does **not** wait on stable agent principals ([0005](0005-custody-managed-principals.md)).
+The cost moves from schema to **ceremony** — how the Foundation determines that B continues A must
+exist before the first `continues` edge is issued (operational; owned by P1).
+
+**Revocation is an edge *record* plus an enforcement *index*, not one or the other.** A `revokes`
+edge is the signed, offline-auditable record that revocation happened; discovering that something *is
+currently* revoked remains a liveness query, so geiant#9's `agent_registry.revoked_at` stays the
+enforcement surface. The schema expresses the event; it does not replace the check.
+
+**Scope note (the shared decision).** Per the spike, the edge is not what unifies 0001/0002/0004 — the
+shared thing is the *signed-meaning versioning question* (additive vs bump). This decision resolves
+that question to **bump**, so `v4` is also the vehicle for the other pending signed additions:
+grounding fields ([0001](0001-cgr-grounding-dimension-additive-vs-schema-bump.md)) and the governance
+domain + temporal-provenance fields ([0002](0002-cgr-governance-domain-and-backfill.md)).
+
+**Owned by P1 (not this record):** the exact `v4` field set and relation vocabulary, traversal rules
+(depth, cycles, unrecognised-type = reject), the expand-contract migration, and golden-fixture
+regeneration. The full spike analysis is internal (`claude/p0-relation-mechanism-spike.md`).
+
+### Options considered
 
 **(a) A generic relation edge** in the attestation schema:
 
@@ -74,9 +111,9 @@ ignorable).
 reason to rotate — a signature from it is exactly the wrong authority, so (b) likely requires a
 principal-level countersignature and therefore a stable principal.
 
-**This record does not pick one.** It argues that (a) and (b) should not be evaluated in isolation
-from 0001 and 0002 — the three should be decided together, by one principle, rather than separately
-a fourth time.
+*(Picked at P0.4, 2026-08-31: option (a), via a `v4` bump — see [Decision — P0.4](#decision--p04-2026-08-31).)* The argument that (a) and (b) should not be evaluated in isolation from 0001 and 0002 —
+the three decided together, by one principle, rather than separately a fourth time — is what that
+decision honours: the shared versioning question is resolved once, to a bump.
 
 Note the asymmetry in what each option unlocks. Option (a), a generic relation edge, closes 0001 and
 0002 **and** unblocks [0005](0005-custody-managed-principals.md). Option (b), a rotation-specific
