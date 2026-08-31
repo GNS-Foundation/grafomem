@@ -69,3 +69,16 @@ record states the **schema requirement**; which use cases need it is out of scop
   vocabulary?
 - Does `decision_date` belong in the **signed body** (tamper-evident) or the envelope (advisory)?
   The temporal-provenance requirement argues for the signed body.
+
+## Relationship to 0001 and 0004
+
+[0001](0001-cgr-grounding-dimension-additive-vs-schema-bump.md) records this as a second instance of
+one tradeoff; [0004](0004-no-identity-continuity-across-rotation.md) is the third, and argues the
+common cause is that the schema has **no general mechanism for expressing a relation between
+attestations** (supersedes / continues / corrects) — a grounding dimension, a backfill marker and a
+rotation link being three faces of one absent primitive.
+
+That framing bears directly on the two questions left open here. "Does `decision_date` belong in the
+signed body or the envelope?" and "fixed enum or open conformance-marked vocabulary?" are **the same
+two questions** a relation edge must answer. If a generic edge is adopted, both are settled once
+rather than per-field. **These three records should be resolved together.**
