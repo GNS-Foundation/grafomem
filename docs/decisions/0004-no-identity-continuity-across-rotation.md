@@ -40,6 +40,11 @@ it.
 0001 already notes that 0002 is "a second instance of the same tradeoff… One principle should
 resolve both." This record is the third, and it sharpens what the shared principle is.
 
+**It also gates a fourth thing.** Resolving the relation mechanism does not merely close 0001 and
+0002 — it **unblocks [0005](0005-custody-managed-principals.md)**, custody-managed principals, which
+cannot be adopted until an identity can carry its history across a rotation. The relation primitive
+is load-bearing for the identity model as well as the attestation schema.
+
 **The recurring failure is not three separate missing fields. It is that the schema has no general
 mechanism for expressing a relation between attestations** — no way to say *this supersedes that*,
 *this continues that*, *this corrects that*. Each gap has so far been met with a bespoke proposal for
@@ -73,12 +78,24 @@ principal-level countersignature and therefore a stable principal.
 from 0001 and 0002 — the three should be decided together, by one principle, rather than separately
 a fourth time.
 
+Note the asymmetry in what each option unlocks. Option (a), a generic relation edge, closes 0001 and
+0002 **and** unblocks [0005](0005-custody-managed-principals.md). Option (b), a rotation-specific
+record, unblocks 0005 alone and leaves 0001 and 0002 where they are — and, per the note above, (b)
+needs a stable principal to sign it, which *is* 0005, which is blocked on this record. Option (b) is
+therefore closer to circular than it first appears.
+
 ## Consequences
 
 - **Rotation is operationally punitive.** It destroys accumulated trust score, tier, and chain
   history, creating pressure *not* to rotate — precisely backwards for a security control. In the
   incident that surfaced this, "revoke but do not rotate" was the path of least resistance, and the
   schema is part of why.
+- **It blocks the identity model from improving.** [0005](0005-custody-managed-principals.md)
+  (custody-managed principals) is the target design and is unadoptable while rotation orphans the
+  chain: a custody ceremony stacked on an orphaned chain costs strictly more than today and would be
+  routed around. Until this record is resolved,
+  [0003](0003-principal-identity-is-not-stable.md)'s ephemeral-principal status quo is load-bearing
+  by default rather than by choice.
 - Revocation and rotation are separable today only because revocation was bolted onto an existing
   column (`delegation_certificates.revoked_at`, enforced as of GNS-Foundation/geiant#9). Continuity
   has no equivalent column to bolt onto.
@@ -94,3 +111,7 @@ a fourth time.
 3. What does a verifier do with an **unrecognised** relation type — ignore, warn, or fail?
 4. Depth and cycle rules for traversing chained relations.
 5. Sequencing: is (a) a `cgr.attestation.v4` concern, or expressible additively under 0001's path A?
+6. Who signs a `continues` edge? Not the outgoing agent key — that is precisely the key compromised
+   in the case that motivates rotation. The natural signer is a stable principal, i.e.
+   [0005](0005-custody-managed-principals.md), which is blocked on this record. Breaking that loop
+   is part of resolving it.
