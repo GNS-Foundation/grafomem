@@ -8,9 +8,14 @@ scope: cgr.attestation.v3; geiant agent/principal identity (reference implementa
 
 # 0005 — Custody-managed principals (target design)
 
-- **Status:** **Proposed** — the **target** design.
-- **Blocked on:** [0004](0004-no-identity-continuity-across-rotation.md). This record cannot be
-  adopted until a `continues` relation exists.
+- **Status:** **Proposed** — the **target** design. (Blocker cleared at P0.4; see below.)
+- **Blocked on:** [0004](0004-no-identity-continuity-across-rotation.md) — **CLEARED 2026-08-31
+  (P0.4).** 0004 is accepted, adopting a **Foundation-signed** `continues` relation edge in
+  `cgr.attestation.v4`. Because the edge is issuer-signed, this record no longer waits on stable
+  agent principals to *express* continuity. It remains **Proposed**, not accepted: custody-managed
+  principals are a distinct design with their own adoption cost (trusted-principal set, a breaking
+  change for verifiers, trusted-set governance) — downstream of the `v4` mechanism, not automatic
+  with it.
 - **Supersedes in intent (not in force):** the option (a) branch of
   [0003](0003-principal-identity-is-not-stable.md), which was accepted to (b) as a description of
   current behaviour.

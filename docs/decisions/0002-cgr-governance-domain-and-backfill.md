@@ -1,14 +1,16 @@
 ---
-status: proposed
-decision_date: "—"
+status: accepted
+decision_date: 2026-08-31
 record_date: 2026-08-31
-provenance: surfaced during a backfilled governance-decision capture attempt (2026-08-31)
-scope: cgr.attestation.v3
+provenance: surfaced during a backfilled governance-decision capture attempt (2026-08-31); resolved at P0.4 under 0004
+scope: cgr.attestation.v3 → cgr.attestation.v4
 ---
 
 # 0002 — Governance domain + backfill expression (capture gaps)
 
-- **Status:** **Proposed** (open — do not treat as decided)
+- **Status:** **Accepted** 2026-08-31 (P0.4) — resolved: the governance `domain` value and
+  temporal-provenance fields ship in `cgr.attestation.v4` (schema-bump). Shared versioning decision:
+  [0004](0004-no-identity-continuity-across-rotation.md).
 - **Record date:** 2026-08-31
 
 ## Context
@@ -32,7 +34,13 @@ A `cgr.attestation` records **`created_at` = capture time** only. There is **no 
 on a later one is, in the record, indistinguishable from one captured at decision time — the record
 silently implies **contemporaneous capture**, which is false.
 
-## Decision (open — two schema questions, not resolved here)
+## Decision — resolved at P0.4 (2026-08-31)
+
+**Resolved: a schema bump to `cgr.attestation.v4`** carries a governance `domain` value and
+temporal-provenance fields (`decision_date` distinct from `created_at`, plus a backfill marker), in
+the **signed body**. Per [0004](0004-no-identity-continuity-across-rotation.md), the shared
+additive-vs-bump question resolves to **bump**. The two questions this record opened — now answered
+by the `v4` design (owned by P1):
 
 1. **Domain vocabulary** — does CGR add a `governance`/`strategy` domain (or a domain taxonomy that
    isn't a fixed dev-loop enum), and how is it kept from diluting score semantics (governance records
@@ -41,10 +49,9 @@ silently implies **contemporaneous capture**, which is false.
    `backfilled`/`recorded_at` provenance, so "when decided" ≠ "when recorded" is **first-class and
    tamper-evident**, not stuffed into free-text?
 
-This is the **same true-additive-vs-schema-bump tradeoff** as
-[0001](0001-cgr-grounding-dimension-additive-vs-schema-bump.md): the new fields can be carried under
-the unchanged `cgr.attestation.v3` schema string, or via a schema bump. **Not resolved here** — it
-should resolve together with 0001, under one principle.
+This was the **same true-additive-vs-schema-bump tradeoff** as
+[0001](0001-cgr-grounding-dimension-additive-vs-schema-bump.md), and it **resolved together with
+0001 and 0004 to a bump** — one principle, one decision, at P0.4.
 
 ## Requirement — temporal provenance is first-class
 
