@@ -120,12 +120,15 @@ def tgt_cert(c): return {"kind": "delegation_cert", "hash_alg": "sha-256", "hash
 
 VECTORS = []
 def V(id, clause, lines, title, subject, expect, *, atts=None, certs=None, held=None,
-      pending=None, flips_on=None):
-    # `held` = edge-records HANDED to the verifier (it MUST honour them). `atts`/`certs` =
-    # the `ledger`: the resolution context for traversing the subject's own edges AND the
-    # queryable index a liveness "seek" would consult. Held vs seek is the 0006-B pivot.
+      mode="enforcing", seek_fails=False):
+    # `held` = edge-records HANDED to the verifier (MUST honour, both modes). `atts`/`certs`
+    # = the `ledger`: resolution context for the subject's own edges AND the queryable index a
+    # `seek` consults. `mode`: "enforcing" (verifier seeks edges targeting the subject) vs
+    # "non-enforcing" (does not) — 0006-accepted enforce-or-label. `seek_fails`: harness flag —
+    # make the injected seek throw (§ seek-failure → undeterminable → reject).
     entry = {
         "id": id, "clause": clause, "spec_lines": lines, "title": title,
+        "mode": mode,
         "pinned_issuer": ISSUER_PUB,
         "subject": subject,
         "held_edges": list(held or []),
@@ -135,9 +138,8 @@ def V(id, clause, lines, title, subject, expect, *, atts=None, certs=None, held=
         },
         "expect": expect,
     }
-    if pending:
-        entry["pending"] = pending
-        entry["flips_on"] = flips_on
+    if seek_fails:
+        entry["seek_fails"] = True
     VECTORS.append(entry)
 
 
@@ -204,7 +206,7 @@ def cycle_pair(kind_a, kind_b):
 A, B, ledgermap = cycle_pair("continues", "continues")
 V2 = {"id": "T2-continues-cycle", "clause": "§1.3", "spec_lines": "185-194",
       "title": "continues cycle -> VALID subject + lineage_status=anomaly_cycle (NOT truncated_unavailable)",
-      "pinned_issuer": ISSUER_PUB, "held_edges": [], "subject": A,
+      "pinned_issuer": ISSUER_PUB, "held_edges": [], "mode": "enforcing", "subject": A,
       "ledger": {"attestations": ledgermap, "delegation_certs": {}},
       "expect": {"valid": True, "lineage_status": "anomaly_cycle"}}
 VECTORS.append(V2)
@@ -212,21 +214,21 @@ VECTORS.append(V2)
 A, B, ledgermap = cycle_pair("supersedes", "supersedes")
 VECTORS.append({"id": "T3-supersedes-cycle", "clause": "§1.3", "spec_lines": "195-197",
                 "title": "supersedes cycle -> reject (currency undeterminable)",
-                "pinned_issuer": ISSUER_PUB, "held_edges": [], "subject": A,
+                "pinned_issuer": ISSUER_PUB, "held_edges": [], "mode": "enforcing", "subject": A,
                 "ledger": {"attestations": ledgermap, "delegation_certs": {}},
                 "expect": {"valid": False, "reason_contains": "cycle"}})
 
 A, B, ledgermap = cycle_pair("revokes", "revokes")
 VECTORS.append({"id": "T4-revokes-cycle", "clause": "§1.3", "spec_lines": "198-200",
                 "title": "revokes cycle -> reject (incoherent revocation state)",
-                "pinned_issuer": ISSUER_PUB, "held_edges": [], "subject": A,
+                "pinned_issuer": ISSUER_PUB, "held_edges": [], "mode": "enforcing", "subject": A,
                 "ledger": {"attestations": ledgermap, "delegation_certs": {}},
                 "expect": {"valid": False, "reason_contains": "cycle"}})
 
 A, B, ledgermap = cycle_pair("continues", "supersedes")  # mixed: a supersedes edge is in the cycle
 VECTORS.append({"id": "T5-mixed-cycle", "clause": "§1.3", "spec_lines": "201-203",
                 "title": "mixed cycle containing a supersedes edge -> reject (conservative rule)",
-                "pinned_issuer": ISSUER_PUB, "held_edges": [], "subject": A,
+                "pinned_issuer": ISSUER_PUB, "held_edges": [], "mode": "enforcing", "subject": A,
                 "ledger": {"attestations": ledgermap, "delegation_certs": {}},
                 "expect": {"valid": False, "reason_contains": "cycle"}})
 
@@ -249,21 +251,21 @@ def deep_chain(kind, length):
 subject, ledger = deep_chain("continues", 65)
 VECTORS.append({"id": "T6-continues-depth", "clause": "§1.3", "spec_lines": "204-224",
                 "title": "continues chain deeper than 64 -> VALID subject + lineage_status=truncated_depth",
-                "pinned_issuer": ISSUER_PUB, "held_edges": [], "subject": subject,
+                "pinned_issuer": ISSUER_PUB, "held_edges": [], "mode": "enforcing", "subject": subject,
                 "ledger": {"attestations": ledger, "delegation_certs": {}},
                 "expect": {"valid": True, "lineage_status": "truncated_depth"}})
 
 subject, ledger = deep_chain("supersedes", 65)
 VECTORS.append({"id": "T7-supersedes-depth", "clause": "§1.3", "spec_lines": "204-224",
                 "title": "supersedes chain deeper than 64 -> reject (validity undeterminable within bound)",
-                "pinned_issuer": ISSUER_PUB, "held_edges": [], "subject": subject,
+                "pinned_issuer": ISSUER_PUB, "held_edges": [], "mode": "enforcing", "subject": subject,
                 "ledger": {"attestations": ledger, "delegation_certs": {}},
                 "expect": {"valid": False, "reason_contains": "depth"}})
 
 subject, ledger = deep_chain("revokes", 65)
 VECTORS.append({"id": "T7b-revokes-depth", "clause": "§1.3", "spec_lines": "204-224",
                 "title": "revokes chain deeper than 64 -> reject (validity undeterminable within bound)",
-                "pinned_issuer": ISSUER_PUB, "held_edges": [], "subject": subject,
+                "pinned_issuer": ISSUER_PUB, "held_edges": [], "mode": "enforcing", "subject": subject,
                 "ledger": {"attestations": ledger, "delegation_certs": {}},
                 "expect": {"valid": False, "reason_contains": "depth"}})
 
@@ -364,35 +366,42 @@ V("B1-unsigned-relates-to", "§2.4", "355-360",
   att(SK, envelope_relates_to=[{"type": "revokes", "target": tgt_att(_p)}]),
   {"valid": False, "reason_contains": "signature"}, atts=[_p])
 
-# ── §3/§4 liveness — verdict FLIPS on 0006 Question B: verdict absent ─────────
-# The SEEK counterpart of the held-edge cases (T13b / T11): the revoke/supersede edge
-# is in the `ledger` (queryable) but NOT in `held_edges` — the verifier is not handed it.
-# Whether the verifier MUST seek it before trusting is 0006-B. (Held -> fixed; seek -> pending.)
+# ── §3/§4 liveness — SEEK, now decided by 0006 (enforce-or-label, accepted 2026-09-02) ─────
+# The seek counterpart of the held cases (T13b/T11): the revoke/supersede edge is in the
+# `ledger` (queryable) but NOT handed. An ENFORCING verifier seeks it; a NON-ENFORCING one
+# does not. Both modes are vector-covered so the runner exercises each.
 _revoker = att(SK2, relates_to=[{"type": "revokes", "target": tgt_att(att(SK))}])
-V("L1-revoke-liveness", "§3/§4", "423-431",
-  "subject valid on its own; a revokes edge targeting it exists in the ledger but is not handed to the verifier",
-  att(SK),
-  None, atts=[_revoker],
-  pending="0006B",
-  flips_on="0006 Question B: B1 (uniform) -> verifier MUST query -> valid:false; B2 (scoped) -> read-only consumer need not -> valid:true")
 _superseder = att(SK2, relates_to=[{"type": "supersedes", "target": tgt_att(att(SK))}])
-V("L2-supersede-liveness", "§3/§4", "423-431",
-  "subject valid on its own; a supersedes edge targeting it exists in the ledger but is not handed to the verifier",
-  att(SK),
-  None, atts=[_superseder],
-  pending="0006B",
-  flips_on="0006 Question B: B1 -> MUST check for superseders -> superseded; B2 -> read-only consumer need not")
+
+V("L1e-revoke-seek-enforcing", "§3/§4", "423-431",
+  "ENFORCING: a revokes edge targeting the subject is in the ledger (not handed) -> verifier seeks it -> valid:false (revoked)",
+  att(SK), {"valid": False, "reason_contains": "revoked"}, atts=[_revoker], mode="enforcing")
+V("L1n-revoke-seek-nonenforcing", "§3/§4", "423-431",
+  "NON-ENFORCING: same ledger, verifier does NOT seek -> subject valid (consumer must declare + label per 0006)",
+  att(SK), {"valid": True}, atts=[_revoker], mode="non-enforcing")
+
+V("L2e-supersede-seek-enforcing", "§3/§4", "423-431",
+  "ENFORCING: a supersedes edge targeting the subject is in the ledger -> verifier seeks it -> valid but superseded",
+  att(SK), {"valid": True, "superseded": True}, atts=[_superseder], mode="enforcing")
+V("L2n-supersede-seek-nonenforcing", "§3/§4", "423-431",
+  "NON-ENFORCING: same ledger, verifier does NOT seek -> subject valid, not superseded",
+  att(SK), {"valid": True}, atts=[_superseder], mode="non-enforcing")
+
+V("L3-seek-failure-enforcing", "§3/§4", "423-431",
+  "ENFORCING: seek throws/times out -> revocation status UNDETERMINABLE -> reject (NOT valid; distinct from 'revoked')",
+  att(SK), {"valid": False, "reason_contains": "undeterminable"},
+  atts=[_revoker], mode="enforcing", seek_fails=True)
 
 
 def main():
     out = {
         "corpus": "cgr.attestation.v4 conformance",
         "note": "TEST vectors — deterministic repeating-byte issuer key, NOT a real key. "
-                "See README.md for the resolution model and the pending-0006B / grounding-gate scope.",
+                "See README.md for the resolution model, the seek/mode split, and the grounding-gate scope.",
         "issuer_pubkey_hex": ISSUER_PUB,
         "agent_pubkey_hex": AGENT_PUB,
         "vector_count": len(VECTORS),
-        "pending_0006B": [v["id"] for v in VECTORS if v.get("pending") == "0006B"],
+        "modes": sorted({v["mode"] for v in VECTORS}),
         "vectors": VECTORS,
     }
     (_HERE / "vectors.json").write_text(json.dumps(out, indent=2, sort_keys=False) + "\n")
@@ -400,9 +409,9 @@ def main():
         {"issuer_pubkey_hex": ISSUER_PUB, "agent_pubkey_hex": AGENT_PUB,
          "note": "deterministic TEST keys (repeating-byte seeds 0x11 / 0x22) — NOT real keys"},
         indent=2) + "\n")
-    fixed = [v["id"] for v in VECTORS if v.get("pending") != "0006B"]
-    print(f"wrote {len(VECTORS)} vectors ({len(fixed)} with fixed verdicts, "
-          f"{len(VECTORS) - len(fixed)} pending-0006B)")
+    enf = sum(1 for v in VECTORS if v["mode"] == "enforcing")
+    non = sum(1 for v in VECTORS if v["mode"] == "non-enforcing")
+    print(f"wrote {len(VECTORS)} vectors ({enf} enforcing, {non} non-enforcing; 0 pending)")
 
 
 if __name__ == "__main__":

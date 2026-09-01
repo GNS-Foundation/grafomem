@@ -1,12 +1,12 @@
 {
   "corpus": "cgr.attestation.v4 conformance",
-  "note": "TEST vectors \u2014 deterministic repeating-byte issuer key, NOT a real key. See README.md for the resolution model and the pending-0006B / grounding-gate scope.",
+  "note": "TEST vectors \u2014 deterministic repeating-byte issuer key, NOT a real key. See README.md for the resolution model, the seek/mode split, and the grounding-gate scope.",
   "issuer_pubkey_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
   "agent_pubkey_hex": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
-  "vector_count": 35,
-  "pending_0006B": [
-    "L1-revoke-liveness",
-    "L2-supersede-liveness"
+  "vector_count": 38,
+  "modes": [
+    "enforcing",
+    "non-enforcing"
   ],
   "vectors": [
     {
@@ -14,6 +14,7 @@
       "clause": "\u00a71.1",
       "spec_lines": "98-100",
       "title": "duplicate {type,target} pair -> reject (malformed)",
+      "mode": "enforcing",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "subject": {
         "schema": "cgr.attestation.v4",
@@ -101,6 +102,7 @@
       "clause": "\u00a71.1",
       "spec_lines": "101-107",
       "title": "two continues edges (even distinct targets) -> reject (>1 lineage predecessor)",
+      "mode": "enforcing",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "subject": {
         "schema": "cgr.attestation.v4",
@@ -214,6 +216,7 @@
       "clause": "\u00a71.1",
       "spec_lines": "107-109",
       "title": "multiple supersedes to distinct targets -> valid (consolidation)",
+      "mode": "enforcing",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "subject": {
         "schema": "cgr.attestation.v4",
@@ -326,6 +329,7 @@
       "clause": "\u00a71.1",
       "spec_lines": "110-111",
       "title": "multiple revokes to distinct targets -> valid (batch revocation)",
+      "mode": "enforcing",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "subject": {
         "schema": "cgr.attestation.v4",
@@ -438,6 +442,7 @@
       "clause": "\u00a71.1",
       "spec_lines": "82-98",
       "title": "attestation target with hash_alg sha-256 -> reject (must be blake2b-256)",
+      "mode": "enforcing",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "subject": {
         "schema": "cgr.attestation.v4",
@@ -517,6 +522,7 @@
       "clause": "\u00a71.1",
       "spec_lines": "82-98",
       "title": "delegation_cert target with hash_alg blake2b-256 -> reject (must be sha-256)",
+      "mode": "enforcing",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "subject": {
         "schema": "cgr.attestation.v4",
@@ -590,6 +596,7 @@
       "clause": "\u00a71.3",
       "spec_lines": "178-184",
       "title": "unrecognized relation type -> reject (fail closed)",
+      "mode": "enforcing",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "subject": {
         "schema": "cgr.attestation.v4",
@@ -671,6 +678,7 @@
       "title": "continues cycle -> VALID subject + lineage_status=anomaly_cycle (NOT truncated_unavailable)",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "held_edges": [],
+      "mode": "enforcing",
       "subject": {
         "schema": "cgr.attestation.v4",
         "issuer": "gns-foundation",
@@ -796,6 +804,7 @@
       "title": "supersedes cycle -> reject (currency undeterminable)",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "held_edges": [],
+      "mode": "enforcing",
       "subject": {
         "schema": "cgr.attestation.v4",
         "issuer": "gns-foundation",
@@ -921,6 +930,7 @@
       "title": "revokes cycle -> reject (incoherent revocation state)",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "held_edges": [],
+      "mode": "enforcing",
       "subject": {
         "schema": "cgr.attestation.v4",
         "issuer": "gns-foundation",
@@ -1046,6 +1056,7 @@
       "title": "mixed cycle containing a supersedes edge -> reject (conservative rule)",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "held_edges": [],
+      "mode": "enforcing",
       "subject": {
         "schema": "cgr.attestation.v4",
         "issuer": "gns-foundation",
@@ -1171,6 +1182,7 @@
       "title": "continues chain deeper than 64 -> VALID subject + lineage_status=truncated_depth",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "held_edges": [],
+      "mode": "enforcing",
       "subject": {
         "schema": "cgr.attestation.v4",
         "issuer": "gns-foundation",
@@ -3554,6 +3566,7 @@
       "title": "supersedes chain deeper than 64 -> reject (validity undeterminable within bound)",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "held_edges": [],
+      "mode": "enforcing",
       "subject": {
         "schema": "cgr.attestation.v4",
         "issuer": "gns-foundation",
@@ -5937,6 +5950,7 @@
       "title": "revokes chain deeper than 64 -> reject (validity undeterminable within bound)",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "held_edges": [],
+      "mode": "enforcing",
       "subject": {
         "schema": "cgr.attestation.v4",
         "issuer": "gns-foundation",
@@ -8318,6 +8332,7 @@
       "clause": "\u00a71.3",
       "spec_lines": "230-239",
       "title": "continues with unreachable predecessor -> VALID subject + lineage_status=truncated_unavailable (NOT anomaly_cycle)",
+      "mode": "enforcing",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "subject": {
         "schema": "cgr.attestation.v4",
@@ -8370,6 +8385,7 @@
       "clause": "\u00a71.3/\u00a75",
       "spec_lines": "230-232",
       "title": "continues carried by an attestation NOT signed by the pinned Foundation issuer -> reject",
+      "mode": "enforcing",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "subject": {
         "schema": "cgr.attestation.v4",
@@ -8449,6 +8465,7 @@
       "clause": "\u00a71.3/\u00a75",
       "spec_lines": "230-239",
       "title": "Foundation-signed continues, predecessor resolvable -> VALID + lineage_status=complete",
+      "mode": "enforcing",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "subject": {
         "schema": "cgr.attestation.v4",
@@ -8528,6 +8545,7 @@
       "clause": "\u00a71.3/\u00a73",
       "spec_lines": "251-253",
       "title": "the REVOKER attestation itself (carrying a revokes edge) is well-formed -> valid",
+      "mode": "enforcing",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "subject": {
         "schema": "cgr.attestation.v4",
@@ -8606,6 +8624,7 @@
       "clause": "\u00a71.3/\u00a73",
       "spec_lines": "251-253",
       "title": "evaluating a target while the verifier HOLDS a revokes edge targeting it -> valid:false (refused)",
+      "mode": "enforcing",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "subject": {
         "schema": "cgr.attestation.v4",
@@ -8685,6 +8704,7 @@
       "clause": "\u00a71.3",
       "spec_lines": "240-246",
       "title": "evaluating a target while the verifier HOLDS a supersedes edge targeting it -> valid but SUPERSEDED (stale, not current)",
+      "mode": "enforcing",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "subject": {
         "schema": "cgr.attestation.v4",
@@ -8764,6 +8784,7 @@
       "clause": "\u00a71.3",
       "spec_lines": "247-249",
       "title": "a superseder whose target is unreachable -> superseder stays VALID (MUST NOT reject it)",
+      "mode": "enforcing",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "subject": {
         "schema": "cgr.attestation.v4",
@@ -8815,6 +8836,7 @@
       "clause": "\u00a71.3/\u00a73",
       "spec_lines": "251-253",
       "title": "a revoker whose target is unreachable -> revoker stays VALID (revocation claim stands; target not present to refuse)",
+      "mode": "enforcing",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "subject": {
         "schema": "cgr.attestation.v4",
@@ -8866,6 +8888,7 @@
       "clause": "\u00a71.1/\u00a73",
       "spec_lines": "89-98",
       "title": "revokes edge targeting a delegation_cert (sha-256 cert_hash), cert resolvable -> valid revoker",
+      "mode": "enforcing",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "subject": {
         "schema": "cgr.attestation.v4",
@@ -8938,6 +8961,7 @@
       "clause": "\u00a72.2",
       "spec_lines": "272-305",
       "title": "dimension=grounding with oracle_id + audit_policy -> valid",
+      "mode": "enforcing",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "subject": {
         "schema": "cgr.attestation.v4",
@@ -8981,6 +9005,7 @@
       "clause": "\u00a72.2",
       "spec_lines": "304",
       "title": "dimension=grounding, oracle_id absent -> reject",
+      "mode": "enforcing",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "subject": {
         "schema": "cgr.attestation.v4",
@@ -9024,6 +9049,7 @@
       "clause": "\u00a72.2",
       "spec_lines": "304",
       "title": "dimension=grounding, audit_policy absent -> reject",
+      "mode": "enforcing",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "subject": {
         "schema": "cgr.attestation.v4",
@@ -9067,6 +9093,7 @@
       "clause": "\u00a72.2",
       "spec_lines": "305",
       "title": "dimension=receivables with oracle_id present -> reject (must be absent)",
+      "mode": "enforcing",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "subject": {
         "schema": "cgr.attestation.v4",
@@ -9110,6 +9137,7 @@
       "clause": "\u00a72.2",
       "spec_lines": "305",
       "title": "dimension=receivables with audit_policy present -> reject (must be absent)",
+      "mode": "enforcing",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "subject": {
         "schema": "cgr.attestation.v4",
@@ -9153,6 +9181,7 @@
       "clause": "\u00a72.2",
       "spec_lines": "305",
       "title": "dimension=receivables with n_unresolvable present -> reject (must be absent)",
+      "mode": "enforcing",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "subject": {
         "schema": "cgr.attestation.v4",
@@ -9196,6 +9225,7 @@
       "clause": "\u00a72.2",
       "spec_lines": "203",
       "title": "dimension=grounding, n_unresolvable absent -> valid (optional; defaults 0)",
+      "mode": "enforcing",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "subject": {
         "schema": "cgr.attestation.v4",
@@ -9239,6 +9269,7 @@
       "clause": "\u00a72.3",
       "spec_lines": "337-349",
       "title": "schema not in ACCEPTED_SCHEMAS -> reject at the schema check",
+      "mode": "enforcing",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "subject": {
         "schema": "cgr.attestation.v5",
@@ -9281,6 +9312,7 @@
       "clause": "\u00a72.3",
       "spec_lines": "337-349",
       "title": "schema cgr.attestation.v4 -> accepted (a v4 verifier accepts v4)",
+      "mode": "enforcing",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "subject": {
         "schema": "cgr.attestation.v4",
@@ -9322,6 +9354,7 @@
       "clause": "\u00a72.4",
       "spec_lines": "355-360",
       "title": "relates_to present but NOT covered by the signature -> reject (sig fails; you cannot carry an unsigned edge)",
+      "mode": "enforcing",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "subject": {
         "schema": "cgr.attestation.v4",
@@ -9397,10 +9430,11 @@
       }
     },
     {
-      "id": "L1-revoke-liveness",
+      "id": "L1e-revoke-seek-enforcing",
       "clause": "\u00a73/\u00a74",
       "spec_lines": "423-431",
-      "title": "subject valid on its own; a revokes edge targeting it exists in the ledger but is not handed to the verifier",
+      "title": "ENFORCING: a revokes edge targeting the subject is in the ledger (not handed) -> verifier seeks it -> valid:false (revoked)",
+      "mode": "enforcing",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "subject": {
         "schema": "cgr.attestation.v4",
@@ -9470,15 +9504,96 @@
         },
         "delegation_certs": {}
       },
-      "expect": null,
-      "pending": "0006B",
-      "flips_on": "0006 Question B: B1 (uniform) -> verifier MUST query -> valid:false; B2 (scoped) -> read-only consumer need not -> valid:true"
+      "expect": {
+        "valid": false,
+        "reason_contains": "revoked"
+      }
     },
     {
-      "id": "L2-supersede-liveness",
+      "id": "L1n-revoke-seek-nonenforcing",
       "clause": "\u00a73/\u00a74",
       "spec_lines": "423-431",
-      "title": "subject valid on its own; a supersedes edge targeting it exists in the ledger but is not handed to the verifier",
+      "title": "NON-ENFORCING: same ledger, verifier does NOT seek -> subject valid (consumer must declare + label per 0006)",
+      "mode": "non-enforcing",
+      "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "subject": {
+        "schema": "cgr.attestation.v4",
+        "issuer": "gns-foundation",
+        "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+        "subject_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "subject_did": "did:key:z6Mkaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "agent_handle": "vector-agent@test",
+        "dimension": "receivables",
+        "cgr_score": 0.6666666666666666,
+        "confidence": 6.0,
+        "n_resolved": 12,
+        "capability_tier": 0.75,
+        "as_of": "2026-01-01T00:00:00Z",
+        "last_resolved_at": "2026-01-01T00:00:00Z",
+        "scoring_scope": "pooled",
+        "requested_domain": null,
+        "domain_n_resolved": null,
+        "rationale": "conformance vector",
+        "domain": "deploy",
+        "verifiability_tag": "judgment",
+        "decision_date": "2026-01-01",
+        "recorded_at": "2026-01-01",
+        "backfilled": false,
+        "signature": "0aa9ab1f5454e1d5cb7e2b16e2a24fb13706b34459836ea0162e687d978745907a4450ac41ee4b580ad9875db616ebaa603cc0a424433afea37f32e18b38910b",
+        "evidence_ref": null
+      },
+      "held_edges": [],
+      "ledger": {
+        "attestations": {
+          "8386d70b69ba4fbd61385828db8254cae3908f187401dc3f621ca54397870e5b": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "subject_did": "did:key:z6Mkcccccccccccccccccccccccccccccccc",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "15286951b18aeeae985b46b78760b0815108cba88b36f01e71c4e80a803d13e8"
+                }
+              }
+            ],
+            "signature": "8603ba8e5011bd5fa531fccefa2eacdf2178a13c4ac44da360e25aef9cac5faef644536f93d27a8da1ee35dbf95dbf027152b8c8a57769a9a2903f33d926dd08",
+            "evidence_ref": null
+          }
+        },
+        "delegation_certs": {}
+      },
+      "expect": {
+        "valid": true
+      }
+    },
+    {
+      "id": "L2e-supersede-seek-enforcing",
+      "clause": "\u00a73/\u00a74",
+      "spec_lines": "423-431",
+      "title": "ENFORCING: a supersedes edge targeting the subject is in the ledger -> verifier seeks it -> valid but superseded",
+      "mode": "enforcing",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "subject": {
         "schema": "cgr.attestation.v4",
@@ -9548,9 +9663,170 @@
         },
         "delegation_certs": {}
       },
-      "expect": null,
-      "pending": "0006B",
-      "flips_on": "0006 Question B: B1 -> MUST check for superseders -> superseded; B2 -> read-only consumer need not"
+      "expect": {
+        "valid": true,
+        "superseded": true
+      }
+    },
+    {
+      "id": "L2n-supersede-seek-nonenforcing",
+      "clause": "\u00a73/\u00a74",
+      "spec_lines": "423-431",
+      "title": "NON-ENFORCING: same ledger, verifier does NOT seek -> subject valid, not superseded",
+      "mode": "non-enforcing",
+      "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "subject": {
+        "schema": "cgr.attestation.v4",
+        "issuer": "gns-foundation",
+        "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+        "subject_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "subject_did": "did:key:z6Mkaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "agent_handle": "vector-agent@test",
+        "dimension": "receivables",
+        "cgr_score": 0.6666666666666666,
+        "confidence": 6.0,
+        "n_resolved": 12,
+        "capability_tier": 0.75,
+        "as_of": "2026-01-01T00:00:00Z",
+        "last_resolved_at": "2026-01-01T00:00:00Z",
+        "scoring_scope": "pooled",
+        "requested_domain": null,
+        "domain_n_resolved": null,
+        "rationale": "conformance vector",
+        "domain": "deploy",
+        "verifiability_tag": "judgment",
+        "decision_date": "2026-01-01",
+        "recorded_at": "2026-01-01",
+        "backfilled": false,
+        "signature": "0aa9ab1f5454e1d5cb7e2b16e2a24fb13706b34459836ea0162e687d978745907a4450ac41ee4b580ad9875db616ebaa603cc0a424433afea37f32e18b38910b",
+        "evidence_ref": null
+      },
+      "held_edges": [],
+      "ledger": {
+        "attestations": {
+          "969c7bd69773c50b4a7d5850663a7c8545370026ecfab7e982c520fe434f5fa5": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "subject_did": "did:key:z6Mkcccccccccccccccccccccccccccccccc",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "supersedes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "15286951b18aeeae985b46b78760b0815108cba88b36f01e71c4e80a803d13e8"
+                }
+              }
+            ],
+            "signature": "fc233a02c1155e50ec3538426cedb35eddcc14c85ff95979722814f0df9a108ed15655e316c883228c921ca5b48b3ed4183ebc9d59f65593f512df9a36a7330c",
+            "evidence_ref": null
+          }
+        },
+        "delegation_certs": {}
+      },
+      "expect": {
+        "valid": true
+      }
+    },
+    {
+      "id": "L3-seek-failure-enforcing",
+      "clause": "\u00a73/\u00a74",
+      "spec_lines": "423-431",
+      "title": "ENFORCING: seek throws/times out -> revocation status UNDETERMINABLE -> reject (NOT valid; distinct from 'revoked')",
+      "mode": "enforcing",
+      "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "subject": {
+        "schema": "cgr.attestation.v4",
+        "issuer": "gns-foundation",
+        "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+        "subject_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "subject_did": "did:key:z6Mkaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "agent_handle": "vector-agent@test",
+        "dimension": "receivables",
+        "cgr_score": 0.6666666666666666,
+        "confidence": 6.0,
+        "n_resolved": 12,
+        "capability_tier": 0.75,
+        "as_of": "2026-01-01T00:00:00Z",
+        "last_resolved_at": "2026-01-01T00:00:00Z",
+        "scoring_scope": "pooled",
+        "requested_domain": null,
+        "domain_n_resolved": null,
+        "rationale": "conformance vector",
+        "domain": "deploy",
+        "verifiability_tag": "judgment",
+        "decision_date": "2026-01-01",
+        "recorded_at": "2026-01-01",
+        "backfilled": false,
+        "signature": "0aa9ab1f5454e1d5cb7e2b16e2a24fb13706b34459836ea0162e687d978745907a4450ac41ee4b580ad9875db616ebaa603cc0a424433afea37f32e18b38910b",
+        "evidence_ref": null
+      },
+      "held_edges": [],
+      "ledger": {
+        "attestations": {
+          "8386d70b69ba4fbd61385828db8254cae3908f187401dc3f621ca54397870e5b": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "subject_did": "did:key:z6Mkcccccccccccccccccccccccccccccccc",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "15286951b18aeeae985b46b78760b0815108cba88b36f01e71c4e80a803d13e8"
+                }
+              }
+            ],
+            "signature": "8603ba8e5011bd5fa531fccefa2eacdf2178a13c4ac44da360e25aef9cac5faef644536f93d27a8da1ee35dbf95dbf027152b8c8a57769a9a2903f33d926dd08",
+            "evidence_ref": null
+          }
+        },
+        "delegation_certs": {}
+      },
+      "expect": {
+        "valid": false,
+        "reason_contains": "undeterminable"
+      },
+      "seek_fails": true
     }
   ]
 }

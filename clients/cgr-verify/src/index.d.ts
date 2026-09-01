@@ -59,14 +59,26 @@ export interface VerifyResultV4 extends VerifyResult {
 /** BLAKE2b-256 fingerprint of an attestation's canonical signed body (§1.1). */
 export declare function attestationFingerprint(att: Record<string, unknown>): string;
 
+export type EnforcementMode = 'enforcing' | 'non-enforcing';
+
+export interface VerifyV4Options {
+  /** REQUIRED — explicit at the call site, no silent default (decision 0006 enforce-or-label). */
+  mode: EnforcementMode;
+  /** Edge-records HANDED to the verifier; honoured in BOTH modes. */
+  heldEdges?: Array<Record<string, unknown>>;
+  /** REQUIRED iff mode === 'enforcing'. Query the caller's store for Foundation-signed
+   *  edge-records whose relates_to targets the subject. If it throws, the verifier rejects
+   *  with "revocation status undeterminable" (Validity-Fails-Closed). */
+  seek?: (subjectFingerprintHex: string) => Promise<Array<Record<string, unknown>>>;
+}
+
 /**
- * Verify a cgr.attestation.v4 attestation offline.
- * `heldEdges` are edge-records HANDED to the verifier (MUST honour); seek behaviour is
- * out of scope (decision 0006 Question B).
+ * Verify a cgr.attestation.v4 attestation offline. Async in BOTH modes.
+ * @throws TypeError if `mode` is missing/invalid, or enforcing without `seek`.
  */
 export declare function verifyCGRAttestationV4(
   subject: Record<string, unknown>,
   ledger: V4Ledger,
   pinnedIssuerPubKeyHex: string,
-  heldEdges?: Array<Record<string, unknown>>,
+  opts: VerifyV4Options,
 ): Promise<VerifyResultV4>;

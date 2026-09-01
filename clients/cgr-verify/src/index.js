@@ -168,14 +168,25 @@ function _traverse(subject, ledger) {
 }
 
 /**
- * Verify a cgr.attestation.v4 attestation offline.
+ * Verify a cgr.attestation.v4 attestation offline. ASYNC in BOTH modes (so a caller can write
+ * mode-agnostic code). Mode is explicit at the call site — no silent default either way (0006).
  * @param subject       the attestation under evaluation
- * @param ledger        { attestations: {hash:att}, delegation_certs: {hash:cert} } — resolution context
+ * @param ledger        { attestations, delegation_certs } — resolution context for the subject's own edges
  * @param pinnedIssuer  Foundation pubkey (hex) to pin
- * @param heldEdges     edge-records handed to the verifier (MUST honour); seek behaviour is NOT here (0006-B)
+ * @param opts.mode      REQUIRED: 'enforcing' | 'non-enforcing' (0006 enforce-or-label)
+ * @param opts.heldEdges edge-records handed to the verifier (MUST honour, both modes)
+ * @param opts.seek      REQUIRED iff enforcing: async (subjectFingerprintHex) => attestation[]
+ *                       — Foundation-signed edge-records whose relates_to targets the subject
+ *                       (a query against the caller's store; @geiant/core + read surface implement this)
  * Returns { valid, reason?, lineage_status?, superseded?, ...fields }.
+ * @throws TypeError if mode is missing/invalid, or enforcing without a seek function.
  */
-export async function verifyCGRAttestationV4(subject, ledger, pinnedIssuer, heldEdges = []) {
+export async function verifyCGRAttestationV4(subject, ledger, pinnedIssuer, opts = {}) {
+  const { mode, heldEdges = [], seek } = opts;
+  if (mode !== 'enforcing' && mode !== 'non-enforcing')
+    throw new TypeError('verifyCGRAttestationV4: opts.mode must be "enforcing" or "non-enforcing" (no silent default)');
+  if (mode === 'enforcing' && typeof seek !== 'function')
+    throw new TypeError('verifyCGRAttestationV4: enforcing mode requires opts.seek (a query function)');
   const fail = (reason) => ({ valid: false, reason });
   if (!subject || typeof subject !== 'object') return fail('no attestation');
   if (!pinnedIssuer) return fail('no pinned issuer key (fail closed)');
@@ -225,15 +236,34 @@ export async function verifyCGRAttestationV4(subject, ledger, pinnedIssuer, held
   const tr = _traverse(subject, ledger);
   if (tr.reject) return fail(tr.reject);
 
-  // held edges (§1.3/§3): honour edges HANDED to us that target the subject. No seek (0006-B).
-  let superseded = false;
+  // held + sought edges (§1.3/§3): honour edge-records that target the subject.
+  //   held = HANDED to the verifier — honoured in BOTH modes.
+  //   seek = QUERIED for edges targeting the subject — ENFORCING mode only (0006).
+  // Same processing once obtained; they differ only in provenance and when consulted.
   const subjFp = attestationFingerprint(subject);
-  for (const he of (heldEdges || [])) {
-    if (!he || he.issuer !== CGR_ISSUER) continue;
-    if (!(await _sigOk(he, pinnedIssuer))) continue;      // only a Foundation-signed held edge binds
-    for (const e of (Array.isArray(he.relates_to) ? he.relates_to : [])) {
+  const toHonour = [...(heldEdges || [])];
+  if (mode === 'enforcing') {
+    let sought;
+    try {
+      sought = await seek(subjFp);
+    } catch (e) {
+      // Validity-Fails-Closed: an enforcing verifier that cannot complete the query cannot
+      // determine revocation status → REJECT (never silently "valid"). Distinct from an ordinary
+      // revocation — otherwise enforcement degrades to non-enforcement on every DB hiccup, the exact
+      // failure 0006 exists to prevent.
+      return fail(`revocation status undeterminable (seek failed: ${e && e.message ? e.message : e})`);
+    }
+    if (!Array.isArray(sought))
+      return fail('revocation status undeterminable (seek returned a non-array)');
+    toHonour.push(...sought);
+  }
+  let superseded = false;
+  for (const rec of toHonour) {
+    if (!rec || rec.issuer !== CGR_ISSUER) continue;
+    if (!(await _sigOk(rec, pinnedIssuer))) continue;     // only a Foundation-signed edge-record binds
+    for (const e of (Array.isArray(rec.relates_to) ? rec.relates_to : [])) {
       if (e.target && e.target.kind === 'attestation' && e.target.hash === subjFp) {
-        if (e.type === 'revokes') return fail('subject is revoked by a held edge');
+        if (e.type === 'revokes') return fail('subject is revoked (an edge targeting it was honoured)');
         if (e.type === 'supersedes') superseded = true;
       }
     }
