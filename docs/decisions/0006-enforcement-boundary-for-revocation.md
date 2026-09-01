@@ -79,6 +79,31 @@ deliberately scoped?
   proof/display services are explicitly exempt, documented as such, and constrained so they cannot
   take authority-bearing actions on a revoked identity.
 
+**The held/seek mechanism — where Question B actually bites.** "Uniform vs scoped" is the right axis
+but blurs a distinction the `cgr.attestation.v4` conformance corpus (P1.3) makes precise. Split a
+verifier's inputs into what it is **handed** and what it could **query**:
+
+- An edge **HELD** by the verifier — a `revokes`/`supersedes` record handed to it alongside the target
+  — **MUST be honoured**, and this is **fixed, not B-dependent**: a verifier holding a revocation and
+  evaluating its target refuses it under **both** B1 and B2. (Corpus vectors `T13b`, `T11` — fixed
+  verdicts.)
+- An edge present only in a queryable **LEDGER** — it exists, it targets the subject, but it was **not
+  handed** to the verifier — raises the **seek** question: must the verifier go looking before it
+  trusts? **That is Question B.** Under **B1** it must seek; under **B2** a read-only consumer need
+  not. (Corpus vectors `L1` revoke-liveness, `L2` supersede-liveness — verdicts left absent,
+  `pending-0006B`.)
+
+So B does **not** change whether a *held* edge binds — it always does; B decides only whether a
+consumer is **obligated to seek** edges it was not handed. **`L1` and `L2` are the two attestations
+whose verdicts flip on the answer** — Question B made executable. Answering B fixes their verdicts and
+drops the `pending` marker; this record does not answer it.
+
+*Provenance: this held/seek distinction emerged from **building the P1.3 conformance corpus**, not
+from deliberation on this record. The corpus forced the split to keep `T13b`/`T11` (fixed obligations)
+from colliding with `L1`/`L2` (B-dependent) — they had been structurally identical until the corpus
+separated "handed to the verifier" from "present in the ledger." Worth keeping: the sharper framing of
+the question came from making it executable.*
+
 **Cross-cutting requirement, independent of the answers.** Whichever branch each question takes, the
 silent-non-action paths must become **signals**: the ignored `.single()` error, the zero-row
 `UPDATE`, and the absent-dependency coverage gap should each fail loudly or be asserted in the
