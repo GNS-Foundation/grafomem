@@ -296,22 +296,26 @@ is_grounding      → oracle_id, audit_policy REQUIRED (reject if absent); n_unr
 not is_grounding  → oracle_id, audit_policy, n_unresolvable MUST be absent (reject if present)
 ```
 
-`[OPEN]` **Members of `GROUNDING_DIMENSIONS`.** The decision above fixes the *mechanism* (infer;
-closed set; gate) but does **not** enumerate the members, because
-[0001](../decisions/0001-cgr-grounding-dimension-additive-vs-schema-bump.md) does not pin them: it
-names "a `grounding` dimension" in prose and defers the technical specification to the internal
-*"Grounding-Audit Outcome Type — CGR Delta Spec" (draft-0.2, 2026-08-27)*, which is not in this repo.
-The set is **plausibly** `{ "grounding" }` (singular prose), but that is inference, not a pinned
-value — so it is left open deliberately rather than guessed, because a guessed set looks decided and
-is worse than an acknowledged gap. **`GROUNDING_DIMENSIONS` MUST be enumerated from draft-0.2 before
-`cgr-verify` implements the gate** — until then the gate has no set to evaluate against.
+**`GROUNDING_DIMENSIONS` (closed, normative).**
 
-**Trade registered — grounding is a `dimension` value, hence mutually exclusive with domain
-dimensions.** "A grounding judgment *within* the receivables domain" is therefore inexpressible: an
-attestation's `dimension` is either a domain (`receivables`, …) **or** grounding, never both.
-Accepted because 0001 committed to the dimension-value model, and the boolean's contradiction surface
-is concrete while the orthogonal need (grounding as an axis over any domain) is hypothetical — nothing
-in 0001–0006 asks for it. Reversing this later (grounding orthogonal to domain) is a **schema bump**.
+```
+GROUNDING_DIMENSIONS = { "grounding" }
+```
+
+A single member: an attestation is grounding-class **iff `dimension == "grounding"`**. The grounding
+model specifies a grounding attestation as a standard mint carrying `dimension: "grounding"` —
+grounding is *a second value of the existing `dimension` field*, not a parallel field set. The value
+is pinned **here**, normatively, so this spec stands alone (a consumer needs nothing beyond this
+document to implement the gate). Adding a future grounding-class dimension is a versioning event —
+the set is closed per schema string.
+
+**Grounding is orthogonal to the capability domain, not exclusive with it.** `dimension` says *what
+kind of outcome resolves the judgment* (a receivables outcome vs. a grounding audit); the capability
+**domain** (the `domain` row above; `cgr_domain` in the grounding model) says *what area the judgment
+concerns*. They are independent axes. So grounding is mutually exclusive only with **other outcome
+kinds** — an attestation resolves exactly one kind of outcome — while a grounding judgment **within
+any domain is fully expressible**: e.g. `dimension: "grounding"`, `domain: "deploy"` is a grounding
+audit of a deploy claim. There is no domain-orthogonality limitation and no trade to reverse.
 
 `[OPEN]` **temporal-field overlap.** `v3` already carries `as_of` and `last_resolved_at`. `v4` adds
 `decision_date` and `recorded_at`. These are distinct in intent — `as_of`/`last_resolved_at` describe
@@ -533,10 +537,10 @@ decided (it interacts with the scoring pipeline, not just the wire format).
 4. ~~Traversal depth minimum.~~ **RESOLVED (§1.3, P1.2)** — minimum **64**, with the reasoning
    recorded in-spec; on-bound behaviour follows the governing principle (`continues` →
    `truncated_depth`; `supersedes`/`revokes` → reject).
-5. ~~`grounding-class`: infer vs boolean.~~ **RESOLVED (§2.2, P1.2)** — **infer from `dimension`**
-   against a closed, normative `GROUNDING_DIMENSIONS`. **Residual open:** the set's *members* are not
-   pinned by 0001 (it defers to the absent draft-0.2) — enumerate before `cgr-verify` implements the
-   required-field gate.
+5. ~~`grounding-class`: infer vs boolean; set members.~~ **RESOLVED (§2.2, P1.2)** — **infer from
+   `dimension`** against the closed, normative `GROUNDING_DIMENSIONS = { "grounding" }` (pinned in
+   §2.2 from the grounding model). Grounding is orthogonal to the capability domain, not exclusive
+   with it.
 6. Temporal-field overlap: relationship between `as_of`/`last_resolved_at` and
    `decision_date`/`recorded_at`. (§2.2)
 7. `domain` vocabulary fixed vs open (0002 Q); relation vocabulary is closed (§1.3, §2.5).
