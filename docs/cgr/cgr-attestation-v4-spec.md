@@ -134,6 +134,36 @@ The `v4` vocabulary is therefore **closed at `{continues, supersedes, revokes}`*
 
 ### 1.3 Traversal — what a verifier MUST do
 
+**Governing principle — Lineage-Degrades, Validity-Fails-Closed.** When a traversal cannot complete
+(a cycle, or the depth bound below), behaviour is decided by the edge class, not the cause:
+
+- **Lineage-only (`continues`):** the edge does not affect the subject's validity, so an incomplete
+  traversal MUST **degrade** — accept the subject, mark the lineage incomplete, and report *why* via
+  `lineage.status` (below). Never reject the subject for a lineage problem.
+- **Validity-affecting (`supersedes`, `revokes`):** the traversal answers a validity question ("is
+  this current / revoked?"). An incomplete traversal leaves that question **undeterminable**, and an
+  undeterminable validity answer MUST resolve to **reject** — never to "valid."
+
+This one rule resolves both the cycle and depth-bound cases below; they are the same question seen
+twice. The `unrecognized type` rule is its degenerate case (an unprocessable validity-affecting edge
+⇒ reject).
+
+**`lineage.status` — the verifier's lineage signal (distinct, machine-readable states).** When a
+verifier reconstructs `continues` lineage it MUST report one of these, **not** a single boolean plus
+prose:
+
+| `lineage.status` | meaning | anomaly? |
+|---|---|---|
+| `complete` | full lineage reconstructed to the root | no |
+| `truncated_unavailable` | a predecessor could not be obtained (pruned / offline ledger) | **no** — expected, benign |
+| `truncated_depth` | the depth bound was reached first | **no** — benign |
+| `anomaly_cycle` | a cycle was detected in the `continues` graph | **YES** — corrupt Foundation-signed data or tampering; alertable |
+
+`truncated_unavailable` and `anomaly_cycle` both leave lineage incomplete but mean **completely
+different things** — a missing ledger entry vs. a Foundation-signed contradiction. A consumer MUST be
+able to alert on `anomaly_cycle` **without** alerting on `truncated_unavailable`. Emitting one flag
+with different prose for the two is **non-conformant**.
+
 **General rules (all types):**
 
 - **Unrecognized `type`: MUST reject** (fail closed). A `v4` consumer is expected to understand the
@@ -143,13 +173,45 @@ The `v4` vocabulary is therefore **closed at `{continues, supersedes, revokes}`*
   schema string**: a new verb cannot be added additively under `v4` — it requires a new versioning
   event (a `v5`, or a `crit`-style extension convention if one is later adopted). This is the direct
   reason `corrects` should not ship speculatively (§1.2): you cannot cheaply walk it back.
-- **Cycle detection: MUST.** A verifier following a chain MUST track visited `target.hash` values and
-  MUST treat a revisit as a traversal failure rather than looping. `[OPEN]` whether a cycle is a hard
-  reject of the subject attestation or only a truncation of the reconstructed lineage — leaning
-  reject for `supersedes`/`revokes` chains, truncate-and-report for `continues`.
-- **Depth bound: MUST.** A verifier MUST bound traversal depth. `[OPEN]` the minimum a conformant
-  verifier must support before it MAY stop — a tuning parameter, not yet fixed. It must be stated in
-  the conformance suite so consumers agree.
+- **Cycle detection: MUST**, applying the governing principle. A verifier following a chain MUST
+  track visited `target.hash` values and MUST treat a revisit as a traversal failure rather than
+  looping. Behaviour by the traversal's type:
+  - **`continues` cycle → degrade + flag.** The `continues` graph is provably a set of linear chains
+    given both uniqueness rules (§1.1 at most one `continues` per attestation; §5.3.4 at most one
+    successor per predecessor), so a cycle cannot arise from honest issuance — it means
+    Foundation-signed contradiction, tampering, or (negligibly) hash collision. But `continues` is
+    not validity-affecting, so: subject `valid: true`, `lineage.status = anomaly_cycle`,
+    `lineage.truncated_at = <revisited hash>`. Do **not** reject the subject; **do** raise the
+    anomaly (distinct from `truncated_unavailable`).
+  - **`supersedes` cycle → reject.** A cycle makes the subject simultaneously current (chain head)
+    and stale (in the loop); currency is undeterminable ⇒ subject `valid: false`, reason
+    "supersedes chain contains a cycle."
+  - **`revokes` cycle → reject.** Incoherent revocation state ⇒ subject `valid: false`, reason
+    "revokes chain contains a cycle." Revocation data must never resolve to "not revoked" by default.
+  - **Mixed-type cycle.** Traversal is normally per-type/per-purpose (reconstruct lineage via
+    `continues`; find the current head via `supersedes`; check revocation via `revokes`), so a cycle
+    is within one type. If an implementation does cross-type traversal and the cycle contains **any**
+    `supersedes` or `revokes` edge, it MUST **reject** — the most-conservative rule wins.
+- **Depth bound: MUST.** A verifier MUST bound traversal depth and MUST support **at least 64** hops
+  before it MAY stop. On reaching the bound it applies the governing principle: a `continues`
+  traversal reports `lineage.status = truncated_depth` (subject `valid: true`); a
+  `supersedes`/`revokes` traversal **rejects** (the validity question is unresolved within the bound).
+
+  **Why 64** — stated so a future reviewer can revise it without re-deriving the argument. The
+  minimum must **exceed the longest legitimate chain** while **bounding adversarial depth**:
+  - *Rotations (`continues`):* rotation is rare (key compromise / policy); the first GEIANT rotation
+    reached lineage length 1. Even monthly rotation for five years is 60; realistic identities see
+    single digits over a lifetime. 64 clears the pathological case with margin.
+  - *Consolidation (`supersedes`):* the primary use is one-time 0005 grandfathering (length 1) and
+    occasional corrections — not per-score re-issuance (a fresh attestation with a newer `as_of` is
+    naturally more current without an explicit edge). A `supersedes` chain approaching 64 signals that
+    re-issuance should point at a stable root instead of chaining; the bound is a forcing function
+    against that anti-pattern, not a limit on legitimate use.
+  - *Adversarial ceiling:* 64 hash-fetch-and-verify hops is cheap for an honest verifier yet caps the
+    work a maliciously deep chain can force.
+
+  A conformant verifier MAY support more than 64; 64 is the floor all consumers can rely on, and the
+  conformance suite pins it so consumers agree.
 - **Target unreachable** is defined per type below. "Unreachable" = the verifier cannot obtain the
   target body/cert (offline, not in the ledger it can see, or pruned).
 
@@ -161,10 +223,11 @@ The `v4` vocabulary is therefore **closed at `{continues, supersedes, revokes}`*
     `continues` MUST NOT be trusted (the outgoing key may be the compromised one — 0003/0004).
   - `continues` is **not validity-affecting for the subject**: the subject attestation is valid on
     its own; the edge only adds predecessor lineage. Therefore, on **unreachable target**, the
-    verifier MUST **degrade gracefully** — surface "continuation asserted; predecessor unavailable" —
-    and MUST NOT reject the subject. Rejecting a live agent because its (possibly-revoked, possibly-
-    pruned) predecessor is unreachable would reintroduce the punitive-rotation problem 0004 exists to
-    remove.
+    verifier MUST **degrade gracefully** — subject `valid: true`, `lineage.status =
+    truncated_unavailable` (a benign, expected state — pruned/offline ledger — and **distinct** from
+    `anomaly_cycle`; see the signal table) — and MUST NOT reject the subject. Rejecting a live agent
+    because its (possibly-revoked, possibly-pruned) predecessor is unreachable would reintroduce the
+    punitive-rotation problem 0004 exists to remove.
 - **`supersedes(target)`** — asserts *the target is no longer current*. Validity-affecting.
   - A verifier that **holds the superseding attestation** and is evaluating the **target** MUST treat
     the target as stale (not current).
@@ -207,11 +270,48 @@ in `v4` with unchanged meaning, except `schema` (§2.2).
 | `recorded_at` | **REQUIRED** | 0002. When this attestation was captured/issued. `decision_date == recorded_at` ⇒ contemporaneous. |
 | `backfilled` | **REQUIRED** | 0002. Boolean; `true` ⇒ recorded after the fact. Redundant with `decision_date < recorded_at` by design — an explicit flag is harder to misread than a timestamp comparison. |
 
-`[FLAG]/[OPEN]` **`grounding-class dimension`** is defined here as "the `dimension` value denotes a
-grounding judgment." Whether that is inferred from the `dimension` string or carried as a separate
-boolean is unresolved — inferring couples two fields, a boolean adds a field that can contradict
-`dimension`. Leaning: infer from `dimension`, and make the grounding dimension values a named subset
-of the `domain`/`dimension` vocabulary.
+**Grounding-class detection — resolved: infer from `dimension`.** Grounding-class is determined
+**solely** by the `dimension` value:
+
+```
+is_grounding  ≡  dimension ∈ GROUNDING_DIMENSIONS      # a CLOSED, normative set (see below)
+```
+
+No separate boolean. A boolean would be a second source of truth that can contradict `dimension`,
+and catching that contradiction requires validating the boolean against this same set anyway — so a
+boolean is strictly more surface for the same guarantee. Inference also matches
+[0001](../decisions/0001-cgr-grounding-dimension-additive-vs-schema-bump.md), which models grounding
+as a `dimension` value. The coupling this creates — the `dimension` value gates required-field
+validation — is made safe by **closing the set**: `GROUNDING_DIMENSIONS` is normative and part of the
+`v4` schema string, extendable only by a versioning event, exactly like the relation vocabulary
+(§1.3). A fuzzy/open set would let the three consumers disagree on class membership and therefore on
+whether `oracle_id`/`audit_policy` are required — a security-relevant inconsistency; closing it
+removes that.
+
+**Required-field gate** (keys off `dimension` only; independent of the `domain` open-vs-closed
+question, §2.5):
+
+```
+is_grounding      → oracle_id, audit_policy REQUIRED (reject if absent); n_unresolvable OPTIONAL
+not is_grounding  → oracle_id, audit_policy, n_unresolvable MUST be absent (reject if present)
+```
+
+`[OPEN]` **Members of `GROUNDING_DIMENSIONS`.** The decision above fixes the *mechanism* (infer;
+closed set; gate) but does **not** enumerate the members, because
+[0001](../decisions/0001-cgr-grounding-dimension-additive-vs-schema-bump.md) does not pin them: it
+names "a `grounding` dimension" in prose and defers the technical specification to the internal
+*"Grounding-Audit Outcome Type — CGR Delta Spec" (draft-0.2, 2026-08-27)*, which is not in this repo.
+The set is **plausibly** `{ "grounding" }` (singular prose), but that is inference, not a pinned
+value — so it is left open deliberately rather than guessed, because a guessed set looks decided and
+is worse than an acknowledged gap. **`GROUNDING_DIMENSIONS` MUST be enumerated from draft-0.2 before
+`cgr-verify` implements the gate** — until then the gate has no set to evaluate against.
+
+**Trade registered — grounding is a `dimension` value, hence mutually exclusive with domain
+dimensions.** "A grounding judgment *within* the receivables domain" is therefore inexpressible: an
+attestation's `dimension` is either a domain (`receivables`, …) **or** grounding, never both.
+Accepted because 0001 committed to the dimension-value model, and the boolean's contradiction surface
+is concrete while the orthogonal need (grounding as an axis over any domain) is hypothetical — nothing
+in 0001–0006 asks for it. Reversing this later (grounding orthogonal to domain) is a **schema bump**.
 
 `[OPEN]` **temporal-field overlap.** `v3` already carries `as_of` and `last_resolved_at`. `v4` adds
 `decision_date` and `recorded_at`. These are distinct in intent — `as_of`/`last_resolved_at` describe
@@ -426,9 +526,17 @@ decided (it interacts with the scoring pipeline, not just the wire format).
 1. `target.hash` for delegation-cert targets depends on fixing `geiant#10` (two disagreeing cert-hash
    functions) — blocking for any cert-targeting edge. (§1.1)
 2. `relates_to` single object vs array. (§1.1) — spec picks array.
-3. Cycle handling: hard-reject vs truncate-and-report, per type. (§1.3)
-4. Traversal depth minimum for conformance. (§1.3)
-5. `grounding-class dimension`: inferred from `dimension` vs a separate boolean. (§2.2)
+3. ~~Cycle handling per type.~~ **RESOLVED (§1.3, P1.2)** — governing principle
+   (Lineage-Degrades, Validity-Fails-Closed): `continues` cycle degrades with a distinct
+   `anomaly_cycle` signal; `supersedes`/`revokes` cycle rejects; a mixed cycle containing any
+   validity-affecting edge rejects.
+4. ~~Traversal depth minimum.~~ **RESOLVED (§1.3, P1.2)** — minimum **64**, with the reasoning
+   recorded in-spec; on-bound behaviour follows the governing principle (`continues` →
+   `truncated_depth`; `supersedes`/`revokes` → reject).
+5. ~~`grounding-class`: infer vs boolean.~~ **RESOLVED (§2.2, P1.2)** — **infer from `dimension`**
+   against a closed, normative `GROUNDING_DIMENSIONS`. **Residual open:** the set's *members* are not
+   pinned by 0001 (it defers to the absent draft-0.2) — enumerate before `cgr-verify` implements the
+   required-field gate.
 6. Temporal-field overlap: relationship between `as_of`/`last_resolved_at` and
    `decision_date`/`recorded_at`. (§2.2)
 7. `domain` vocabulary fixed vs open (0002 Q); relation vocabulary is closed (§1.3, §2.5).
