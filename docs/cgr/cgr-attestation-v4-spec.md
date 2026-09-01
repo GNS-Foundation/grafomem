@@ -82,6 +82,31 @@ edge and hoping it closes grounding."
     before the first cert-targeting edge is issued, or the addressing is ambiguous across
     implementations.
 
+**Multiplicity — repeated edges of the same type.** Because `relates_to` is an array, an implementer
+will immediately hit "what do two edges of the same type mean?" The answer is normative, not a
+follow-up:
+
+- **Duplicate edge — identical `{type, target}` pair: MUST reject** the attestation as malformed. A
+  repeated edge carries no additional meaning and is a signal of a construction bug or tampering; it
+  is never valid.
+- **`continues` — at most one, period. Two `continues` edges (even to distinct targets) MUST be
+  rejected.** An identity has **at most one lineage predecessor**; two would assert a *merge* of two
+  identities into one, which is not a rotation, has no consumer in 0001–0006, and breaks the
+  linear-lineage guarantee. This is the **subject-side dual** of the ceremony's anti-fork rule
+  (§5.3.4, at most one successor per predecessor): the two together make the continuity graph a set of
+  strictly linear chains — no forks, no merges.
+- **`supersedes` — multiple permitted, to distinct targets.** One re-issuance may legitimately
+  supersede several prior attestations (consolidation). Targets MUST be distinct (duplicates fall
+  under the reject rule above).
+- **`revokes` — multiple permitted, to distinct targets.** One signed action may revoke a batch of
+  distinct targets. Targets MUST be distinct.
+
+So: `continues` is singular; `supersedes`/`revokes` may repeat across distinct targets; any exact
+`{type, target}` duplicate is malformed. `[FLAG]` the batch-`revokes`/`supersedes` allowance is a
+call — a reviewer who wants "one target per attestation, always" can tighten it, at the cost of
+forcing N attestations to revoke N certs. It is allowed here because a batch revocation is a single
+authorized decision and splitting it loses that atomicity in the record.
+
 ### 1.2 Vocabulary — justify each member or drop it
 
 Per the instruction that "a vocabulary that ships with an unused verb is a vocabulary that will grow
@@ -297,8 +322,9 @@ Not B-dependent (stated to bound the blast radius): the **`continues` signer = F
 
 Still undesigned and load-bearing (0004; spike Finding 3). The schema question is solved — a
 `continues` edge is a **Foundation-issued attestation signed by the stable, custody-held issuer
-key**, which breaks the 0004↔0005 loop from the 0004 side (no dependency on a stable *agent*
-principal). The cost moved from schema to **ceremony**: *how does the Foundation determine that B
+key**, which breaks the 0004↔0005 loop from the 0004 side — for **signing** (no dependency on a
+stable *agent* principal to produce the signature; the authority dependency is a separate matter,
+§5.2). The cost moved from schema to **ceremony**: *how does the Foundation determine that B
 continues A?* This section drafts it, using the 2026-08-31 rotation as the concrete test case.
 
 ### 5.1 The concrete pair
@@ -321,8 +347,27 @@ signature from A proves nothing — the attacker holds A too. **`[FLAG]` The con
 compromised-key rotation cannot be self-proven by A.** It must rest on an authority that is *stable
 across the rotation and independent of A's key*. That authority is the operator's custody/principal
 identity — which is precisely what [0005](../decisions/0005-custody-managed-principals.md) formalizes.
-Foundation-signing lets us proceed **before** 0005 lands, but the ceremony below is explicitly an
-interim that 0005 should later anchor.
+
+**`continues` therefore depends on [0005](../decisions/0005-custody-managed-principals.md) — for
+authority, not for signing.** State this dependency plainly, because it is easy to miss and it
+**partially walks back the P0.4 reasoning** in
+[0004](../decisions/0004-no-identity-continuity-across-rotation.md). P0.4 held that a
+**Foundation-signed** `continues` edge "breaks the 0004↔0005 loop from the 0004 side," so 0004 could
+be resolved without 0005 first. That is true **only of the signing dependency**: the *issuer key*
+signs the edge, so we do not need a stable *agent* principal to produce the signature. But the edge
+asserts a claim — "B continues A" — and **establishing the authority entitled to make that claim,
+when A's key is compromised, still requires the stable custody identity 0005 defines.** So:
+
+- **Signing dependency on 0005: broken** (issuer key signs). ✅ — as P0.4 said.
+- **Authority dependency on 0005: not broken.** The Foundation can *sign* an unsubstantiated claim,
+  but it must not *issue* one; substantiating "B may continue A" for a compromised A rests on custody
+  (§5.3.2), i.e. 0005.
+
+This spec does not let 0004 and 0005 quietly disagree: **the loop is broken for issuance mechanics,
+not for the trust model.** Foundation-signing lets a *first* `continues` edge be issued before 0005
+lands **only** to the extent the authority in §5.3.2 can be established by weaker interim evidence
+(existing issuance records, out-of-band operator verification); a robust, non-interim ceremony is
+0005-anchored. The ceremony below is explicitly that interim.
 
 ### 5.3 Drafted ceremony
 
