@@ -1,0 +1,5 @@
+{
+  "issuer_pubkey_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+  "agent_pubkey_hex": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+  "note": "deterministic TEST keys (repeating-byte seeds 0x11 / 0x22) \u2014 NOT real keys"
+}

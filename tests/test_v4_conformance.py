@@ -1,0 +1,132 @@
+#!/usr/bin/env python3
+"""
+tests/test_v4_conformance.py — the cgr.attestation.v4 conformance corpus runner.
+
+Two layers:
+
+1. `test_corpus_wellformed` — ALWAYS runs (no verifier needed). Guards the corpus
+   itself against rot/regeneration drift: structure, signatures verify against the
+   pinned test issuer (T9 against the agent key), the T2≠T8 distinct-`lineage_status`
+   invariant (the #85 amendment), and that pending-0006B vectors carry no verdict.
+
+2. `test_v4_conformance[<vector>]` — runs each vector against a v4 verifier, and
+   SKIPS cleanly when none is wired (like test_v3_conformance.py skips without
+   GRAFOMEM_DB_URL). Wire a verifier by setting CGR_V4_VERIFIER to an importable
+   module exposing `verify(subject, ledger, pinned_issuer_hex) -> {valid, reason?,
+   lineage_status?, ...}`. Until P1.4 ships one, this layer skips — the corpus is
+   the executable target the verifier must meet.
+
+    pytest tests/test_v4_conformance.py -v
+    CGR_V4_VERIFIER=aml.cgr.v4_verify pytest tests/test_v4_conformance.py -v
+"""
+import os, json, importlib, pathlib
+
+_ROOT = pathlib.Path(__file__).resolve().parent.parent
+_CORPUS = _ROOT / "conformance" / "cgr-attestation-v4" / "vectors.json"
+
+import pytest
+
+def _load():
+    return json.loads(_CORPUS.read_text())
+
+
+def _canonical_body(att):
+    """rfc8785 (JCS) bytes of the signed body — byte-identical to aml.cgr.attestation.canonical_body,
+    inlined so the runner does not depend on which `aml` is installed in the env. Only `signature`
+    and `evidence_ref` are excluded; `relates_to` is part of the signed body (§2.4), so an attestation
+    carrying an *unsigned* `relates_to` (B1) fails signature verification here — which is the point."""
+    import rfc8785
+    body = {k: v for k, v in att.items() if k not in ("signature", "evidence_ref")}
+    return rfc8785.dumps(body)
+
+
+def _sig_ok(att, pub_hex):
+    from cryptography.hazmat.primitives.asymmetric import ed25519
+    try:
+        pub = ed25519.Ed25519PublicKey.from_public_bytes(bytes.fromhex(pub_hex))
+        pub.verify(bytes.fromhex(att["signature"]), _canonical_body(att))
+        return True
+    except Exception:
+        return False
+
+
+# ── Layer 1: corpus self-check (always runs) ─────────────────────────────────
+
+def test_corpus_wellformed():
+    d = _load()
+    vs = d["vectors"]
+    assert vs, "empty corpus"
+    byid = {v["id"]: v for v in vs}
+    assert len(byid) == len(vs), "duplicate vector ids"
+
+    for v in vs:
+        for k in ("id", "clause", "spec_lines", "title", "subject", "ledger", "pinned_issuer", "expect"):
+            assert k in v, f"{v.get('id')}: missing {k}"
+        pend = v.get("pending")
+        if pend == "0006B":
+            assert v["expect"] is None, f"{v['id']}: pending-0006B must carry NO verdict"
+            assert v.get("flips_on"), f"{v['id']}: pending vector must state flips_on"
+        else:
+            assert v["expect"] is not None and "valid" in v["expect"], f"{v['id']}: fixed verdict required"
+
+    # Signatures. Two vectors are DESIGNED not to verify against the pinned issuer:
+    #   T9 — agent-signed continues (wrong signer);
+    #   B1 — relates_to present but not covered by the signature (unsigned edge).
+    # Every other subject must verify against the pinned Foundation issuer.
+    issuer, agent = d["issuer_pubkey_hex"], d["agent_pubkey_hex"]
+    for v in vs:
+        s = v["subject"]
+        if v["id"].startswith("T9"):
+            assert not _sig_ok(s, issuer) and _sig_ok(s, agent), "T9 must be agent-signed, not issuer-signed"
+        elif v["id"].startswith("B1"):
+            assert not _sig_ok(s, issuer), "B1 (unsigned relates_to) must fail issuer signature verification"
+        else:
+            assert _sig_ok(s, issuer), f"{v['id']}: subject must verify against the pinned issuer"
+
+    # THE #85 GUARD: a continues cycle and an unreachable predecessor are DISTINCT signals.
+    t2 = byid["T2-continues-cycle"]["expect"]["lineage_status"]
+    t8 = byid["T8-continues-unreachable"]["expect"]["lineage_status"]
+    assert t2 == "anomaly_cycle" and t8 == "truncated_unavailable" and t2 != t8, \
+        "T2 (cycle) and T8 (unreachable) MUST assert distinct lineage_status — see #85"
+
+    assert d["vector_count"] == len(vs)
+    assert set(d["pending_0006B"]) == {v["id"] for v in vs if v.get("pending") == "0006B"}
+
+
+# ── Layer 2: run vectors against a v4 verifier (skips when none is wired) ─────
+
+def _verifier():
+    mod = os.environ.get("CGR_V4_VERIFIER")
+    if not mod:
+        return None
+    try:
+        return importlib.import_module(mod)
+    except Exception as e:  # pragma: no cover
+        pytest.fail(f"CGR_V4_VERIFIER={mod} not importable: {e}")
+
+
+_FIXED = [v for v in _load()["vectors"] if v.get("pending") != "0006B"]
+
+
+@pytest.mark.skipif(not os.environ.get("CGR_V4_VERIFIER"),
+                    reason="set CGR_V4_VERIFIER=<module with verify()> to run the v4 conformance vectors")
+@pytest.mark.parametrize("vec", _FIXED, ids=[v["id"] for v in _FIXED])
+def test_v4_conformance(vec):
+    verify = _verifier().verify
+    res = verify(vec["subject"], vec["ledger"], vec["pinned_issuer"])
+    exp = vec["expect"]
+    assert res.get("valid") == exp["valid"], f"{vec['id']}: valid mismatch — {res}"
+    if "lineage_status" in exp:
+        assert res.get("lineage_status") == exp["lineage_status"], \
+            f"{vec['id']}: lineage_status mismatch — {res}"
+    if "reason_contains" in exp and not exp["valid"]:
+        assert exp["reason_contains"] in (res.get("reason") or ""), \
+            f"{vec['id']}: reason should contain '{exp['reason_contains']}' — {res}"
+
+
+if __name__ == "__main__":
+    test_corpus_wellformed()
+    d = _load()
+    print(f"corpus OK: {d['vector_count']} vectors "
+          f"({d['vector_count'] - len(d['pending_0006B'])} fixed, "
+          f"{len(d['pending_0006B'])} pending-0006B)")

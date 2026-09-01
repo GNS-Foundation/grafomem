@@ -65,7 +65,7 @@ it closes grounding."
 "relates_to": [
   { "type": "continues" | "supersedes" | "revokes",
     "target": { "kind": "attestation" | "delegation_cert",
-                "hash_alg": "sha-256",
+                "hash_alg": "blake2b-256" | "sha-256",   // MUST match `kind` — see below
                 "hash": "<hex>" } }
 ]
 ```
@@ -78,18 +78,24 @@ it closes grounding."
 - `target` is an **object**, not a bare hash, because targets are cross-type (an attestation vs a
   delegation certificate) and the verifier must know which without guessing. `kind` and `hash_alg`
   are **REQUIRED**.
-- `target.hash`:
-  - for `kind: "attestation"` — the **SHA-256 of the target attestation's JCS-canonical signed body**
-    (the same content-address the read surface already uses to fingerprint an attestation).
-  - for `kind: "delegation_cert"` — the delegation certificate's `cert_hash`.
-    **`[FLAG]`/`[OPEN]`** this is the exact hazard raised in `GNS-Foundation/geiant#10`: the geiant
-    reference implementation has **two** "cert hash" functions that disagree (`setup-agent.ts` prints
-    a truncated-SHA-512; the runtime computes SHA-256). This spec pins `target.hash` for a
-    delegation-cert target to **the runtime SHA-256 of the certificate's JCS-canonical signed body,
-    principal_signature excluded** — the value the enforcing engine actually stores and looks up. Any
-    consumer computing this differently will fail to resolve targets. This must be resolved (fix #10)
-    before the first cert-targeting edge is issued, or the addressing is ambiguous across
-    implementations.
+- **`target.hash` and the `hash_alg` that MUST accompany each `kind` (normative).** The two target
+  kinds are addressed by **different** hashes; `hash_alg` exists to carry that distinction, and there
+  is **no single content-address across kinds**:
+  - **`kind: "attestation"` ⇒ `hash_alg: "blake2b-256"`** — the **BLAKE2b-256 of the target
+    attestation's JCS-canonical signed body**. This is the deployed attestation fingerprint
+    (`attestation_fingerprint`), already anchored into the gcrumbs chain; a verifier resolves an
+    attestation target by matching it. **`sha-256` on an `attestation` target is non-conformant.**
+  - **`kind: "delegation_cert"` ⇒ `hash_alg: "sha-256"`** — the delegation certificate's `cert_hash`:
+    the **runtime SHA-256 of the certificate's JCS-canonical signed body, `principal_signature`
+    excluded** — the value the enforcing engine stores and looks up. (The two-disagreeing-hash hazard
+    from `GNS-Foundation/geiant#10` — `setup-agent.ts` once printed a truncated-SHA-512 — was fixed in
+    `geiant#13`: `setup-agent` now computes the same runtime SHA-256, so one certificate has one hash.
+    The delegation-cert format itself is unchanged by `v4`.) **`blake2b-256` on a `delegation_cert`
+    target is non-conformant.**
+
+  A verifier **MUST reject** an edge whose `hash_alg` does not match the required algorithm for its
+  `kind`. `blake2b-256` and `sha-256` are the **only** valid `hash_alg` values in `v4`, each bound to
+  its one `kind` as above.
 
 **Multiplicity — repeated edges of the same type.** Because `relates_to` is an array, an implementer
 will immediately hit "what do two edges of the same type mean?" The answer is normative, not a
@@ -183,8 +189,8 @@ with different prose for the two is **non-conformant**.
   event (a `v5`, or a `crit`-style extension convention if one is later adopted). This is the direct
   reason `corrects` should not ship speculatively (§1.2): you cannot cheaply walk it back.
 - **Cycle detection: MUST**, applying the governing principle. A verifier following a chain MUST
-  track visited `target.hash` values and MUST treat a revisit as a traversal failure rather than
-  looping. Behaviour by the traversal's type:
+  track visited targets (by `kind` + `hash`, since the two kinds use different `hash_alg` — §1.1) and
+  MUST treat a revisit as a traversal failure rather than looping. Behaviour by the traversal's type:
   - **`continues` cycle → degrade + flag.** The `continues` graph is provably a set of linear chains
     given both uniqueness rules (§1.1 at most one `continues` per attestation; §5.3.4 at most one
     successor per predecessor), so a cycle cannot arise from honest issuance — it means
@@ -549,8 +555,11 @@ decided (it interacts with the scoring pipeline, not just the wire format).
 
 ## 6. Open questions (consolidated)
 
-1. `target.hash` for delegation-cert targets depends on fixing `geiant#10` (two disagreeing cert-hash
-   functions) — blocking for any cert-targeting edge. (§1.1)
+1. ~~`target.hash` for delegation-cert targets depends on fixing `geiant#10`.~~ **RESOLVED (§1.1,
+   P1.3)** — `geiant#13` fixed the disagreeing cert-hash functions. Per-kind `hash_alg` now normative:
+   `attestation` → `blake2b-256` (deployed fingerprint), `delegation_cert` → `sha-256` (runtime
+   `cert_hash`); any other pairing is non-conformant. (Corrects an earlier §1.1 error that hardcoded
+   `sha-256` for both kinds.)
 2. `relates_to` single object vs array. (§1.1) — spec picks array.
 3. ~~Cycle handling per type.~~ **RESOLVED (§1.3, P1.2)** — governing principle
    (Lineage-Degrades, Validity-Fails-Closed): `continues` cycle degrades with a distinct
