@@ -8,8 +8,10 @@
   [0004](../decisions/0004-no-identity-continuity-across-rotation.md),
   [0005](../decisions/0005-custody-managed-principals.md),
   [0006](../decisions/0006-enforcement-boundary-for-revocation.md).
-- **Audience:** the three consumers that implement against this — `@gns-foundation/cgr-verify`
-  (reference verifier), `@geiant/core`, and the CGR read surface — plus the issuer.
+- **Audience:** the **verifying consumers** that implement §1.3 against this — `@gns-foundation/cgr-verify`
+  (reference verifier) and `@geiant/core` — plus the **issuer side**: the CGR read surface, which is an
+  **emitter, not a consumer** (it re-mints a fresh Foundation-signed attestation per read; it does not
+  verify, gate on a schema set, read `relates_to`, or traverse — see §2.3).
 
 This document uses **MUST / SHOULD / MAY** per RFC 2119. Three marker conventions appear throughout:
 
@@ -358,9 +360,24 @@ verifier **fail closed** — it rejects `v4` at the schema check — rather than
 
 Consequence for rollout (expand-contract): because a `v3` consumer rejects `v4` at the schema check,
 emitting `v4` before consumers accept it would make every un-updated consumer reject legitimate
-attestations. So every consumer MUST widen `ACCEPTED_SCHEMAS` to include `v4` **and** implement §1.3
-traversal **before** the issuer emits any `v4` attestation. Reference verifier leads; `@geiant/core`
-and the read surface follow; issuance is last.
+attestations. So every **verifying consumer** MUST widen `ACCEPTED_SCHEMAS` to include `v4` **and**
+implement §1.3 traversal **before** the issuer emits any `v4` attestation.
+
+**Who the consumers actually are — and where the read surface sits.** There are exactly two verifying
+consumers: the reference verifier (`@gns-foundation/cgr-verify`) and `@geiant/core`. The CGR read
+surface is **not** a third consumer — it is **issuer-side**: it re-mints a fresh Foundation-signed
+attestation per read and has no `ACCEPTED_SCHEMAS` gate, no `relates_to` read, and no traversal. Its
+"v4 turn" is therefore **not** an accept-and-traverse step; it is the **emission bump** (stamp `v4`,
+carry the new signed fields and `relates_to`), which **is** the issuance step. So the rollout order is:
+
+> **Reference verifier leads; `@geiant/core` follows** *(both now complete — each passes all 38
+> conformance vectors in both enforcing and non-enforcing modes)*; **the read surface's v4 work is the
+> emission bump, which is part of issuance, and issuance is last** — and is gated on the reverse-index
+> prerequisite recorded in [0007](../decisions/0007-geiant-core-has-no-reverse-edge-index.md) (no
+> surface can back enforcing-mode `seek` today). See `cgr-v4-rollout-status.md` for the phase ledger.
+
+The earlier phrasing ("`@geiant/core` **and the read surface** follow; issuance is last") is corrected
+here: it treated the read surface as a consumer, which it is not.
 
 ### 2.4 Why every new field is in the signed body
 

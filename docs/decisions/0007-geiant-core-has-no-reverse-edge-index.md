@@ -2,7 +2,7 @@
 status: proposed
 record_date: 2026-09-01
 provenance: raised-from-implementation (GNS-Foundation/geiant @geiant/core v4 support, surfaced while wiring the enforcing-mode seek seam per the v4 reference verifier)
-scope: (implementation) @geiant/core CGR v4 consumer + its SupabaseRegistry store; (standard) a rollout/issuance prerequisite in the 0006 enforcement-boundary lineage
+scope: (implementation) @geiant/core CGR v4 consumer + its SupabaseRegistry store, AND grafomem's read surface + its substrate store; (standard) an ecosystem-wide rollout/issuance prerequisite in the 0006 enforcement-boundary lineage
 ---
 
 # 0007 — @geiant/core has no reverse edge index: enforcing-mode v4 verification is not implementable against its store
@@ -11,6 +11,9 @@ scope: (implementation) @geiant/core CGR v4 consumer + its SupabaseRegistry stor
   forces (**absent-entirely**, below). The broader questions it raises — which index design closes
   the gap, and whether issuance is gated on it — are left **open** for a Foundation decision.
 - **Record date:** 2026-09-01
+- **Extended 2026-09-01:** the finding is **ecosystem-wide, not @geiant/core-specific** — grafomem's
+  own read surface is in the same position (see *Ecosystem-wide* below). The title is kept for
+  stability; read "@geiant/core" in it as the first instance, not the only one.
 - **Depends on:** [[0006]] (the enforcement boundary; §3/§4 "enforcement index is the query surface").
 
 ## Context
@@ -45,6 +48,29 @@ jsonb column is a compatible row shape — but it **presumes a reverse index (`t
 edge-records`) that the consumer does not have**. Under expand-contract, issuance emits no v4 edges
 yet, so even a correct index would be empty today.
 
+### Ecosystem-wide: grafomem's read surface is in the same position
+
+The absence is **not** specific to @geiant/core. grafomem's read surface (`src/aml/cgr/`) — the
+issuer-side surface — cannot back `seek` either:
+
+- **No attestations table.** Attestations are ephemeral: the read surface *re-mints* a fresh
+  Foundation-signed attestation per read from live substrate scores (`attestation.py`); fingerprints
+  anchor into the gcrumbs chain, so "the separate cgr-attestations store is unnecessary for the POC."
+- **No reverse index, and an added encryption barrier.** The store is a Postgres GMP `memories`
+  table whose only indexes are the PK and `idx_mem_tenant_valid (tenant_id, valid_until, valid_from)`
+  (`postgres_gmp.py`). There is no index on `metadata` and no `relates_to`/target column. Worse, when
+  encryption is on (production/tenant mode) the plaintext `metadata` column is stored as `"{}"` and
+  the real JSONB lives in `metadata_enc` — so a SQL/GIN index on edge targets is **impossible** without
+  a new plaintext, indexable target column or a dedicated edge table. A `seek(subjectFingerprint) →
+  edge-records` there would today be an **O(tenant) decrypt-and-scan**, not an indexed query.
+
+So grafomem is only marginally ahead of @geiant/core: it holds subject-tagged, append-only records
+(and rotations already carry `prev_key`/`new_key`, the closest thing to a persisted edge), but it has
+the **same absence of a queryable reverse index**, plus an encryption barrier @geiant/core does not
+have. **No consumer anywhere — neither the identity-holding consumer nor the issuer-side read
+surface — can back `seek` today.** The reverse index is therefore a **hard, ecosystem-wide
+prerequisite for issuance**, not a gap in one implementation.
+
 ## Decision
 
 **In @geiant/core, the store-backed enforcing `seek` is absent entirely.** The package exposes the
@@ -73,12 +99,13 @@ the "accept v4 and traverse before issuance emits anything" half of expand-contr
 
 ## Consequences
 
-- **This is a previously-unidentified prerequisite for v4 issuance.** [0006] settled *that* revocation
-  binds where someone runs the query; it did not surface that **the primary identity-holding consumer
-  has no query surface to run**. Any rollout plan that assumes @geiant/core can enforce revocation
-  once issuance begins is wrong until a reverse index exists. Issuance of `revokes`/`supersedes`
-  edges without a consumer index means those edges bind *nowhere* that matters — the exact silent
-  gap 0006 exists to prevent.
+- **This is a previously-unidentified, ecosystem-wide prerequisite for v4 issuance.** [0006] settled
+  *that* revocation binds where someone runs the query; it did not surface that **no surface anywhere
+  has a query to run** — not the identity-holding consumer (@geiant/core), not the issuer-side read
+  surface (grafomem). Any rollout plan that assumes revocation can be enforced once issuance begins is
+  wrong until a reverse index exists somewhere. Issuance of `revokes`/`supersedes` edges without a
+  reverse index means those edges bind *nowhere* that matters — the exact silent gap 0006 exists to
+  prevent.
 - Enforcing mode is exercised end-to-end **only by the conformance corpus** (in-memory `seek`), which
   proves interface compatibility, not store readiness.
 
