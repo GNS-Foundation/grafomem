@@ -3,7 +3,7 @@
   "note": "TEST vectors \u2014 deterministic repeating-byte issuer key, NOT a real key. See README.md for the resolution model and the pending-0006B / grounding-gate scope.",
   "issuer_pubkey_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
   "agent_pubkey_hex": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
-  "vector_count": 31,
+  "vector_count": 35,
   "pending_0006B": [
     "L1-revoke-liveness",
     "L2-supersede-liveness"
@@ -59,6 +59,7 @@
         "signature": "0ceceb5f7f8aa6087a18fa48f4c1d58f70e9e18859594e4619f47c71921098f3104f7cae86285592fd36e355be9cd6e6c0a8dd64f46c67f011cf17f4e9fc9801",
         "evidence_ref": null
       },
+      "held_edges": [],
       "ledger": {
         "attestations": {
           "b2041683c608fcf86e4f8f7a66d7cdef7bff2558d6204c1834a8b00c739011e7": {
@@ -145,6 +146,7 @@
         "signature": "6344c6b7c1a27ab37ee117585722fa4a11c0bc65913b11ad650b2931f39df5adae6ffe98f40961719cb37bcc43ab0af34ee34988d8f4f4c76cba41b150f8fc0c",
         "evidence_ref": null
       },
+      "held_edges": [],
       "ledger": {
         "attestations": {
           "b2041683c608fcf86e4f8f7a66d7cdef7bff2558d6204c1834a8b00c739011e7": {
@@ -257,6 +259,7 @@
         "signature": "1a3ec813eb373b4f35b6514b830f66641ade2724358388f692d19156b554696598078899f86d7b2217de61519ddd2736d3bb847eeb9dfe8b917fb87c9a6ee60c",
         "evidence_ref": null
       },
+      "held_edges": [],
       "ledger": {
         "attestations": {
           "b2041683c608fcf86e4f8f7a66d7cdef7bff2558d6204c1834a8b00c739011e7": {
@@ -368,6 +371,7 @@
         "signature": "e5e4ea1a39a955fc167febd690d9e79d38af755de365cd443a7dc73d087045af9f586ec52c26fa77476652a0f46c5cece946c9e053042f3e67a1fe5ff2359c05",
         "evidence_ref": null
       },
+      "held_edges": [],
       "ledger": {
         "attestations": {
           "b2041683c608fcf86e4f8f7a66d7cdef7bff2558d6204c1834a8b00c739011e7": {
@@ -471,6 +475,7 @@
         "signature": "27b29eee3bb5ca0532346806a5bc60ae2a4a7c57cbd81ec2c447450d14cf5ccbd3dd250bb6bc98142bfbdba3f48a3e2b1db67a5f7bd6b8887050f694a97fde07",
         "evidence_ref": null
       },
+      "held_edges": [],
       "ledger": {
         "attestations": {
           "b2041683c608fcf86e4f8f7a66d7cdef7bff2558d6204c1834a8b00c739011e7": {
@@ -549,6 +554,7 @@
         "signature": "546f50a6be692dba0e40e3a015a876b8174cd83f8e5f73b6915c9b3561498603d03e5303be71ccaf77e789b227a7abbb77d6de603fc2b2b973bad1842718320c",
         "evidence_ref": null
       },
+      "held_edges": [],
       "ledger": {
         "attestations": {},
         "delegation_certs": {
@@ -621,6 +627,7 @@
         "signature": "b1d70e037288bbedf172160e9df94b24c2f3565a0b4a1c2c85d6c66b6d96c596077724d6e9e213ad353ef8d4153bb0bc436d7c5bfc6eb2d564650bd7e78da30a",
         "evidence_ref": null
       },
+      "held_edges": [],
       "ledger": {
         "attestations": {
           "b2041683c608fcf86e4f8f7a66d7cdef7bff2558d6204c1834a8b00c739011e7": {
@@ -663,6 +670,7 @@
       "spec_lines": "185-194",
       "title": "continues cycle -> VALID subject + lineage_status=anomaly_cycle (NOT truncated_unavailable)",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "held_edges": [],
       "subject": {
         "schema": "cgr.attestation.v4",
         "issuer": "gns-foundation",
@@ -787,6 +795,7 @@
       "spec_lines": "195-197",
       "title": "supersedes cycle -> reject (currency undeterminable)",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "held_edges": [],
       "subject": {
         "schema": "cgr.attestation.v4",
         "issuer": "gns-foundation",
@@ -911,6 +920,7 @@
       "spec_lines": "198-200",
       "title": "revokes cycle -> reject (incoherent revocation state)",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "held_edges": [],
       "subject": {
         "schema": "cgr.attestation.v4",
         "issuer": "gns-foundation",
@@ -1035,6 +1045,7 @@
       "spec_lines": "201-203",
       "title": "mixed cycle containing a supersedes edge -> reject (conservative rule)",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "held_edges": [],
       "subject": {
         "schema": "cgr.attestation.v4",
         "issuer": "gns-foundation",
@@ -1159,6 +1170,7 @@
       "spec_lines": "204-224",
       "title": "continues chain deeper than 64 -> VALID subject + lineage_status=truncated_depth",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "held_edges": [],
       "subject": {
         "schema": "cgr.attestation.v4",
         "issuer": "gns-foundation",
@@ -3541,6 +3553,7 @@
       "spec_lines": "204-224",
       "title": "supersedes chain deeper than 64 -> reject (validity undeterminable within bound)",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "held_edges": [],
       "subject": {
         "schema": "cgr.attestation.v4",
         "issuer": "gns-foundation",
@@ -5918,6 +5931,2389 @@
       }
     },
     {
+      "id": "T7b-revokes-depth",
+      "clause": "\u00a71.3",
+      "spec_lines": "204-224",
+      "title": "revokes chain deeper than 64 -> reject (validity undeterminable within bound)",
+      "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "held_edges": [],
+      "subject": {
+        "schema": "cgr.attestation.v4",
+        "issuer": "gns-foundation",
+        "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+        "subject_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "subject_did": "did:key:z6Mkaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "agent_handle": "vector-agent@test",
+        "dimension": "receivables",
+        "cgr_score": 0.6666666666666666,
+        "confidence": 6.0,
+        "n_resolved": 12,
+        "capability_tier": 0.75,
+        "as_of": "2026-01-01T00:00:00Z",
+        "last_resolved_at": "2026-01-01T00:00:00Z",
+        "scoring_scope": "pooled",
+        "requested_domain": null,
+        "domain_n_resolved": null,
+        "rationale": "conformance vector",
+        "domain": "deploy",
+        "verifiability_tag": "judgment",
+        "decision_date": "2026-01-01",
+        "recorded_at": "2026-01-01",
+        "backfilled": false,
+        "relates_to": [
+          {
+            "type": "revokes",
+            "target": {
+              "kind": "attestation",
+              "hash_alg": "blake2b-256",
+              "hash": "deep001000000000000000000000000000000000000000000000000000000000"
+            }
+          }
+        ],
+        "signature": "8bc3a65f356c5e3b5e4554d7a265927ee63d83e7e14284937c32730228f283e2bf7b56592656485ab10f2ddf97190360167f7f9a6d446c7caef63659ccd48900",
+        "evidence_ref": null
+      },
+      "ledger": {
+        "attestations": {
+          "deep065000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "4141414141414141414141414141414141414141414141414141414141414141",
+            "subject_did": "did:key:z6Mk41414141414141414141414141414141",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "signature": "d805b37d271778c1b3eda409bef0ff5300bf90ac0b6273521e7c62d22aed25c9e9d17b125cbc49dc6e119f25b634c8d4c7aa9f7892171d03c3a3531ba6db3f0e",
+            "evidence_ref": null
+          },
+          "deep064000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "4040404040404040404040404040404040404040404040404040404040404040",
+            "subject_did": "did:key:z6Mk40404040404040404040404040404040",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep065000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "15d516fbb587addbb5485c3904a51e6a18950bed3115f694f57dcb26657a4a2e7349b92f088a00050eb45fd49fd3a9886a529aff80f5dad5e7c15e4304753c00",
+            "evidence_ref": null
+          },
+          "deep063000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+            "subject_did": "did:key:z6Mk3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep064000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "407a5bf30a081eb6cfd09aa83cf4164e1c68ad90b1e280509207337c26698a7b5cc2957fe494fe3bf13530ca2de71ea3e0ca68d12b171f1e827cc37aff42bb02",
+            "evidence_ref": null
+          },
+          "deep062000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e",
+            "subject_did": "did:key:z6Mk3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep063000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "3dd32dd4150825cb1769de232eab0cbc503f0aaaee02ef7f4c40ce2f484ddda48ef37e1547f5bc97d93879cbe60b0d861fcfdcfd8c1f671d3659839d65ee2c02",
+            "evidence_ref": null
+          },
+          "deep061000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d",
+            "subject_did": "did:key:z6Mk3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep062000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "ce2cdfed9fb40d2e54714494092209e52b2c16f14b92588f613b334427cc585bbde2df0f5b05de5e240f41e4a19e958a2a8604749d9d4178cb3dd38a2628a301",
+            "evidence_ref": null
+          },
+          "deep060000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+            "subject_did": "did:key:z6Mk3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep061000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "5b5fc98d0eb26f60ceaa72133a33606f901b53058a4feee6a464fbb573d1df0e6b33c72914f6334a8458819e733db1a8f6b155e73a1f694b2c1822ad0d87a705",
+            "evidence_ref": null
+          },
+          "deep059000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b",
+            "subject_did": "did:key:z6Mk3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep060000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "d7b04d66d327df42e153254e92378ce0d36ebf0db5893e693fa7e77a3899c0404ce42210ef33c7b3707ace2be640e338cd189ddb94ca688cf297fbac1ba9d400",
+            "evidence_ref": null
+          },
+          "deep058000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a",
+            "subject_did": "did:key:z6Mk3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep059000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "50fc358fc72aedaaa23b1eb0ec7916a57f9bbb0d418b29860b408e148d0b453cb09e5cfcf9905d563e9beeaf942bfe8cadd307fd1efd68a6c475febfb4fab603",
+            "evidence_ref": null
+          },
+          "deep057000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "3939393939393939393939393939393939393939393939393939393939393939",
+            "subject_did": "did:key:z6Mk39393939393939393939393939393939",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep058000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "8e574515947e0191ff54a94c9d3572719145819b403e27e1e767ae1b8ee159bc24eb38f503170b57dc5d8c3bacd778b0dde6483e6acb442b82620dcbc513de0d",
+            "evidence_ref": null
+          },
+          "deep056000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "3838383838383838383838383838383838383838383838383838383838383838",
+            "subject_did": "did:key:z6Mk38383838383838383838383838383838",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep057000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "9a94dfbee5dd2afbebcf5fe9421f3165c89ce8c0058720de73536619de18d4fe9b4520202c384d0ac95e50f78a312dc2d912b0f1b1f404ee368319ac6517fb0d",
+            "evidence_ref": null
+          },
+          "deep055000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "3737373737373737373737373737373737373737373737373737373737373737",
+            "subject_did": "did:key:z6Mk37373737373737373737373737373737",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep056000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "57a15fa5249d843a1e764767415fea452107127a636ba6df2941b648b2e5dbdd19200238f35f8ca0278b9dee5ea0ce516f7f20955abe96c2cb92787569075a09",
+            "evidence_ref": null
+          },
+          "deep054000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "3636363636363636363636363636363636363636363636363636363636363636",
+            "subject_did": "did:key:z6Mk36363636363636363636363636363636",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep055000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "3bd02a8ec5103f5303c5e30fd15e5eaab894c754a6a67f054cf66919482e18b519f158e79e88e65c41850abb17b270dc26a6941142ca57ec965f784ac914f40b",
+            "evidence_ref": null
+          },
+          "deep053000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "3535353535353535353535353535353535353535353535353535353535353535",
+            "subject_did": "did:key:z6Mk35353535353535353535353535353535",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep054000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "bd99174d75d26236b15a56ef269e117777e5e083bb5b3d9a2ec3d289b2f771e4f64c5617f8bdf6e4ed81ffe369400033947a728ad1eaf72b56131e06e1e94a03",
+            "evidence_ref": null
+          },
+          "deep052000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "3434343434343434343434343434343434343434343434343434343434343434",
+            "subject_did": "did:key:z6Mk34343434343434343434343434343434",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep053000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "3294c477fded82c2e9705df8013b347d3c65e5fa1dca012d6c57c06e200083ad0d17f1065a49f864b0858b3a7b3c9ace23cada1807789a67903c489cf7319b08",
+            "evidence_ref": null
+          },
+          "deep051000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "3333333333333333333333333333333333333333333333333333333333333333",
+            "subject_did": "did:key:z6Mk33333333333333333333333333333333",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep052000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "be51896c08f6f7086829ea12f8962db73e2764c8a4647c5f38bb2d8c59f4d46b8540498f1519826e06ea17ba2c2a811b9d9661cd1f018790823dee48a216d905",
+            "evidence_ref": null
+          },
+          "deep050000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "3232323232323232323232323232323232323232323232323232323232323232",
+            "subject_did": "did:key:z6Mk32323232323232323232323232323232",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep051000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "0d54a28974e787957479a7f6c67fb313920eabcd5d420708b6a307477d81511a867fdfbf459505a2f67259154b85335eaa238c14ef5233d79030e66c6c26a806",
+            "evidence_ref": null
+          },
+          "deep049000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "3131313131313131313131313131313131313131313131313131313131313131",
+            "subject_did": "did:key:z6Mk31313131313131313131313131313131",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep050000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "a633ee61748ca3168fabbe0f63573762b5a66eb1ae06feff253abe546557e042468a62984e6af058e46f3f8d05c32e1aaa3bb4b12e526109d5ac078296a9ef08",
+            "evidence_ref": null
+          },
+          "deep048000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "3030303030303030303030303030303030303030303030303030303030303030",
+            "subject_did": "did:key:z6Mk30303030303030303030303030303030",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep049000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "e0de21db211279d8982a796dabef43f5684b4dc6a1798c94c3a95fdf85812a164079d272f539990386ccdb804c0574c5d303a6ab01ba94bb1cd5389f75f0ad0c",
+            "evidence_ref": null
+          },
+          "deep047000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f",
+            "subject_did": "did:key:z6Mk2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep048000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "2db4ea193dcc3c210f80e1b2fd66a8f342258748432f0bfea2c769d66bf3a19f2bb44d8c7dcca0e091c9b21648fb4ead5446b0f5ff42ecc9d24b78deac0c9a0b",
+            "evidence_ref": null
+          },
+          "deep046000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e",
+            "subject_did": "did:key:z6Mk2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep047000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "b45f9a245eb320446c619768946dd3b19b21c5ab1652e4726f19a45de576d42fa234a5f13c2005d3a6d2daeeaa0656e4a723a83bf02121c44f848f40a72d3c01",
+            "evidence_ref": null
+          },
+          "deep045000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d",
+            "subject_did": "did:key:z6Mk2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep046000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "fc0f97f3b5268974801d23adce3b441d9e9dcd76a5749e27819d795664df7134b65a2d059fb53d113d324167ae75a13530276d35a16f269a41144e3ceb20410c",
+            "evidence_ref": null
+          },
+          "deep044000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c",
+            "subject_did": "did:key:z6Mk2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep045000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "b2f5b646b5a0982d18e67fb7e31e10226855d1e734a57a43b84e0f300d07be7d6dcd69316402b201fd0bef679f76825575f136a48a59635b6ae2f43717b69c04",
+            "evidence_ref": null
+          },
+          "deep043000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+            "subject_did": "did:key:z6Mk2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep044000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "d4b838f53bb7fc1485b3226fa2af66e7c7e6063d95dfdb8a1061ed4c28ad0da562f28922f22debf77a26ed1156d1a08982317b49732ea00ba6e37a490e855e0d",
+            "evidence_ref": null
+          },
+          "deep042000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a",
+            "subject_did": "did:key:z6Mk2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep043000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "d816ed7c6788674492a289e1e430c8989a89f5f5974be77e56ceb368b991b48e9c3dbc5a2297f001e3b18ca00c44618c346698e902496d30f4b6b89600056f07",
+            "evidence_ref": null
+          },
+          "deep041000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "2929292929292929292929292929292929292929292929292929292929292929",
+            "subject_did": "did:key:z6Mk29292929292929292929292929292929",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep042000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "dd678c4b65c1fb46b387ff409a26de92e9ea97f9c955e5b754a9a3ec9687adb89cd9c29528878e2d1af99b7903f66e2316b0984d84575277e91d78b1e7b5740b",
+            "evidence_ref": null
+          },
+          "deep040000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "2828282828282828282828282828282828282828282828282828282828282828",
+            "subject_did": "did:key:z6Mk28282828282828282828282828282828",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep041000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "76aeab2ac2bbeb776a9b2b7abc8343b8a55e9ccf4b846d6b6242340c45b902ca3b0b06672ab80d21925d87204029e5168641380c8763707972678301d8b77804",
+            "evidence_ref": null
+          },
+          "deep039000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "2727272727272727272727272727272727272727272727272727272727272727",
+            "subject_did": "did:key:z6Mk27272727272727272727272727272727",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep040000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "6f69be7e09510358ea8d1feecc97abc392173fd2378e0d4fcca1751ef1cc641f52761cf3f566ad2ab8f0bf6e15f5b399d59408808d2ce0f3f85d34ba2b459300",
+            "evidence_ref": null
+          },
+          "deep038000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "2626262626262626262626262626262626262626262626262626262626262626",
+            "subject_did": "did:key:z6Mk26262626262626262626262626262626",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep039000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "faa493c222f675f45479b0c8037bc8818c895725773c1f67a5c8d1bd0e1de6b44f0c82a45056bae0c1eab3f82787531105f51e356b20336b21909d52cecc7a0c",
+            "evidence_ref": null
+          },
+          "deep037000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "2525252525252525252525252525252525252525252525252525252525252525",
+            "subject_did": "did:key:z6Mk25252525252525252525252525252525",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep038000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "d793bc6aa8c7f9e6792993e3431ab4449962b0a4514941f138e2b4722987c4e99962d534b9e0c3dd6611c73c406f3680abe15067d601f67c7a92873cf9e7290b",
+            "evidence_ref": null
+          },
+          "deep036000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "2424242424242424242424242424242424242424242424242424242424242424",
+            "subject_did": "did:key:z6Mk24242424242424242424242424242424",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep037000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "6e97e62a680bc812ccee4b39a8da60b205172edda924dbe8f0fa1e33da38ac114666463cf78cc452f458f783b62df8c177ae6ded04ea9fec7e79afd16a93e60b",
+            "evidence_ref": null
+          },
+          "deep035000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "2323232323232323232323232323232323232323232323232323232323232323",
+            "subject_did": "did:key:z6Mk23232323232323232323232323232323",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep036000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "aeaefa9408c9e4a99945a5f125f327f1fb89c4935570484696a836732507779c751f415cc376ddfa6c9a85ace3bbe6b169ec2c6bcc09f49095db19c173854d0c",
+            "evidence_ref": null
+          },
+          "deep034000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "2222222222222222222222222222222222222222222222222222222222222222",
+            "subject_did": "did:key:z6Mk22222222222222222222222222222222",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep035000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "43ebb8e9fce6416e57f3459871a943fc38b5f1454932167da2cadc9d039e11554ebcb3ed02305b66f2081e252c7bde2b34736a52422311a3b576f6854b9a3101",
+            "evidence_ref": null
+          },
+          "deep033000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "2121212121212121212121212121212121212121212121212121212121212121",
+            "subject_did": "did:key:z6Mk21212121212121212121212121212121",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep034000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "54ea2311d960751afd273d5637866fc0c6b6cfc614ac769a2a98c271b053171aee933162b9a5f478297df9df7225b7b26a63fb2cf6b08da9eeacca173c85140d",
+            "evidence_ref": null
+          },
+          "deep032000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "2020202020202020202020202020202020202020202020202020202020202020",
+            "subject_did": "did:key:z6Mk20202020202020202020202020202020",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep033000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "8b0f9ec2233efe290476de9668bf4e3663db49ce1286611db1014bf4dea5f1e16696654ca60b382a93220407392b44eb1a0e3c535e52b10e3c38c6057b73bd0a",
+            "evidence_ref": null
+          },
+          "deep031000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f",
+            "subject_did": "did:key:z6Mk1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep032000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "0d1b779f8e954e06fc0965c3e75bad87f513b769da1771f644fdab49914f05739eb105aa624ad4b868f01d291940947cc5cdd4159e13fb6835bfabd73c6ae403",
+            "evidence_ref": null
+          },
+          "deep030000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e",
+            "subject_did": "did:key:z6Mk1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep031000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "ba4765cd95961856575f3da9fb7fad6756ca4284601f45f77ed78bae4bdddab7ef56ee8762dd6218d99fe23e44b5ef08ed1e34372db71736b014e915ec885a08",
+            "evidence_ref": null
+          },
+          "deep029000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d",
+            "subject_did": "did:key:z6Mk1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep030000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "810dffac0cd68c1cb01da11c921b891e18af4625ba76c317cbb1e66d2cce0c47ae7352ec3b8f4b810feb7747f6fc5a9de2a8d91b8fdc502b925bac70700c100c",
+            "evidence_ref": null
+          },
+          "deep028000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+            "subject_did": "did:key:z6Mk1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep029000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "5e7e61d8bcb6727ac120b3655bc4bfd31aeff87e5e70ea6907dd5d2edb1c9c8e4c2b3386f3dc6bf392dc45bb1097eea418031a3ade00066445b8a790490c270c",
+            "evidence_ref": null
+          },
+          "deep027000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b",
+            "subject_did": "did:key:z6Mk1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep028000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "07ce5c00613af2277d36976785defbc2bf49c413debd83ed91da9a4bad525563e248c03646ca47adbbf0bfa62644eeff86cfb81e7714813f33b36990e0819306",
+            "evidence_ref": null
+          },
+          "deep026000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a",
+            "subject_did": "did:key:z6Mk1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep027000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "63bc0ec7c0a3c9b5c63f1084483a3cf867ae340450fce748a17c75f701edb2eb037dc0800d32b448b8656c8f91dfd5b8f1cc87f751c4711bda4b7f5a1e78de08",
+            "evidence_ref": null
+          },
+          "deep025000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "1919191919191919191919191919191919191919191919191919191919191919",
+            "subject_did": "did:key:z6Mk19191919191919191919191919191919",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep026000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "36ee99f320a68f378b23074bbcd1e58bba64d2588b19e02684f5dd057cfecf7384be3e5687895f35cc348e8faf6926d4d3de74f3742669647292c3715882a00d",
+            "evidence_ref": null
+          },
+          "deep024000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "1818181818181818181818181818181818181818181818181818181818181818",
+            "subject_did": "did:key:z6Mk18181818181818181818181818181818",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep025000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "0523ff629b6555646d73f09466b9a0d130713f7f102e7fa2151c3bd1a90ecb9124c400caba53313b7fc927eb67d03f04376069d80cb2b6c251ead400df719e08",
+            "evidence_ref": null
+          },
+          "deep023000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "1717171717171717171717171717171717171717171717171717171717171717",
+            "subject_did": "did:key:z6Mk17171717171717171717171717171717",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep024000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "9e3f14608c54ec23648e4460e446e8d41a8cbd3676ee9dcab356f64e1a64ac2287a8edd0273fa30b630e540eb3d915883c148a01ee360b7e0980c9963071e305",
+            "evidence_ref": null
+          },
+          "deep022000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "1616161616161616161616161616161616161616161616161616161616161616",
+            "subject_did": "did:key:z6Mk16161616161616161616161616161616",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep023000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "f3fd8fc0ef4d832b2fe381436c121317d6753980f2cfad1ae35059748936f7e174796daa7efdf2b37fa786e0243fbec74b10f748c5bfd2fb58bed4fc14fd4c0a",
+            "evidence_ref": null
+          },
+          "deep021000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "1515151515151515151515151515151515151515151515151515151515151515",
+            "subject_did": "did:key:z6Mk15151515151515151515151515151515",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep022000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "f3e821c352e00a409199db1004fb69b81c7f044f64bc9d050cd07e98623a0e07ad79c65c079e4513d907296d6499a4bc6d563bd2a32e0104d71e2797d9732905",
+            "evidence_ref": null
+          },
+          "deep020000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "1414141414141414141414141414141414141414141414141414141414141414",
+            "subject_did": "did:key:z6Mk14141414141414141414141414141414",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep021000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "4e8d65a5252772eeba848a806bca9fa16a8c3738263099ed2d3d3ccbd09a04186761ef99c4a2de586a30d69829f9a2bd423ceb7e54d074d0d0c46975db1b960f",
+            "evidence_ref": null
+          },
+          "deep019000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "1313131313131313131313131313131313131313131313131313131313131313",
+            "subject_did": "did:key:z6Mk13131313131313131313131313131313",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep020000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "d8c4c254443af9af38a3e0735e594ff0fbad6922059b25942d81f4f409a1289d4a8665b48ca73e4f42c4c11a0c78c8b7b369d27ca26ac8c8f1fa0e2be7b0830c",
+            "evidence_ref": null
+          },
+          "deep018000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "1212121212121212121212121212121212121212121212121212121212121212",
+            "subject_did": "did:key:z6Mk12121212121212121212121212121212",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep019000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "b4e09ca1c2830f3d6277eacb80cae66bdc804092e930b3856484ff7ccadc726580ec4e5082f7c23ba98b2b750d1948efa5885fa6c66cc2d0e3af6c51da9fb50c",
+            "evidence_ref": null
+          },
+          "deep017000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "1111111111111111111111111111111111111111111111111111111111111111",
+            "subject_did": "did:key:z6Mk11111111111111111111111111111111",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep018000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "372b07c3c331e9eb1d871e08da0d87d7203aa1dce58eb15ae349e95c0e8ff45a5e233a2af038e26919df10078a4614d3c1942eb9380f1751707bbcf67fba2a05",
+            "evidence_ref": null
+          },
+          "deep016000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "1010101010101010101010101010101010101010101010101010101010101010",
+            "subject_did": "did:key:z6Mk10101010101010101010101010101010",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep017000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "7b4faf45fe98cbf11589dff3b9a2bd5f037a44f7e317abfc030eed3e98733c8d88389479b2cab65a78b31824d6f71e64bf72faf4f2ef3fe0225ebc6c8bd9f508",
+            "evidence_ref": null
+          },
+          "deep015000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+            "subject_did": "did:key:z6Mk0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep016000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "84a4f2687e0fb97472e06890dbe55335ea3c77edcb5d373777813f88fba8f39c56070948e1a7a34af89bad7d65490d5e557893fee35a50b7f2c9375d84b6510c",
+            "evidence_ref": null
+          },
+          "deep014000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+            "subject_did": "did:key:z6Mk0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep015000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "67cc7fb77e658020fd553062e21e396c8d531a7ebe89ba0327a3dfdfe3867422354d9082cdb5784f46af85412ad8798da542bd1991c0d144d2eaf33070e7c70b",
+            "evidence_ref": null
+          },
+          "deep013000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d",
+            "subject_did": "did:key:z6Mk0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep014000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "3ec7ed1362545f348ec2ce5ef975dc0ad0f8b14c7ec1bf54f467ad5be92d13324115f350218ca73e2096202e6fb5dfcb4fe2111f64a7033622594907f0f2680b",
+            "evidence_ref": null
+          },
+          "deep012000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+            "subject_did": "did:key:z6Mk0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep013000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "2577f04e57144c3dec1ecf6566763b228bf902aeec6c9ae14642edc9c8026e55285ae8899b3da55434021f659d05b571d50af744e37f4b721f992e51bae2bb08",
+            "evidence_ref": null
+          },
+          "deep011000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
+            "subject_did": "did:key:z6Mk0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep012000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "9e6c1796eff56ad71a6cc3eb53be6bdac775861939c72598e7003a6c8066299af3499d1da89c98f019186406247fc409a2d246daff13db79958a31007ee16305",
+            "evidence_ref": null
+          },
+          "deep010000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a",
+            "subject_did": "did:key:z6Mk0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep011000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "e5ac999a675fc7e033fbdf3af42724b7bd20cf2791fc1e3530d08489ebcda8e7db71048eefb924e84ce248f3ef1c7900695495e77aa4c0cc4975d8a4d52aa005",
+            "evidence_ref": null
+          },
+          "deep009000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "0909090909090909090909090909090909090909090909090909090909090909",
+            "subject_did": "did:key:z6Mk09090909090909090909090909090909",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep010000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "6174b253d5d6a9004f92d193a6bb2280c70947fb088e55dc7ec0ad1a5bc223684c43d3f5a3b384c17e0f97b7cfc2419271dd0c547ab93efbcd1bdf3eecd15307",
+            "evidence_ref": null
+          },
+          "deep008000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "0808080808080808080808080808080808080808080808080808080808080808",
+            "subject_did": "did:key:z6Mk08080808080808080808080808080808",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep009000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "a593f2d5634d1ab1036008e4ec52bf0b4151e6f6675dc6b7378e89c15713cb8e565faba33589555671c19de2c858120d39469f4ff7a94c67d715eb953af7a808",
+            "evidence_ref": null
+          },
+          "deep007000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "0707070707070707070707070707070707070707070707070707070707070707",
+            "subject_did": "did:key:z6Mk07070707070707070707070707070707",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep008000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "fc9bfe6db760053d0c95d1a68602965c28b2df3318becaead07b4c56071143cd7e8c9fb05489178cdc3b099b705e47e62680d40dcb3b78f7688f991dbc8a1007",
+            "evidence_ref": null
+          },
+          "deep006000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "0606060606060606060606060606060606060606060606060606060606060606",
+            "subject_did": "did:key:z6Mk06060606060606060606060606060606",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep007000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "5e97f264e7d262320505568afa3e3e9f5c7f042ecf58acef2270a10af0fbe240b34c0ca462897be030a48c4c28f64497b3f8c60799ae5a506fc264ce5b021907",
+            "evidence_ref": null
+          },
+          "deep005000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "0505050505050505050505050505050505050505050505050505050505050505",
+            "subject_did": "did:key:z6Mk05050505050505050505050505050505",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep006000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "6fd2a57346abad98425b608fe91c0ba42f0ead1e803dab5df6b224ae4e6b7e1d4356f6f74a89884ea0a526bfe8a2953c622decc797da20d06d353bbe88e77909",
+            "evidence_ref": null
+          },
+          "deep004000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "0404040404040404040404040404040404040404040404040404040404040404",
+            "subject_did": "did:key:z6Mk04040404040404040404040404040404",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep005000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "a7655ab0193acc4690854bd991a7133d84007de6630317e8fc30ced5882be871991949ee7c4964d8c3c3965ac08e5a23dc13f93380130068909f21b1c54efc09",
+            "evidence_ref": null
+          },
+          "deep003000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "0303030303030303030303030303030303030303030303030303030303030303",
+            "subject_did": "did:key:z6Mk03030303030303030303030303030303",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep004000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "0557a54aa58177b7666bf4796294f0d347414f2a9618d2c9782eb55910abf1163009e77b3fd4e7ac1c538ea7359982dc846b0ae5d67f645aa289dda9b4d07b0b",
+            "evidence_ref": null
+          },
+          "deep002000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "0202020202020202020202020202020202020202020202020202020202020202",
+            "subject_did": "did:key:z6Mk02020202020202020202020202020202",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep003000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "7869c9240e380dccdeb919e67eb91aff3152fb98d1b57c96cca89b6af42f38da7a2f0d1427702cefa9d63e8230b85303aeeb1617e217aac1f15a529769856306",
+            "evidence_ref": null
+          },
+          "deep001000000000000000000000000000000000000000000000000000000000": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "0101010101010101010101010101010101010101010101010101010101010101",
+            "subject_did": "did:key:z6Mk01010101010101010101010101010101",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "relates_to": [
+              {
+                "type": "revokes",
+                "target": {
+                  "kind": "attestation",
+                  "hash_alg": "blake2b-256",
+                  "hash": "deep002000000000000000000000000000000000000000000000000000000000"
+                }
+              }
+            ],
+            "signature": "2a5d644fe2d2eaf64125fe405380f451b7f048a2d888fabfbf3c81bdb013f53b41ce50be07f25ca1720c349a30cf6e189e46398b8a6bd2553da88b10fc350e0c",
+            "evidence_ref": null
+          }
+        },
+        "delegation_certs": {}
+      },
+      "expect": {
+        "valid": false,
+        "reason_contains": "depth"
+      }
+    },
+    {
       "id": "T8-continues-unreachable",
       "clause": "\u00a71.3",
       "spec_lines": "230-239",
@@ -5959,6 +8355,7 @@
         "signature": "5f51ebd8839e9bacec1e433ad455843a648b87df15f26e115abe172ed868e13f0f36506459a11efe1218048f43c21112de428ef69aa3324b17fbfae927ad9507",
         "evidence_ref": null
       },
+      "held_edges": [],
       "ledger": {
         "attestations": {},
         "delegation_certs": {}
@@ -6010,6 +8407,7 @@
         "signature": "d5336f7c72880b7f155e2b8303ea62faea07e0f6a01c6264cd834fb553947b6ef27b1edc370d63f091041edd567140790f5883d463e7c13aa8cf644fc7fce600",
         "evidence_ref": null
       },
+      "held_edges": [],
       "ledger": {
         "attestations": {
           "b2041683c608fcf86e4f8f7a66d7cdef7bff2558d6204c1834a8b00c739011e7": {
@@ -6088,6 +8486,7 @@
         "signature": "fcbc803d4975a9a77dafeab719146a492e932883e999411c58ed71bd0599f7beccace1ed37345c9724a95d3a57bd6d173c435b3d20866f6d0f077a92d8eb5502",
         "evidence_ref": null
       },
+      "held_edges": [],
       "ledger": {
         "attestations": {
           "b2041683c608fcf86e4f8f7a66d7cdef7bff2558d6204c1834a8b00c739011e7": {
@@ -6128,7 +8527,7 @@
       "id": "T13-revokes-holds-edge",
       "clause": "\u00a71.3/\u00a73",
       "spec_lines": "251-253",
-      "title": "verifier holds a revokes edge and evaluates its target -> refuse target (valid:false)",
+      "title": "the REVOKER attestation itself (carrying a revokes edge) is well-formed -> valid",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "subject": {
         "schema": "cgr.attestation.v4",
@@ -6166,6 +8565,7 @@
         "signature": "11a9c6d685486236d348de33951d2cebafec038a9d58b871603c4e7cd276b2ec93c27d54be17e1df6a0dcf278179a74e2b9fca3c9cd79977662b4a548c380606",
         "evidence_ref": null
       },
+      "held_edges": [],
       "ledger": {
         "attestations": {
           "b2041683c608fcf86e4f8f7a66d7cdef7bff2558d6204c1834a8b00c739011e7": {
@@ -6205,7 +8605,7 @@
       "id": "T13b-target-of-held-revoke",
       "clause": "\u00a71.3/\u00a73",
       "spec_lines": "251-253",
-      "title": "evaluating an attestation while the verifier also holds a revokes edge targeting it -> valid:false (refused)",
+      "title": "evaluating a target while the verifier HOLDS a revokes edge targeting it -> valid:false (refused)",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "subject": {
         "schema": "cgr.attestation.v4",
@@ -6233,50 +8633,232 @@
         "signature": "7442aa62a34c20db3b5ff0d532a9a4903c1a5ff0c312af202e51b4f4951983cbd61e124f321fac0645c6fd58d792e60f1e75f1648012d6c636d692e1f323b70b",
         "evidence_ref": null
       },
-      "ledger": {
-        "attestations": {
-          "39133d2d880666c21454341b20d5017e61d39fc9841b10b5541a444f77a1ca05": {
-            "schema": "cgr.attestation.v4",
-            "issuer": "gns-foundation",
-            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
-            "subject_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-            "subject_did": "did:key:z6Mkaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-            "agent_handle": "vector-agent@test",
-            "dimension": "receivables",
-            "cgr_score": 0.6666666666666666,
-            "confidence": 6.0,
-            "n_resolved": 12,
-            "capability_tier": 0.75,
-            "as_of": "2026-01-01T00:00:00Z",
-            "last_resolved_at": "2026-01-01T00:00:00Z",
-            "scoring_scope": "pooled",
-            "requested_domain": null,
-            "domain_n_resolved": null,
-            "rationale": "conformance vector",
-            "domain": "deploy",
-            "verifiability_tag": "judgment",
-            "decision_date": "2026-01-01",
-            "recorded_at": "2026-01-01",
-            "backfilled": false,
-            "relates_to": [
-              {
-                "type": "revokes",
-                "target": {
-                  "kind": "attestation",
-                  "hash_alg": "blake2b-256",
-                  "hash": "b2041683c608fcf86e4f8f7a66d7cdef7bff2558d6204c1834a8b00c739011e7"
-                }
+      "held_edges": [
+        {
+          "schema": "cgr.attestation.v4",
+          "issuer": "gns-foundation",
+          "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+          "subject_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "subject_did": "did:key:z6Mkaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "agent_handle": "vector-agent@test",
+          "dimension": "receivables",
+          "cgr_score": 0.6666666666666666,
+          "confidence": 6.0,
+          "n_resolved": 12,
+          "capability_tier": 0.75,
+          "as_of": "2026-01-01T00:00:00Z",
+          "last_resolved_at": "2026-01-01T00:00:00Z",
+          "scoring_scope": "pooled",
+          "requested_domain": null,
+          "domain_n_resolved": null,
+          "rationale": "conformance vector",
+          "domain": "deploy",
+          "verifiability_tag": "judgment",
+          "decision_date": "2026-01-01",
+          "recorded_at": "2026-01-01",
+          "backfilled": false,
+          "relates_to": [
+            {
+              "type": "revokes",
+              "target": {
+                "kind": "attestation",
+                "hash_alg": "blake2b-256",
+                "hash": "b2041683c608fcf86e4f8f7a66d7cdef7bff2558d6204c1834a8b00c739011e7"
               }
-            ],
-            "signature": "11a9c6d685486236d348de33951d2cebafec038a9d58b871603c4e7cd276b2ec93c27d54be17e1df6a0dcf278179a74e2b9fca3c9cd79977662b4a548c380606",
-            "evidence_ref": null
-          }
-        },
+            }
+          ],
+          "signature": "11a9c6d685486236d348de33951d2cebafec038a9d58b871603c4e7cd276b2ec93c27d54be17e1df6a0dcf278179a74e2b9fca3c9cd79977662b4a548c380606",
+          "evidence_ref": null
+        }
+      ],
+      "ledger": {
+        "attestations": {},
         "delegation_certs": {}
       },
       "expect": {
         "valid": false,
         "reason_contains": "revoked"
+      }
+    },
+    {
+      "id": "T11-target-of-held-supersede",
+      "clause": "\u00a71.3",
+      "spec_lines": "240-246",
+      "title": "evaluating a target while the verifier HOLDS a supersedes edge targeting it -> valid but SUPERSEDED (stale, not current)",
+      "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "subject": {
+        "schema": "cgr.attestation.v4",
+        "issuer": "gns-foundation",
+        "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+        "subject_key": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "subject_did": "did:key:z6Mkcccccccccccccccccccccccccccccccc",
+        "agent_handle": "vector-agent@test",
+        "dimension": "receivables",
+        "cgr_score": 0.6666666666666666,
+        "confidence": 6.0,
+        "n_resolved": 12,
+        "capability_tier": 0.75,
+        "as_of": "2026-01-01T00:00:00Z",
+        "last_resolved_at": "2026-01-01T00:00:00Z",
+        "scoring_scope": "pooled",
+        "requested_domain": null,
+        "domain_n_resolved": null,
+        "rationale": "conformance vector",
+        "domain": "deploy",
+        "verifiability_tag": "judgment",
+        "decision_date": "2026-01-01",
+        "recorded_at": "2026-01-01",
+        "backfilled": false,
+        "signature": "7442aa62a34c20db3b5ff0d532a9a4903c1a5ff0c312af202e51b4f4951983cbd61e124f321fac0645c6fd58d792e60f1e75f1648012d6c636d692e1f323b70b",
+        "evidence_ref": null
+      },
+      "held_edges": [
+        {
+          "schema": "cgr.attestation.v4",
+          "issuer": "gns-foundation",
+          "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+          "subject_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "subject_did": "did:key:z6Mkaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "agent_handle": "vector-agent@test",
+          "dimension": "receivables",
+          "cgr_score": 0.6666666666666666,
+          "confidence": 6.0,
+          "n_resolved": 12,
+          "capability_tier": 0.75,
+          "as_of": "2026-01-01T00:00:00Z",
+          "last_resolved_at": "2026-01-01T00:00:00Z",
+          "scoring_scope": "pooled",
+          "requested_domain": null,
+          "domain_n_resolved": null,
+          "rationale": "conformance vector",
+          "domain": "deploy",
+          "verifiability_tag": "judgment",
+          "decision_date": "2026-01-01",
+          "recorded_at": "2026-01-01",
+          "backfilled": false,
+          "relates_to": [
+            {
+              "type": "supersedes",
+              "target": {
+                "kind": "attestation",
+                "hash_alg": "blake2b-256",
+                "hash": "b2041683c608fcf86e4f8f7a66d7cdef7bff2558d6204c1834a8b00c739011e7"
+              }
+            }
+          ],
+          "signature": "f7d6531fa9c9590a04063e33e8d2ad247cdcc42699a9fb206312e4fd760612b8c1b7ee3888e5f7c1c170cd99071eba417334f4f6e5d8280ba0fa4df124552603",
+          "evidence_ref": null
+        }
+      ],
+      "ledger": {
+        "attestations": {},
+        "delegation_certs": {}
+      },
+      "expect": {
+        "valid": true,
+        "superseded": true
+      }
+    },
+    {
+      "id": "T12-supersedes-unreachable",
+      "clause": "\u00a71.3",
+      "spec_lines": "247-249",
+      "title": "a superseder whose target is unreachable -> superseder stays VALID (MUST NOT reject it)",
+      "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "subject": {
+        "schema": "cgr.attestation.v4",
+        "issuer": "gns-foundation",
+        "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+        "subject_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "subject_did": "did:key:z6Mkaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "agent_handle": "vector-agent@test",
+        "dimension": "receivables",
+        "cgr_score": 0.6666666666666666,
+        "confidence": 6.0,
+        "n_resolved": 12,
+        "capability_tier": 0.75,
+        "as_of": "2026-01-01T00:00:00Z",
+        "last_resolved_at": "2026-01-01T00:00:00Z",
+        "scoring_scope": "pooled",
+        "requested_domain": null,
+        "domain_n_resolved": null,
+        "rationale": "conformance vector",
+        "domain": "deploy",
+        "verifiability_tag": "judgment",
+        "decision_date": "2026-01-01",
+        "recorded_at": "2026-01-01",
+        "backfilled": false,
+        "relates_to": [
+          {
+            "type": "supersedes",
+            "target": {
+              "kind": "attestation",
+              "hash_alg": "blake2b-256",
+              "hash": "unreachable00000000000000000000000000000000000000000000000000000"
+            }
+          }
+        ],
+        "signature": "ec55e204de7e923c03b6a97ec7983fc2ec1e6f26f1843bc31241add45abbb4b7d5307ac33f59256c4fa2ba52f40f7d133c87964b8328862aabcd1b2f02415a0b",
+        "evidence_ref": null
+      },
+      "held_edges": [],
+      "ledger": {
+        "attestations": {},
+        "delegation_certs": {}
+      },
+      "expect": {
+        "valid": true
+      }
+    },
+    {
+      "id": "T14-revokes-unreachable",
+      "clause": "\u00a71.3/\u00a73",
+      "spec_lines": "251-253",
+      "title": "a revoker whose target is unreachable -> revoker stays VALID (revocation claim stands; target not present to refuse)",
+      "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "subject": {
+        "schema": "cgr.attestation.v4",
+        "issuer": "gns-foundation",
+        "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+        "subject_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "subject_did": "did:key:z6Mkaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "agent_handle": "vector-agent@test",
+        "dimension": "receivables",
+        "cgr_score": 0.6666666666666666,
+        "confidence": 6.0,
+        "n_resolved": 12,
+        "capability_tier": 0.75,
+        "as_of": "2026-01-01T00:00:00Z",
+        "last_resolved_at": "2026-01-01T00:00:00Z",
+        "scoring_scope": "pooled",
+        "requested_domain": null,
+        "domain_n_resolved": null,
+        "rationale": "conformance vector",
+        "domain": "deploy",
+        "verifiability_tag": "judgment",
+        "decision_date": "2026-01-01",
+        "recorded_at": "2026-01-01",
+        "backfilled": false,
+        "relates_to": [
+          {
+            "type": "revokes",
+            "target": {
+              "kind": "attestation",
+              "hash_alg": "blake2b-256",
+              "hash": "unreachable00000000000000000000000000000000000000000000000000000"
+            }
+          }
+        ],
+        "signature": "5e662a0071da0a6031858e73bbb09eebfd57589c79f15fe925d639d3e1b335565d563cfa5a35a44b7811d902e596eaf43dad383ccf19daa759f5897093146604",
+        "evidence_ref": null
+      },
+      "held_edges": [],
+      "ledger": {
+        "attestations": {},
+        "delegation_certs": {}
+      },
+      "expect": {
+        "valid": true
       }
     },
     {
@@ -6321,6 +8903,7 @@
         "signature": "018a75d9288fdaa15686bc9a752d6339a8125c7b96cdcbd5531280734749b27c97135c62b8c4fb7c75fd3a9955f4e9a5e70010931ef29e358a04236a6b9c5c08",
         "evidence_ref": null
       },
+      "held_edges": [],
       "ledger": {
         "attestations": {},
         "delegation_certs": {
@@ -6384,6 +8967,7 @@
         "signature": "4b337d5a9f58dd3d9507dde3d67907540d85461bc843e48d951b78423859a6dcc40accc84d9f3a960005e366a0f27e03a387d75eb3d377e9cbd856a72071ca00",
         "evidence_ref": null
       },
+      "held_edges": [],
       "ledger": {
         "attestations": {},
         "delegation_certs": {}
@@ -6425,6 +9009,7 @@
         "signature": "051361f4aa444d40fad5e6fe4cc63967ffd35819480a8c962e8b60c181da49d6356af743c7a6cd25f827ed53d5e4f2e33e138684334f926d685ef46137e9b70b",
         "evidence_ref": null
       },
+      "held_edges": [],
       "ledger": {
         "attestations": {},
         "delegation_certs": {}
@@ -6467,6 +9052,7 @@
         "signature": "6f70e2cfec11c0619cdd0c1d80470172354e69737e9f56f115aa2becf87a889d4f3b52c34919700d1dcde236c626dbc1266f06c84fc1d1c7e163fd39c9aec003",
         "evidence_ref": null
       },
+      "held_edges": [],
       "ledger": {
         "attestations": {},
         "delegation_certs": {}
@@ -6509,6 +9095,7 @@
         "signature": "d3d95fc5af3eeadc5fa9b8ea2d0c7a09b1bd083dade8a4b8839959a20c8d6b2640d65a6d6906fbd32b2b33147788a72bd602938de663d26fb023b5d68a15930b",
         "evidence_ref": null
       },
+      "held_edges": [],
       "ledger": {
         "attestations": {},
         "delegation_certs": {}
@@ -6551,6 +9138,7 @@
         "signature": "3a896a5fa44d3a1dbec39a68b2e758e90d48908297ac2a9862bd56ac4644e9e221c7d78b3ed2c15e75bc6249701ed767d2c1b86c480240c00ac71cd9fb84410f",
         "evidence_ref": null
       },
+      "held_edges": [],
       "ledger": {
         "attestations": {},
         "delegation_certs": {}
@@ -6593,6 +9181,7 @@
         "signature": "1466be34cd850e24c0ed4c464fed4924ccd11144caf88ed317b8fe97a27757e136248ab1989790fa97896f7f8c403c3d8a439a90165aeef8d30e7573fa237700",
         "evidence_ref": null
       },
+      "held_edges": [],
       "ledger": {
         "attestations": {},
         "delegation_certs": {}
@@ -6636,6 +9225,7 @@
         "signature": "4b337d5a9f58dd3d9507dde3d67907540d85461bc843e48d951b78423859a6dcc40accc84d9f3a960005e366a0f27e03a387d75eb3d377e9cbd856a72071ca00",
         "evidence_ref": null
       },
+      "held_edges": [],
       "ledger": {
         "attestations": {},
         "delegation_certs": {}
@@ -6676,6 +9266,7 @@
         "signature": "863336ede43537c167a5e936877524cd083bcf4a5975d812d889f0726e7b0fd814ed8fef8d7150d72848ec709cd792897b5c3fee15a2647cc34e7bcfef33600d",
         "evidence_ref": null
       },
+      "held_edges": [],
       "ledger": {
         "attestations": {},
         "delegation_certs": {}
@@ -6717,6 +9308,7 @@
         "signature": "0aa9ab1f5454e1d5cb7e2b16e2a24fb13706b34459836ea0162e687d978745907a4450ac41ee4b580ad9875db616ebaa603cc0a424433afea37f32e18b38910b",
         "evidence_ref": null
       },
+      "held_edges": [],
       "ledger": {
         "attestations": {},
         "delegation_certs": {}
@@ -6767,6 +9359,7 @@
           }
         ]
       },
+      "held_edges": [],
       "ledger": {
         "attestations": {
           "b2041683c608fcf86e4f8f7a66d7cdef7bff2558d6204c1834a8b00c739011e7": {
@@ -6835,6 +9428,7 @@
         "signature": "0aa9ab1f5454e1d5cb7e2b16e2a24fb13706b34459836ea0162e687d978745907a4450ac41ee4b580ad9875db616ebaa603cc0a424433afea37f32e18b38910b",
         "evidence_ref": null
       },
+      "held_edges": [],
       "ledger": {
         "attestations": {
           "8386d70b69ba4fbd61385828db8254cae3908f187401dc3f621ca54397870e5b": {
@@ -6912,6 +9506,7 @@
         "signature": "0aa9ab1f5454e1d5cb7e2b16e2a24fb13706b34459836ea0162e687d978745907a4450ac41ee4b580ad9875db616ebaa603cc0a424433afea37f32e18b38910b",
         "evidence_ref": null
       },
+      "held_edges": [],
       "ledger": {
         "attestations": {
           "969c7bd69773c50b4a7d5850663a7c8545370026ecfab7e982c520fe434f5fa5": {

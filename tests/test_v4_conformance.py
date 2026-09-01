@@ -12,9 +12,9 @@ Two layers:
 2. `test_v4_conformance[<vector>]` — runs each vector against a v4 verifier, and
    SKIPS cleanly when none is wired (like test_v3_conformance.py skips without
    GRAFOMEM_DB_URL). Wire a verifier by setting CGR_V4_VERIFIER to an importable
-   module exposing `verify(subject, ledger, pinned_issuer_hex) -> {valid, reason?,
-   lineage_status?, ...}`. Until P1.4 ships one, this layer skips — the corpus is
-   the executable target the verifier must meet.
+   module exposing `verify(subject, ledger, pinned_issuer_hex, held_edges) ->
+   {valid, reason?, lineage_status?, superseded?, ...}`. Until P1.4 ships one, this
+   layer skips — the corpus is the executable target the verifier must meet.
 
     pytest tests/test_v4_conformance.py -v
     CGR_V4_VERIFIER=aml.cgr.v4_verify pytest tests/test_v4_conformance.py -v
@@ -60,8 +60,10 @@ def test_corpus_wellformed():
     assert len(byid) == len(vs), "duplicate vector ids"
 
     for v in vs:
-        for k in ("id", "clause", "spec_lines", "title", "subject", "ledger", "pinned_issuer", "expect"):
+        for k in ("id", "clause", "spec_lines", "title", "subject", "ledger",
+                  "held_edges", "pinned_issuer", "expect"):
             assert k in v, f"{v.get('id')}: missing {k}"
+        assert isinstance(v["held_edges"], list), f"{v['id']}: held_edges must be a list"
         pend = v.get("pending")
         if pend == "0006B":
             assert v["expect"] is None, f"{v['id']}: pending-0006B must carry NO verdict"
@@ -82,6 +84,9 @@ def test_corpus_wellformed():
             assert not _sig_ok(s, issuer), "B1 (unsigned relates_to) must fail issuer signature verification"
         else:
             assert _sig_ok(s, issuer), f"{v['id']}: subject must verify against the pinned issuer"
+        # held-edge records are Foundation-issued and must verify against the pinned issuer.
+        for he in v["held_edges"]:
+            assert _sig_ok(he, issuer), f"{v['id']}: held edge must verify against the pinned issuer"
 
     # THE #85 GUARD: a continues cycle and an unreachable predecessor are DISTINCT signals.
     t2 = byid["T2-continues-cycle"]["expect"]["lineage_status"]
@@ -113,12 +118,15 @@ _FIXED = [v for v in _load()["vectors"] if v.get("pending") != "0006B"]
 @pytest.mark.parametrize("vec", _FIXED, ids=[v["id"] for v in _FIXED])
 def test_v4_conformance(vec):
     verify = _verifier().verify
-    res = verify(vec["subject"], vec["ledger"], vec["pinned_issuer"])
+    res = verify(vec["subject"], vec["ledger"], vec["pinned_issuer"], vec["held_edges"])
     exp = vec["expect"]
     assert res.get("valid") == exp["valid"], f"{vec['id']}: valid mismatch — {res}"
     if "lineage_status" in exp:
         assert res.get("lineage_status") == exp["lineage_status"], \
             f"{vec['id']}: lineage_status mismatch — {res}"
+    if "superseded" in exp:
+        assert res.get("superseded") == exp["superseded"], \
+            f"{vec['id']}: superseded mismatch — {res}"
     if "reason_contains" in exp and not exp["valid"]:
         assert exp["reason_contains"] in (res.get("reason") or ""), \
             f"{vec['id']}: reason should contain '{exp['reason_contains']}' — {res}"

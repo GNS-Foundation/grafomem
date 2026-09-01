@@ -15,20 +15,28 @@ tests-before-verifier (P1.1 spec → P1.2 behaviour → **P1.3 corpus** → P1.4
 - Runner: [`tests/test_v4_conformance.py`](../../tests/test_v4_conformance.py).
 
 ## Resolution model
-A verifier is given the **`subject`** attestation and a **`ledger`** — a map from `target.hash` to the
-attestation/cert it resolves — plus **`pinned_issuer`** (the Foundation pubkey). It follows
-`relates_to` edges through the ledger. Per §1.1, target hashes are **kind-specific**:
-attestation targets → **BLAKE2b-256** of the canonical signed body (the deployed
-`attestation_fingerprint`); delegation-cert targets → **SHA-256** of the canonical cert body (geiant
-`cert_hash`).
+A verifier is given four inputs:
+- **`subject`** — the attestation under evaluation.
+- **`ledger`** — `{attestations, delegation_certs}`, a map from `target.hash` to the entry it resolves.
+  Two roles: the **resolution context** for traversing the subject's *own* edges, and the **queryable
+  index** a liveness "seek" would consult. Per §1.1, target hashes are **kind-specific**: attestation
+  targets → **BLAKE2b-256** of the canonical signed body (the deployed `attestation_fingerprint`);
+  delegation-cert targets → **SHA-256** of the canonical cert body (geiant `cert_hash`).
+- **`held_edges`** — edge-records the verifier is **handed** and **MUST honour** against the subject.
+  This is the pivot behind [decision 0006](../../docs/decisions/0006-enforcement-boundary-for-revocation.md)
+  Question B: an edge in `held_edges` is a fixed obligation (T11, T13b); the *same* edge present only in
+  `ledger` (seekable, not handed) is the liveness question whose verdict is B-dependent (L1, L2).
+- **`pinned_issuer`** — the Foundation pubkey the verifier pins.
 
 ## Extended `VerifyResult` this corpus assumes
-`v4` adds a lineage signal to the v3 `{valid, reason, …}`. `expect` uses:
+`v4` adds two signals to the v3 `{valid, reason, …}`. `expect` uses:
 - **`valid`** (bool), **`reason_contains`** (substring, on rejects);
 - **`lineage_status`** ∈ `{complete, truncated_unavailable, truncated_depth, anomaly_cycle}` — the §1.3
   signal. **`anomaly_cycle` (T2) and `truncated_unavailable` (T8) are distinct and a verifier MUST NOT
   collapse them** (see [#85](https://github.com/GNS-Foundation/grafomem/pull/85)); the corpus asserts
   they differ, and the runner's self-check fails if they ever match.
+- **`superseded`** (bool) — set when a held `supersedes` edge targets the subject (T11): the subject is
+  signature-**valid** but **not current**. Distinct from revocation (T13b), which is `valid: false`.
 
 ## Coverage matrix (→ spec clause)
 | vector(s) | clause | asserts |
@@ -42,10 +50,13 @@ attestation targets → **BLAKE2b-256** of the canonical signed body (the deploy
 | `T3`,`T4` | §1.3 | `supersedes`/`revokes` cycle → reject |
 | `T5` | §1.3 | mixed cycle w/ a validity-affecting edge → reject |
 | `T6` | §1.3 | `continues` chain > 64 → **valid + `truncated_depth`** |
-| `T7` | §1.3 | `supersedes` chain > 64 → reject |
+| `T7`,`T7b` | §1.3 | `supersedes` / `revokes` chain > 64 → reject |
 | `T8` | §1.3 | `continues` unreachable predecessor → **valid + `truncated_unavailable`** |
 | `T9`,`T10` | §1.3/§5 | agent-signed `continues` → reject; Foundation-signed → valid + `complete` |
-| `T13`,`T13b` | §1.3/§3 | a held `revokes` edge refuses its target |
+| `T11` | §1.3 | **held** `supersedes` edge → target **valid + `superseded`** (stale, not current) |
+| `T12` | §1.3 | `supersedes` unreachable target → superseder stays valid |
+| `T13`,`T13b` | §1.3/§3 | **held** `revokes` edge → target refused (`valid: false`) |
+| `T14` | §1.3/§3 | `revokes` unreachable target → revoker stays valid |
 | `C1` | §1.1/§3 | `revokes` targeting a delegation-cert (sha-256) resolves |
 | `G1`–`G7` | §2.2 | grounding **gate**: `oracle_id`/`audit_policy` required iff `dimension="grounding"` |
 | `S1`,`S2` | §2.3 | unknown schema → reject; `v4` accepted |
@@ -71,11 +82,27 @@ the `pending` marker.
 *Grounding-Audit Outcome delta (draft-0.2)* and is out of scope for `v4`'s verifier-behaviour surface.
 **This corpus tests the gate, not the body.**
 
+## Scope boundary — what a green run does and does NOT mean
+This corpus tests **verifier verdicts**: given `(subject, ledger, held_edges, pinned_issuer)`, does the
+verifier return the right `VerifyResult`? A green run means **"conformant on verifier verdicts"** — it
+does **not** mean "fully conformant with the spec." The following normative MUSTs are **outside** a
+v4-*verifier* corpus and are deliberately not covered here:
+- **Issuer obligations** — e.g. §3's dual-write ("an *issuer* MUST emit a `revokes` edge **and** update
+  the enforcement index"). About what an issuer produces, not what a verifier decides.
+- **Ceremony rules** — §5.3.4 anti-fork uniqueness (≤1 *successor* per predecessor) is an
+  issuer/ledger-side obligation. (Its subject-side dual, ≤1 `continues` per attestation, *is* covered —
+  `M2`.)
+- **Rollout process** — §2.3's expand-contract ordering ("widen `ACCEPTED_SCHEMAS` before the issuer
+  emits") is a deployment sequence, not a verdict.
+- **v3-verifier behaviour** — "a *v3* consumer rejects `v4` at the schema check" is about v3 verifiers;
+  the v4 analogue (unknown schema → reject) is `S1`.
+Verifying these needs issuer-side / process-level conformance, tracked separately.
+
 ## Running
 ```bash
 pytest tests/test_v4_conformance.py -v          # corpus self-check runs; vectors skip (no verifier)
 CGR_V4_VERIFIER=<module> pytest tests/test_v4_conformance.py -v   # run vectors against a v4 verifier
 ```
-The verifier module must expose `verify(subject, ledger, pinned_issuer_hex) -> dict`. Until P1.4 wires
+The verifier module must expose `verify(subject, ledger, pinned_issuer_hex, held_edges) -> dict`. Until P1.4 wires
 one, the vector layer skips and the **corpus self-check** (structure, signatures, T2≠T8, pending shape)
 runs — so the corpus can't silently rot.

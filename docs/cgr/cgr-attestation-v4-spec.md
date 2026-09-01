@@ -95,7 +95,9 @@ it closes grounding."
 
   A verifier **MUST reject** an edge whose `hash_alg` does not match the required algorithm for its
   `kind`. `blake2b-256` and `sha-256` are the **only** valid `hash_alg` values in `v4`, each bound to
-  its one `kind` as above.
+  its one `kind` as above. A verifier **MUST also reject** an edge whose `target.hash` is malformed for
+  its declared `hash_alg` — not lowercase hex, or not the digest length that algorithm produces (32
+  bytes / 64 hex chars for both `blake2b-256` and `sha-256`).
 
 **Multiplicity — repeated edges of the same type.** Because `relates_to` is an array, an implementer
 will immediately hit "what do two edges of the same type mean?" The answer is normative, not a

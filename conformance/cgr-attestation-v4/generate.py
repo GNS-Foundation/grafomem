@@ -10,12 +10,13 @@ Deterministic: fixed test keypairs (repeating-byte seeds — NOT real keys), so
 re-running yields byte-identical output. Reuses the production canonicalization
 (`aml.cgr.attestation`) so vector bytes match a real verifier's.
 
-Resolution model (see README): a verifier is given the `subject` attestation and
-a `ledger` — a map from `target.hash` to the attestation/cert it resolves. The
-verifier follows `relates_to` edges through the ledger. Attestation targets are
-addressed by BLAKE2b-256 of the canonical signed body (the deployed
-`attestation_fingerprint`); delegation-cert targets by SHA-256 of the canonical
-cert body (geiant `cert_hash`). §1.1.
+Resolution model (see README): a verifier is given `subject`, `ledger` (a map from
+target.hash to the attestation/cert it resolves — resolution context AND queryable
+index), `held_edges` (edge-records handed to the verifier, which it MUST honour), and
+`pinned_issuer`. Held-edge vs ledger-only (seek) is the 0006-B pivot. Attestation
+targets are addressed by BLAKE2b-256 of the canonical signed body (the deployed
+`attestation_fingerprint`); delegation-cert targets by SHA-256 of the canonical cert
+body (geiant `cert_hash`). §1.1.
 
     python3 conformance/cgr-attestation-v4/generate.py    # writes vectors.json + issuer.json
 """
@@ -118,11 +119,16 @@ def tgt_cert(c): return {"kind": "delegation_cert", "hash_alg": "sha-256", "hash
 
 
 VECTORS = []
-def V(id, clause, lines, title, subject, expect, *, atts=None, certs=None, pending=None, flips_on=None):
+def V(id, clause, lines, title, subject, expect, *, atts=None, certs=None, held=None,
+      pending=None, flips_on=None):
+    # `held` = edge-records HANDED to the verifier (it MUST honour them). `atts`/`certs` =
+    # the `ledger`: the resolution context for traversing the subject's own edges AND the
+    # queryable index a liveness "seek" would consult. Held vs seek is the 0006-B pivot.
     entry = {
         "id": id, "clause": clause, "spec_lines": lines, "title": title,
         "pinned_issuer": ISSUER_PUB,
         "subject": subject,
+        "held_edges": list(held or []),
         "ledger": {
             "attestations": {fp(a): a for a in (atts or [])},
             "delegation_certs": {cert_hash(c): c for c in (certs or [])},
@@ -196,7 +202,7 @@ def cycle_pair(kind_a, kind_b):
 A, B, ledgermap = cycle_pair("continues", "continues")
 V2 = {"id": "T2-continues-cycle", "clause": "§1.3", "spec_lines": "185-194",
       "title": "continues cycle -> VALID subject + lineage_status=anomaly_cycle (NOT truncated_unavailable)",
-      "pinned_issuer": ISSUER_PUB, "subject": A,
+      "pinned_issuer": ISSUER_PUB, "held_edges": [], "subject": A,
       "ledger": {"attestations": ledgermap, "delegation_certs": {}},
       "expect": {"valid": True, "lineage_status": "anomaly_cycle"}}
 VECTORS.append(V2)
@@ -204,21 +210,21 @@ VECTORS.append(V2)
 A, B, ledgermap = cycle_pair("supersedes", "supersedes")
 VECTORS.append({"id": "T3-supersedes-cycle", "clause": "§1.3", "spec_lines": "195-197",
                 "title": "supersedes cycle -> reject (currency undeterminable)",
-                "pinned_issuer": ISSUER_PUB, "subject": A,
+                "pinned_issuer": ISSUER_PUB, "held_edges": [], "subject": A,
                 "ledger": {"attestations": ledgermap, "delegation_certs": {}},
                 "expect": {"valid": False, "reason_contains": "cycle"}})
 
 A, B, ledgermap = cycle_pair("revokes", "revokes")
 VECTORS.append({"id": "T4-revokes-cycle", "clause": "§1.3", "spec_lines": "198-200",
                 "title": "revokes cycle -> reject (incoherent revocation state)",
-                "pinned_issuer": ISSUER_PUB, "subject": A,
+                "pinned_issuer": ISSUER_PUB, "held_edges": [], "subject": A,
                 "ledger": {"attestations": ledgermap, "delegation_certs": {}},
                 "expect": {"valid": False, "reason_contains": "cycle"}})
 
 A, B, ledgermap = cycle_pair("continues", "supersedes")  # mixed: a supersedes edge is in the cycle
 VECTORS.append({"id": "T5-mixed-cycle", "clause": "§1.3", "spec_lines": "201-203",
                 "title": "mixed cycle containing a supersedes edge -> reject (conservative rule)",
-                "pinned_issuer": ISSUER_PUB, "subject": A,
+                "pinned_issuer": ISSUER_PUB, "held_edges": [], "subject": A,
                 "ledger": {"attestations": ledgermap, "delegation_certs": {}},
                 "expect": {"valid": False, "reason_contains": "cycle"}})
 
@@ -241,14 +247,21 @@ def deep_chain(kind, length):
 subject, ledger = deep_chain("continues", 65)
 VECTORS.append({"id": "T6-continues-depth", "clause": "§1.3", "spec_lines": "204-224",
                 "title": "continues chain deeper than 64 -> VALID subject + lineage_status=truncated_depth",
-                "pinned_issuer": ISSUER_PUB, "subject": subject,
+                "pinned_issuer": ISSUER_PUB, "held_edges": [], "subject": subject,
                 "ledger": {"attestations": ledger, "delegation_certs": {}},
                 "expect": {"valid": True, "lineage_status": "truncated_depth"}})
 
 subject, ledger = deep_chain("supersedes", 65)
 VECTORS.append({"id": "T7-supersedes-depth", "clause": "§1.3", "spec_lines": "204-224",
                 "title": "supersedes chain deeper than 64 -> reject (validity undeterminable within bound)",
-                "pinned_issuer": ISSUER_PUB, "subject": subject,
+                "pinned_issuer": ISSUER_PUB, "held_edges": [], "subject": subject,
+                "ledger": {"attestations": ledger, "delegation_certs": {}},
+                "expect": {"valid": False, "reason_contains": "depth"}})
+
+subject, ledger = deep_chain("revokes", 65)
+VECTORS.append({"id": "T7b-revokes-depth", "clause": "§1.3", "spec_lines": "204-224",
+                "title": "revokes chain deeper than 64 -> reject (validity undeterminable within bound)",
+                "pinned_issuer": ISSUER_PUB, "held_edges": [], "subject": subject,
                 "ledger": {"attestations": ledger, "delegation_certs": {}},
                 "expect": {"valid": False, "reason_contains": "depth"}})
 
@@ -269,18 +282,32 @@ V("T10-foundation-signed-continues", "§1.3/§5", "230-239",
   att(SK, relates_to=[{"type": "continues", "target": tgt_att(_p)}]),
   {"valid": True, "lineage_status": "complete"}, atts=[_p])
 
-# T13 / T14 revokes (holding the edge).
+# HELD-edge cases (the verifier is handed the edge -> MUST honour). Fixed verdicts;
+# the SEEK counterparts (edge only in a queryable ledger) are L1/L2 (pending-0006B).
 V("T13-revokes-holds-edge", "§1.3/§3", "251-253",
-  "verifier holds a revokes edge and evaluates its target -> refuse target (valid:false)",
+  "the REVOKER attestation itself (carrying a revokes edge) is well-formed -> valid",
   att(SK, relates_to=[{"type": "revokes", "target": tgt_att(_p)}]),
-  {"valid": True},   # the REVOKER attestation itself is well-formed & valid...
-  atts=[_p])
-# ...the refusal is of the TARGET; modelled as its own vector:
+  {"valid": True}, atts=[_p])
 V("T13b-target-of-held-revoke", "§1.3/§3", "251-253",
-  "evaluating an attestation while the verifier also holds a revokes edge targeting it -> valid:false (refused)",
+  "evaluating a target while the verifier HOLDS a revokes edge targeting it -> valid:false (refused)",
   _p,
   {"valid": False, "reason_contains": "revoked"},
-  atts=[att(SK, relates_to=[{"type": "revokes", "target": tgt_att(_p)}])])
+  held=[att(SK, relates_to=[{"type": "revokes", "target": tgt_att(_p)}])])
+V("T11-target-of-held-supersede", "§1.3", "240-246",
+  "evaluating a target while the verifier HOLDS a supersedes edge targeting it -> valid but SUPERSEDED (stale, not current)",
+  _p,
+  {"valid": True, "superseded": True},
+  held=[att(SK, relates_to=[{"type": "supersedes", "target": tgt_att(_p)}])])
+V("T12-supersedes-unreachable", "§1.3", "247-249",
+  "a superseder whose target is unreachable -> superseder stays VALID (MUST NOT reject it)",
+  att(SK, relates_to=[{"type": "supersedes",
+                       "target": {"kind": "attestation", "hash_alg": "blake2b-256", "hash": "unreachable".ljust(64, "0")}}]),
+  {"valid": True})
+V("T14-revokes-unreachable", "§1.3/§3", "251-253",
+  "a revoker whose target is unreachable -> revoker stays VALID (revocation claim stands; target not present to refuse)",
+  att(SK, relates_to=[{"type": "revokes",
+                       "target": {"kind": "attestation", "hash_alg": "blake2b-256", "hash": "unreachable".ljust(64, "0")}}]),
+  {"valid": True})
 
 # ── cert-target vector (geiant#13; target.hash = sha-256 cert_hash) ───────────
 _c = cert(SK)
@@ -336,8 +363,9 @@ V("B1-unsigned-relates-to", "§2.4", "355-360",
   {"valid": False, "reason_contains": "signature"}, atts=[_p])
 
 # ── §3/§4 liveness — verdict FLIPS on 0006 Question B: verdict absent ─────────
-# The verifier is NOT handed the revokes edge; it exists in the ledger targeting the
-# subject. Whether the verifier MUST seek it (query) before trusting is 0006-B.
+# The SEEK counterpart of the held-edge cases (T13b / T11): the revoke/supersede edge
+# is in the `ledger` (queryable) but NOT in `held_edges` — the verifier is not handed it.
+# Whether the verifier MUST seek it before trusting is 0006-B. (Held -> fixed; seek -> pending.)
 _revoker = att(SK2, relates_to=[{"type": "revokes", "target": tgt_att(att(SK))}])
 V("L1-revoke-liveness", "§3/§4", "423-431",
   "subject valid on its own; a revokes edge targeting it exists in the ledger but is not handed to the verifier",
