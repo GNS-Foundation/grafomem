@@ -8,10 +8,9 @@ scope: two jurisdictions — (implementation) geiant mcp-audit AUDIT_INIT + agen
 
 # 0006 — The enforcement boundary: what revocation guarantees, and what lies outside it
 
-- **Status:** **Accepted** 2026-09-02 — the standard-jurisdiction questions (Question B posture +
-  conformance) are decided; see **Resolution**. **Question A** (implementation — permit vs deny
-  unregistered principals) is **not** decided here and remains open (`GNS-Foundation/geiant#11`), and
-  one **new sub-question** (label non-strippability) is open.
+- **Status:** **Accepted** 2026-09-02 — Question A (**A2, deny unregistered**), Question B posture
+  (**B2 rejected**), and conformance (**enforce-or-label**) are all decided; see **Resolution**. One
+  **sub-question** (label non-strippability) remains open.
 - **Record date:** 2026-09-01
 
 ## Context
@@ -61,8 +60,9 @@ as conformant — those are not the same decision.
 
 *Questions stated with options; unresolved until a `decision_date` is set.*
 
-**Question A — principals outside the registry.** *(Jurisdiction: implementation.)* Does an agent
-absent from `agent_registry` get permitted or denied?
+**Question A — principals outside the registry.** *(Jurisdiction: implementation.)* **Resolved
+2026-09-02 → A2 (deny).** See Resolution. Does an agent absent from `agent_registry` get permitted or
+denied?
 
 - **A1 — permit unregistered** (lazy provisioning). Registration is a convenience; first audited op
   may precede the row. Requires: handle the `.single()` error explicitly, and *document* that an
@@ -114,10 +114,24 @@ conformance suite, so the enforcement boundary cannot silently move again.
 
 ## Resolution — 2026-09-02
 
-Accepted, scoped to the **standard's revocation posture**. **Question A** (the
-implementation-jurisdiction question — permit vs deny principals absent from `agent_registry`) is
-**not** decided here; it remains an open geiant implementation choice tracked in
-`GNS-Foundation/geiant#11`.
+Accepted. All three questions are decided below; one sub-question (label non-strippability) is left
+open.
+
+**Question A — resolved to A2 (deny unregistered).** An agent absent from `agent_registry` is
+**denied**, not permitted. The current permit behaviour is an **accident**: the outermost `AUDIT_INIT`
+gate destructures only `{ data }` and discards the `.single()` error, so zero rows yields
+`agentRevokedAt = null` and `checkRevocation` returns *allowed* — an agent passes a control designed to
+fail closed because an error is ignored, not because anyone decided unregistered agents are trusted.
+**A1** (lazy provisioning — unlisted principals trusted until listed-and-revoked) remains a coherent
+posture, but it is the weaker one: an unregistered agent bypasses the very table that carries tier,
+trust score, and revocation state. **A2 makes the behaviour chosen**, and is consistent with Q1's
+rejection of enforcement that depends on diligence.
+
+*Operational consequence (recorded plainly):* provisioning **MUST** guarantee the `agent_registry`
+row exists **before** an agent's first audited op. The 2026-08-31 rotation did **not** satisfy this —
+`d3caa6f1` wrote its first breadcrumb **before** its registry row existed, and under A2 that write
+would have been **refused**. The rotation succeeded only because the control failed open; A2 closes
+that, and the rotation runbook must insert the row before the first op (tracked for the runbook update).
 
 **Q1 — Question B posture: B2 rejected.** "Enforced only at chain-write" is rejected as the standard's
 posture. Under B2, revocation stops being a property of the system and becomes a property of each
@@ -198,6 +212,6 @@ A decides the default for a principal the edge has never named.
    **signed verification result** (new signed artifact type + key management). A must-not-strip rule
    alone is honour-based. **Must be designed before the label field lands in the spec.** (New,
    2026-09-02.)
-5. **(OPEN — implementation jurisdiction)** Question A — permit vs deny principals absent from
-   `agent_registry`. Not decided by this acceptance; a geiant implementation choice tracked in
-   `GNS-Foundation/geiant#11`.
+5. ~~Question A — permit vs deny principals absent from `agent_registry`.~~ **RESOLVED 2026-09-02 →
+   A2 (deny).** See Resolution. Implementation + the zero-row `trg_update_agent_stats` fix land in
+   `GNS-Foundation/geiant#11`; the rotation runbook moves row-insertion before the first audited op.
