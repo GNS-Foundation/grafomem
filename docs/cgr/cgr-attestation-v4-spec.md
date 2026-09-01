@@ -7,7 +7,7 @@
   [0002](../decisions/0002-cgr-governance-domain-and-backfill.md),
   [0004](../decisions/0004-no-identity-continuity-across-rotation.md),
   [0005](../decisions/0005-custody-managed-principals.md),
-  [0006](../decisions/0006-enforcement-boundary-for-revocation.md); internal P0 spike.
+  [0006](../decisions/0006-enforcement-boundary-for-revocation.md).
 - **Audience:** the three consumers that implement against this — `@gns-foundation/cgr-verify`
   (reference verifier), `@geiant/core`, and the CGR read surface — plus the issuer.
 
@@ -23,11 +23,20 @@ This document uses **MUST / SHOULD / MAY** per RFC 2119. Three marker convention
 
 ## 0. Framing — what `v4` is
 
-Per the P0 spike's Finding 1, the thing that unifies 0001/0002/0004 is **not** the relation edge — it
-is the **decision on how CGR adds signed meaning** (signed-body vs envelope; fixed enum vs open
-vocabulary; additive vs schema-bump). P0.4 resolved that policy to a **schema bump**. `v4` is the
-first exercise of that policy, and it carries three independent additions that happen to ship
-together:
+Read across the records, the thing that unifies 0001/0002/0004 is **not** the relation edge — each
+needs something different.
+[0001](../decisions/0001-cgr-grounding-dimension-additive-vs-schema-bump.md) needs new signed
+**fields** (an oracle identity, an audit-policy digest);
+[0002](../decisions/0002-cgr-governance-domain-and-backfill.md) needs a **domain value** and a
+**`decision_date`**; only [0004](../decisions/0004-no-identity-continuity-across-rotation.md) needs a
+**relation edge**. So a relation edge cannot by itself close 0001 or 0002 — those are new fields and
+values, not relations. What the three *do* share is the prior question every signed addition faces:
+**signed-body vs envelope** (0002 asks it of `decision_date`, 0004 Q1 of the edge, and both say it
+should be answered the same way), **fixed enum vs open vocabulary** (0002's domain, 0004 Q2's relation
+types — the same axis), and **additive vs schema-bump** (0001's whole axis, inherited by 0002 and
+0004). That shared question — **how CGR adds signed meaning** — is the unifier. P0.4 resolved it to a
+**schema bump**. `v4` is the first exercise of that policy, and it carries three independent additions
+that happen to ship together:
 
 1. a typed, signed **relation edge** (`relates_to`) — closes 0004, enables 0005-grandfathering,
    carries revocation (§1, §3);
@@ -35,8 +44,8 @@ together:
 3. a **governance domain** + **temporal provenance** (0002).
 
 Only (1) is a relation between attestations. (2) and (3) are new scalar/vocabulary fields that ride
-the same bump. Keeping this distinction visible is the point of Finding 1: we are not "adopting an
-edge and hoping it closes grounding."
+the same bump. Keeping this distinction visible is the point: we are not "adopting an edge and hoping
+it closes grounding."
 
 **Carried forward from `v3`, unchanged:**
 
@@ -328,14 +337,22 @@ independent of both; `recorded_at` ≥ `decision_date`). Flagged so it is decide
 
 A `v3` consumer gates acceptance on `schema ∈ ACCEPTED_SCHEMAS`, and `"cgr.attestation.v4"` is not in
 that set. **It therefore rejects a `v4` attestation at the schema check, without parsing the body.**
-This is the intended, safe behavior (spike Findings 4–5): an old verifier that cannot traverse
-`relates_to` **fails closed** rather than silently treating a superseded/revoked attestation as
-current. It is also why this is a **bump, not additive** — pure-additive `v3` would make the old
-verifier accept-and-ignore, which for validity-affecting edges is the dangerous case.
+This is the intended, safe behavior, and it is why this is a **bump, not additive**. The reasoning is
+re-derivable from the public verifier source. Per
+[0001](../decisions/0001-cgr-grounding-dimension-additive-vs-schema-bump.md), the deployed verifiers
+(e.g. `@gns-foundation/cgr-verify`) verify the signature over the whole non-envelope body and gate
+acceptance **only** on the schema string — so a *new signed field* verifies additively under `v3`,
+while a *new schema string* is rejected until `ACCEPTED_SCHEMAS` widens. It follows directly that under
+pure-additive `v3` a verifier which checks signature + schema but never reads `relates_to` would
+**accept and ignore** a `supersedes`/`revokes` edge — silently treating superseded or revoked data as
+current. For a validity-affecting field that is the dangerous case. A schema bump instead makes such a
+verifier **fail closed** — it rejects `v4` at the schema check — rather than fail silent.
 
-Consequence for rollout (expand-contract, spike P0.3): every consumer MUST widen `ACCEPTED_SCHEMAS`
-to include `v4` **and** implement §1.3 traversal **before** the issuer emits any `v4` attestation.
-Reference verifier leads; `@geiant/core` and the read surface follow; issuance is last.
+Consequence for rollout (expand-contract): because a `v3` consumer rejects `v4` at the schema check,
+emitting `v4` before consumers accept it would make every un-updated consumer reject legitimate
+attestations. So every consumer MUST widen `ACCEPTED_SCHEMAS` to include `v4` **and** implement §1.3
+traversal **before** the issuer emits any `v4` attestation. Reference verifier leads; `@geiant/core`
+and the read surface follow; issuance is last.
 
 ### 2.4 Why every new field is in the signed body
 
@@ -363,7 +380,10 @@ versioning event.
 ## 3. Revocation
 
 Revocation is expressed as a **`revokes` edge** (§1) **plus** an **enforcement index** — not one or
-the other (0004; spike Finding 2).
+the other. [0004](../decisions/0004-no-identity-continuity-across-rotation.md)'s decision already draws
+this two-surface distinction (the edge is the signed record; discovering *current* revocation stays a
+liveness query against `geiant#9`'s `agent_registry.revoked_at`), and it follows from first principles
+about append-only chains, as the bullets below derive.
 
 - **The edge is the record.** A `revokes` edge is the signed, attributable, offline-auditable record
   *that a revocation happened* and who asserted it. It is retained forever (append-only).
@@ -424,11 +444,13 @@ Not B-dependent (stated to bound the blast radius): the **`continues` signer = F
 
 ## 5. The `continues` ceremony
 
-Still undesigned and load-bearing (0004; spike Finding 3). The schema question is solved — a
-`continues` edge is a **Foundation-issued attestation signed by the stable, custody-held issuer
-key**, which breaks the 0004↔0005 loop from the 0004 side — for **signing** (no dependency on a
-stable *agent* principal to produce the signature; the authority dependency is a separate matter,
-§5.2). The cost moved from schema to **ceremony**: *how does the Foundation determine that B
+Still undesigned and load-bearing ([0004](../decisions/0004-no-identity-continuity-across-rotation.md),
+[0005](../decisions/0005-custody-managed-principals.md)). The schema question is solved — 0004's
+decision adopts a `continues` edge that is a **Foundation-issued attestation signed by the stable,
+custody-held issuer key**, which breaks the 0004↔0005 loop (0005 records the loop: a `continues` edge
+wants a signer that outlives the rotated key → a stable principal → 0005, blocked on 0004) from the
+0004 side — for **signing** (no dependency on a stable *agent* principal to produce the signature; the
+authority dependency is a separate matter, §5.2). The cost moved from schema to **ceremony**: *how does the Foundation determine that B
 continues A?* This section drafts it, using the 2026-08-31 rotation as the concrete test case.
 
 ### 5.1 The concrete pair
