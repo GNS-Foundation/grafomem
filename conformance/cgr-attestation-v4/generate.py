@@ -194,7 +194,9 @@ V("T1-unknown-type", "§1.3", "178-184",
 # fingerprint cycle cannot arise (§1.3), so these represent the corrupt/tampered state
 # the verifier MUST detect. We index ledger entries by the hashes the edges reference.
 def cycle_pair(kind_a, kind_b):
-    hA, hB = "cyc" + "a" * 61, "cyc" + "b" * 61          # 64-hex-ish labels the edges point at
+    # Legible VALID 64-hex placeholder targets (must be hex per §1.1 malformed-hash rule):
+    # "cc" = cycle; 0a / 0b = the two nodes. Distinct, deterministic, byte-stable.
+    hA, hB = "cc0a".ljust(64, "0"), "cc0b".ljust(64, "0")
     A = att(SK, relates_to=[{"type": kind_a, "target": {"kind": "attestation", "hash_alg": "blake2b-256", "hash": hB}}])
     B = att(SK2, relates_to=[{"type": kind_b, "target": {"kind": "attestation", "hash_alg": "blake2b-256", "hash": hA}}])
     return A, B, {hA: A, hB: B}
@@ -238,7 +240,7 @@ def deep_chain(kind, length):
         if nxt_hash is not None:
             rel = [{"type": kind, "target": {"kind": "attestation", "hash_alg": "blake2b-256", "hash": nxt_hash}}]
         node = att(f"{i:02x}" * 32, relates_to=rel)
-        h = f"deep{i:03d}".ljust(64, "0")
+        h = f"de{i:04d}".ljust(64, "0")   # legible valid hex: "de"=depth, 0001..0065 = chain index
         ledger[h] = node
         nxt_hash = h
     subject = att(SK, relates_to=[{"type": kind, "target": {"kind": "attestation", "hash_alg": "blake2b-256", "hash": nxt_hash}}])
@@ -269,7 +271,7 @@ VECTORS.append({"id": "T7b-revokes-depth", "clause": "§1.3", "spec_lines": "204
 V("T8-continues-unreachable", "§1.3", "230-239",
   "continues with unreachable predecessor -> VALID subject + lineage_status=truncated_unavailable (NOT anomaly_cycle)",
   att(SK, relates_to=[{"type": "continues",
-                       "target": {"kind": "attestation", "hash_alg": "blake2b-256", "hash": "unreachable".ljust(64, "0")}}]),
+                       "target": {"kind": "attestation", "hash_alg": "blake2b-256", "hash": "dead".ljust(64, "0")}}]),
   {"valid": True, "lineage_status": "truncated_unavailable"})   # empty ledger
 
 # T9 / T10 continues signer.
@@ -301,12 +303,12 @@ V("T11-target-of-held-supersede", "§1.3", "240-246",
 V("T12-supersedes-unreachable", "§1.3", "247-249",
   "a superseder whose target is unreachable -> superseder stays VALID (MUST NOT reject it)",
   att(SK, relates_to=[{"type": "supersedes",
-                       "target": {"kind": "attestation", "hash_alg": "blake2b-256", "hash": "unreachable".ljust(64, "0")}}]),
+                       "target": {"kind": "attestation", "hash_alg": "blake2b-256", "hash": "dead".ljust(64, "0")}}]),
   {"valid": True})
 V("T14-revokes-unreachable", "§1.3/§3", "251-253",
   "a revoker whose target is unreachable -> revoker stays VALID (revocation claim stands; target not present to refuse)",
   att(SK, relates_to=[{"type": "revokes",
-                       "target": {"kind": "attestation", "hash_alg": "blake2b-256", "hash": "unreachable".ljust(64, "0")}}]),
+                       "target": {"kind": "attestation", "hash_alg": "blake2b-256", "hash": "dead".ljust(64, "0")}}]),
   {"valid": True})
 
 # ── cert-target vector (geiant#13; target.hash = sha-256 cert_hash) ───────────

@@ -101,13 +101,21 @@ def test_corpus_wellformed():
 # ── Layer 2: run vectors against a v4 verifier (skips when none is wired) ─────
 
 def _verifier():
+    # CGR_V4_VERIFIER may be an importable module name OR a path to a .py file
+    # (e.g. the conformance bridge at conformance/cgr-attestation-v4/verify_bridge.py).
     mod = os.environ.get("CGR_V4_VERIFIER")
     if not mod:
         return None
     try:
+        if mod.endswith(".py") or os.sep in mod:
+            import importlib.util
+            spec = importlib.util.spec_from_file_location("_cgr_v4_verifier", mod)
+            m = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(m)
+            return m
         return importlib.import_module(mod)
     except Exception as e:  # pragma: no cover
-        pytest.fail(f"CGR_V4_VERIFIER={mod} not importable: {e}")
+        pytest.fail(f"CGR_V4_VERIFIER={mod} not loadable: {e}")
 
 
 _FIXED = [v for v in _load()["vectors"] if v.get("pending") != "0006B"]

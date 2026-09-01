@@ -12,7 +12,17 @@ tests-before-verifier (P1.1 spec → P1.2 behaviour → **P1.3 corpus** → P1.4
   `0x22` — **not real keys**). Reuses the production canonicalization so vector bytes match a real
   verifier's. Regenerate: `python3 conformance/cgr-attestation-v4/generate.py`.
 - **`issuer.json`** — the pinned test pubkeys.
+- **`verify_bridge.py`** — `CGR_V4_VERIFIER` bridge: drives the reference verifier
+  (`clients/cgr-verify`, JS) from the Python runner.
 - Runner: [`tests/test_v4_conformance.py`](../../tests/test_v4_conformance.py).
+
+**Placeholder target hashes.** Where a target only needs to be a *distinct pointer* (cycle detection,
+depth counting, a deliberately-unresolvable target) rather than a real fingerprint, the generator uses
+**legible valid 64-hex** placeholders: `cc0a…`/`cc0b…` (**c**ycle nodes), `de0001…`–`de0065…`
+(**de**pth chain index), `dead…` (unreachable — absent from the ledger). These MUST be valid lowercase
+hex: §1.1's malformed-hash rule rejects non-hex targets, so a non-hex placeholder would be rejected
+before the traversal logic it exists to test. *(This was caught by implementing the verifier against
+the corpus — see the P1.4 PR.)*
 
 ## Resolution model
 A verifier is given four inputs:
@@ -101,8 +111,14 @@ Verifying these needs issuer-side / process-level conformance, tracked separatel
 ## Running
 ```bash
 pytest tests/test_v4_conformance.py -v          # corpus self-check runs; vectors skip (no verifier)
-CGR_V4_VERIFIER=<module> pytest tests/test_v4_conformance.py -v   # run vectors against a v4 verifier
+
+# run the 33 fixed vectors against the reference verifier (clients/cgr-verify, JS) via the bridge:
+CGR_V4_VERIFIER=conformance/cgr-attestation-v4/verify_bridge.py \
+    pytest tests/test_v4_conformance.py -v
 ```
-The verifier module must expose `verify(subject, ledger, pinned_issuer_hex, held_edges) -> dict`. Until P1.4 wires
-one, the vector layer skips and the **corpus self-check** (structure, signatures, T2≠T8, pending shape)
-runs — so the corpus can't silently rot.
+`CGR_V4_VERIFIER` may be an importable module name **or** a path to a `.py` file exposing
+`verify(subject, ledger, pinned_issuer_hex, held_edges) -> dict`. The bridge shells to
+`clients/cgr-verify/bin/verify-v4.mjs` (needs `node`). Without `CGR_V4_VERIFIER` set, the vector layer
+skips and only the **corpus self-check** (structure, signatures, T2≠T8, pending shape) runs — so CI
+stays green and the corpus can't silently rot. **As of P1.4 the reference verifier passes all 33 fixed
+vectors** (`34 passed` incl. the self-check); `L1`/`L2` remain `pending-0006B` (verdicts unset).
