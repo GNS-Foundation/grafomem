@@ -23,6 +23,7 @@ live in their own repos**; where the two touch, they cross-reference.
 | [0004](0004-no-identity-continuity-across-rotation.md) | No identity-continuity across rotation | **accepted** 2026-08-31 (P0.4 → generic relation edge, v4 bump) |
 | [0005](0005-custody-managed-principals.md) | Custody-managed principals (target design) | proposed — unblocked (0004 resolved) |
 | [0006](0006-enforcement-boundary-for-revocation.md) | Enforcement boundary: what revocation guarantees, and what lies outside it | **accepted** 2026-09-02 (A2 deny-unregistered; B2 rejected; enforce-or-label) — label-non-strippability open |
+| [0007](0007-geiant-core-has-no-reverse-edge-index.md) | @geiant/core has no reverse edge index: enforcing-mode v4 not implementable against its store | proposed 2026-09-01 (finding + absent-entirely; index design & issuance gate open) |
 
 **Resolved at P0.4 (2026-08-31):** 0001, 0002 and 0004 shared one versioning question — how CGR adds
 signed meaning — and it resolved to a **schema bump to `cgr.attestation.v4`**, carrying a generic
