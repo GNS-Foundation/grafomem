@@ -1,6 +1,6 @@
 ---
-status: proposed
-decision_date: "—"
+status: accepted
+decision_date: 2026-09-02
 record_date: 2026-09-01
 provenance: raised-from-implementation (GNS-Foundation/geiant #11, #12, surfaced in the 2026-08-31 rotation)
 scope: two jurisdictions — (implementation) geiant mcp-audit AUDIT_INIT + agent_registry, covering Question A and Question B1/B2; (standard) whether CGR conformance requires enforcement at every consumer, covering Open question 2. See "Scope — two jurisdictions" below.
@@ -8,7 +8,10 @@ scope: two jurisdictions — (implementation) geiant mcp-audit AUDIT_INIT + agen
 
 # 0006 — The enforcement boundary: what revocation guarantees, and what lies outside it
 
-- **Status:** **Proposed** — states the question and options; does not pick one.
+- **Status:** **Accepted** 2026-09-02 — the standard-jurisdiction questions (Question B posture +
+  conformance) are decided; see **Resolution**. **Question A** (implementation — permit vs deny
+  unregistered principals) is **not** decided here and remains open (`GNS-Foundation/geiant#11`), and
+  one **new sub-question** (label non-strippability) is open.
 - **Record date:** 2026-09-01
 
 ## Context
@@ -109,6 +112,44 @@ silent-non-action paths must become **signals**: the ignored `.single()` error, 
 `UPDATE`, and the absent-dependency coverage gap should each fail loudly or be asserted in the
 conformance suite, so the enforcement boundary cannot silently move again.
 
+## Resolution — 2026-09-02
+
+Accepted, scoped to the **standard's revocation posture**. **Question A** (the
+implementation-jurisdiction question — permit vs deny principals absent from `agent_registry`) is
+**not** decided here; it remains an open geiant implementation choice tracked in
+`GNS-Foundation/geiant#11`.
+
+**Q1 — Question B posture: B2 rejected.** "Enforced only at chain-write" is rejected as the standard's
+posture. Under B2, revocation stops being a property of the system and becomes a property of each
+integrator's diligence, and a relying party can infer nothing from a revocation — incompatible with a
+standard whose claim is that an auditor can reconstruct what an agent was authorised to do. B2 remains
+an accurate description of what geiant does **today** — an *is*, not an *ought* — and a poor thing to
+write into the standard.
+
+**Q2 — conformance: enforce-or-label.** A conformant consumer either **enforces** revocation liveness,
+or **declares itself non-enforcing and labels its output accordingly.** The constraint that makes this
+real rather than cosmetic: the label **MUST** be normative, **MUST** propagate with the output, and
+**stripping or failing to propagate it MUST be non-conformant.** Without propagation, a non-enforcing
+consumer's output is re-served one hop downstream unlabeled and B2 returns silently — B2 with extra
+steps, and less honest than B2 itself.
+
+**Q3 — record structure: cross-reference, not subsume.** [0005](0005-custody-managed-principals.md)
+(who may *speak for* an identity), this record (who must *honour* a revocation), and the `v4` edge
+(how it is *expressed*) share a boundary but are separate decisions with separate timelines.
+Cross-link; do not merge — subsuming them makes a decision too large to take.
+
+**New open sub-question (NOT resolved) — how is the non-enforcing label made structurally hard to
+drop?** The label describes the *verifier's mode*, not the attestation, so it **cannot** sit inside
+the attestation's signature. The candidate is a **signed verification result** — the verifier signs
+its own output, carrying the mode — which introduces a **new signed artifact type** and its own key
+management. A `MUST-NOT-strip` rule *alone* is honour-based, and so relies on exactly the integrator
+diligence Q1 rejected. **This needs designing before the label field lands in the spec.**
+
+**Reference-implementation note.** `cgr-verify` as built in `#89` is a **non-enforcing** verifier — it
+honours *held* edges but does **not** seek. Under this resolution the reference implementation should
+become **enforcing**, since whatever the reference does becomes the de facto reading for `@geiant/core`
+and the read surface.
+
 ## Consequences
 
 - **Strict / uniform (A2 + B1):** the strongest guarantee, and a breaking change — new call sites,
@@ -145,11 +186,18 @@ A decides the default for a principal the edge has never named.
 
 ## Open questions
 
-1. Is "enforced only at chain-write" (B2) an acceptable posture for a standard that advertises
-   revocation? What is a relying party entitled to assume "revoked" means?
-2. *(Standard.)* Should **conformance** require enforcement at every consumer, making non-enforcing
-   SDK usage non-conformant — or is enforcement an integrator responsibility the standard only
-   documents?
-3. One record or several? This, [0005](0005-custody-managed-principals.md)'s trusted-principal set,
-   and the v4 revocation edge are three faces of one trust-boundary question. Decide whether 0006
-   subsumes them or cross-references.
+1. ~~Is "enforced only at chain-write" (B2) an acceptable posture…?~~ **RESOLVED 2026-09-02 (Q1)** —
+   no; B2 rejected as the standard's posture. See Resolution.
+2. ~~*(Standard.)* Should conformance require enforcement at every consumer…?~~ **RESOLVED 2026-09-02
+   (Q2)** — enforce-or-label, with a normative **must-propagate** label. See Resolution.
+3. ~~One record or several?~~ **RESOLVED 2026-09-02 (Q3)** — cross-reference, not subsume
+   ([0005](0005-custody-managed-principals.md) speaks-for · this record honours · the `v4` edge
+   expresses).
+4. **(OPEN)** How is the non-enforcing label made structurally hard to drop? It describes the
+   verifier's mode, not the attestation, so it cannot sit in the attestation's signature. Candidate: a
+   **signed verification result** (new signed artifact type + key management). A must-not-strip rule
+   alone is honour-based. **Must be designed before the label field lands in the spec.** (New,
+   2026-09-02.)
+5. **(OPEN — implementation jurisdiction)** Question A — permit vs deny principals absent from
+   `agent_registry`. Not decided by this acceptance; a geiant implementation choice tracked in
+   `GNS-Foundation/geiant#11`.
