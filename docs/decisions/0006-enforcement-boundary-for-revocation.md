@@ -118,20 +118,31 @@ Accepted. All three questions are decided below; one sub-question (label non-str
 open.
 
 **Question A — resolved to A2 (deny unregistered).** An agent absent from `agent_registry` is
-**denied**, not permitted. The current permit behaviour is an **accident**: the outermost `AUDIT_INIT`
-gate destructures only `{ data }` and discards the `.single()` error, so zero rows yields
-`agentRevokedAt = null` and `checkRevocation` returns *allowed* — an agent passes a control designed to
-fail closed because an error is ignored, not because anyone decided unregistered agents are trusted.
-**A1** (lazy provisioning — unlisted principals trusted until listed-and-revoked) remains a coherent
-posture, but it is the weaker one: an unregistered agent bypasses the very table that carries tier,
-trust score, and revocation state. **A2 makes the behaviour chosen**, and is consistent with Q1's
-rejection of enforcement that depends on diligence.
+**denied**, not permitted.
+
+The permit behaviour began as an **accident** — the outermost `AUDIT_INIT` gate destructures only
+`{ data }` and discards the `.single()` error, so zero rows yields `agentRevokedAt = null` and
+`checkRevocation` returns *allowed*: an agent passes a control designed to fail closed because an error
+is ignored. **But it is more than an accident, and the honest account matters.** The middleware also
+carries an **auto-self-registration** — `agent_registry` insert-on-first-sight (`middleware.ts:185–200`),
+which runs *after* the gate. Together these made a specific bootstrap the *intended* flow: **a new
+agent's first op passes the (fail-open) gate, and then its row is created.** So the fail-open was
+**load-bearing for provisioning**, not merely overlooked — which is why A2 is more than a null check.
+
+**A2's real cost is replacing that bootstrap with explicit provisioning.** Denying on a missing row
+means the auto-self-registration can no longer run (the gate refuses the first op before it), so it is
+removed, and a row must exist *before* the first audited op — created by provisioning, not by the
+agent's own first appearance. **A1** (lazy provisioning — unlisted principals trusted until
+listed-and-revoked) remains coherent but is the weaker posture: an unregistered agent bypasses the very
+table that carries tier, trust score, and revocation state. **A2 makes the behaviour chosen**,
+consistent with Q1's rejection of enforcement that depends on diligence.
 
 *Operational consequence (recorded plainly):* provisioning **MUST** guarantee the `agent_registry`
 row exists **before** an agent's first audited op. The 2026-08-31 rotation did **not** satisfy this —
 `d3caa6f1` wrote its first breadcrumb **before** its registry row existed, and under A2 that write
-would have been **refused**. The rotation succeeded only because the control failed open; A2 closes
-that, and the rotation runbook must insert the row before the first op (tracked for the runbook update).
+would have been **refused**. The rotation succeeded only because the control failed open (and the
+auto-self-registration would have created the row after the fact); A2 closes that, and the rotation
+runbook must insert the row before the first op (tracked for the runbook update).
 
 **Q1 — Question B posture: B2 rejected.** "Enforced only at chain-write" is rejected as the standard's
 posture. Under B2, revocation stops being a property of the system and becomes a property of each
