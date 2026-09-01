@@ -32,10 +32,13 @@ A verifier is given four inputs:
   index** a liveness "seek" would consult. Per §1.1, target hashes are **kind-specific**: attestation
   targets → **BLAKE2b-256** of the canonical signed body (the deployed `attestation_fingerprint`);
   delegation-cert targets → **SHA-256** of the canonical cert body (geiant `cert_hash`).
-- **`held_edges`** — edge-records the verifier is **handed** and **MUST honour** against the subject.
-  This is the pivot behind [decision 0006](../../docs/decisions/0006-enforcement-boundary-for-revocation.md)
-  Question B: an edge in `held_edges` is a fixed obligation (T11, T13b); the *same* edge present only in
-  `ledger` (seekable, not handed) is the liveness question whose verdict is B-dependent (L1, L2).
+- **`held_edges`** — edge-records the verifier is **handed** and **MUST honour** against the subject,
+  in **both** modes (T11, T13b).
+- **`mode` + `seek`** — the same edge present only in the `ledger` (not handed) is reached by
+  **`seek`** — a query for edges targeting the subject, run **only in `enforcing` mode** (see Modes &
+  seek below). This is [decision 0006](../../docs/decisions/0006-enforcement-boundary-for-revocation.md)
+  (accepted): held is unconditional; seek is what an enforcing consumer does and a non-enforcing one
+  does not.
 - **`pinned_issuer`** — the Foundation pubkey the verifier pins.
 
 ## Extended `VerifyResult` this corpus assumes
@@ -71,19 +74,22 @@ A verifier is given four inputs:
 | `G1`–`G7` | §2.2 | grounding **gate**: `oracle_id`/`audit_policy` required iff `dimension="grounding"` |
 | `S1`,`S2` | §2.3 | unknown schema → reject; `v4` accepted |
 | `B1` | §2.4 | unsigned `relates_to` → reject (signature fails) |
-| `L1`,`L2` | §3/§4 | **`pending-0006B`** — see below |
+| `L1e`,`L1n` | §3/§4 | revoke edge in ledger (not handed): **enforcing → `valid:false` (revoked)**; **non-enforcing → valid** |
+| `L2e`,`L2n` | §3/§4 | supersede edge in ledger: **enforcing → `superseded`**; **non-enforcing → valid** |
+| `L3` | §3/§4 | **enforcing + seek fails → reject `undeterminable`** (Validity-Fails-Closed; distinct from `revoked`) |
+
+## Modes & seek — 0006 (accepted 2026-09-02)
+Every vector declares a **`mode`**: `enforcing` (the verifier **seeks** edges targeting the subject)
+or `non-enforcing` (it does not). This is the [decision 0006](../../docs/decisions/0006-enforcement-boundary-for-revocation.md)
+enforce-or-label resolution made executable — the `L*` vectors cover **both** modes, and the runner
+exercises each. Seek is an injected query over the `ledger` (the reference harness scans it in-memory;
+a real consumer queries its store). **`L3`** pins the failure verdict: if `seek` throws, an enforcing
+verifier's revocation status is undeterminable and it **rejects** — enforcement must not silently
+degrade to non-enforcement on a query error. *(The output **label** for a declared non-enforcing
+consumer is NOT implemented here — it is gated on 0006's open sub-question about making the label
+structurally hard to drop.)*
 
 ## Held-out, deliberately
-
-### `pending-0006B` — verdicts that flip on 0006 Question B
-`L1` (revoke-liveness) and `L2` (supersede-liveness) present a subject that is valid on its own while a
-`revokes`/`supersedes` edge targeting it exists **in the ledger but is not handed to the verifier**.
-Whether the verifier **MUST seek** that edge before trusting is
-[decision 0006](../../docs/decisions/0006-enforcement-boundary-for-revocation.md) **Question B**
-(uniform vs scoped enforcement), still open. Their `expect` is **`null`**, with a `flips_on` note —
-not a guessed verdict. This is what §4 of the spec was for: **0006 Question B is now a concrete list
-of vectors whose verdicts flip on the answer.** When 0006-B is decided, set their verdicts and drop
-the `pending` marker.
 
 ### Grounding: the **gate**, not the **body**
 `G1`–`G7` test the required-field **gate** — `oracle_id`/`audit_policy` present iff grounding-class
@@ -112,13 +118,13 @@ Verifying these needs issuer-side / process-level conformance, tracked separatel
 ```bash
 pytest tests/test_v4_conformance.py -v          # corpus self-check runs; vectors skip (no verifier)
 
-# run the 33 fixed vectors against the reference verifier (clients/cgr-verify, JS) via the bridge:
+# run all vectors (both modes) against the reference verifier (clients/cgr-verify, JS) via the bridge:
 CGR_V4_VERIFIER=conformance/cgr-attestation-v4/verify_bridge.py \
     pytest tests/test_v4_conformance.py -v
 ```
 `CGR_V4_VERIFIER` may be an importable module name **or** a path to a `.py` file exposing
-`verify(subject, ledger, pinned_issuer_hex, held_edges) -> dict`. The bridge shells to
-`clients/cgr-verify/bin/verify-v4.mjs` (needs `node`). Without `CGR_V4_VERIFIER` set, the vector layer
-skips and only the **corpus self-check** (structure, signatures, T2≠T8, pending shape) runs — so CI
-stays green and the corpus can't silently rot. **As of P1.4 the reference verifier passes all 33 fixed
-vectors** (`34 passed` incl. the self-check); `L1`/`L2` remain `pending-0006B` (verdicts unset).
+`verify(subject, ledger, pinned_issuer_hex, held_edges, mode, seek_fails) -> dict`. The bridge shells
+to `clients/cgr-verify/bin/verify-v4.mjs` (needs `node`). Without `CGR_V4_VERIFIER` set, the vector
+layer skips and only the **corpus self-check** (structure, signatures, T2≠T8, mode coverage) runs — so
+CI stays green and the corpus can't silently rot. **The reference verifier passes all vectors in both
+modes** (`39 passed` incl. the self-check).

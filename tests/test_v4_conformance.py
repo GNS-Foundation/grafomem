@@ -7,13 +7,14 @@ Two layers:
 1. `test_corpus_wellformed` — ALWAYS runs (no verifier needed). Guards the corpus
    itself against rot/regeneration drift: structure, signatures verify against the
    pinned test issuer (T9 against the agent key), the T2≠T8 distinct-`lineage_status`
-   invariant (the #85 amendment), and that pending-0006B vectors carry no verdict.
+   invariant (the #85 amendment), that every vector declares a mode, and that both
+   enforcement modes (0006 enforce-or-label) are exercised.
 
 2. `test_v4_conformance[<vector>]` — runs each vector against a v4 verifier, and
    SKIPS cleanly when none is wired (like test_v3_conformance.py skips without
    GRAFOMEM_DB_URL). Wire a verifier by setting CGR_V4_VERIFIER to an importable
-   module exposing `verify(subject, ledger, pinned_issuer_hex, held_edges) ->
-   {valid, reason?, lineage_status?, superseded?, ...}`. Until P1.4 ships one, this
+   module/path exposing `verify(subject, ledger, pinned_issuer_hex, held_edges, mode,
+   seek_fails) -> {valid, reason?, lineage_status?, superseded?, ...}`. Without it this
    layer skips — the corpus is the executable target the verifier must meet.
 
     pytest tests/test_v4_conformance.py -v
@@ -60,16 +61,12 @@ def test_corpus_wellformed():
     assert len(byid) == len(vs), "duplicate vector ids"
 
     for v in vs:
-        for k in ("id", "clause", "spec_lines", "title", "subject", "ledger",
+        for k in ("id", "clause", "spec_lines", "title", "mode", "subject", "ledger",
                   "held_edges", "pinned_issuer", "expect"):
             assert k in v, f"{v.get('id')}: missing {k}"
         assert isinstance(v["held_edges"], list), f"{v['id']}: held_edges must be a list"
-        pend = v.get("pending")
-        if pend == "0006B":
-            assert v["expect"] is None, f"{v['id']}: pending-0006B must carry NO verdict"
-            assert v.get("flips_on"), f"{v['id']}: pending vector must state flips_on"
-        else:
-            assert v["expect"] is not None and "valid" in v["expect"], f"{v['id']}: fixed verdict required"
+        assert v["mode"] in ("enforcing", "non-enforcing"), f"{v['id']}: mode must be enforcing/non-enforcing"
+        assert v["expect"] is not None and "valid" in v["expect"], f"{v['id']}: verdict required"
 
     # Signatures. Two vectors are DESIGNED not to verify against the pinned issuer:
     #   T9 — agent-signed continues (wrong signer);
@@ -95,7 +92,8 @@ def test_corpus_wellformed():
         "T2 (cycle) and T8 (unreachable) MUST assert distinct lineage_status — see #85"
 
     assert d["vector_count"] == len(vs)
-    assert set(d["pending_0006B"]) == {v["id"] for v in vs if v.get("pending") == "0006B"}
+    # both enforcement modes are exercised by the corpus (0006 enforce-or-label)
+    assert {"enforcing", "non-enforcing"} <= {v["mode"] for v in vs}
 
 
 # ── Layer 2: run vectors against a v4 verifier (skips when none is wired) ─────
@@ -118,15 +116,16 @@ def _verifier():
         pytest.fail(f"CGR_V4_VERIFIER={mod} not loadable: {e}")
 
 
-_FIXED = [v for v in _load()["vectors"] if v.get("pending") != "0006B"]
+_ALL = _load()["vectors"]
 
 
 @pytest.mark.skipif(not os.environ.get("CGR_V4_VERIFIER"),
                     reason="set CGR_V4_VERIFIER=<module with verify()> to run the v4 conformance vectors")
-@pytest.mark.parametrize("vec", _FIXED, ids=[v["id"] for v in _FIXED])
+@pytest.mark.parametrize("vec", _ALL, ids=[v["id"] for v in _ALL])
 def test_v4_conformance(vec):
     verify = _verifier().verify
-    res = verify(vec["subject"], vec["ledger"], vec["pinned_issuer"], vec["held_edges"])
+    res = verify(vec["subject"], vec["ledger"], vec["pinned_issuer"], vec["held_edges"],
+                 vec["mode"], vec.get("seek_fails", False))
     exp = vec["expect"]
     assert res.get("valid") == exp["valid"], f"{vec['id']}: valid mismatch — {res}"
     if "lineage_status" in exp:
@@ -143,6 +142,6 @@ def test_v4_conformance(vec):
 if __name__ == "__main__":
     test_corpus_wellformed()
     d = _load()
-    print(f"corpus OK: {d['vector_count']} vectors "
-          f"({d['vector_count'] - len(d['pending_0006B'])} fixed, "
-          f"{len(d['pending_0006B'])} pending-0006B)")
+    enf = sum(1 for v in d["vectors"] if v["mode"] == "enforcing")
+    non = sum(1 for v in d["vectors"] if v["mode"] == "non-enforcing")
+    print(f"corpus OK: {d['vector_count']} vectors ({enf} enforcing, {non} non-enforcing)")

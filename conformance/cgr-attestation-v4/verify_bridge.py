@@ -10,10 +10,11 @@ _HERE = pathlib.Path(__file__).resolve().parent
 _CLI = _HERE.parent.parent / "clients" / "cgr-verify" / "bin" / "verify-v4.mjs"
 
 
-def verify(subject, ledger, pinned_issuer_hex, held_edges=()):
+def verify(subject, ledger, pinned_issuer_hex, held_edges=(), mode=None, seek_fails=False):
     payload = json.dumps({
         "subject": subject, "ledger": ledger,
         "pinned_issuer": pinned_issuer_hex, "held_edges": list(held_edges or []),
+        "mode": mode, "seek_fails": bool(seek_fails),
     })
     out = subprocess.run(
         ["node", str(_CLI)], input=payload, capture_output=True, text=True, timeout=30,
