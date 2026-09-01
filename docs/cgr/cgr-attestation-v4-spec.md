@@ -363,13 +363,30 @@ and the read surface follow; issuance is last.
 ### 2.4 Why every new field is in the signed body
 
 0002 (for `decision_date`) and 0004 Q1 (for the edge) both ask "signed body or envelope?" and both
-say the answer should be the same. **This spec answers: signed body, for all of them.** `[FLAG]` A
-validity-affecting relation carried in the *envelope* would be **unsigned and therefore forgeable** —
-an attacker could strip a `revokes` edge or forge a `continues`. An edge whose entire purpose is to
-change how a relying party treats an identity cannot live outside the signature. The same logic makes
-`decision_date`/`backfilled` signed (temporal provenance a supervisor may examine must be
-tamper-evident, per 0002's "first-class" requirement). This resolves the shared open question
-consistently rather than per-field.
+say the answer should be the same. **This spec answers: signed body, for all of them** — and the wire
+format makes that the *only* representable answer, which is stronger than a rule against a threat.
+
+**What the format guarantees.** The wire is flat: the signed body is **every** top-level key except
+the two envelope keys `{signature, evidence_ref}`, and the signature is Ed25519 over the JCS-canonical
+bytes of exactly that body (§0). There is no third location. So a field like `relates_to` is either
+**inside the signed body** — covered by the signature — or it is a bare top-level key that a verifier
+**re-canonicalizes into the body anyway**, which makes the signature **fail**. There is no such thing
+as an `relates_to` that is present but unsigned-and-accepted: the format **forecloses** it. An
+"envelope-carried edge" is therefore not *forgeable-but-rejected* — it is **unrepresentable**: adding
+`relates_to` to a signed attestation breaks the signature, and stripping a signed `relates_to` breaks
+it too. Tamper-evidence for a validity-affecting relation is a **property of the wire**, not a check a
+verifier must remember to run.
+
+The conformance corpus demonstrates this directly: vector **`B1`** carries a `relates_to` added after
+signing; a verifier re-canonicalizing the full non-envelope body gets a signature mismatch and rejects
+(`valid: false`), with no edge-specific logic involved.
+
+**Why signed-body is nonetheless the deliberate choice** (not merely the one the format allows): a
+relation whose entire purpose is to change how a relying party treats an identity must be
+tamper-evident, and putting it in the signed body is what makes the format guarantee above hold. The
+same reasoning makes `decision_date`/`backfilled` signed — temporal provenance a supervisor may
+examine must be tamper-evident, per 0002's "first-class" requirement. This resolves 0002's and 0004
+Q1's shared question consistently rather than per-field.
 
 ### 2.5 `[OPEN]` — domain and relation vocabulary: fixed enum vs open
 
