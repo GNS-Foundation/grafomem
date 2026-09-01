@@ -35,3 +35,38 @@ export declare function verifyCGRAttestation(
   pinnedIssuerPubKeyHex: string,
   opts?: VerifyOptions,
 ): Promise<VerifyResult>;
+
+// ── cgr.attestation.v4 ──────────────────────────────────────────────────────
+export declare const V4_SCHEMA: string;
+export declare const GROUNDING_DIMENSIONS: Set<string>;
+
+export type LineageStatus =
+  | 'complete' | 'truncated_unavailable' | 'truncated_depth' | 'anomaly_cycle';
+
+export interface V4Ledger {
+  attestations?: Record<string, Record<string, unknown>>;
+  delegation_certs?: Record<string, Record<string, unknown>>;
+}
+
+export interface VerifyResultV4 extends VerifyResult {
+  /** §1.3 lineage signal (present when the subject carries a `continues` edge).
+   *  snake_case to match the conformance corpus `expect` keys. */
+  lineage_status?: LineageStatus;
+  /** True when a HELD `supersedes` edge targets the subject: valid but not current. */
+  superseded?: boolean;
+}
+
+/** BLAKE2b-256 fingerprint of an attestation's canonical signed body (§1.1). */
+export declare function attestationFingerprint(att: Record<string, unknown>): string;
+
+/**
+ * Verify a cgr.attestation.v4 attestation offline.
+ * `heldEdges` are edge-records HANDED to the verifier (MUST honour); seek behaviour is
+ * out of scope (decision 0006 Question B).
+ */
+export declare function verifyCGRAttestationV4(
+  subject: Record<string, unknown>,
+  ledger: V4Ledger,
+  pinnedIssuerPubKeyHex: string,
+  heldEdges?: Array<Record<string, unknown>>,
+): Promise<VerifyResultV4>;

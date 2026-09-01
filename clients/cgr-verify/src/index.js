@@ -9,6 +9,8 @@
 //   2. Ed25519 is over the raw canonical bytes — do not pre-hash.
 import canonicalize from 'canonicalize';
 import * as ed from '@noble/ed25519';
+import { blake2b } from '@noble/hashes/blake2b';
+import { bytesToHex } from '@noble/hashes/utils';
 
 export const CGR_ISSUER = 'gns-foundation';
 export const ACCEPTED_SCHEMAS = new Set([
@@ -86,4 +88,165 @@ export async function verifyCGRAttestation(att, pinnedIssuerPubKeyHex, opts = {}
     lastResolvedAt: att.last_resolved_at,
     schema: att.schema,
   };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// cgr.attestation.v4 — relation edges, traversal, grounding gate, held edges.
+// See docs/cgr/cgr-attestation-v4-spec.md and conformance/cgr-attestation-v4/.
+// v3 verification above is UNCHANGED; v4 is a separate entry point.
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const V4_SCHEMA = 'cgr.attestation.v4';
+export const GROUNDING_DIMENSIONS = new Set(['grounding']);   // §2.2 (pinned)
+const REL_TYPES = new Set(['continues', 'supersedes', 'revokes']);
+const VALIDITY_TYPES = new Set(['supersedes', 'revokes']);
+const HASH_ALG_FOR_KIND = { attestation: 'blake2b-256', delegation_cert: 'sha-256' };
+const HEX64 = /^[0-9a-f]{64}$/;
+const MAX_DEPTH = 64;                                          // §1.3 (the pinned floor)
+
+/** BLAKE2b-256 fingerprint of an attestation's canonical signed body (§1.1). */
+export function attestationFingerprint(att) {
+  return bytesToHex(blake2b(canonCGRBody(att), { dkLen: 32 }));
+}
+
+async function _sigOk(att, pinnedIssuerHex) {
+  if (typeof att.signature !== 'string' || att.signature.length !== 128) return false;
+  try { return await ed.verifyAsync(att.signature, canonCGRBody(att), pinnedIssuerHex); }
+  catch { return false; }
+}
+
+function _resolve(target, ledger) {
+  const map = target.kind === 'attestation'
+    ? (ledger && ledger.attestations) || {}
+    : (ledger && ledger.delegation_certs) || {};
+  return Object.prototype.hasOwnProperty.call(map, target.hash) ? map[target.hash] : null;
+}
+
+// Cross-type DFS over the subject's relates_to edges (§1.3), applying the governing
+// principle: lineage-only (continues) degrades; validity-affecting (supersedes/revokes)
+// fails closed. Returns { reject?: reason, lineage_status?: state }.
+function _traverse(subject, ledger) {
+  const res = { reject: null, lineage_status: null };
+  let sawContinues = false;
+  function dfs(node, pathKeys, pathTypes, depth) {
+    const edges = Array.isArray(node.relates_to) ? node.relates_to : [];
+    for (const e of edges) {
+      if (res.reject) return;
+      const typ = e.type;
+      const key = e.target.kind + ':' + e.target.hash;
+      const idx = pathKeys.indexOf(key);
+      if (idx !== -1) {                                   // cycle
+        const loop = pathTypes.slice(idx).concat([typ]);
+        if (loop.some((t) => VALIDITY_TYPES.has(t)))
+          res.reject = 'supersedes/revokes chain contains a cycle';
+        else
+          res.lineage_status = 'anomaly_cycle';
+        return;
+      }
+      if (depth + 1 > MAX_DEPTH) {                        // depth bound
+        const path = pathTypes.concat([typ]);
+        if (path.some((t) => VALIDITY_TYPES.has(t)))
+          res.reject = 'chain exceeds the traversal depth bound';
+        else
+          res.lineage_status = 'truncated_depth';
+        return;
+      }
+      if (typ === 'continues') sawContinues = true;
+      const target = _resolve(e.target, ledger);
+      if (target === null) {                              // unreachable target
+        if (typ === 'continues' && !res.lineage_status)
+          res.lineage_status = 'truncated_unavailable';
+        continue;                                         // supersedes/revokes unreachable → no effect
+      }
+      dfs(target, pathKeys.concat([key]), pathTypes.concat([typ]), depth + 1);
+      if (res.reject) return;
+    }
+  }
+  dfs(subject, [], [], 0);
+  if (!res.reject && sawContinues && !res.lineage_status) res.lineage_status = 'complete';
+  return res;
+}
+
+/**
+ * Verify a cgr.attestation.v4 attestation offline.
+ * @param subject       the attestation under evaluation
+ * @param ledger        { attestations: {hash:att}, delegation_certs: {hash:cert} } — resolution context
+ * @param pinnedIssuer  Foundation pubkey (hex) to pin
+ * @param heldEdges     edge-records handed to the verifier (MUST honour); seek behaviour is NOT here (0006-B)
+ * Returns { valid, reason?, lineage_status?, superseded?, ...fields }.
+ */
+export async function verifyCGRAttestationV4(subject, ledger, pinnedIssuer, heldEdges = []) {
+  const fail = (reason) => ({ valid: false, reason });
+  if (!subject || typeof subject !== 'object') return fail('no attestation');
+  if (!pinnedIssuer) return fail('no pinned issuer key (fail closed)');
+  if (subject.schema !== V4_SCHEMA) return fail(`unsupported schema: ${subject.schema}`);
+  if (subject.issuer !== CGR_ISSUER) return fail(`issuer mismatch: ${subject.issuer}`);
+  if (subject.issuer_key_id !== pinnedIssuer) return fail('issuer_key_id does not equal the pinned key');
+  if (typeof subject.subject_key === 'string' && subject.subject_key === subject.issuer_key_id)
+    return fail('subject_key equals issuer_key_id (neutrality violation)');
+
+  // signature over the JCS-canonical signed body (relates_to IS in the body → catches B1, T9)
+  if (!(await _sigOk(subject, pinnedIssuer))) return fail('signature verification failed');
+
+  // grounding gate (§2.2): oracle_id/audit_policy required iff dimension ∈ GROUNDING_DIMENSIONS
+  const isGrounding = GROUNDING_DIMENSIONS.has(subject.dimension);
+  if (isGrounding) {
+    if (subject.oracle_id === undefined) return fail('grounding attestation missing oracle_id');
+    if (subject.audit_policy === undefined) return fail('grounding attestation missing audit_policy');
+  } else {
+    if (subject.oracle_id !== undefined) return fail('non-grounding attestation must not carry oracle_id');
+    if (subject.audit_policy !== undefined) return fail('non-grounding attestation must not carry audit_policy');
+    if (subject.n_unresolvable !== undefined) return fail('non-grounding attestation must not carry n_unresolvable');
+  }
+
+  // relates_to: per-edge validation (§1.1) — type, kind, per-kind hash_alg, hash format
+  const edges = Array.isArray(subject.relates_to) ? subject.relates_to : [];
+  for (const e of edges) {
+    if (!e || !REL_TYPES.has(e.type)) return fail(`unrecognized relation type: ${e && e.type}`);
+    const t = e.target;
+    if (!t || !Object.prototype.hasOwnProperty.call(HASH_ALG_FOR_KIND, t.kind))
+      return fail(`invalid target kind: ${t && t.kind}`);
+    if (t.hash_alg !== HASH_ALG_FOR_KIND[t.kind])
+      return fail(`hash_alg ${t.hash_alg} invalid for kind ${t.kind}`);
+    if (typeof t.hash !== 'string' || !HEX64.test(t.hash))
+      return fail(`malformed target hash for ${t.hash_alg}`);
+  }
+  // multiplicity (§1.1): exact duplicate → reject; >1 continues → reject
+  const seen = new Set();
+  for (const e of edges) {
+    const k = e.type + '|' + e.target.hash;
+    if (seen.has(k)) return fail('duplicate {type,target} edge');
+    seen.add(k);
+  }
+  if (edges.filter((e) => e.type === 'continues').length > 1)
+    return fail('more than one continues edge (>1 lineage predecessor)');
+
+  // traversal (§1.3)
+  const tr = _traverse(subject, ledger);
+  if (tr.reject) return fail(tr.reject);
+
+  // held edges (§1.3/§3): honour edges HANDED to us that target the subject. No seek (0006-B).
+  let superseded = false;
+  const subjFp = attestationFingerprint(subject);
+  for (const he of (heldEdges || [])) {
+    if (!he || he.issuer !== CGR_ISSUER) continue;
+    if (!(await _sigOk(he, pinnedIssuer))) continue;      // only a Foundation-signed held edge binds
+    for (const e of (Array.isArray(he.relates_to) ? he.relates_to : [])) {
+      if (e.target && e.target.kind === 'attestation' && e.target.hash === subjFp) {
+        if (e.type === 'revokes') return fail('subject is revoked by a held edge');
+        if (e.type === 'supersedes') superseded = true;
+      }
+    }
+  }
+
+  const out = {
+    valid: true,
+    subjectKey: subject.subject_key,
+    dimension: subject.dimension,
+    score: subject.cgr_score,
+    schema: subject.schema,
+  };
+  if (tr.lineage_status) out.lineage_status = tr.lineage_status;
+  if (superseded) out.superseded = true;
+  return out;
 }

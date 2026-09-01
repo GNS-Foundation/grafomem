@@ -5,14 +5,36 @@
   "type": "module",
   "main": "src/index.js",
   "types": "src/index.d.ts",
-  "exports": { ".": { "types": "./src/index.d.ts", "import": "./src/index.js" } },
-  "files": ["src", "README.md"],
-  "scripts": { "test": "node test/verify.test.mjs" },
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "import": "./src/index.js"
+    }
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node test/verify.test.mjs"
+  },
   "dependencies": {
     "@noble/ed25519": "^2.1.0",
+    "@noble/hashes": "^1.8.0",
     "canonicalize": "^2.0.0"
   },
   "license": "MIT",
-  "keywords": ["cgr", "attestation", "ed25519", "jcs", "rfc8785", "reputation", "verify"],
-  "repository": { "type": "git", "url": "https://github.com/GNS-Foundation/grafomem" }
+  "keywords": [
+    "cgr",
+    "attestation",
+    "ed25519",
+    "jcs",
+    "rfc8785",
+    "reputation",
+    "verify"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/GNS-Foundation/grafomem"
+  }
 }
