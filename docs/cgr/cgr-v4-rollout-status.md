@@ -69,8 +69,9 @@ Two things decouple from the rest and deserve to be read first:
 > source. In-repo green **does not reach past the repo boundary**: an external tenant on a v3-capable
 > published version will **reject** every `v4` attestation at the schema check. So a published,
 > v4-capable `@gns-foundation/cgr-verify` is a hard precondition for **any** v4 emission — including the
-> `continues`-only path above — and it is **independent of the reverse index**. Expand-contract remains
-> **incomplete** until it is published.
+> `continues`-only path above — and it is **independent of the reverse index**. Expand-contract was
+> **incomplete** until it was published — **now done** (item 8 below): `@gns-foundation/cgr-verify@0.2.0`
+> is live on npm and consumer-verified from a clean install.
 
 ### Hard blockers
 
@@ -109,7 +110,14 @@ Two things decouple from the rest and deserve to be read first:
 
 ### Ecosystem readiness (expand-contract completion)
 
-8. **Publish the v4-capable `@gns-foundation/cgr-verify`** so *external* tenant consumers can verify v4
-   before emission — in-repo-green isn't enough (see callout above).
+8. **✅ DONE — Publish the v4-capable `@gns-foundation/cgr-verify`** so *external* tenant consumers can
+   verify v4 before emission (in-repo-green isn't enough; see callout above). **Published
+   `@gns-foundation/cgr-verify@0.2.0` on 2026-09-02** — tarball sha
+   `7b75f5267e516d9259698a70c6dedd9a5eeae149`, 9 files / 13.6 kB. **Consumer-verified from a clean
+   directory outside the repo**: `npm install @gns-foundation/cgr-verify@0.2.0` → the installed
+   package's own `npm test` runs both suites (18 v3 golden + 10 v4 smoke), and `verifyCGRAttestationV4`
+   is importable and callable *by package name* (a minted v4 attestation verifies `valid: true`; the
+   required-`mode` contract throws for the consumer). The requirement text is kept above the status on
+   purpose — what was needed matters as much as that it's done.
 9. **Confirm no other consumer schema-gates v4** — cloud-v2 is display-only (renders as-attested) so it
    should tolerate v4, but verify it doesn't reject/mis-parse the new fields before flipping emission.
