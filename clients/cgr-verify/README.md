@@ -134,7 +134,11 @@ Golden fixtures for cross-language parity: [`fixtures/`](https://github.com/GNS-
 ```bash
 npm test
 ```
-Verifies the golden fixtures (incl. JS↔Python JCS parity), every-field tamper detection, wrong-key rejection, v2 backward-compat, and identity binding.
+Runs two suites:
+- **v1/v2/v3** (`test/verify.test.mjs`) — the golden fixtures (incl. JS↔Python JCS parity), every-field tamper detection, wrong-key rejection, v2 backward-compat, and identity binding.
+- **v4 smoke** (`test/smoke.v4.test.mjs`) — a self-contained, fixture-free check that the shipped v4 code runs: both modes, a held `revokes` (fail), a `continues` `lineage_status`, and `seek` throwing → fail closed.
+
+The v4 smoke test is a **smoke test, not the contract** — it proves the shipped code runs, it is not exhaustive. The authoritative, exhaustive definition is the [conformance corpus](https://github.com/GNS-Foundation/grafomem/tree/main/conformance/cgr-attestation-v4) (38 vectors, both modes); if the two ever disagree, the corpus wins.
 
 ## Guarantees / non-goals
 

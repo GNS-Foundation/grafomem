@@ -1,0 +1,110 @@
+// SMOKE TEST for cgr.attestation.v4 — run: npm test
+//
+// Proves the SHIPPED code runs and the headline v4 paths work end to end:
+//   1. non-enforcing mode (clean subject verifies)
+//   2. enforcing mode with a seek that finds nothing (still valid)
+//   3. a HELD `revokes` edge targeting the subject → valid:false
+//   4. a `continues` edge → lineage_status
+//   5. `seek` that THROWS in enforcing mode → fails closed (Validity-Fails-Closed)
+//   6. `mode` is required — omitting it throws (no silent default)
+//
+// Self-contained and FIXTURE-FREE: mints attestations in-test from a known seed (no golden files),
+// so it runs from an installed package as well as from the repo.
+//
+// ── THIS IS A SMOKE TEST, NOT THE CONTRACT ──────────────────────────────────────────────────
+// It checks that the code runs and the headline paths behave; it is NOT exhaustive. The
+// authoritative, exhaustive definition of v4 verification is the 38-vector conformance corpus at
+// conformance/cgr-attestation-v4/ (both modes). If this file and the corpus ever disagree, the
+// CORPUS WINS. Do not grow this into a second corpus, and do not mistake it for the spec.
+// ────────────────────────────────────────────────────────────────────────────────────────────
+
+import assert from 'node:assert/strict';
+import * as ed from '@noble/ed25519';
+import { verifyCGRAttestationV4, canonCGRBody, attestationFingerprint } from '../src/index.js';
+
+let passed = 0;
+const ok = (name, cond) => { assert.ok(cond, name); console.log('  ✓', name); passed++; };
+const hex = (b) => Buffer.from(b).toString('hex');
+
+// Known seed → deterministic Foundation issuer key. TEST-ONLY; not a real key.
+const ISSUER_PRIV = new Uint8Array(32).fill(1);
+const ISSUER_PUB = hex(await ed.getPublicKeyAsync(ISSUER_PRIV));
+const SUBJECT_KEY = 'ab'.repeat(32); // distinct from the issuer (neutrality invariant)
+
+// Mint a Foundation-signed v4 attestation from a partial body (Ed25519 over the JCS signed body).
+async function mint(extra = {}) {
+  const body = {
+    schema: 'cgr.attestation.v4',
+    issuer: 'gns-foundation',
+    issuer_key_id: ISSUER_PUB,
+    subject_key: SUBJECT_KEY,
+    subject_did: 'did:key:zSmokeTest',
+    agent_handle: 'smoke@test',
+    dimension: 'receivables', // non-grounding → oracle_id/audit_policy MUST be absent
+    cgr_score: 0.5,
+    confidence: 4.0,
+    n_resolved: 8,
+    capability_tier: 0.5,
+    as_of: '2026-01-01T00:00:00Z',
+    last_resolved_at: '2026-01-01T00:00:00Z',
+    scoring_scope: 'pooled',
+    requested_domain: null,
+    domain_n_resolved: null,
+    rationale: 'smoke',
+    domain: 'deploy',
+    verifiability_tag: 'judgment',
+    decision_date: '2026-01-01',
+    recorded_at: '2026-01-01',
+    backfilled: false,
+    ...extra,
+  };
+  const signature = hex(await ed.signAsync(canonCGRBody(body), ISSUER_PRIV));
+  return { ...body, signature, evidence_ref: null };
+}
+
+const subject = await mint();
+
+// 1. non-enforcing: a clean subject verifies.
+const rn = await verifyCGRAttestationV4(subject, {}, ISSUER_PUB, { mode: 'non-enforcing' });
+ok('non-enforcing: clean subject valid', rn.valid === true);
+ok('non-enforcing: schema echoed', rn.schema === 'cgr.attestation.v4');
+
+// 2. enforcing with a seek that finds nothing: still valid.
+const re = await verifyCGRAttestationV4(subject, {}, ISSUER_PUB, { mode: 'enforcing', seek: async () => [] });
+ok('enforcing: no edges found → valid', re.valid === true);
+
+// 3. a HELD revokes edge targeting the subject → valid:false, reason distinct from a bad signature.
+const subjFp = attestationFingerprint(subject);
+const revokeEdge = await mint({
+  subject_key: 'cd'.repeat(32),
+  relates_to: [{ type: 'revokes', target: { kind: 'attestation', hash_alg: 'blake2b-256', hash: subjFp } }],
+});
+const rr = await verifyCGRAttestationV4(subject, {}, ISSUER_PUB, { mode: 'non-enforcing', heldEdges: [revokeEdge] });
+ok('held revokes → invalid', rr.valid === false);
+ok('held revokes → reason mentions revoked', /revoked/i.test(rr.reason || ''));
+
+// 4. a continues edge whose predecessor is in the ledger → lineage_status 'complete'.
+const predecessor = await mint({ subject_key: 'ef'.repeat(32) });
+const predFp = attestationFingerprint(predecessor);
+const withLineage = await mint({
+  relates_to: [{ type: 'continues', target: { kind: 'attestation', hash_alg: 'blake2b-256', hash: predFp } }],
+});
+const rc = await verifyCGRAttestationV4(
+  withLineage, { attestations: { [predFp]: predecessor } }, ISSUER_PUB, { mode: 'non-enforcing' },
+);
+ok('continues (resolved) → valid', rc.valid === true);
+ok('continues (resolved) → lineage_status complete', rc.lineage_status === 'complete');
+
+// 5. seek THROWS in enforcing mode → fail closed.
+const rf = await verifyCGRAttestationV4(subject, {}, ISSUER_PUB, {
+  mode: 'enforcing', seek: async () => { throw new Error('store down'); },
+});
+ok('seek throws → invalid (fail closed)', rf.valid === false);
+ok('seek throws → "revocation status undeterminable"', /revocation status undeterminable/i.test(rf.reason || ''));
+
+// 6. mode is required — omitting it throws (no silent default).
+let threw = false;
+try { await verifyCGRAttestationV4(subject, {}, ISSUER_PUB, {}); } catch (e) { threw = e instanceof TypeError; }
+ok('missing mode → TypeError (no silent default)', threw);
+
+console.log(`\n${passed} v4 smoke checks passed`);
