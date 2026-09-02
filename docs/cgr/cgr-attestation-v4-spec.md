@@ -68,7 +68,10 @@ it closes grounding."
   { "type": "continues" | "supersedes" | "revokes",
     "target": { "kind": "attestation" | "delegation_cert",
                 "hash_alg": "blake2b-256" | "sha-256",   // MUST match `kind` — see below
-                "hash": "<hex>" } }
+                "hash": "<hex>" },
+    "evidence_tier": "custody_record" | "issuer_records" | "operator_verification"
+                                                 // REQUIRED on `continues`; MUST be absent otherwise — see "Evidence tier" below
+  }
 ]
 ```
 
@@ -125,6 +128,56 @@ So: `continues` is singular; `supersedes`/`revokes` may repeat across distinct t
 call — a reviewer who wants "one target per attestation, always" can tighten it, at the cost of
 forcing N attestations to revoke N certs. It is allowed here because a batch revocation is a single
 authorized decision and splitting it loses that atomicity in the record.
+
+**Evidence tier — what substantiated a `continues` edge (normative).** The §5.3 ceremony weighs
+evidence of the operator's authority over the predecessor, "in descending strength" (§5.3.2), but the
+*emitted* edge has carried no record of **which** tier it rested on — so a custody-anchored `continues`
+and an operator-asserted one are indistinguishable to a verifier. `evidence_tier` closes that: it
+records, in the signed body, which authority tier substantiated the edge.
+
+- **Closed, normative vocabulary**, values 1:1 with the §5.3.2 tiers, ordered by **descending
+  strength**:
+
+  | `evidence_tier` | §5.3.2 | meaning |
+  |---|---|---|
+  | `custody_record` | (a) | a pre-existing custody / hand-off record naming the predecessor's controller (the [0005](../decisions/0005-custody-managed-principals.md) direction) |
+  | `issuer_records` | (b) | the Foundation's **administrative** records for the predecessor (registry row, cert row, breadcrumbs) — see the §5.3.2 correction; this is *not* a Foundation attestation of the predecessor |
+  | `operator_verification` | (c) | an out-of-band operator-identity verification (the human/entity) |
+
+  The set is **closed per schema string** (extendable only by a versioning event, exactly like the
+  relation vocabulary in §1.3 and `GROUNDING_DIMENSIONS` in §2.2), so the three consumers cannot
+  disagree on membership.
+- **Placement (normative).** `evidence_tier` is **REQUIRED on every `continues` edge** and **MUST be
+  absent on `supersedes`/`revokes`** — `(a)/(b)/(c)` is the *continues-authority* question
+  specifically; supersession/revocation carry their own authority model (§3) to which this vocabulary
+  does not apply. A verifier **MUST reject**:
+  - a `continues` edge with **no** `evidence_tier`;
+  - **any** edge whose `evidence_tier` is not one of the three closed values (unknown value → reject,
+    the same fail-closed posture as an unknown relation `type`);
+  - a `supersedes` or `revokes` edge that **carries** `evidence_tier` (misplaced field → reject, the
+    same posture as a grounding-only field on a non-grounding attestation, §2.2).
+- **Verifier behaviour: validate structure, surface the value, do NOT gate on which tier.** Beyond the
+  structural rejections above, the verifier **MUST surface** the `continues` edge's `evidence_tier` in
+  its result, alongside `lineage.status` and `superseded` (§1.3), and **MUST NOT** treat a weaker tier
+  as a reason to reject or downgrade the subject. Whether `operator_verification` is *sufficient* is
+  the **relying party's** judgment, not the verifier's. This mirrors `verifiability_tag` (§2.2):
+  recorded in the signed body, surfaced, non-scoring.
+- **Caveat (normative — state it, don't bury it): `evidence_tier` is an attested claim, not proof.**
+  The field records **the Foundation's own claim** about what substantiated the edge; it is **not
+  independent proof** that the evidence exists. A relying party trusts the tier **exactly as far as it
+  trusts the issuer's honesty** — it **cannot** verify from the attestation that a custody record
+  actually existed. In particular, `custody_record` **MUST NOT** be read as "custody was
+  cryptographically verified"; it means "the Foundation attests it relied on a custody record." This is
+  consistent with the trust model (the Foundation is the issuer), but a consumer that reads
+  `custody_record` as *verified* has misread the field.
+- **This is additive; no schema bump; `0.2.0` is undisturbed.** Deployed `v4` verifiers gate acceptance
+  on the schema string and verify the signature over the whole body; an **unknown relation `type`
+  rejects (§1.3), but an unknown *field* does not** — the field-shape is not enumerated. So adding
+  `evidence_tier` to the signed body does not break the published `@gns-foundation/cgr-verify@0.2.0` or
+  any current `v4` consumer: they simply carry it as an unread signed field. **Requiring** it,
+  **rejecting** unknown/misplaced values, and **surfacing** it is *new verifier work* (the two
+  reference implementations + new conformance vectors), not a wire break — and it costs nothing extra
+  now because issuance has not started, so no legacy `continues` edge exists to migrate.
 
 ### 1.2 Vocabulary — justify each member or drop it
 
@@ -247,6 +300,11 @@ with different prose for the two is **non-conformant**.
     `anomaly_cycle`; see the signal table) — and MUST NOT reject the subject. Rejecting a live agent
     because its (possibly-revoked, possibly-pruned) predecessor is unreachable would reintroduce the
     punitive-rotation problem 0004 exists to remove.
+  - MUST enforce and **surface** `evidence_tier` (§1.1): reject a `continues` edge that lacks it or
+    carries an out-of-vocabulary value, then **report the tier in the result** alongside
+    `lineage.status`. The verifier **MUST NOT** gate on *which* tier — a weaker tier
+    (`operator_verification`) is not a reason to reject or degrade; sufficiency is the relying party's
+    call. The tier is the Foundation's attested claim about its own evidence, not proof (§1.1 caveat).
 - **`supersedes(target)`** — asserts *the target is no longer current*. Validity-affecting.
   - A verifier that **holds the superseding attestation** and is evaluating the **target** MUST treat
     the target as stale (not current).
@@ -546,10 +604,19 @@ The Foundation issues a `continues` edge only after **all** of:
 2. **Authority over A.** The operator demonstrates, **out of band and not via A's key**, that they
    are the party entitled to speak for A's lineage. Acceptable evidence, in descending strength:
    (a) a pre-existing custody/hand-off record naming A's controller (the 0005 direction); (b) the
-   Foundation's own issuance records showing it issued/attested A to this operator; (c) an
-   out-of-band operator-identity verification (the human/entity — e.g. the Ulissy custody contact).
-   `[OPEN]` which of these the Foundation **requires** vs **accepts** is unresolved and is the
-   ceremony's hardest question.
+   Foundation's own **administrative** records for A — registry row, cert row, breadcrumbs. **Not** a
+   Foundation *attestation* of A: under [0003](../decisions/0003-principal-identity-is-not-stable.md)
+   principals are ephemeral — A's delegation cert was self-signed by a throwaway principal key that was
+   minted in memory and discarded — so **no Foundation signature ever vouched for A's identity**. (This
+   is the second time 0003's ephemerality has forced a wording correction here; the earlier "issued/
+   attested" phrasing overstated what exists.) (c) an out-of-band operator-identity verification (the
+   human/entity — e.g. the Ulissy custody contact). `[OPEN]` which of these the Foundation **requires**
+   vs **accepts** is unresolved and is the ceremony's hardest question — but note it is now **partly
+   defused**: whichever tier is used is **recorded on the edge** via `evidence_tier` (§1.1), so even if
+   the Foundation *accepts* weak evidence for an interim edge, a relying party can apply its own bar
+   because the tier is on the signed record. For A specifically, (a) is unavailable (0005 is proposed
+   and no custody record for A exists), so an interim edge would honestly record `issuer_records` or
+   `operator_verification`, never `custody_record`.
 3. **A is genuinely retired.** The Foundation confirms A is revoked in the enforcement index
    (§3) — a `continues` into a *live* A would be a fork, not a rotation.
 4. **Anti-fork uniqueness.** The Foundation confirms **no other `continues` edge already targets A**.
@@ -567,7 +634,9 @@ On success the Foundation emits, signed by the **issuer key**:
   "relates_to": [ { "type": "continues",
                     "target": { "kind": "delegation_cert",
                                 "hash_alg": "sha-256",
-                                "hash": "<A cert_hash — runtime SHA-256, §1.1>" } } ],
+                                "hash": "<A cert_hash — runtime SHA-256, §1.1>" },
+                    "evidence_tier": "issuer_records" } ],  /* §1.1: REQUIRED on continues; for A,
+                                          `custody_record` is unavailable — see §5.3.2 */
   "decision_date": "<date the continuity was determined>",
   "recorded_at":   "<issuance time>",
   "backfilled":    false
