@@ -1,7 +1,7 @@
 {
   "name": "@gns-foundation/cgr-verify",
-  "version": "0.1.0",
-  "description": "Offline, dependency-light verifier for GNS Foundation CGR attestations (cgr.attestation.v1/v2/v3). Verify a Foundation-signed reputation attestation against a pinned issuer key — without trusting any server.",
+  "version": "0.2.0",
+  "description": "Offline, dependency-light verifier for GNS Foundation CGR attestations (cgr.attestation.v1/v2/v3/v4). Verify a Foundation-signed reputation attestation against a pinned issuer key — without trusting any server.",
   "type": "module",
   "main": "src/index.js",
   "types": "src/index.d.ts",
@@ -13,10 +13,13 @@
   },
   "files": [
     "src",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md",
+    "test",
+    "fixtures"
   ],
   "scripts": {
-    "test": "node test/verify.test.mjs"
+    "test": "node test/verify.test.mjs && node test/smoke.v4.test.mjs"
   },
   "dependencies": {
     "@noble/ed25519": "^2.1.0",
@@ -35,6 +38,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/GNS-Foundation/grafomem"
+    "url": "https://github.com/GNS-Foundation/grafomem",
+    "directory": "clients/cgr-verify"
   }
 }
