@@ -52,7 +52,8 @@ export interface VerifyResultV4 extends VerifyResult {
   /** §1.3 lineage signal (present when the subject carries a `continues` edge).
    *  snake_case to match the conformance corpus `expect` keys. */
   lineage_status?: LineageStatus;
-  /** True when a HELD `supersedes` edge targets the subject: valid but not current. */
+  /** True when a `supersedes` edge (held, or sought in enforcing mode) targets the subject:
+   *  signature-valid but not current. Present only when true. Distinct from `valid: false`. */
   superseded?: boolean;
 }
 
