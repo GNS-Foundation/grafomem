@@ -3,7 +3,7 @@
   "note": "TEST vectors \u2014 deterministic repeating-byte issuer key, NOT a real key. See README.md for the resolution model, the seek/mode split, and the grounding-gate scope.",
   "issuer_pubkey_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
   "agent_pubkey_hex": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
-  "vector_count": 38,
+  "vector_count": 44,
   "modes": [
     "enforcing",
     "non-enforcing"
@@ -134,7 +134,8 @@
               "kind": "attestation",
               "hash_alg": "blake2b-256",
               "hash": "b2041683c608fcf86e4f8f7a66d7cdef7bff2558d6204c1834a8b00c739011e7"
-            }
+            },
+            "evidence_tier": "issuer_records"
           },
           {
             "type": "continues",
@@ -142,10 +143,11 @@
               "kind": "attestation",
               "hash_alg": "blake2b-256",
               "hash": "23511055e70feaf5cfe23412c907e6f9aa1ed796df4ebc1063ede178801aa9a9"
-            }
+            },
+            "evidence_tier": "issuer_records"
           }
         ],
-        "signature": "6344c6b7c1a27ab37ee117585722fa4a11c0bc65913b11ad650b2931f39df5adae6ffe98f40961719cb37bcc43ab0af34ee34988d8f4f4c76cba41b150f8fc0c",
+        "signature": "5f0a02f5f34ffe2e4bcf3493413ae9bf970bf90f6893e791c911ef38f351c5d5d82ae3ddc481dd9c5f969279e611c57aba59a9976fc343b990ae36af0ef72d05",
         "evidence_ref": null
       },
       "held_edges": [],
@@ -709,10 +711,11 @@
               "kind": "attestation",
               "hash_alg": "blake2b-256",
               "hash": "cc0b000000000000000000000000000000000000000000000000000000000000"
-            }
+            },
+            "evidence_tier": "issuer_records"
           }
         ],
-        "signature": "a1278273eb3bd44d83985cf55eb0b79f580c7bd7a0dc202369ba0a8a057cfda6ed04f6cc00ad667c4a50339e8a547bace1ee1e1de87386a3e61f5662654d6f0b",
+        "signature": "277d777e315e784fc17aa044f61d6477d0967f355bced7b6ed695bba3d1bf0ba3b8f83e24714d4e5198f88a88483a4142edb4652fd8727f92d122ee64f2a0c0e",
         "evidence_ref": null
       },
       "ledger": {
@@ -747,10 +750,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "cc0b000000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "a1278273eb3bd44d83985cf55eb0b79f580c7bd7a0dc202369ba0a8a057cfda6ed04f6cc00ad667c4a50339e8a547bace1ee1e1de87386a3e61f5662654d6f0b",
+            "signature": "277d777e315e784fc17aa044f61d6477d0967f355bced7b6ed695bba3d1bf0ba3b8f83e24714d4e5198f88a88483a4142edb4652fd8727f92d122ee64f2a0c0e",
             "evidence_ref": null
           },
           "cc0b000000000000000000000000000000000000000000000000000000000000": {
@@ -783,10 +787,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "cc0a000000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "1a0a51e3f925cd3da10f2965fe6ad36699b90bbbd169085b9b50847700ff3a0dea3137c37e0789b2153e6114a14052fd46f64a00a9e57a7f1ef6b237b305df00",
+            "signature": "6cf893e2fed4f8f729c5c9685f74b08ca287d253fe6d6328c4270c0dea85de35a0868988e773b8484c4611da29ad737b50e32db38966c34d1598578235a58107",
             "evidence_ref": null
           }
         },
@@ -1087,10 +1092,11 @@
               "kind": "attestation",
               "hash_alg": "blake2b-256",
               "hash": "cc0b000000000000000000000000000000000000000000000000000000000000"
-            }
+            },
+            "evidence_tier": "issuer_records"
           }
         ],
-        "signature": "a1278273eb3bd44d83985cf55eb0b79f580c7bd7a0dc202369ba0a8a057cfda6ed04f6cc00ad667c4a50339e8a547bace1ee1e1de87386a3e61f5662654d6f0b",
+        "signature": "277d777e315e784fc17aa044f61d6477d0967f355bced7b6ed695bba3d1bf0ba3b8f83e24714d4e5198f88a88483a4142edb4652fd8727f92d122ee64f2a0c0e",
         "evidence_ref": null
       },
       "ledger": {
@@ -1125,10 +1131,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "cc0b000000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "a1278273eb3bd44d83985cf55eb0b79f580c7bd7a0dc202369ba0a8a057cfda6ed04f6cc00ad667c4a50339e8a547bace1ee1e1de87386a3e61f5662654d6f0b",
+            "signature": "277d777e315e784fc17aa044f61d6477d0967f355bced7b6ed695bba3d1bf0ba3b8f83e24714d4e5198f88a88483a4142edb4652fd8727f92d122ee64f2a0c0e",
             "evidence_ref": null
           },
           "cc0b000000000000000000000000000000000000000000000000000000000000": {
@@ -1213,10 +1220,11 @@
               "kind": "attestation",
               "hash_alg": "blake2b-256",
               "hash": "de00010000000000000000000000000000000000000000000000000000000000"
-            }
+            },
+            "evidence_tier": "issuer_records"
           }
         ],
-        "signature": "ee22b7a0af06edf93e53ec1d11bd9d9178c9e55aa3cc2f42dd25fd4799720ba683bab7a2702c15d55b1d9bc24e8969ff2156063676f47fe64a158fb3210f8f0a",
+        "signature": "e00db0173d4e32ba2ad48a6cf706a12a3c05e6e9fa11ebce7c50a8fc17a456c2177ed74a83a78232250522da23c4eaabbd3235c3b12cbd6976320cebd9051602",
         "evidence_ref": null
       },
       "ledger": {
@@ -1277,10 +1285,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00650000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "d867c7fd538de06f76dff12d43f22f329a981e55fb387443f7e8f6f30a6fc4b68111be75c8a98a9ac5e75eab73dfd6bf3dd33d23061673ece2b4c9a1a194630b",
+            "signature": "9e9c8bb8273521128c1e8cdfa4fc524c652789a7693d2b2d4de33714ab5b07ed04701d44b63022aebd2dc399a150927991f53a4047b678691c74f05cfd490e06",
             "evidence_ref": null
           },
           "de00630000000000000000000000000000000000000000000000000000000000": {
@@ -1313,10 +1322,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00640000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "64a9bf35eaa42dd0824f92d01b69a60ddc4df172621add5abb9706de77b63d7904d35286c51c45bd29564d6ebe9ae51e964fba28a393023926951bc59062a90b",
+            "signature": "4a858b7ac48be4e9c4d7bb81abe21812d729e8c5bb2cf4128a81a2460716a439ab82f3e6132b01b3d78f00aeb004c141d866c0f78d790ac8e232a6d397b71205",
             "evidence_ref": null
           },
           "de00620000000000000000000000000000000000000000000000000000000000": {
@@ -1349,10 +1359,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00630000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "73208cc4999179cb0ec0c90e71b9fd3266a37db07b6237b13e7a9a926ea94b9d6348f530393235a47ecaffbbc8fce07984521b3cd56a4cd566e61e4a4d3b8a0b",
+            "signature": "5eeebd4186c307b31c32828ab72b921bc15e3bc5f1e8fd0ef1fd49321258c2f72e5da92fa2758124fe913db14424b699cd533f870745d5aedde71b3cbae7900b",
             "evidence_ref": null
           },
           "de00610000000000000000000000000000000000000000000000000000000000": {
@@ -1385,10 +1396,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00620000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "fcfe53b4643e4e8fac29edfd58ce3db62fec5e868c96a1d5acd490c661933ece822be88834d56d4939ccf60659a9d8269bb3d3a34eeab64929584d974f11cc00",
+            "signature": "bf648e28f436559f98b1299993347053ac347d5f13c3939a92dbd0e87e2f466e944d788056705cd2aa7dfa0c5be70c44cfe8010f883c81c282ef16f5654cee06",
             "evidence_ref": null
           },
           "de00600000000000000000000000000000000000000000000000000000000000": {
@@ -1421,10 +1433,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00610000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "a57f97fca7373d27edf5f5a4a341bb7d7ad07a9a98c858ec5df195cf1df335e2ebe3c1b16e78e918bc9995087edd058ef206ba1d906ecd9ac28a8f7b3ccdaa0a",
+            "signature": "44522f21753f0871dcd7380c2b7656df3915b33fd3e44d7740cd736f111d5c6574b64de94e847d358e4511ed085685df107f1749e131072988f2b1765a0dd106",
             "evidence_ref": null
           },
           "de00590000000000000000000000000000000000000000000000000000000000": {
@@ -1457,10 +1470,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00600000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "2c2362ca2c3032dafa1cd3c25a5f48bfc78b3e98c786e17dc80b5d2b105c1c06d4414c1af628b68d7a2eeee0fd24ba4a0e59ffe2b7bcfa7563c2eeb322bda20b",
+            "signature": "03ea15adf8527e2bd6fb26aa5511625564b0268456f1a82a4050f24baee03f2efeefc8d1293efc2bf7970ff5a7258f9fcdff37cb886adf8a9ca2a4d6cfb2210e",
             "evidence_ref": null
           },
           "de00580000000000000000000000000000000000000000000000000000000000": {
@@ -1493,10 +1507,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00590000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "28be34b96740c97eeb8cf1747529e65a9a99f0d4fae1742e43578261a58ae704a66dd8b4a8fa95b9c9ef29b947c2e50e12dd527caf857131e2ca20c0fb9de802",
+            "signature": "4572a3948764b7f69391b661fb3b86d5fd75d2374d4a508e0b404623650a0a5a3e7e7e1a640a61a529f6e284d3d6e377f1e5aceba89dcee64b3c22e9b1007905",
             "evidence_ref": null
           },
           "de00570000000000000000000000000000000000000000000000000000000000": {
@@ -1529,10 +1544,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00580000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "60e6ef9892a6e5a618dcc4e869474682afe5c6fa58cb9f7dbd8d8416ca89e8e1fe20a73751b71d7db818c1566d1178bcb3295bad77ed54c4ddca87966d3b6503",
+            "signature": "b971a4e803685244b34931b4a5837a4a7cade27b26ef7def2c1608ba1f893336bd418959ae7a7d4ec0787dc559288001bfd2887165ddedd90e7ae0e61531cd0b",
             "evidence_ref": null
           },
           "de00560000000000000000000000000000000000000000000000000000000000": {
@@ -1565,10 +1581,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00570000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "b64b34efbaeb7509b4ec6d30a329ede521d048ffc59582699e4264244a576d2d5f85b5adef9956e035ae39b113550c640572de26a237f83a6c399c9efe3ab00e",
+            "signature": "7c939cc70f73c4afcd170e33287c873d796696f7bb8565b82a1e04d78803f5f4eae7cb3f4b13798afbe591ab2020926a8d1b950c250b7bdc7532b0b07ced6d08",
             "evidence_ref": null
           },
           "de00550000000000000000000000000000000000000000000000000000000000": {
@@ -1601,10 +1618,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00560000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "5911578298ca360feeb60bd2e71f1e8b7f829952476c847b9124c441a82b5fa7be5962bc09f8493f70b1fda77cf5afaee9c3ede808bbce91bff3cab71920ed0a",
+            "signature": "6440bded7d76c3942beec27687fe299ad25b388eee0ff31928eec6256ab00495446cc326e6a53593f2a8f067cb7d52b0878deebb83c966996944bd6c915a420d",
             "evidence_ref": null
           },
           "de00540000000000000000000000000000000000000000000000000000000000": {
@@ -1637,10 +1655,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00550000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "332e5679210e4d49b66cb942cb46d05183312b68f0cbfa113b4f573d821c372cd29568777e6809cb6c7702226fa1ee7165c22f3f4d6c9a36d28452ce6fc9de08",
+            "signature": "bc02ee30d48507903b9d81ab1e837da282123cc932961772c361dbca71361a80a72950b7ada1e44ffc94b91c249fa6e583272fbff1dc1d695fc5da947afb3a08",
             "evidence_ref": null
           },
           "de00530000000000000000000000000000000000000000000000000000000000": {
@@ -1673,10 +1692,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00540000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "2f6313277bb1251dc8102675553338f73babbb795a224d7125f9233d19357ed8daea0a8233de8193dad4c104e14a350776dd08d0e410bd13f68f2e0424a43a05",
+            "signature": "70e0a3b4be2e82bf2b4c5512da2f3e799ec07a3986216142c097589ad8f69dde1b78e7b06f732056774509ff5952403c14bbcbdf7e98ff9a4d4bd5c0dd8d6b06",
             "evidence_ref": null
           },
           "de00520000000000000000000000000000000000000000000000000000000000": {
@@ -1709,10 +1729,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00530000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "8553e4c60163cb66ec420f240eb3db9a1dab8d2bc0f3da64d23ec330afa6ee0dbf6fb8deb6b1045c1b4a9aacb9c1feeb6d15440da611b67fd006c5acc12a6c0d",
+            "signature": "01d8c3881a33cf761fe0b26621e76ad3509234a61a260c1f9806d314be2d34a58096307a3b70c2d8b30d1d656ec7a3c23f73b1fa16feff070c1130464fc2770d",
             "evidence_ref": null
           },
           "de00510000000000000000000000000000000000000000000000000000000000": {
@@ -1745,10 +1766,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00520000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "19aeefa7d32137bdcc36f78a34d6984501cfdd832f1f819bc386230ada4fb0974c1b5467a5893e02202247181cc621c5ca49b2176b6c4023a6f2aa5a30ec7706",
+            "signature": "f4aa5eec2728bbc506a37256f9158c0b020191365c3b0767edb98651e01f7dca24fe45b351fa6029886cd34152f4983fd52b9d9975f3e7802c0a6a8ce3da1c08",
             "evidence_ref": null
           },
           "de00500000000000000000000000000000000000000000000000000000000000": {
@@ -1781,10 +1803,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00510000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "5f469f095abcd68c1908b24f7287923f719e96214e089c0baff53592626b237abb32d94afd14981613a0299de1b92b41666d1fefe9c3855518e202a991e9e80f",
+            "signature": "1d2dfedba4ea59e60ebacc3673b16787daa6090a1f8a070b2e3db3deeebc45cac3c28f97cbabc16f3782398f87d7c67111439e19ca0fbfa5cf9220e68e6ccc0c",
             "evidence_ref": null
           },
           "de00490000000000000000000000000000000000000000000000000000000000": {
@@ -1817,10 +1840,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00500000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "1c9b67099513e8955a6d7e1391cc6af888e7cbb6ed88961261e3928c2ac134b58f619c9b3e6147abc56224cfcc4cfd26e900315d2b1371e4a522ee86cd31290e",
+            "signature": "0d186b5f02b55012f57a74644b33ca95e7dae18626db13790d3967e64bcb840f306f6fa01a43ad48d9e97b2f36a65e05e64923718cee456def0e0cb8cd889b01",
             "evidence_ref": null
           },
           "de00480000000000000000000000000000000000000000000000000000000000": {
@@ -1853,10 +1877,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00490000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "707f2ee9c57b14a29ea48064650245ebf1bde5ac9168b9cffed25e9335b6964bc96bc2cdfad108ae89d785d7b43b7eb395c77f034231b334d1e795ff1aa8e308",
+            "signature": "df45911131ff2e3f2267e317f914d141f55f7bf6de5ee3b1008cf554a12aaf5674fd3f613ab9a8bb69775f76ecf2b7e7a4bdb96e9712ed55eacd67845bb95401",
             "evidence_ref": null
           },
           "de00470000000000000000000000000000000000000000000000000000000000": {
@@ -1889,10 +1914,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00480000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "f8ee6f24e97b11cb36d6d5ea954b122fc7d8c028bcfceee5ed0d5fd5b81ff5578aefb8ea15943e744eef42dcb5e4fdf5705b6380ab3de14ad04bc469f575240b",
+            "signature": "a986e6867d3bcfc96dfa1ddd35af3333c8ff56200f08ca8155ebe0e5ad6fbaf8b07d3cde75a557746a6c50622f7eea437fbed8149a84f9d5d5465fdf529b2c0f",
             "evidence_ref": null
           },
           "de00460000000000000000000000000000000000000000000000000000000000": {
@@ -1925,10 +1951,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00470000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "20599e17035ccbead3002767bef1052cd38e60651375ce1c20985a47113623fe3e3e8ffa9930b9f8c23fed5aa631f9874d670ba2b04ac3b102801d2e86d85206",
+            "signature": "ab05c188fa1b8e25b60cf5cded1480ebc3a1ec828d68b1341286149467496bcfc07f8b25d0773421e994ee3ffebd1e4e265848f21802c4001b0d65e849ecbe05",
             "evidence_ref": null
           },
           "de00450000000000000000000000000000000000000000000000000000000000": {
@@ -1961,10 +1988,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00460000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "8195272b952f46bb1721da3b64f2a82c9495aff97967c136e0485b11942d63d5620fad3230e79c6fd71af5ee447375cda9cd9ec41a2f4a34ba71bf9932944106",
+            "signature": "21f6b534f83870f9c9c6b7eb471bcfb6f426bc98f675b853cad9bd613abb9e00ae10b9393bcb9c0259b525b316b2476cc4099f28df1941d6a9f2984527cddb0e",
             "evidence_ref": null
           },
           "de00440000000000000000000000000000000000000000000000000000000000": {
@@ -1997,10 +2025,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00450000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "c219f9b529be1f4c3c5361b63dad226e4fd3ade46f591a73e712e864bbcdd1a8c37be2723a18a2d09609af184b3712953b061c4cabfd7fc4b2470500bdf4eb04",
+            "signature": "f1d2235eb4ed1c8abb1173bb31b2107d3c995b7de9e573e69c69e4a804a266cadc97dce63b6415b136ae354382c175f5599ecc4bfef00006155ccaddf2abeb0b",
             "evidence_ref": null
           },
           "de00430000000000000000000000000000000000000000000000000000000000": {
@@ -2033,10 +2062,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00440000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "de51a6b5d5a5e3a9a324cc66b127b63a2342eab94eabfc41323c207d1a765b1e846503ad468c1f446ee8831ab6926a12d9c20d437c1e6f461becbbc38d7ceb00",
+            "signature": "d6430c4000019ea9e928e31685f76f56bc06814a601456f4c1f631771162b64abb2d4773572b2bb6e86f8a5c73cba052a886597aa07935644b1abdd1453ed80f",
             "evidence_ref": null
           },
           "de00420000000000000000000000000000000000000000000000000000000000": {
@@ -2069,10 +2099,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00430000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "44dd320d9c7013238852584408c0f349483847578218c9a52252679f60ddbbd09cb2327fbdb5bf61c0674946799f95694c68eb477b4c7ac65b7b0d7c6c745109",
+            "signature": "8d07a23ce4f409a3b857ebbb678814f3eb012dc7f36c0a28f5cf535165470e812b892e336d5383809b97cd50b1be1d96a33f6003359d4c2f126443ffb906f40d",
             "evidence_ref": null
           },
           "de00410000000000000000000000000000000000000000000000000000000000": {
@@ -2105,10 +2136,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00420000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "2098d6be22cfbdbf7354ec254b1ce0dab7d69cc89021b520162fb0dc6de1f3a84b46aaebab234c42f30fd04c9ae0fcd5f4ac0053fe96a83be5337acc5e8f7308",
+            "signature": "4112b70b26d776d6f7fd8635f01591359c8640659822f5bb9cb5fe3483cc6b0d0b1abbfe83ae3710a90f3dc59ba400118dbbc3f740c9d4629852634db0976e0a",
             "evidence_ref": null
           },
           "de00400000000000000000000000000000000000000000000000000000000000": {
@@ -2141,10 +2173,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00410000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "125e62de98a004d64689be658457eed60ed05c582e9ee0dab0e497ed3ee83c3e92f2f54d46bd8cbe5427876e4a3ddf099bf1866680ddc22bd69dfce68374b407",
+            "signature": "9eedb27a8192a75862f653f34172ecd89258183deb77e715bc94e6f3711b08ecbab713ad98eaf44fc0e23da7062dbda341670f6f264d4c9b2ce717032c504806",
             "evidence_ref": null
           },
           "de00390000000000000000000000000000000000000000000000000000000000": {
@@ -2177,10 +2210,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00400000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "a15f1fa58ff3d7b54a9a8683d8680a4ecdc72b7c954d6fd9fa0eb6a2f16b3699c0ca0c21282e07ee806ff76ddf962f7c67076c3a6cb61300fed56f70fe28dd03",
+            "signature": "d82fa8ddbd8c89df72954cb78e4634c0ac84e792f8b97ef10c546f92c564b5fa2211ec5100f65fac00058f291a3cc2a4885b9581bd555f9fed1c123aabd3af09",
             "evidence_ref": null
           },
           "de00380000000000000000000000000000000000000000000000000000000000": {
@@ -2213,10 +2247,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00390000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "415e36a059cb1e7982aa2a18ce5e1c0f6819c91525cc42efbb2af9f300eedc686bfea604d66669f83fc1e9b14ca4914e52defff947bc7b7620c18e44f0415709",
+            "signature": "8fe56c315d23be761a563342046cc43da57690fc9f13575e91df5cf9876452ddb648d60c3a63f93698070e984cde2dbf9da27f0911cb59e55493a6bc12997b08",
             "evidence_ref": null
           },
           "de00370000000000000000000000000000000000000000000000000000000000": {
@@ -2249,10 +2284,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00380000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "80e020369af336c879a2c6749333d5a3f4b917a2ebef2ad0fca945d52e2b04509ab2302bfe503c45a59a5a5fce1aae2c246351d3e3fdf4c9b5ad56c379b51801",
+            "signature": "2ef311904e06ff7c62520e8a73121bdfd9ddd366f860088e065ce68712add7079f49b9175b993173b754dc069c8d428e585b6b16845c54960a4ccd5e945ea709",
             "evidence_ref": null
           },
           "de00360000000000000000000000000000000000000000000000000000000000": {
@@ -2285,10 +2321,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00370000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "8b4a045698702d3c32ff280ba668df42cc84a9ab76aff8c70e74b3b6eb1283d5cfdb925f3dd673169a9b295b466a7cc6542934a60ce8215047a67f328c5ceb05",
+            "signature": "ae823f6bdd8185618e35819d23fbeee09455a58f8c769f5e8e38160fa4c78b97079559865138e1b99ca317a9ed8e82d4bf06a1fbaf8fdef11ab6cd650ca42c0b",
             "evidence_ref": null
           },
           "de00350000000000000000000000000000000000000000000000000000000000": {
@@ -2321,10 +2358,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00360000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "14a60b6a66acb3dc1110ef32bdd15705880e749325d6b6bd19f62274a25bbdd40d27771ad87b99df1acd53139ba12e671da3c48dd6536500bbcda667b8465307",
+            "signature": "d3e7de9fbf3542656b1a07f880b6c8e77507bd1562b1454222235585c74e22f32c307b5713df9fe43877b4610d095062ba477627f85799fc9ec8dc6002bc7908",
             "evidence_ref": null
           },
           "de00340000000000000000000000000000000000000000000000000000000000": {
@@ -2357,10 +2395,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00350000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "7fe8b0df321af2ea21f8299e1445db2b4a0462294ff3e11c50a5b2e0e029e7f6713674b8723a491a31a86c311a47046d20cf0deace1a21c9f6b544001cdf3107",
+            "signature": "5e2041666d13ab8a7358fbc6477226141f9cd21ca04d90468cdeae9acfe41daa250f5dff5b7dca1c85dfb3ce17013d736a7f4765cf465b1ce7cf60e2c3b0d308",
             "evidence_ref": null
           },
           "de00330000000000000000000000000000000000000000000000000000000000": {
@@ -2393,10 +2432,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00340000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "647535f18dc18267bcd45a740a9f019a31549f68b7a41fe0b8f84e092c37c4ea682fddc34c28af7c3cddfa3fab8b78e543f58c2128ae00b4a41e4bf878b99f0d",
+            "signature": "5d20ddb9042b87300480c6364d08cec3cc85800126a1f9827c344315558ad7da723e997147055cba5d3f54f941c013899af6724594b0d44996a4ad55216b1903",
             "evidence_ref": null
           },
           "de00320000000000000000000000000000000000000000000000000000000000": {
@@ -2429,10 +2469,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00330000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "a939924d0682534e08bde56ba33632ce0286ce661fc5b7d58eb747ddcc1a9b581c598d54575403e927acc2cc27822fa38d27f279649452500aa3aa1a45b32b06",
+            "signature": "5b78c69d3228573eedcc495da8fe5a48a498155caf3b64f49c5e9e28955b34264ebdfcb8b6c547e89db4f5df51e35b8a2b12b3990b952f6fdeb3a73bc6817604",
             "evidence_ref": null
           },
           "de00310000000000000000000000000000000000000000000000000000000000": {
@@ -2465,10 +2506,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00320000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "b196d02ed6c4dcbe581f27ee4159eb93ff7134282d597da981e3798a93c32c9bd8091450baa6f5413d1fcefffb04b34df4792872eb1bcddfb61705b40e5b0504",
+            "signature": "5a6ca1d31b109f8e0609284dce9873350cd2a6ad3c71576634d99b41dd7805d611a054b37dd6e978366dde08805ed918e167457a7d45228460235331990d1b09",
             "evidence_ref": null
           },
           "de00300000000000000000000000000000000000000000000000000000000000": {
@@ -2501,10 +2543,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00310000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "af516d82e398ca775aacd51a894381096fd25830cdd469f1aa450cc5793b85f3e523e21685851abba2bb1427c80082103df2664bd5774f216488b8e39831c605",
+            "signature": "2f807490b052fd84fccc20ffe11a7cd31bb3449ee4bd7ad6e6ae17b92a76fdabf7ffbc315981e5932ad33e1ebe03bcb5a56e3919e51d0cd2b32836a2c3444805",
             "evidence_ref": null
           },
           "de00290000000000000000000000000000000000000000000000000000000000": {
@@ -2537,10 +2580,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00300000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "9d56b70803fdfdfdb0c5967f4be5335f2a0a3dfde2e9e24f86477495788770a6f7369fd18d7292478c60f03d482ed4e9beeca67cef92168a8ea3b48af9c9e500",
+            "signature": "83449a9ea8ca420f540925fd6c685f24c0eac08d18e15339d1d9758455c8d9b2036e67d2884661e6763efa9a7fdaf64155cf91288fda1b1c33c60b61a181690f",
             "evidence_ref": null
           },
           "de00280000000000000000000000000000000000000000000000000000000000": {
@@ -2573,10 +2617,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00290000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "5fd13c3627d023fcf1d6d56a04d77b6b7737ce8162e3df52463c873e465dc4e1dfb0c55b9146f751171fafef80cd5aaa59a3d23a11c18751aa1f31af1032b50d",
+            "signature": "c67f58e3d0157bae3ea3c9b03e594b22c91a938136988e3a557322c1b2ecc54cc448a5cfdefed7130f8acecbf94d2f96f627b9c1de34d1aa5d1fd344ca3e640e",
             "evidence_ref": null
           },
           "de00270000000000000000000000000000000000000000000000000000000000": {
@@ -2609,10 +2654,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00280000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "f20db9e5465c9a3414ca7787256ca4e9ac8e500e03614988cc1211df97dedce0baf967d5812c82c4657c1be6bafc05b8cfd062babc28383d116609afc9926408",
+            "signature": "e7441a321ea54937fda2822af8b7f0bf79c008414378dbb140e1717fdddb84fde7e5877b14508bf52688aa5f2c93d4daa86ab0787636647d0551e5d06add610d",
             "evidence_ref": null
           },
           "de00260000000000000000000000000000000000000000000000000000000000": {
@@ -2645,10 +2691,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00270000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "8b21b96a3067e8e023d83441e83892d93ac8d3a171429b68513129abf674ce4276eeb42274b32aab1d396db5506fc3ef0e87a618c80487349547969828ccfa06",
+            "signature": "099d4af3d4e566dc37d0242a92e84ff218ee54903bbf6a86e64ba5686c3aef9b42a026f7178ff38f89ebd39169c3984a2ad38ee3e241299e0802a89ac87ecf07",
             "evidence_ref": null
           },
           "de00250000000000000000000000000000000000000000000000000000000000": {
@@ -2681,10 +2728,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00260000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "5bda0f21a137e4c1b690f28de3a0ffd0cadade2e5688cfa02daf7e1e224f78705811c10b14120c5423c8defe8da1b75da92ff322697b3ec88c555c7d11637a0d",
+            "signature": "513afe944d087718f4ae993088e4d1c0bb49505dd9ed3a0318394c772e810cd751a10827f26bf19aab8fde0ea3913d5a83230fb65c80759892c37df11f60d804",
             "evidence_ref": null
           },
           "de00240000000000000000000000000000000000000000000000000000000000": {
@@ -2717,10 +2765,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00250000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "9fb0a9ab46c14a802ff75e5b01761b26a87cfa82a4fbf8ea94f6f4fbed8839e659668a4a9f75e63b84e6214cd6277adfa39238c1916b218ed77de1d0ffe6220e",
+            "signature": "78dd61ac3c4d660b563d145ce7dd519179afcd501278c35561c958e85116e6cc6192a2126e5c6834f3cbbab743e82478e59c959b628f452c76d62bf827eeea03",
             "evidence_ref": null
           },
           "de00230000000000000000000000000000000000000000000000000000000000": {
@@ -2753,10 +2802,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00240000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "db8d8a5cfc18920e66643534d04c119dc3dfc0ddb3beea90f0ff06816b01ddf52ad020081cf7763d276b998e88bc442436f27ef3e8b0bed9368bfeb7f2b40500",
+            "signature": "3972fb8ddc98960535cb6351d9a9e7da02ca24828b9f072cbb58e74b64b1db81b1a6e06fe0c0a3291cd5b493768572f6a942dcc8f31cca01269c9b6678469607",
             "evidence_ref": null
           },
           "de00220000000000000000000000000000000000000000000000000000000000": {
@@ -2789,10 +2839,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00230000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "e23b842eb23e07c1257169ec461a295b247c0d7269467922f948a76105ad0f5217a5e8b0c5dcb9b322077494a08cf2092d1fa63f387a75411ee54c353d835a00",
+            "signature": "16e98fc6a5c70dc96e1ab498188275c9c45e6757ce9d56094b92f7427ba4968f17b177ee0461877a4ed3b89de21136bf430e19174d92dc626542d4e9248aa90a",
             "evidence_ref": null
           },
           "de00210000000000000000000000000000000000000000000000000000000000": {
@@ -2825,10 +2876,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00220000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "dcd7e82d2eebf1f832c5b3eeaf94ff467828a8ac9720fbd69d497c4bd703bdeeb654491eb2bca0dead519ade09b3f7f9b8804da924b492991072cb98cab5e804",
+            "signature": "256737634c421b3d0e1e000b2d77703e6b3a1e21c117fb7cce3984fb9fc7161be1cc4eca9e28bbd23f45bcb37162b372ff52d6f589667d6c7a5d32d818849d04",
             "evidence_ref": null
           },
           "de00200000000000000000000000000000000000000000000000000000000000": {
@@ -2861,10 +2913,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00210000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "4e9bac5f00c46754ff7ca53884cc394d2eb144027abb27ac48652b6827ae2e708578b99f47342b057b8f304c3e6e5032713449933547261ae3780dff81d5cf04",
+            "signature": "c9834432c605d7bcdabef8a711f63f0de6147596576935f7e6480791446b2cb306553b37f275fe6e46ecb740dc4974ac3fa0852c126307a56ef365b9a97d3b0e",
             "evidence_ref": null
           },
           "de00190000000000000000000000000000000000000000000000000000000000": {
@@ -2897,10 +2950,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00200000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "3264a23ff21e1ae961b76a8b517811418be021e6bcd904608e363cc058df525900c7870aa1ff160d9b633c78cf2e61e3c89166c98fe94b73b281b516202a4a04",
+            "signature": "ba96b898781ee927d9e2431c48d9b420220e68d2f60a1eda60354df608d059fbd9ab3282bd9070db26e4c6f413182de0223eba8e62c598c2024a717e2a519c06",
             "evidence_ref": null
           },
           "de00180000000000000000000000000000000000000000000000000000000000": {
@@ -2933,10 +2987,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00190000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "3efe71892b1c6a279c408d0136c512f79b6c229948bba246f2b3f12b36c8fbcd4e27adcf241332769c46fdf72b42e98f8f9e1e505a18773ca77b1549fa2a6908",
+            "signature": "0a97f4efbf02c69710135c3df7eeb9bf9f16f8a088a028d6100b84ff99aa9af3673ca3f3ec1283e722129badd01817079c4f590b5aa39ea915c669f4ebe12a02",
             "evidence_ref": null
           },
           "de00170000000000000000000000000000000000000000000000000000000000": {
@@ -2969,10 +3024,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00180000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "2b3f952355bc9eed0d58802851efb2d5ce079d838e2c6114f7ec258a0fba2387af3013ba832685184fa96e0177f0ef35e53d94dca457bd8b93e2cea28b5e0900",
+            "signature": "8a4ba03319e51d5fea8dd40cb66cbb06138a891c3805d4217b021316e642a7b2cdf4ac8159754036dece645abc4e1e5472899ff71adabc5732593cf1e60e1f0e",
             "evidence_ref": null
           },
           "de00160000000000000000000000000000000000000000000000000000000000": {
@@ -3005,10 +3061,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00170000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "1c4eba0faaf43066c1d131c4e964aeaeb6b554c7d693a721449dfab585132c52e1f991e9549067497a29638947dfff105942f32e0e58e947d33ef5dcec053f09",
+            "signature": "d4b4ef6593ec6bfb96f413a524e31e9dc3472b33b72bee9bc1c8c25067f8a2166f861a7c113f2964c2f6465b67f9b6d10f67f4a3b430b67842474820da7b7804",
             "evidence_ref": null
           },
           "de00150000000000000000000000000000000000000000000000000000000000": {
@@ -3041,10 +3098,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00160000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "1c4a40657115bd2b9374cab17c0c82841599ba71d0d1d50f29fd92ce298f0093ffbb3deffed35f2cae8fa4129b7673d5fc137700e65d177c8b81d82b0410250c",
+            "signature": "613de1a651598133189cc550713d1cbce05b1ec79fe1f8c6b1f2a1f9a21fb1350f18dc720b730df266635d3868e3a1fdaed6f3fd34a1eb7bc734beaea79eca02",
             "evidence_ref": null
           },
           "de00140000000000000000000000000000000000000000000000000000000000": {
@@ -3077,10 +3135,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00150000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "e825e53cb40f879017f01a248069a23b0d4ec583d9df463484fcf464955cc948be30ade0392476e2739a3093cbba5019ba0f01681b3a7d637e87b96573779701",
+            "signature": "66c47a164195425e6fab2f650438a90c5209464083e8f24fb2c671519dcfc2abf547c70f6b47ac0e400992110cc084d2f7df7e51eab23d558637fa17bd455a08",
             "evidence_ref": null
           },
           "de00130000000000000000000000000000000000000000000000000000000000": {
@@ -3113,10 +3172,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00140000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "61c793ec6400c40c833917bebbb10ff851cc6f17e61fee3d2421c95c10617504c8db6c3fbbe9a04591f3019855b15751e8e67190258958b444438fee8b243000",
+            "signature": "3efc10a28d95eb0f4f2084e129488a5f11e75e454760525e99088b4b487e0a0db16060a34f04dba682ed184143eb9e5f5195c25ea9110c36b2e711800baa2601",
             "evidence_ref": null
           },
           "de00120000000000000000000000000000000000000000000000000000000000": {
@@ -3149,10 +3209,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00130000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "90f6d79be10553d297c331af61cc7656dacc012e23a15378e66b0337022e8bf74a741339d4095e66aaabfa277e958f03318b6f78f092bdb67597b63476047d0d",
+            "signature": "f6712ff41867c0143b98b8cdc0573fe48db6a0ecd3e022a08542de0f28886f2e8cfb313ea3d49e267c0d16bfbe577cc9dca0640bb4a24a755c11d516af85a00a",
             "evidence_ref": null
           },
           "de00110000000000000000000000000000000000000000000000000000000000": {
@@ -3185,10 +3246,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00120000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "2dbc4564a71cd0e9bfd4dddfc4ab7b6cd8d22f909f3ed6611ab03237b11bb70bf4a852f02ab7d633ee43191de3d3fe5a86c3c31100cd9261d34da1e4bf6d0e00",
+            "signature": "16ceab6982a75a52746599324a56fc401942c5aad02bd99795b128830197bb62e7cfc26043fc7c0a47ec84d14645905e0635e902531061dd93e5901a71599b04",
             "evidence_ref": null
           },
           "de00100000000000000000000000000000000000000000000000000000000000": {
@@ -3221,10 +3283,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00110000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "37776a106b4410ce1ce228ef0b614100e3572b37fe8de2cc4f90eb09366399a04ed2f430ec28233fc5e8b6c98f7a0efb62149ac065bf60e0d47d45bdbfae6100",
+            "signature": "79406e1503ac400319f737865d3da00e574fef20a440fe41ed7001efa2026ae63b244243fb6a4d1b8f7c242701f63714b90e217bcc8f8724571427896f887603",
             "evidence_ref": null
           },
           "de00090000000000000000000000000000000000000000000000000000000000": {
@@ -3257,10 +3320,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00100000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "57e36abfd0db900208cd97a7b52f929ea2716769b06942614811af11f31f1e1aece089e255759983ccdf2abe6f9a70925a5dac68fbdbe9bdaba3333c8637fb0f",
+            "signature": "d39aa7b35ad854c6fd81cb9991c4f7aed8e4e27174b58b5106b84972ceea4a9b9d8926309667afe61edae75042a0e417bb855477eda2465f98b60e47b9524302",
             "evidence_ref": null
           },
           "de00080000000000000000000000000000000000000000000000000000000000": {
@@ -3293,10 +3357,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00090000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "77524fdd56d9bbdfda56cf0a143d0b6482b733a4eff7b3484769f44695e2bd22b3a686da2ed4c8040515906e1d171adf460ee09ab805352112e7ed08b275c501",
+            "signature": "d8c355e1d8247785dfa64e50116da55e7378f1cff9dbf3b2ffb90089275df76ecf14b136b4988e033abb6ff1e00b5a8109ea8f8e5cca2258df5ee5329bd3e20d",
             "evidence_ref": null
           },
           "de00070000000000000000000000000000000000000000000000000000000000": {
@@ -3329,10 +3394,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00080000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "26992faedba139f8030cb56471b4630a4262c85eed5e269346d594eb9135293fffa4421307dbfbda4fbe98d3fb42db1f65dff457559593da730fe02996fb6007",
+            "signature": "b0b7830e2db5d673ec23351395aa4aef68a45d6a23e71cf456bacc5bee7c8b6a684462e399673bd51335cacff2b4435b75de99760338f5d1ae64f5ea0a007b04",
             "evidence_ref": null
           },
           "de00060000000000000000000000000000000000000000000000000000000000": {
@@ -3365,10 +3431,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00070000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "28f2306d6d1d48d06a4590b0044267dd6188cb622c1e5cbb128acc076382e08de62d40f8eb2552cf00c7e260808004206450673128ca10d32ab1fb7c7ec64e0f",
+            "signature": "5033a4d6fb2b4e621d856d0e84cd5eb126d318adf0b212a98e00ab481fa4ed064d5a812042142ad6dbf6cfc5b4b61266066696aa09d800c90b5afae699b0da01",
             "evidence_ref": null
           },
           "de00050000000000000000000000000000000000000000000000000000000000": {
@@ -3401,10 +3468,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00060000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "3e479b7cb4fd7468640a937fab871eb0330f564250c1f2cd369cc358029e303e488e9eef43b2e25ba2f88c62506bf5a7237602bd21e0a1b8f4aeac10cb95d90c",
+            "signature": "3e6e56a1b2eeb1af338e340d593d4cbae5f0991cc399b3d60138d692f719f2381bb9fc251a2b6cc8ba011e4f2f128496975700604b40194e048e383bee5ad00e",
             "evidence_ref": null
           },
           "de00040000000000000000000000000000000000000000000000000000000000": {
@@ -3437,10 +3505,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00050000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "22ac9b4d606c68bc459956010309e43b76e1765bf86812b517e6b43cdf650100829764f3826564b136ff7420115b00e9ddd4afa52408cbaa51b0d6fff61cc909",
+            "signature": "f57fbbf044b2dab9edd93cb33d4acb3531b596084264948681e8e0eee939b2ed30fd88d4987c7d9cee198dc06cb0397d100d1d314460c321d6b292e483885f07",
             "evidence_ref": null
           },
           "de00030000000000000000000000000000000000000000000000000000000000": {
@@ -3473,10 +3542,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00040000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "4bfeb81fd76360b732d94355358ead755cf9e61e8696713ee6d55498fa960e2545d23b100b45a91e8958ff8d68e652a3d8c2663f1418a6f5f7ca8d03a424410e",
+            "signature": "ba5fc4b25b3967eb66578573062d770f4ce1f09eb32b912b5e80bc90e0f8619fc7eec0e8a0cb5f0a50afa6f8d3fd4bfa75946e5fdc834356bd9523d6eb5c5e0d",
             "evidence_ref": null
           },
           "de00020000000000000000000000000000000000000000000000000000000000": {
@@ -3509,10 +3579,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00030000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "7e70242feb21d70b53e67d1c091fb7afbe87246715ed449cbaf545e68bf5cf98d9cff44f31d2ac738af0436a8c29e3704e000466dce3b45e3c5d89e5715fdc05",
+            "signature": "ea49c1163f63cb0cc2eaa5f4552391fcac4f1d13c09d9c11bbb9b3f11d79183450cc570a2e0126ec69ef58411f9254a2ba1cec741761fbaf9baaeb7416987f02",
             "evidence_ref": null
           },
           "de00010000000000000000000000000000000000000000000000000000000000": {
@@ -3545,10 +3616,11 @@
                   "kind": "attestation",
                   "hash_alg": "blake2b-256",
                   "hash": "de00020000000000000000000000000000000000000000000000000000000000"
-                }
+                },
+                "evidence_tier": "issuer_records"
               }
             ],
-            "signature": "ba4d3548a07ce33efe6769aabf7dbaba94e11bd206865e14172b2eee5422c174f2534ba4c9d78018d4d178aeb69fd0934ef1989288ca63ad4f406f7752276e0a",
+            "signature": "a5ec2203f474470fb73b8886932c651e3c07cf42d1f0dd94209a98c9dfc47e0dfdddbc4ae9937fc8f84aeaaa4fbdfa13b08bfe3b8c22be8d520e14d68e99ec03",
             "evidence_ref": null
           }
         },
@@ -8364,10 +8436,11 @@
               "kind": "attestation",
               "hash_alg": "blake2b-256",
               "hash": "dead000000000000000000000000000000000000000000000000000000000000"
-            }
+            },
+            "evidence_tier": "issuer_records"
           }
         ],
-        "signature": "0753794065f51186fe93b400c28a282d2da90738f557619116dc4d2e23cb2d41e1db500427566d33b79daf9fdab5517a9c70bede999309706025bdd160f5f106",
+        "signature": "457b6d825b9da9aae6ff7a5ba146c78e1489fbf1342d5206c05ba8d8fd9383c7deaea0a79de5868fc0642201ccf40013d48d3c19c27e52bfba3510afbe7aed05",
         "evidence_ref": null
       },
       "held_edges": [],
@@ -8417,10 +8490,11 @@
               "kind": "attestation",
               "hash_alg": "blake2b-256",
               "hash": "b2041683c608fcf86e4f8f7a66d7cdef7bff2558d6204c1834a8b00c739011e7"
-            }
+            },
+            "evidence_tier": "issuer_records"
           }
         ],
-        "signature": "d5336f7c72880b7f155e2b8303ea62faea07e0f6a01c6264cd834fb553947b6ef27b1edc370d63f091041edd567140790f5883d463e7c13aa8cf644fc7fce600",
+        "signature": "d0d42ab1ad92b6a6df27b8d5a297a22f513b662547c35bb81eb8dbfe0af366ed73901ed0890ac0e29fe8849ce96e0099c2f6d0739463c601064ed5e8e7f13a0e",
         "evidence_ref": null
       },
       "held_edges": [],
@@ -8497,10 +8571,11 @@
               "kind": "attestation",
               "hash_alg": "blake2b-256",
               "hash": "b2041683c608fcf86e4f8f7a66d7cdef7bff2558d6204c1834a8b00c739011e7"
-            }
+            },
+            "evidence_tier": "issuer_records"
           }
         ],
-        "signature": "fcbc803d4975a9a77dafeab719146a492e932883e999411c58ed71bd0599f7beccace1ed37345c9724a95d3a57bd6d173c435b3d20866f6d0f077a92d8eb5502",
+        "signature": "10d68ca1e3a858d485e60795404843eb917e2e6a714996d7969ff97c1ea375d55ac46d43321460acd01d6b83956538bb88976af3884c9bc3bb9c2b1330fc2106",
         "evidence_ref": null
       },
       "held_edges": [],
@@ -8538,6 +8613,494 @@
       "expect": {
         "valid": true,
         "lineage_status": "complete"
+      }
+    },
+    {
+      "id": "E1-tier-custody-record",
+      "clause": "\u00a71.1",
+      "spec_lines": "104-165",
+      "title": "continues, evidence_tier=custody_record, predecessor resolvable -> VALID + complete + tier surfaced",
+      "mode": "enforcing",
+      "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "subject": {
+        "schema": "cgr.attestation.v4",
+        "issuer": "gns-foundation",
+        "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+        "subject_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "subject_did": "did:key:z6Mkaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "agent_handle": "vector-agent@test",
+        "dimension": "receivables",
+        "cgr_score": 0.6666666666666666,
+        "confidence": 6.0,
+        "n_resolved": 12,
+        "capability_tier": 0.75,
+        "as_of": "2026-01-01T00:00:00Z",
+        "last_resolved_at": "2026-01-01T00:00:00Z",
+        "scoring_scope": "pooled",
+        "requested_domain": null,
+        "domain_n_resolved": null,
+        "rationale": "conformance vector",
+        "domain": "deploy",
+        "verifiability_tag": "judgment",
+        "decision_date": "2026-01-01",
+        "recorded_at": "2026-01-01",
+        "backfilled": false,
+        "relates_to": [
+          {
+            "type": "continues",
+            "target": {
+              "kind": "attestation",
+              "hash_alg": "blake2b-256",
+              "hash": "6a554e0c4ce239e747c3962dffb99646774059487c0d9d4a78ce74277b00c9d4"
+            },
+            "evidence_tier": "custody_record"
+          }
+        ],
+        "signature": "63ba66f8e40d926fd12c40ba8d1cb4a7fe87eb442aae1b1d71e443fa4e972ad465c2f7ca7b4510619f6ecf2b6d91f9d7635d1dd26bc4a8462ac0ff410f9caf04",
+        "evidence_ref": null
+      },
+      "held_edges": [],
+      "ledger": {
+        "attestations": {
+          "6a554e0c4ce239e747c3962dffb99646774059487c0d9d4a78ce74277b00c9d4": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "subject_did": "did:key:z6Mkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "signature": "776ec4b693f6422c4866e1476ed19751f12e4ee43c7e432933f5d5ba9fdb90631cea0a8409e58a7039fb458bb35aba7e679c03e7973cea340dcc327a4bb7810e",
+            "evidence_ref": null
+          }
+        },
+        "delegation_certs": {}
+      },
+      "expect": {
+        "valid": true,
+        "lineage_status": "complete",
+        "evidence_tier": "custody_record"
+      }
+    },
+    {
+      "id": "E2-tier-issuer-records",
+      "clause": "\u00a71.1",
+      "spec_lines": "104-165",
+      "title": "continues, evidence_tier=issuer_records -> VALID + complete + tier surfaced",
+      "mode": "enforcing",
+      "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "subject": {
+        "schema": "cgr.attestation.v4",
+        "issuer": "gns-foundation",
+        "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+        "subject_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "subject_did": "did:key:z6Mkaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "agent_handle": "vector-agent@test",
+        "dimension": "receivables",
+        "cgr_score": 0.6666666666666666,
+        "confidence": 6.0,
+        "n_resolved": 12,
+        "capability_tier": 0.75,
+        "as_of": "2026-01-01T00:00:00Z",
+        "last_resolved_at": "2026-01-01T00:00:00Z",
+        "scoring_scope": "pooled",
+        "requested_domain": null,
+        "domain_n_resolved": null,
+        "rationale": "conformance vector",
+        "domain": "deploy",
+        "verifiability_tag": "judgment",
+        "decision_date": "2026-01-01",
+        "recorded_at": "2026-01-01",
+        "backfilled": false,
+        "relates_to": [
+          {
+            "type": "continues",
+            "target": {
+              "kind": "attestation",
+              "hash_alg": "blake2b-256",
+              "hash": "6a554e0c4ce239e747c3962dffb99646774059487c0d9d4a78ce74277b00c9d4"
+            },
+            "evidence_tier": "issuer_records"
+          }
+        ],
+        "signature": "c55d1dc902216e41d17b6474ce25368fa3f456b548284ef6ecc60c9c41485f48a278d46c1ff260841c8936122525569aedbd7b735fd8fce822a45bfed17ed20d",
+        "evidence_ref": null
+      },
+      "held_edges": [],
+      "ledger": {
+        "attestations": {
+          "6a554e0c4ce239e747c3962dffb99646774059487c0d9d4a78ce74277b00c9d4": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "subject_did": "did:key:z6Mkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "signature": "776ec4b693f6422c4866e1476ed19751f12e4ee43c7e432933f5d5ba9fdb90631cea0a8409e58a7039fb458bb35aba7e679c03e7973cea340dcc327a4bb7810e",
+            "evidence_ref": null
+          }
+        },
+        "delegation_certs": {}
+      },
+      "expect": {
+        "valid": true,
+        "lineage_status": "complete",
+        "evidence_tier": "issuer_records"
+      }
+    },
+    {
+      "id": "E3-tier-operator-verification",
+      "clause": "\u00a71.1",
+      "spec_lines": "104-165",
+      "title": "continues, evidence_tier=operator_verification (weakest) -> VALID + complete + surfaced (verifier MUST NOT gate on tier)",
+      "mode": "enforcing",
+      "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "subject": {
+        "schema": "cgr.attestation.v4",
+        "issuer": "gns-foundation",
+        "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+        "subject_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "subject_did": "did:key:z6Mkaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "agent_handle": "vector-agent@test",
+        "dimension": "receivables",
+        "cgr_score": 0.6666666666666666,
+        "confidence": 6.0,
+        "n_resolved": 12,
+        "capability_tier": 0.75,
+        "as_of": "2026-01-01T00:00:00Z",
+        "last_resolved_at": "2026-01-01T00:00:00Z",
+        "scoring_scope": "pooled",
+        "requested_domain": null,
+        "domain_n_resolved": null,
+        "rationale": "conformance vector",
+        "domain": "deploy",
+        "verifiability_tag": "judgment",
+        "decision_date": "2026-01-01",
+        "recorded_at": "2026-01-01",
+        "backfilled": false,
+        "relates_to": [
+          {
+            "type": "continues",
+            "target": {
+              "kind": "attestation",
+              "hash_alg": "blake2b-256",
+              "hash": "6a554e0c4ce239e747c3962dffb99646774059487c0d9d4a78ce74277b00c9d4"
+            },
+            "evidence_tier": "operator_verification"
+          }
+        ],
+        "signature": "a254afb6519e0624ffd6ee3181fe261c4f8ef092a155fb7c354e8bd1f00957638b7d44637daca4670e536ad4a32fea50ed4c5d02907feaf84eda366de43e5c02",
+        "evidence_ref": null
+      },
+      "held_edges": [],
+      "ledger": {
+        "attestations": {
+          "6a554e0c4ce239e747c3962dffb99646774059487c0d9d4a78ce74277b00c9d4": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "subject_did": "did:key:z6Mkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "signature": "776ec4b693f6422c4866e1476ed19751f12e4ee43c7e432933f5d5ba9fdb90631cea0a8409e58a7039fb458bb35aba7e679c03e7973cea340dcc327a4bb7810e",
+            "evidence_ref": null
+          }
+        },
+        "delegation_certs": {}
+      },
+      "expect": {
+        "valid": true,
+        "lineage_status": "complete",
+        "evidence_tier": "operator_verification"
+      }
+    },
+    {
+      "id": "E4-unknown-tier",
+      "clause": "\u00a71.1",
+      "spec_lines": "104-165",
+      "title": "continues with an out-of-vocabulary evidence_tier -> reject (closed vocab; fail closed)",
+      "mode": "enforcing",
+      "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "subject": {
+        "schema": "cgr.attestation.v4",
+        "issuer": "gns-foundation",
+        "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+        "subject_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "subject_did": "did:key:z6Mkaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "agent_handle": "vector-agent@test",
+        "dimension": "receivables",
+        "cgr_score": 0.6666666666666666,
+        "confidence": 6.0,
+        "n_resolved": 12,
+        "capability_tier": 0.75,
+        "as_of": "2026-01-01T00:00:00Z",
+        "last_resolved_at": "2026-01-01T00:00:00Z",
+        "scoring_scope": "pooled",
+        "requested_domain": null,
+        "domain_n_resolved": null,
+        "rationale": "conformance vector",
+        "domain": "deploy",
+        "verifiability_tag": "judgment",
+        "decision_date": "2026-01-01",
+        "recorded_at": "2026-01-01",
+        "backfilled": false,
+        "relates_to": [
+          {
+            "type": "continues",
+            "target": {
+              "kind": "attestation",
+              "hash_alg": "blake2b-256",
+              "hash": "6a554e0c4ce239e747c3962dffb99646774059487c0d9d4a78ce74277b00c9d4"
+            },
+            "evidence_tier": "gold_standard"
+          }
+        ],
+        "signature": "f9287cf0f63d52df7d692e9f180b63dbd3d6b7bb684c36a4dadf9557cbed94cbab5a98055aaa45ca5e38b90fe1ed07cf9cec1addabe856d65f440df4e7b6d001",
+        "evidence_ref": null
+      },
+      "held_edges": [],
+      "ledger": {
+        "attestations": {
+          "6a554e0c4ce239e747c3962dffb99646774059487c0d9d4a78ce74277b00c9d4": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "subject_did": "did:key:z6Mkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "signature": "776ec4b693f6422c4866e1476ed19751f12e4ee43c7e432933f5d5ba9fdb90631cea0a8409e58a7039fb458bb35aba7e679c03e7973cea340dcc327a4bb7810e",
+            "evidence_ref": null
+          }
+        },
+        "delegation_certs": {}
+      },
+      "expect": {
+        "valid": false,
+        "reason_contains": "evidence_tier"
+      }
+    },
+    {
+      "id": "E5-missing-tier",
+      "clause": "\u00a71.1",
+      "spec_lines": "104-165",
+      "title": "continues with NO evidence_tier -> reject (REQUIRED on continues)",
+      "mode": "enforcing",
+      "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "subject": {
+        "schema": "cgr.attestation.v4",
+        "issuer": "gns-foundation",
+        "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+        "subject_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "subject_did": "did:key:z6Mkaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "agent_handle": "vector-agent@test",
+        "dimension": "receivables",
+        "cgr_score": 0.6666666666666666,
+        "confidence": 6.0,
+        "n_resolved": 12,
+        "capability_tier": 0.75,
+        "as_of": "2026-01-01T00:00:00Z",
+        "last_resolved_at": "2026-01-01T00:00:00Z",
+        "scoring_scope": "pooled",
+        "requested_domain": null,
+        "domain_n_resolved": null,
+        "rationale": "conformance vector",
+        "domain": "deploy",
+        "verifiability_tag": "judgment",
+        "decision_date": "2026-01-01",
+        "recorded_at": "2026-01-01",
+        "backfilled": false,
+        "relates_to": [
+          {
+            "type": "continues",
+            "target": {
+              "kind": "attestation",
+              "hash_alg": "blake2b-256",
+              "hash": "6a554e0c4ce239e747c3962dffb99646774059487c0d9d4a78ce74277b00c9d4"
+            }
+          }
+        ],
+        "signature": "c8f99c5a874d87d0a77e3dc5e355037b665a9c0c9ac260c6cab2bdf0db840ba070338d48cbb499d468c090788a3770cb4421512d0c72e901fae3070ffe92840f",
+        "evidence_ref": null
+      },
+      "held_edges": [],
+      "ledger": {
+        "attestations": {
+          "6a554e0c4ce239e747c3962dffb99646774059487c0d9d4a78ce74277b00c9d4": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "subject_did": "did:key:z6Mkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "signature": "776ec4b693f6422c4866e1476ed19751f12e4ee43c7e432933f5d5ba9fdb90631cea0a8409e58a7039fb458bb35aba7e679c03e7973cea340dcc327a4bb7810e",
+            "evidence_ref": null
+          }
+        },
+        "delegation_certs": {}
+      },
+      "expect": {
+        "valid": false,
+        "reason_contains": "evidence_tier"
+      }
+    },
+    {
+      "id": "E6-supersedes-has-tier",
+      "clause": "\u00a71.1",
+      "spec_lines": "104-165",
+      "title": "supersedes carrying evidence_tier -> reject (evidence_tier is continues-only; misplaced field)",
+      "mode": "enforcing",
+      "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "subject": {
+        "schema": "cgr.attestation.v4",
+        "issuer": "gns-foundation",
+        "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+        "subject_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "subject_did": "did:key:z6Mkaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "agent_handle": "vector-agent@test",
+        "dimension": "receivables",
+        "cgr_score": 0.6666666666666666,
+        "confidence": 6.0,
+        "n_resolved": 12,
+        "capability_tier": 0.75,
+        "as_of": "2026-01-01T00:00:00Z",
+        "last_resolved_at": "2026-01-01T00:00:00Z",
+        "scoring_scope": "pooled",
+        "requested_domain": null,
+        "domain_n_resolved": null,
+        "rationale": "conformance vector",
+        "domain": "deploy",
+        "verifiability_tag": "judgment",
+        "decision_date": "2026-01-01",
+        "recorded_at": "2026-01-01",
+        "backfilled": false,
+        "relates_to": [
+          {
+            "type": "supersedes",
+            "target": {
+              "kind": "attestation",
+              "hash_alg": "blake2b-256",
+              "hash": "6a554e0c4ce239e747c3962dffb99646774059487c0d9d4a78ce74277b00c9d4"
+            },
+            "evidence_tier": "issuer_records"
+          }
+        ],
+        "signature": "44e7463521c4ffb3f99993088239f70f8ae495aad4b2285a587d5ca50863ea3c88bf77c7995129b2c783f534e5bb902e98c02857cb7f55f1d43d62e6c9e0aa0d",
+        "evidence_ref": null
+      },
+      "held_edges": [],
+      "ledger": {
+        "attestations": {
+          "6a554e0c4ce239e747c3962dffb99646774059487c0d9d4a78ce74277b00c9d4": {
+            "schema": "cgr.attestation.v4",
+            "issuer": "gns-foundation",
+            "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+            "subject_key": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "subject_did": "did:key:z6Mkeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "agent_handle": "vector-agent@test",
+            "dimension": "receivables",
+            "cgr_score": 0.6666666666666666,
+            "confidence": 6.0,
+            "n_resolved": 12,
+            "capability_tier": 0.75,
+            "as_of": "2026-01-01T00:00:00Z",
+            "last_resolved_at": "2026-01-01T00:00:00Z",
+            "scoring_scope": "pooled",
+            "requested_domain": null,
+            "domain_n_resolved": null,
+            "rationale": "conformance vector",
+            "domain": "deploy",
+            "verifiability_tag": "judgment",
+            "decision_date": "2026-01-01",
+            "recorded_at": "2026-01-01",
+            "backfilled": false,
+            "signature": "776ec4b693f6422c4866e1476ed19751f12e4ee43c7e432933f5d5ba9fdb90631cea0a8409e58a7039fb458bb35aba7e679c03e7973cea340dcc327a4bb7810e",
+            "evidence_ref": null
+          }
+        },
+        "delegation_certs": {}
+      },
+      "expect": {
+        "valid": false,
+        "reason_contains": "evidence_tier"
       }
     },
     {

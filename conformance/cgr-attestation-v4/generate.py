@@ -118,6 +118,18 @@ def tgt_att(a): return {"kind": "attestation", "hash_alg": "blake2b-256", "hash"
 def tgt_cert(c): return {"kind": "delegation_cert", "hash_alg": "sha-256", "hash": cert_hash(c)}
 
 
+# §1.1 evidence_tier — REQUIRED on `continues`, MUST be absent on supersedes/revokes.
+EVIDENCE_TIERS = ("custody_record", "issuer_records", "operator_verification")
+
+def _edge(kind, target, tier="issuer_records"):
+    """One relation edge. A `continues` edge carries the REQUIRED `evidence_tier` (§1.1);
+    supersedes/revokes never do (the field is continues-only)."""
+    e = {"type": kind, "target": target}
+    if kind == "continues":
+        e["evidence_tier"] = tier
+    return e
+
+
 VECTORS = []
 def V(id, clause, lines, title, subject, expect, *, atts=None, certs=None, held=None,
       mode="enforcing", seek_fails=False):
@@ -157,8 +169,8 @@ V("M1-duplicate-edge", "§1.1", "98-100",
 _p2 = att("dd" * 32)
 V("M2-two-continues", "§1.1", "101-107",
   "two continues edges (even distinct targets) -> reject (>1 lineage predecessor)",
-  att(SK, relates_to=[{"type": "continues", "target": tgt_att(_p)},
-                      {"type": "continues", "target": tgt_att(_p2)}]),
+  att(SK, relates_to=[_edge("continues", tgt_att(_p)),
+                      _edge("continues", tgt_att(_p2))]),
   {"valid": False, "reason_contains": "continues"}, atts=[_p, _p2])
 
 V("M3-two-supersedes-distinct", "§1.1", "107-109",
@@ -199,8 +211,8 @@ def cycle_pair(kind_a, kind_b):
     # Legible VALID 64-hex placeholder targets (must be hex per §1.1 malformed-hash rule):
     # "cc" = cycle; 0a / 0b = the two nodes. Distinct, deterministic, byte-stable.
     hA, hB = "cc0a".ljust(64, "0"), "cc0b".ljust(64, "0")
-    A = att(SK, relates_to=[{"type": kind_a, "target": {"kind": "attestation", "hash_alg": "blake2b-256", "hash": hB}}])
-    B = att(SK2, relates_to=[{"type": kind_b, "target": {"kind": "attestation", "hash_alg": "blake2b-256", "hash": hA}}])
+    A = att(SK, relates_to=[_edge(kind_a, {"kind": "attestation", "hash_alg": "blake2b-256", "hash": hB})])
+    B = att(SK2, relates_to=[_edge(kind_b, {"kind": "attestation", "hash_alg": "blake2b-256", "hash": hA})])
     return A, B, {hA: A, hB: B}
 
 A, B, ledgermap = cycle_pair("continues", "continues")
@@ -240,12 +252,12 @@ def deep_chain(kind, length):
     for i in range(length, 0, -1):
         rel = None
         if nxt_hash is not None:
-            rel = [{"type": kind, "target": {"kind": "attestation", "hash_alg": "blake2b-256", "hash": nxt_hash}}]
+            rel = [_edge(kind, {"kind": "attestation", "hash_alg": "blake2b-256", "hash": nxt_hash})]
         node = att(f"{i:02x}" * 32, relates_to=rel)
         h = f"de{i:04d}".ljust(64, "0")   # legible valid hex: "de"=depth, 0001..0065 = chain index
         ledger[h] = node
         nxt_hash = h
-    subject = att(SK, relates_to=[{"type": kind, "target": {"kind": "attestation", "hash_alg": "blake2b-256", "hash": nxt_hash}}])
+    subject = att(SK, relates_to=[_edge(kind, {"kind": "attestation", "hash_alg": "blake2b-256", "hash": nxt_hash})])
     return subject, ledger
 
 subject, ledger = deep_chain("continues", 65)
@@ -272,19 +284,46 @@ VECTORS.append({"id": "T7b-revokes-depth", "clause": "§1.3", "spec_lines": "204
 # T8 continues unreachable target: edge points at a hash NOT in the ledger.
 V("T8-continues-unreachable", "§1.3", "230-239",
   "continues with unreachable predecessor -> VALID subject + lineage_status=truncated_unavailable (NOT anomaly_cycle)",
-  att(SK, relates_to=[{"type": "continues",
-                       "target": {"kind": "attestation", "hash_alg": "blake2b-256", "hash": "dead".ljust(64, "0")}}]),
+  att(SK, relates_to=[_edge("continues",
+                       {"kind": "attestation", "hash_alg": "blake2b-256", "hash": "dead".ljust(64, "0")})]),
   {"valid": True, "lineage_status": "truncated_unavailable"})   # empty ledger
 
 # T9 / T10 continues signer.
 V("T9-agent-signed-continues", "§1.3/§5", "230-232",
   "continues carried by an attestation NOT signed by the pinned Foundation issuer -> reject",
-  att(SK, relates_to=[{"type": "continues", "target": tgt_att(_p)}], signer=AGENT_SK),
+  att(SK, relates_to=[_edge("continues", tgt_att(_p))], signer=AGENT_SK),
   {"valid": False, "reason_contains": "signature"}, atts=[_p])
 V("T10-foundation-signed-continues", "§1.3/§5", "230-239",
   "Foundation-signed continues, predecessor resolvable -> VALID + lineage_status=complete",
-  att(SK, relates_to=[{"type": "continues", "target": tgt_att(_p)}]),
+  att(SK, relates_to=[_edge("continues", tgt_att(_p))]),
   {"valid": True, "lineage_status": "complete"}, atts=[_p])
+
+# ── §1.1 evidence_tier on continues (REQUIRED; closed vocab; SURFACED, not gated) ──
+_pe = att("ee" * 32)   # a resolvable predecessor for the tier vectors
+V("E1-tier-custody-record", "§1.1", "104-165",
+  "continues, evidence_tier=custody_record, predecessor resolvable -> VALID + complete + tier surfaced",
+  att(SK, relates_to=[_edge("continues", tgt_att(_pe), "custody_record")]),
+  {"valid": True, "lineage_status": "complete", "evidence_tier": "custody_record"}, atts=[_pe])
+V("E2-tier-issuer-records", "§1.1", "104-165",
+  "continues, evidence_tier=issuer_records -> VALID + complete + tier surfaced",
+  att(SK, relates_to=[_edge("continues", tgt_att(_pe), "issuer_records")]),
+  {"valid": True, "lineage_status": "complete", "evidence_tier": "issuer_records"}, atts=[_pe])
+V("E3-tier-operator-verification", "§1.1", "104-165",
+  "continues, evidence_tier=operator_verification (weakest) -> VALID + complete + surfaced (verifier MUST NOT gate on tier)",
+  att(SK, relates_to=[_edge("continues", tgt_att(_pe), "operator_verification")]),
+  {"valid": True, "lineage_status": "complete", "evidence_tier": "operator_verification"}, atts=[_pe])
+V("E4-unknown-tier", "§1.1", "104-165",
+  "continues with an out-of-vocabulary evidence_tier -> reject (closed vocab; fail closed)",
+  att(SK, relates_to=[{"type": "continues", "target": tgt_att(_pe), "evidence_tier": "gold_standard"}]),
+  {"valid": False, "reason_contains": "evidence_tier"}, atts=[_pe])
+V("E5-missing-tier", "§1.1", "104-165",
+  "continues with NO evidence_tier -> reject (REQUIRED on continues)",
+  att(SK, relates_to=[{"type": "continues", "target": tgt_att(_pe)}]),
+  {"valid": False, "reason_contains": "evidence_tier"}, atts=[_pe])
+V("E6-supersedes-has-tier", "§1.1", "104-165",
+  "supersedes carrying evidence_tier -> reject (evidence_tier is continues-only; misplaced field)",
+  att(SK, relates_to=[{"type": "supersedes", "target": tgt_att(_pe), "evidence_tier": "issuer_records"}]),
+  {"valid": False, "reason_contains": "evidence_tier"}, atts=[_pe])
 
 # HELD-edge cases (the verifier is handed the edge -> MUST honour). Fixed verdicts;
 # the SEEK counterparts (edge only in a queryable ledger) are L1/L2 (pending-0006B).
