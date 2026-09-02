@@ -134,6 +134,9 @@ def test_v4_conformance(vec):
     if "superseded" in exp:
         assert res.get("superseded") == exp["superseded"], \
             f"{vec['id']}: superseded mismatch — {res}"
+    if "evidence_tier" in exp:
+        assert res.get("evidence_tier") == exp["evidence_tier"], \
+            f"{vec['id']}: evidence_tier mismatch — {res}"
     if "reason_contains" in exp and not exp["valid"]:
         assert exp["reason_contains"] in (res.get("reason") or ""), \
             f"{vec['id']}: reason should contain '{exp['reason_contains']}' — {res}"
