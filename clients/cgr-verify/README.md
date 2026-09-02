@@ -101,9 +101,12 @@ surface (whose store can't index encrypted attestation metadata). Until such an 
 non-enforcing mode.** That is honest about what you can do today: verify signatures, structure,
 lineage, and *held* edges now; querying for revocation at read time waits on the index.
 
-## The verify recipe (language-agnostic — reimplement in any language)
+## The verify recipe (v1/v2/v3) — language-agnostic (reimplement in any language)
 
-The attestation is a flat JSON object. To verify without this library:
+The attestation is a flat JSON object. Steps 1–3 (the signature over the JCS-canonical body) are the
+**shared base for every version, `v4` included**; step 4's acceptance set is `v1/v2/v3` (`v4`
+re-implementers, see [Re-implementing v4](#re-implementing-v4) below). To verify a `v1/v2/v3`
+attestation without this library:
 
 1. **Signed body** = the attestation minus the two envelope keys `signature` and `evidence_ref`.
 2. **Canonicalize** the signed body with **RFC 8785 (JCS)** → UTF-8 bytes. (JS `canonicalize`, Python `rfc8785` — byte-identical; the committed golden fixtures lock this cross-language.)
@@ -112,7 +115,19 @@ The attestation is a flat JSON object. To verify without this library:
 
 Two footguns the recipe pins: (a) **exclude exactly** `signature` + `evidence_ref` before canonicalizing; (b) Ed25519 over the **raw** canonical bytes (not a hash of them).
 
-Golden fixtures for cross-language parity: [`fixtures/`](fixtures/) (`cgr_attestation_v2/v3_jcs.golden.json`) carry the exact canonical bytes + a signature under a known test key.
+### Re-implementing v4
+
+`v4` shares steps 1–3 **unchanged** (same signed body, same JCS + raw-bytes Ed25519), then **replaces
+step 4** with the relation-edge machinery in [§1 of the spec](https://github.com/GNS-Foundation/grafomem/blob/main/docs/cgr/cgr-attestation-v4-spec.md):
+schema string `cgr.attestation.v4`; `relates_to` per-edge validation (per-kind `hash_alg`,
+multiplicity), `continues`/validity **traversal** (Lineage-Degrades / Validity-Fails-Closed), the
+`lineage_status` signal, the grounding gate, held/sought edges, and the `mode` contract (see
+[v4](#v4--relation-edges-traversal-and-modes) above). Those rules are extensive and normative, so this
+README does **not** restate them — the authoritative, **testable** definition is the spec plus the
+language-neutral [conformance corpus](https://github.com/GNS-Foundation/grafomem/tree/main/conformance/cgr-attestation-v4)
+(38 vectors, both modes). Verify a re-implementation against the corpus, not against prose.
+
+Golden fixtures for cross-language parity: [`fixtures/`](https://github.com/GNS-Foundation/grafomem/tree/main/clients/cgr-verify/fixtures) (`cgr_attestation_v2/v3_jcs.golden.json`) carry the exact canonical bytes + a signature under a known test key.
 
 ## Test
 
