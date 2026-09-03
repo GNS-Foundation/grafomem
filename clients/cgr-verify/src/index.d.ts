@@ -43,6 +43,9 @@ export declare const GROUNDING_DIMENSIONS: Set<string>;
 export type LineageStatus =
   | 'complete' | 'truncated_unavailable' | 'truncated_depth' | 'anomaly_cycle';
 
+/** §1.1 authority tier that substantiated a `continues` edge — closed vocabulary, descending strength. */
+export type EvidenceTier = 'custody_record' | 'issuer_records' | 'operator_verification';
+
 export interface V4Ledger {
   attestations?: Record<string, Record<string, unknown>>;
   delegation_certs?: Record<string, Record<string, unknown>>;
@@ -55,6 +58,10 @@ export interface VerifyResultV4 extends VerifyResult {
   /** True when a `supersedes` edge (held, or sought in enforcing mode) targets the subject:
    *  signature-valid but not current. Present only when true. Distinct from `valid: false`. */
   superseded?: boolean;
+  /** §1.1 the authority tier the Foundation attests substantiated the subject's `continues` edge —
+   *  SURFACED, not gated (sufficiency is the relying party's call). Present when a `continues` edge
+   *  exists. A recorded CLAIM about the issuer's own evidence, not independent proof. */
+  evidence_tier?: EvidenceTier;
 }
 
 /** BLAKE2b-256 fingerprint of an attestation's canonical signed body (§1.1). */

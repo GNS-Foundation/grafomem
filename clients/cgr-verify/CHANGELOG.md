@@ -2,6 +2,30 @@
 
 All notable changes to `@gns-foundation/cgr-verify`.
 
+## 0.3.0 — 2026-09-02
+
+Adds `evidence_tier` on the `continues` edge (spec §1.1). **Minor bump, not patch**: the field is
+additive *to the wire* (a deployed v4 verifier carries it as an unread signed field, so published
+`0.2.0` was undisturbed), but this verifier gains **new rejection behaviour** and a new surfaced
+result field — a behaviour change for consumers who upgrade.
+
+### Added
+- `verifyCGRAttestationV4` **surfaces** `evidence_tier` in its result — the authority tier the
+  Foundation attests substantiated a `continues` edge (a recorded *claim*, not proof; **non-gating**).
+  New `EvidenceTier` type; `evidence_tier?` on `VerifyResultV4`.
+
+### Changed — verification behaviour (this is why it's a minor, not a patch)
+- A `continues` edge now **MUST** carry a valid `evidence_tier` from the closed vocabulary
+  `custody_record` / `issuer_records` / `operator_verification`. The verifier now **rejects**: a
+  `continues` missing it; any edge with an out-of-vocabulary value; a `supersedes`/`revokes` carrying
+  it. An attestation that verified under `0.2.0` but breaks these rules now returns `valid: false`.
+  (No such attestations exist yet — v4 issuance has not started — but the contract is stricter.)
+- The verifier does **NOT** gate on *which* tier; sufficiency is the relying party's call.
+
+### Note
+- Published `0.2.0` does not have this. Consumers who need `evidence_tier` (its surfacing or its
+  enforcement) must upgrade to `0.3.0`.
+
 ## 0.2.0 — 2026-09-01
 
 Adds `cgr.attestation.v4` verification. **Purely additive**: 0.1.0 shipped v1/v2/v3 only, so v4 is

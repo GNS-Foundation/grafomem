@@ -83,17 +83,25 @@ const rr = await verifyCGRAttestationV4(subject, {}, ISSUER_PUB, { mode: 'non-en
 ok('held revokes → invalid', rr.valid === false);
 ok('held revokes → reason mentions revoked', /revoked/i.test(rr.reason || ''));
 
-// 4. a continues edge whose predecessor is in the ledger → lineage_status 'complete'.
+// 4. a continues edge (with the REQUIRED evidence_tier) whose predecessor is in the ledger.
 const predecessor = await mint({ subject_key: 'ef'.repeat(32) });
 const predFp = attestationFingerprint(predecessor);
+const predTarget = { kind: 'attestation', hash_alg: 'blake2b-256', hash: predFp };
 const withLineage = await mint({
-  relates_to: [{ type: 'continues', target: { kind: 'attestation', hash_alg: 'blake2b-256', hash: predFp } }],
+  relates_to: [{ type: 'continues', target: predTarget, evidence_tier: 'custody_record' }],
 });
 const rc = await verifyCGRAttestationV4(
   withLineage, { attestations: { [predFp]: predecessor } }, ISSUER_PUB, { mode: 'non-enforcing' },
 );
 ok('continues (resolved) → valid', rc.valid === true);
 ok('continues (resolved) → lineage_status complete', rc.lineage_status === 'complete');
+ok('continues → evidence_tier surfaced (not gated)', rc.evidence_tier === 'custody_record');
+
+// 4b. a continues edge WITHOUT evidence_tier → reject (§1.1 required-on-continues).
+const noTier = await mint({ relates_to: [{ type: 'continues', target: predTarget }] });
+const rnt = await verifyCGRAttestationV4(noTier, { attestations: { [predFp]: predecessor } }, ISSUER_PUB, { mode: 'non-enforcing' });
+ok('continues missing evidence_tier → invalid', rnt.valid === false);
+ok('missing evidence_tier → reason mentions evidence_tier', /evidence_tier/i.test(rnt.reason || ''));
 
 // 5. seek THROWS in enforcing mode → fail closed.
 const rf = await verifyCGRAttestationV4(subject, {}, ISSUER_PUB, {

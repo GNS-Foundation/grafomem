@@ -53,11 +53,23 @@ const res = await verifyCGRAttestationV4(subject, ledger, PINNED, {
 if (!res.valid) throw new Error(`untrusted: ${res.reason}`);
 // res.lineage_status — 'complete' | 'truncated_unavailable' | 'truncated_depth' | 'anomaly_cycle'
 // res.superseded    — true if a supersedes edge targets the subject (valid, but not current)
+// res.evidence_tier — on a continues edge: the authority tier the Foundation attests
+//                     ('custody_record' | 'issuer_records' | 'operator_verification'). SURFACED, not gated.
 ```
 
 `ledger` (`{ attestations, delegation_certs }`, both keyed by hash) is the resolution context for the
 subject's **own** edges during traversal. Absent targets degrade lineage (they never fail a
 `continues`); an incomplete **validity** chain (`supersedes`/`revokes`) fails closed.
+
+### `evidence_tier` — the authority behind a `continues` (v0.3+)
+
+A `continues` edge **must** carry `evidence_tier` — which authority substantiated the rotation claim,
+from a closed vocabulary in descending strength: `custody_record`, `issuer_records`,
+`operator_verification`. The verifier **rejects** a `continues` missing it, an out-of-vocabulary
+value, or a `supersedes`/`revokes` that carries it; and it **surfaces** the value (`res.evidence_tier`)
+but **does not gate on which tier** — whether `operator_verification` is sufficient is *your* call.
+It is the Foundation's attested **claim** about its own evidence, **not proof**: `custody_record` means
+"the Foundation attests it relied on a custody record," not that custody was cryptographically verified.
 
 ### `mode` is explicit and required
 

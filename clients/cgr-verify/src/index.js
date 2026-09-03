@@ -101,6 +101,8 @@ export const GROUNDING_DIMENSIONS = new Set(['grounding']);   // §2.2 (pinned)
 const REL_TYPES = new Set(['continues', 'supersedes', 'revokes']);
 const VALIDITY_TYPES = new Set(['supersedes', 'revokes']);
 const HASH_ALG_FOR_KIND = { attestation: 'blake2b-256', delegation_cert: 'sha-256' };
+// §1.1 evidence_tier — closed vocabulary; REQUIRED on continues, MUST be absent on supersedes/revokes.
+const EVIDENCE_TIERS = new Set(['custody_record', 'issuer_records', 'operator_verification']);
 const HEX64 = /^[0-9a-f]{64}$/;
 const MAX_DEPTH = 64;                                          // §1.3 (the pinned floor)
 
@@ -221,6 +223,13 @@ export async function verifyCGRAttestationV4(subject, ledger, pinnedIssuer, opts
       return fail(`hash_alg ${t.hash_alg} invalid for kind ${t.kind}`);
     if (typeof t.hash !== 'string' || !HEX64.test(t.hash))
       return fail(`malformed target hash for ${t.hash_alg}`);
+    // §1.1 evidence_tier: REQUIRED on continues (closed vocab); MUST be absent on supersedes/revokes.
+    if (e.type === 'continues') {
+      if (e.evidence_tier === undefined) return fail('continues edge missing evidence_tier');
+      if (!EVIDENCE_TIERS.has(e.evidence_tier)) return fail(`invalid evidence_tier: ${e.evidence_tier}`);
+    } else if (e.evidence_tier !== undefined) {
+      return fail('evidence_tier is only valid on continues edges');
+    }
   }
   // multiplicity (§1.1): exact duplicate → reject; >1 continues → reject
   const seen = new Set();
@@ -278,5 +287,8 @@ export async function verifyCGRAttestationV4(subject, ledger, pinnedIssuer, opts
   };
   if (tr.lineage_status) out.lineage_status = tr.lineage_status;
   if (superseded) out.superseded = true;
+  // §1.1 surface the continues edge's evidence_tier (recorded, non-gating; at most one continues).
+  const continuesEdge = edges.find((e) => e.type === 'continues');
+  if (continuesEdge) out.evidence_tier = continuesEdge.evidence_tier;
   return out;
 }
