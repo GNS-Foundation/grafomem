@@ -1,6 +1,6 @@
 {
   "name": "@gns-foundation/cgr-verify",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Offline, dependency-light verifier for GNS Foundation CGR attestations (cgr.attestation.v1/v2/v3/v4). Verify a Foundation-signed reputation attestation against a pinned issuer key — without trusting any server.",
   "type": "module",
   "main": "src/index.js",
