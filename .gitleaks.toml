@@ -49,13 +49,23 @@ regex = '''\b(gAAAAA[A-Za-z0-9_\-]{10,}={0,2})'''
 # still apply everywhere else.
 #
 # CONVENTION (do not break): files matching the `cgr_attestation_*_jcs.golden.json`
-# pattern are gitleaks-blind by this allowlist, so they MUST hold public cryptographic
-# material ONLY — never a private key, signing seed, API key, or any secret. Put no
-# secret in these paths. (GitGuardian still scans them, so this is defense-in-depth.)
-description = "Non-source data/binary + CGR public-key golden fixtures"
+# pattern OR the `conformance/cgr-attestation-v*/` corpus JSONs are gitleaks-blind by
+# this allowlist, so they MUST hold public cryptographic material ONLY — never a private
+# key, signing seed, API key, or any secret. Put no secret in these paths. (GitGuardian
+# still scans them, so this is defense-in-depth.)
+#
+# The conformance corpus (vectors.json / issuer.json) is the same class as the goldens:
+# it carries the deterministic TEST issuer/subject Ed25519 PUBLIC keys, did:key ids, and
+# detached signatures a verifier needs to reproduce the wire offline. The signing SEED
+# lives only in generate.py (test code), never in the JSON. The neutrality vector (N1)
+# is what first tripped gitleaks' generic-api-key default: it must set
+# subject_key == issuer_key_id == the (high-entropy) public issuer key, which the
+# low-entropy repeating-byte subject_keys of other vectors never do.
+description = "Non-source data/binary + CGR public-key golden fixtures + conformance corpus"
 paths = [
   '''\.(png|jpe?g|gif|pdf|ipynb|parquet|bin|whl|so|dylib)$''',
   '''cgr_attestation_v[0-9]+_jcs\.golden\.json$''',
+  '''conformance/cgr-attestation-v[0-9]+/(vectors|issuer)\.json$''',
 ]
 
 # NOTE: the known dead key at scripts/migrate_prod_keys.py:7 is deliberately NOT
