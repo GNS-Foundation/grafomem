@@ -51,7 +51,8 @@ async function mint(extra = {}) {
     requested_domain: null,
     domain_n_resolved: null,
     rationale: 'smoke',
-    domain: 'deploy',
+    // NOTE: no `domain` — this is a pooled judgment aggregate (scoring_scope: 'pooled'), and the
+    // §2.2 domain gate requires `domain` to be ABSENT on those.
     verifiability_tag: 'judgment',
     decision_date: '2026-01-01',
     recorded_at: '2026-01-01',
@@ -109,6 +110,18 @@ const rf = await verifyCGRAttestationV4(subject, {}, ISSUER_PUB, {
 });
 ok('seek throws → invalid (fail closed)', rf.valid === false);
 ok('seek throws → "revocation status undeterminable"', /revocation status undeterminable/i.test(rf.reason || ''));
+
+// 6. §2.2 domain gate — a pooled judgment aggregate carrying a domain → reject.
+const withDomain = await mint({ domain: 'deploy' }); // scoring_scope is 'pooled'
+const rd = await verifyCGRAttestationV4(withDomain, {}, ISSUER_PUB, { mode: 'non-enforcing' });
+ok('domain on pooled aggregate → invalid', rd.valid === false);
+ok('domain gate → reason mentions domain', /domain/i.test(rd.reason || ''));
+
+// 7. §2.2 0002 presence gate — a record missing verifiability_tag → reject.
+const noTag = await mint({ verifiability_tag: undefined });
+const rvt = await verifyCGRAttestationV4(noTag, {}, ISSUER_PUB, { mode: 'non-enforcing' });
+ok('missing verifiability_tag → invalid', rvt.valid === false);
+ok('presence gate → reason mentions verifiability_tag', /verifiability_tag/i.test(rvt.reason || ''));
 
 // 6. mode is required — omitting it throws (no silent default).
 let threw = false;
