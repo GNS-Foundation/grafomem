@@ -51,12 +51,11 @@ async function mint(extra = {}) {
     requested_domain: null,
     domain_n_resolved: null,
     rationale: 'smoke',
-    // NOTE: no `domain` — this is a pooled judgment aggregate (scoring_scope: 'pooled'), and the
-    // §2.2 domain gate requires `domain` to be ABSENT on those.
+    // NOTE: no `domain` / `decision_date` / `backfilled` — this is a pooled judgment aggregate
+    // (scoring_scope: 'pooled'), and the §2.2 pooled-aggregate absence gate requires those three
+    // PER-RECORD fields to be ABSENT. recorded_at + verifiability_tag are universal and stay.
     verifiability_tag: 'judgment',
-    decision_date: '2026-01-01',
     recorded_at: '2026-01-01',
-    backfilled: false,
     ...extra,
   };
   const signature = hex(await ed.signAsync(canonCGRBody(body), ISSUER_PRIV));
@@ -111,13 +110,18 @@ const rf = await verifyCGRAttestationV4(subject, {}, ISSUER_PUB, {
 ok('seek throws → invalid (fail closed)', rf.valid === false);
 ok('seek throws → "revocation status undeterminable"', /revocation status undeterminable/i.test(rf.reason || ''));
 
-// 6. §2.2 domain gate — a pooled judgment aggregate carrying a domain → reject.
+// 6. §2.2 pooled-aggregate absence gate — a pooled aggregate carrying a per-record field → reject.
 const withDomain = await mint({ domain: 'deploy' }); // scoring_scope is 'pooled'
 const rd = await verifyCGRAttestationV4(withDomain, {}, ISSUER_PUB, { mode: 'non-enforcing' });
 ok('domain on pooled aggregate → invalid', rd.valid === false);
-ok('domain gate → reason mentions domain', /domain/i.test(rd.reason || ''));
+ok('absence gate → reason mentions domain', /domain/i.test(rd.reason || ''));
 
-// 7. §2.2 0002 presence gate — a record missing verifiability_tag → reject.
+const withDecisionDate = await mint({ decision_date: '2026-01-01' }); // pooled → must be absent
+const rdd = await verifyCGRAttestationV4(withDecisionDate, {}, ISSUER_PUB, { mode: 'non-enforcing' });
+ok('decision_date on pooled aggregate → invalid', rdd.valid === false);
+ok('absence gate → reason mentions decision_date', /decision_date/i.test(rdd.reason || ''));
+
+// 7. §2.2 universal presence gate — a record missing verifiability_tag → reject.
 const noTag = await mint({ verifiability_tag: undefined });
 const rvt = await verifyCGRAttestationV4(noTag, {}, ISSUER_PUB, { mode: 'non-enforcing' });
 ok('missing verifiability_tag → invalid', rvt.valid === false);
