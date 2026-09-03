@@ -3,8 +3,11 @@ import json
 import os
 import subprocess
 
-API_URL = "https://grafomem-production.up.railway.app"
-API_KEY = "gfm_99d5ca49e7b954d77f3e4531faadb7cd354402f762ab51d8"
+API_URL = os.environ.get("GRAFOMEM_API_URL", "https://grafomem-production.up.railway.app")
+# Live-flight key is supplied at run time, never committed (a prior hardcoded key was rotated out).
+API_KEY = os.environ.get("GRAFOMEM_FLIGHT_API_KEY", "")
+if not API_KEY:
+    raise SystemExit("set GRAFOMEM_FLIGHT_API_KEY to run the live flight (no key is committed)")
 HEADERS = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
 TENANT = "test_flight_tenant"
 

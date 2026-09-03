@@ -39,6 +39,32 @@ description = "Fernet token (gAAAAA… base64) present in source"
 keywords = ["gaaaaa"]
 regex = '''\b(gAAAAA[A-Za-z0-9_\-]{10,}={0,2})'''
 
+# ── Trap 4: STRUCTURAL — credentialed DB/broker connection string (scheme://user:pass@host). ──
+# NOT keyword-anchored: this is the class that survived three months in public (a plain
+# `postgresql://postgres:<pw>@kodama.proxy.rlwy.net:57503/railway` in five scratch scripts) precisely
+# because Traps 1–3 key off Fernet/master-key names, not on a connection-string shape. Scoped to a
+# credentialed URI pointing at a ROUTABLE host (an FQDN — has a dot), so local-dev and placeholder
+# strings stay silent: compose service names (`@postgres:5432`), loopback, and obvious placeholder
+# passwords are allow-listed below. A real prod host (FQDN / proxy) is caught.
+[[rules]]
+id = "grafomem-db-connection-uri"
+description = "Credentialed connection string (scheme://user:password@routable-host)"
+regex = '''(?i)\b(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|redis|rediss|amqps?|clickhouse|mssql|cockroachdb)://[^\s:/@'"]+:[^\s:/@'"]{4,}@[^\s/@'"]+'''
+[rules.allowlist]
+regexTarget = "match"
+regexes = [
+  # single-label host (compose service name / placeholder like `recovery-host`) — no dot before :port or /
+  '''@[A-Za-z0-9_-]+(?::\d+)?(?:/|$)''',
+  # loopback / any-address
+  '''@(?:localhost|127\.0\.0\.1|0\.0\.0\.0|::1)\b''',
+  # obvious placeholder / local-dev passwords
+  '''://[^\s:/@]+:(?:password|passwd|pass|changeme|change-me|secret|example|placeholder|test|xxx+|\*+|your[_-]?password|grafomem_dev)@''',
+  # env / template interpolation inside the credential
+  '''\$\{''',
+  '''%\([a-z_]+\)s''',
+  '''<[A-Za-z_]+>''',
+]
+
 [allowlist]
 # Non-source binaries, plus the CGR attestation golden fixtures. Those fixtures
 # contain ONLY public cryptographic material by design — issuer/subject Ed25519
@@ -61,12 +87,29 @@ regex = '''\b(gAAAAA[A-Za-z0-9_\-]{10,}={0,2})'''
 # is what first tripped gitleaks' generic-api-key default: it must set
 # subject_key == issuer_key_id == the (high-entropy) public issuer key, which the
 # low-entropy repeating-byte subject_keys of other vectors never do.
-description = "Non-source data/binary + CGR public-key golden fixtures + conformance corpus"
+description = "Non-source data/binary + CGR public-key golden fixtures + conformance corpus + vendored deps"
 paths = [
   '''\.(png|jpe?g|gif|pdf|ipynb|parquet|bin|whl|so|dylib)$''',
-  '''cgr_attestation_v[0-9]+_jcs\.golden\.json$''',
+  '''cgr_[a-z0-9_]*jcs\.golden\.json$''',   # cgr_attestation_v*_ AND cgr_rotation_chain_ goldens (public material only)
   '''conformance/cgr-attestation-v[0-9]+/(vectors|issuer)\.json$''',
+  '''(^|/)node_modules/''',   # vendored JS deps carry example URIs in their own docs/types
+  '''(^|/)dist/''',           # build output
+  '''(^|/)\.gitleaks-baseline\.json$''',   # the scheduled-scan baseline (redacted finding metadata)
 ]
 
-# NOTE: the known dead key at scripts/migrate_prod_keys.py:7 is deliberately NOT
-# baselined here — it stays catchable. Its removal is task (b)'s job.
+# Deterministic DUMMY test constants — pinned to their exact literal values, NOT whole-file/path
+# exemptions. These are obvious non-secrets shared across the test suite; a real secret in the same
+# file is a DIFFERENT string and stays caught. (The dummy master key is 16 repeats of "0123456789abcdef";
+# the fake Fernet token is literally "…fake…"; the signing key is literally "test_key_1234…".)
+regexes = [
+  '''\b(?:0123456789abcdef){4}\b''',        # shared dummy GRAFOMEM_MASTER_KEY (tests/conftest.py, test_openapi_contract.py)
+  '''gAAAAAB?fake[A-Za-z0-9_\-]*''',         # literal fake Fernet token (test_restore_scrub.py)
+  '''\btest_key_1234567890[0-9]*\b''',       # dummy GRAFOMEM_SIGNING_KEY (test_restore_scrub.py)
+]
+
+# The five scratch scripts that embedded the (since-rotated) prod Postgres credential
+# (query_railway.py, scratch_dump_prod.py, scripts/migrate_prod_keys.py — which also held a
+# dead Fernet key — query_erasure_prod.py, tests/check_api_key.py) were REMOVED from HEAD in the
+# same change that added Trap 4. The dead credentials remain in git history (no rewrite of a public
+# repo); the scheduled full-history scan carries a committed baseline (.gitleaks-baseline.json) so it
+# reports only NEW findings, not those known-dead historical ones.

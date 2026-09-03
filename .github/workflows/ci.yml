@@ -141,17 +141,17 @@ jobs:
           echo "Lint passed: FSL codebase clean"
 
   secret-scan:
-    # Diff-scoped custom secret scanning — the grafomem-specific Fernet + master-key
-    # traps (keyword-anchored rules in .gitleaks.toml), alongside the GitGuardian app.
-    # Scoped to NEW changes only (dead secrets still in history are (b)'s job); a
-    # full-history guard is deferred until after (b).
-    # NOTE: to gate merges, add `secret-scan` to branch protection's required checks
-    # (Camilo's flip). The job is already blocking within itself (exit 1 on detection).
+    # FULL-TREE custom secret scanning on every run (was diff-scoped, which was structurally
+    # blind to anything already committed — that blind spot let a plain postgresql:// prod
+    # credential live in five scratch scripts for ~3 months). This scans the ENTIRE working
+    # tree at HEAD, not just the diff, with the grafomem Fernet/master-key traps + the
+    # structural connection-string rule (.gitleaks.toml), alongside GitGuardian. A separate
+    # scheduled workflow (secret-history-scan.yml) covers full HISTORY against a pinned baseline.
+    # NOTE: to gate merges, add `secret-scan` to branch protection's required checks (Camilo's
+    # flip). The job is already blocking within itself (exit 1 on detection).
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0                 # full history so the diff range resolves
+      - uses: actions/checkout@v4         # tracked files at HEAD (no fetch-depth needed for a tree scan)
 
       - name: Install gitleaks
         run: |
@@ -163,17 +163,7 @@ jobs:
       - name: Corpus self-test (rules catch positives, ignore negatives)
         run: python3 tests/secret_scanner/run_corpus_check.py
 
-      - name: Diff-scoped secret scan
+      - name: Full-tree secret scan (entire HEAD, not just the diff)
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            git fetch --no-tags origin "${{ github.base_ref }}"
-            RANGE="origin/${{ github.base_ref }}..HEAD"
-          elif [ "${{ github.event.before }}" = "0000000000000000000000000000000000000000" ]; then
-            RANGE="HEAD~1..HEAD"          # new-branch push: scan the tip commit
-          else
-            RANGE="${{ github.event.before }}..${{ github.sha }}"
-          fi
-          echo "gitleaks diff range: $RANGE"
-          gitleaks git --log-opts="$RANGE" --config .gitleaks.toml \
-            --no-banner --redact --exit-code 1
+          gitleaks dir . --config .gitleaks.toml --no-banner --redact --exit-code 1
