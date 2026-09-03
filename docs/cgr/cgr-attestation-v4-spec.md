@@ -673,18 +673,51 @@ On success the Foundation emits, signed by the **issuer key**:
   /* … remaining required v4 fields … */ }
 ```
 
-`[OPEN]` **target anchor: cert vs attestation vs agent_pk.** §5.3 targets A's `cert_hash`. The
-alternative is to target a subject *attestation* fingerprint, or to introduce an agent-identity
-anchor. `cert_hash` is concrete and already content-addressed, but it binds continuity to a
-*certificate*, not an *identity* — if A had multiple certs (it did: `960151d5` revoked and `0b2796c1`
-noted in the rotation), which cert anchors the lineage? Leaning: target the **revoked identity's
-active cert at revocation time**, but this needs deciding before issuance.
+**Resolved 2026-09-03 — target anchor: `cert_hash` retained for the first edge.** §5.3 targets A's
+`cert_hash`, and that is kept for the `c14094ea → d3caa6f1` edge. The "which cert?" ambiguity does
+**not** bite: only **one** cert was ever registered for `c14094ea` (`960151d5`); the `0b2796c1` noted
+in the rotation was **never in `delegation_certificates`** (a second ephemeral principal's cert, live
+only in the prod env), so it is not a candidate — `agent_registry.active_cert_hash` resolves cleanly
+to `960151d5`. And no information is lost: a `cert_hash` resolves deterministically to exactly one
+`agent_pk`.
 
-`[OPEN]` **what `continues` transfers.** This spec defines the *link*, not its *consequences*. Does B
-inherit A's trust score / tier / epoch history, or merely gain a navigable pointer to it? 0004 frames
-rotation-punitiveness as the problem, which argues for inheritance — but inheritance of a
-compromised agent's accrued trust is itself a risk. Explicitly out of scope here and **must** be
-decided (it interacts with the scoring pipeline, not just the wire format).
+**But `agent_pk` is the conceptually correct anchor** — a deliberate deferral, not a closed question.
+`continues` asserts *identity* continuity, whereas a certificate is *sub-identity*: an agent can hold
+several certs over time (`c14094ea` already did). The faithful anchor is the agent identity
+(`agent_pk` / `did:key`) — stable across certs, needing no resolution to reach the identity (robust
+when a cert is pruned/offline), and aligned with the pipeline's existing rotation "identity anchor".
+Introducing an **agent-identity `target.kind`** (a third kind, not content-addressed like the two
+current ones) is real design and should be **decided before edges scale** — cheap now, awkward once
+many edges point at certs. `cert_hash` is acceptable for the first edge; it is not the end state.
+
+**Resolved 2026-09-03 — what `continues` transfers: a SPLIT.** There are two distinct trust
+mechanisms in two repos, and they get different answers:
+- **geiant's `agent_registry`** (`trust_score`, `current_tier`, `breadcrumb_count`) plus the
+  breadcrumb/epoch chain — this is what 0004's *punitive-rotation* complaint is actually about (a
+  rotated agent's chain and activity are **orphaned**).
+- **grafomem's CGR score** — recomputed from *resolved outcomes*, keyed by identity anchor. This is
+  where the *compromise risk* lives (folding a leaked key's accrued reputation into the successor).
+
+**DECIDED — `continues` provides NAVIGABLE LINEAGE.** B gains a *verifiable pointer* to A's history;
+A's chain and activity become **reachable rather than orphaned** — exactly what 0004 asked for, at
+**near-zero risk**, because a pointer asserts nothing about trust: it says only "B is the continuation
+of A."
+
+**DEFERRED — CGR outcome pooling** (whether A's resolved outcomes fold into B's recomputed score).
+Separable because CGR reputation is grounded in **resolved outcomes — facts that happened** — and a
+later key leak does **not** retroactively falsify them. So the genuine risk is narrow: outcomes an
+attacker *manufactured* in the window between compromise and revocation. That, not the whole of A's
+history, is what a pooling decision must bound.
+
+**State plainly: `continues` has NO scoring consequence today.** The edge means "B is the continuation
+of A" — navigable lineage, nothing more — until pooling is decided. A verifier surfaces the link; it
+changes no score.
+
+**Caveat on the eventual cutoff mechanism (recorded now).** A "compromise-window cutoff" (pool only
+outcomes resolved before compromise) assumes the compromise is **datable**. For `c14094ea` it is
+**not precisely**: the key sat in a public repo for **164 days** — the *commit* date is knowable, the
+*exploitation* window is not. A cutoff at the commit date is defensible and conservative, but the spec
+must not imply a precision that does not exist: it bounds the risk, it does not eliminate it.
 
 ---
 
@@ -712,11 +745,13 @@ decided (it interacts with the scoring pipeline, not just the wire format).
 7. `domain` vocabulary fixed vs open (0002 Q); relation vocabulary is closed (§1.3, §2.5).
 8. Edge form of un-revoke and future-dated revocation. (§3)
 9. **All of §4** — 0006 Question B, and its conformance sub-question (0006 Open Q2).
-10. `continues` ceremony: ~~which authority evidence is *required* (§5.3.2)~~ **— RESOLVED 2026-09-03:
-    requires `custody_record` once 0005 lands; accepts `issuer_records`/`operator_verification` for
-    interim edges, tier recorded on the edge; interim edges grandfathered (§5.3.2)**; target anchor
-    cert vs identity (§5.3); what `continues` transfers to the successor (§5.3). The last two remain
-    open; the last is a scoring-pipeline decision, not a wire one.
+10. `continues` ceremony — **all three sub-questions resolved 2026-09-03:** ~~which authority evidence
+    is *required* (§5.3.2)~~ requires `custody_record` post-0005, accepts
+    `issuer_records`/`operator_verification` interim, grandfathered (§5.3.2); ~~target anchor cert vs
+    identity (§5.3)~~ `cert_hash` retained for the first edge, agent-identity target kind deferred as
+    conceptually correct (§5.3); ~~what `continues` transfers (§5.3)~~ **SPLIT** — navigable lineage
+    DECIDED (no scoring consequence today), CGR outcome pooling DEFERRED (§5.3). The first edge is
+    fully wire-specified; the deferred pieces (agent-identity target kind; CGR pooling) do not block it.
 
 ---
 
@@ -726,5 +761,6 @@ decided (it interacts with the scoring pipeline, not just the wire format).
   roadmap; the `v3` golden MUST NOT be mutated — a **new** `v4` golden is added).
 - Does not resolve 0006 Question B (§4) or the ceremony's authority model (§5) — both are flagged for
   their owners.
-- Does not decide what `continues` transfers (§5) — that is a scoring-pipeline change beyond the wire
-  format.
+- Does not decide **CGR outcome pooling** — the deferred half of the `continues`-transfer split (§5.3):
+  navigable lineage **is** decided (a pointer, no scoring consequence today); whether A's resolved
+  outcomes fold into B's score is a scoring-pipeline change beyond the wire format, left open.
