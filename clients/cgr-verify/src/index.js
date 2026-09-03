@@ -212,6 +212,21 @@ export async function verifyCGRAttestationV4(subject, ledger, pinnedIssuer, opts
     if (subject.n_unresolvable !== undefined) return fail('non-grounding attestation must not carry n_unresolvable');
   }
 
+  // §2.2 0002 fields — PRESENCE gate. Required on every v4 record; presence is decidable today.
+  // Their SEMANTICS/ordering (recorded_at ≥ decision_date) stay [OPEN] in §2.2 (unresolved for
+  // aggregates), so only presence is gated here — not the temporal relationship.
+  for (const f of ['verifiability_tag', 'decision_date', 'recorded_at', 'backfilled']) {
+    if (subject[f] === undefined) return fail(`missing required field: ${f}`);
+  }
+  // verifiability_tag's VALUE is decidable (the domain gate references it) → gate it to the enum.
+  if (subject.verifiability_tag !== 'judgment' && subject.verifiability_tag !== 'rule')
+    return fail(`invalid verifiability_tag: ${subject.verifiability_tag}`);
+  // §2.2 domain gate (enforced half) — a pooled judgment aggregate spans domains and has no single
+  // one → domain MUST be absent. (The unenforced half — domain REQUIRED on `rule` records — has no
+  // gate yet: nothing mints a rule record.)
+  if (subject.scoring_scope === 'pooled' && subject.domain !== undefined)
+    return fail('domain must be absent on a pooled judgment aggregate (scoring_scope="pooled")');
+
   // relates_to: per-edge validation (§1.1) — type, kind, per-kind hash_alg, hash format
   const edges = Array.isArray(subject.relates_to) ? subject.relates_to : [];
   for (const e of edges) {
