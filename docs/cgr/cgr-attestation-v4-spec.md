@@ -610,13 +610,43 @@ The Foundation issues a `continues` edge only after **all** of:
    minted in memory and discarded — so **no Foundation signature ever vouched for A's identity**. (This
    is the second time 0003's ephemerality has forced a wording correction here; the earlier "issued/
    attested" phrasing overstated what exists.) (c) an out-of-band operator-identity verification (the
-   human/entity — e.g. the Ulissy custody contact). `[OPEN]` which of these the Foundation **requires**
-   vs **accepts** is unresolved and is the ceremony's hardest question — but note it is now **partly
-   defused**: whichever tier is used is **recorded on the edge** via `evidence_tier` (§1.1), so even if
-   the Foundation *accepts* weak evidence for an interim edge, a relying party can apply its own bar
-   because the tier is on the signed record. For A specifically, (a) is unavailable (0005 is proposed
-   and no custody record for A exists), so an interim edge would honestly record `issuer_records` or
-   `operator_verification`, never `custody_record`.
+   human/entity — e.g. the Ulissy custody contact).
+
+   **Resolved 2026-09-03 — requires vs accepts.** The Foundation **REQUIRES `custody_record`** once
+   [0005](../decisions/0005-custody-managed-principals.md) lands and the custody category exists. Until
+   then it **ACCEPTS `issuer_records` or `operator_verification`** for interim edges, with the tier
+   **recorded honestly on the edge** (`evidence_tier`, §1.1).
+
+   *Why accepting weak evidence is now safe — it was not before.* Previously a weak-evidence `continues`
+   was **cryptographically identical** to a strong one, so accepting tier (c) **silently degraded every
+   `continues` claim in the ecosystem**: a relying party could not tell a custody-anchored rotation from
+   an operator-asserted one. `evidence_tier` removes that coupling — the Foundation can accept weaker
+   evidence for an interim edge **without degrading the meaning of stronger ones**, because a relying
+   party now **sees which it got and applies its own bar**. Acceptance became safe *only once the tier
+   became visible*. (This is an **issuance-authority** policy — what the Foundation will *issue* — not a
+   verifier rule: the verifier still surfaces the tier and never gates on which one, §1.1.)
+
+   *Transition when 0005 lands.* `custody_record` becomes **required for NEW `continues` edges**.
+   Existing interim edges are **GRANDFATHERED** — they remain valid at their recorded tier and are
+   **not** re-issued. This is decided now, while it is cheap, and it is the only coherent choice: (i) the
+   tier is honestly recorded and visible, so a grandfathered `operator_verification` edge is
+   transparently weaker, not silently so — a relying party wanting custody-grade assurance rejects it by
+   its own policy; (ii) `custody_record` **cannot be honestly back-filled** for an edge whose
+   predecessor never had a custody record — 0005 creates the category going forward, not retroactively —
+   so "re-issuing at `custody_record`" would be a lie.
+
+   *Concrete first case — `c14094ea` → `d3caa6f1`, issued at `operator_verification`.* Tier (a) is
+   **unavailable** (no custody record binds `c14094ea` to an operator; 0005 is proposed). Tier (b) is
+   **administrative only** per [0003](../decisions/0003-principal-identity-is-not-stable.md), and
+   `c14094ea` carries **two unrelated ephemeral principals** — so `issuer_records` would overstate it.
+   `operator_verification` is the **honest label** for what actually substantiates this edge.
+
+   *Structural caveat for this first edge.* The operator, the Foundation key holder, and both agents'
+   controller are **the same person**. The ceremony is designed for the case where they are **not**
+   (§5.2 — a compromised A whose authority must rest on a custody identity independent of A's key); here
+   it is applied to a case with **no adversary**. `operator_verification` records that honestly: it says
+   "an operator asserted this," which — when operator and issuer coincide — is exactly as strong, and as
+   weak, as it sounds.
 3. **A is genuinely retired.** The Foundation confirms A is revoked in the enforcement index
    (§3) — a `continues` into a *live* A would be a fork, not a rotation.
 4. **Anti-fork uniqueness.** The Foundation confirms **no other `continues` edge already targets A**.
@@ -682,9 +712,11 @@ decided (it interacts with the scoring pipeline, not just the wire format).
 7. `domain` vocabulary fixed vs open (0002 Q); relation vocabulary is closed (§1.3, §2.5).
 8. Edge form of un-revoke and future-dated revocation. (§3)
 9. **All of §4** — 0006 Question B, and its conformance sub-question (0006 Open Q2).
-10. `continues` ceremony: which authority evidence is *required* (§5.3.2); target anchor cert vs
-    identity (§5.3); what `continues` transfers to the successor (§5.3). The last is a scoring-pipeline
-    decision, not a wire one.
+10. `continues` ceremony: ~~which authority evidence is *required* (§5.3.2)~~ **— RESOLVED 2026-09-03:
+    requires `custody_record` once 0005 lands; accepts `issuer_records`/`operator_verification` for
+    interim edges, tier recorded on the edge; interim edges grandfathered (§5.3.2)**; target anchor
+    cert vs identity (§5.3); what `continues` transfers to the successor (§5.3). The last two remain
+    open; the last is a scoring-pipeline decision, not a wire one.
 
 ---
 
