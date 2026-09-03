@@ -3,7 +3,7 @@
   "note": "TEST vectors \u2014 deterministic repeating-byte issuer key, NOT a real key. See README.md for the resolution model, the seek/mode split, and the grounding-gate scope.",
   "issuer_pubkey_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
   "agent_pubkey_hex": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
-  "vector_count": 46,
+  "vector_count": 56,
   "modes": [
     "enforcing",
     "non-enforcing"
@@ -577,6 +577,254 @@
       "expect": {
         "valid": false,
         "reason_contains": "hash_alg"
+      }
+    },
+    {
+      "id": "H3-malformed-hash",
+      "clause": "\u00a71.1",
+      "spec_lines": "103",
+      "title": "target.hash not lowercase-64-hex -> reject (malformed hash)",
+      "mode": "enforcing",
+      "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "subject": {
+        "schema": "cgr.attestation.v4",
+        "issuer": "gns-foundation",
+        "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+        "subject_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "subject_did": "did:key:z6Mkaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "agent_handle": "vector-agent@test",
+        "dimension": "receivables",
+        "cgr_score": 0.6666666666666666,
+        "confidence": 6.0,
+        "n_resolved": 12,
+        "capability_tier": 0.75,
+        "as_of": "2026-01-01T00:00:00Z",
+        "last_resolved_at": "2026-01-01T00:00:00Z",
+        "scoring_scope": "pooled",
+        "requested_domain": null,
+        "domain_n_resolved": null,
+        "rationale": "conformance vector",
+        "verifiability_tag": "judgment",
+        "decision_date": "2026-01-01",
+        "recorded_at": "2026-01-01",
+        "backfilled": false,
+        "relates_to": [
+          {
+            "type": "revokes",
+            "target": {
+              "kind": "attestation",
+              "hash_alg": "blake2b-256",
+              "hash": "NOT-HEX"
+            }
+          }
+        ],
+        "signature": "be7fcaf420e0c8c82fce35a02bd4eb663f335094782893ec4ab6b03500e17496deadcedb3695b6027c22a47fc41b6bc4f2d0fef9f5f8ed5a23130e1b72e8c20e",
+        "evidence_ref": null
+      },
+      "held_edges": [],
+      "ledger": {
+        "attestations": {},
+        "delegation_certs": {}
+      },
+      "expect": {
+        "valid": false,
+        "reason_contains": "malformed target hash"
+      }
+    },
+    {
+      "id": "H4-missing-kind",
+      "clause": "\u00a71.1",
+      "spec_lines": "85",
+      "title": "target missing kind -> reject (invalid target kind)",
+      "mode": "enforcing",
+      "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "subject": {
+        "schema": "cgr.attestation.v4",
+        "issuer": "gns-foundation",
+        "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+        "subject_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "subject_did": "did:key:z6Mkaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "agent_handle": "vector-agent@test",
+        "dimension": "receivables",
+        "cgr_score": 0.6666666666666666,
+        "confidence": 6.0,
+        "n_resolved": 12,
+        "capability_tier": 0.75,
+        "as_of": "2026-01-01T00:00:00Z",
+        "last_resolved_at": "2026-01-01T00:00:00Z",
+        "scoring_scope": "pooled",
+        "requested_domain": null,
+        "domain_n_resolved": null,
+        "rationale": "conformance vector",
+        "verifiability_tag": "judgment",
+        "decision_date": "2026-01-01",
+        "recorded_at": "2026-01-01",
+        "backfilled": false,
+        "relates_to": [
+          {
+            "type": "revokes",
+            "target": {
+              "hash_alg": "blake2b-256",
+              "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          }
+        ],
+        "signature": "a32b8f03954f903a4052e6d3682407d4e5bc5a31de1fefafc42153eda01a61dcfe322fc15340655319b79b3474a97d0f617a6d6d57fbbb0394c2169e58070506",
+        "evidence_ref": null
+      },
+      "held_edges": [],
+      "ledger": {
+        "attestations": {},
+        "delegation_certs": {}
+      },
+      "expect": {
+        "valid": false,
+        "reason_contains": "target kind"
+      }
+    },
+    {
+      "id": "H5-missing-hash-alg",
+      "clause": "\u00a71.1",
+      "spec_lines": "85",
+      "title": "target missing hash_alg -> reject (hash_alg mismatch for kind)",
+      "mode": "enforcing",
+      "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "subject": {
+        "schema": "cgr.attestation.v4",
+        "issuer": "gns-foundation",
+        "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+        "subject_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "subject_did": "did:key:z6Mkaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "agent_handle": "vector-agent@test",
+        "dimension": "receivables",
+        "cgr_score": 0.6666666666666666,
+        "confidence": 6.0,
+        "n_resolved": 12,
+        "capability_tier": 0.75,
+        "as_of": "2026-01-01T00:00:00Z",
+        "last_resolved_at": "2026-01-01T00:00:00Z",
+        "scoring_scope": "pooled",
+        "requested_domain": null,
+        "domain_n_resolved": null,
+        "rationale": "conformance vector",
+        "verifiability_tag": "judgment",
+        "decision_date": "2026-01-01",
+        "recorded_at": "2026-01-01",
+        "backfilled": false,
+        "relates_to": [
+          {
+            "type": "revokes",
+            "target": {
+              "kind": "attestation",
+              "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          }
+        ],
+        "signature": "95e67769b40b6507abaa890b33bce37dedad6648d73e2068bc3169d71958e8b02906453b06519bf9f64a8231dc47da3f452fcabaf97ed09184750deeb1b9d10d",
+        "evidence_ref": null
+      },
+      "held_edges": [],
+      "ledger": {
+        "attestations": {},
+        "delegation_certs": {}
+      },
+      "expect": {
+        "valid": false,
+        "reason_contains": "hash_alg"
+      }
+    },
+    {
+      "id": "H6-invalid-kind",
+      "clause": "\u00a71.1",
+      "spec_lines": "85",
+      "title": "target.kind not in {attestation, delegation_cert} -> reject",
+      "mode": "enforcing",
+      "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "subject": {
+        "schema": "cgr.attestation.v4",
+        "issuer": "gns-foundation",
+        "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+        "subject_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "subject_did": "did:key:z6Mkaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "agent_handle": "vector-agent@test",
+        "dimension": "receivables",
+        "cgr_score": 0.6666666666666666,
+        "confidence": 6.0,
+        "n_resolved": 12,
+        "capability_tier": 0.75,
+        "as_of": "2026-01-01T00:00:00Z",
+        "last_resolved_at": "2026-01-01T00:00:00Z",
+        "scoring_scope": "pooled",
+        "requested_domain": null,
+        "domain_n_resolved": null,
+        "rationale": "conformance vector",
+        "verifiability_tag": "judgment",
+        "decision_date": "2026-01-01",
+        "recorded_at": "2026-01-01",
+        "backfilled": false,
+        "relates_to": [
+          {
+            "type": "revokes",
+            "target": {
+              "kind": "bogus",
+              "hash_alg": "blake2b-256",
+              "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          }
+        ],
+        "signature": "eee6ea1d786155c3c2724b0493a4927484c3434c305cd30b8d569f79b7c1e7c88cd3c3570b884e2ee271c91a86ee0cb66afce6d6326b779201493708bd3aaf07",
+        "evidence_ref": null
+      },
+      "held_edges": [],
+      "ledger": {
+        "attestations": {},
+        "delegation_certs": {}
+      },
+      "expect": {
+        "valid": false,
+        "reason_contains": "target kind"
+      }
+    },
+    {
+      "id": "N1-self-attestation",
+      "clause": "\u00a72.2",
+      "spec_lines": "339",
+      "title": "subject_key == issuer_key_id -> reject (neutrality violation)",
+      "mode": "enforcing",
+      "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "subject": {
+        "schema": "cgr.attestation.v4",
+        "issuer": "gns-foundation",
+        "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+        "subject_key": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+        "subject_did": "did:key:z6Mkd04ab232742bb4ab3a1368bd4615e4e6",
+        "agent_handle": "vector-agent@test",
+        "dimension": "receivables",
+        "cgr_score": 0.6666666666666666,
+        "confidence": 6.0,
+        "n_resolved": 12,
+        "capability_tier": 0.75,
+        "as_of": "2026-01-01T00:00:00Z",
+        "last_resolved_at": "2026-01-01T00:00:00Z",
+        "scoring_scope": "pooled",
+        "requested_domain": null,
+        "domain_n_resolved": null,
+        "rationale": "conformance vector",
+        "verifiability_tag": "judgment",
+        "decision_date": "2026-01-01",
+        "recorded_at": "2026-01-01",
+        "backfilled": false,
+        "signature": "d91a6ffc1e9c9f1e64c7806a32bbd0f8e6e4797599fa14585f287efb81a35b188ab09efa2efba43706cd94a6b678b7946a0de4f58cf484bc821e623bce826e0d",
+        "evidence_ref": null
+      },
+      "held_edges": [],
+      "ledger": {
+        "attestations": {},
+        "delegation_certs": {}
+      },
+      "expect": {
+        "valid": false,
+        "reason_contains": "neutrality"
       }
     },
     {
@@ -9650,6 +9898,212 @@
       },
       "expect": {
         "valid": true
+      }
+    },
+    {
+      "id": "P1-missing-verifiability-tag",
+      "clause": "\u00a72.2",
+      "spec_lines": "345",
+      "title": "verifiability_tag absent -> reject (required on every v4 record)",
+      "mode": "enforcing",
+      "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "subject": {
+        "schema": "cgr.attestation.v4",
+        "issuer": "gns-foundation",
+        "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+        "subject_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "subject_did": "did:key:z6Mkaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "agent_handle": "vector-agent@test",
+        "dimension": "receivables",
+        "cgr_score": 0.6666666666666666,
+        "confidence": 6.0,
+        "n_resolved": 12,
+        "capability_tier": 0.75,
+        "as_of": "2026-01-01T00:00:00Z",
+        "last_resolved_at": "2026-01-01T00:00:00Z",
+        "scoring_scope": "pooled",
+        "requested_domain": null,
+        "domain_n_resolved": null,
+        "rationale": "conformance vector",
+        "decision_date": "2026-01-01",
+        "recorded_at": "2026-01-01",
+        "backfilled": false,
+        "signature": "5304c93d195752e53239db7b05fc9fecf21602738557210533be7e91bb040ac1a7a2d8a0a3c085e877caef4a297a1ea70994d2e8af7c66539ef010f976e4230f",
+        "evidence_ref": null
+      },
+      "held_edges": [],
+      "ledger": {
+        "attestations": {},
+        "delegation_certs": {}
+      },
+      "expect": {
+        "valid": false,
+        "reason_contains": "verifiability_tag"
+      }
+    },
+    {
+      "id": "P2-invalid-verifiability-tag",
+      "clause": "\u00a72.2",
+      "spec_lines": "345",
+      "title": "verifiability_tag not in {judgment, rule} -> reject (value is decidable)",
+      "mode": "enforcing",
+      "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "subject": {
+        "schema": "cgr.attestation.v4",
+        "issuer": "gns-foundation",
+        "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+        "subject_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "subject_did": "did:key:z6Mkaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "agent_handle": "vector-agent@test",
+        "dimension": "receivables",
+        "cgr_score": 0.6666666666666666,
+        "confidence": 6.0,
+        "n_resolved": 12,
+        "capability_tier": 0.75,
+        "as_of": "2026-01-01T00:00:00Z",
+        "last_resolved_at": "2026-01-01T00:00:00Z",
+        "scoring_scope": "pooled",
+        "requested_domain": null,
+        "domain_n_resolved": null,
+        "rationale": "conformance vector",
+        "verifiability_tag": "bogus",
+        "decision_date": "2026-01-01",
+        "recorded_at": "2026-01-01",
+        "backfilled": false,
+        "signature": "679eaad0b170dc042811e17059e73c9b378ed99de10dda63a01d368ad47cbd5f89d80278021d014d476f942c1df4b00d8d54d21f4de0c8e8bc8a3864e3082a06",
+        "evidence_ref": null
+      },
+      "held_edges": [],
+      "ledger": {
+        "attestations": {},
+        "delegation_certs": {}
+      },
+      "expect": {
+        "valid": false,
+        "reason_contains": "verifiability_tag"
+      }
+    },
+    {
+      "id": "P3-missing-decision-date",
+      "clause": "\u00a72.2",
+      "spec_lines": "346",
+      "title": "decision_date absent -> reject (presence gated; ordering/semantics deferred)",
+      "mode": "enforcing",
+      "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "subject": {
+        "schema": "cgr.attestation.v4",
+        "issuer": "gns-foundation",
+        "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+        "subject_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "subject_did": "did:key:z6Mkaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "agent_handle": "vector-agent@test",
+        "dimension": "receivables",
+        "cgr_score": 0.6666666666666666,
+        "confidence": 6.0,
+        "n_resolved": 12,
+        "capability_tier": 0.75,
+        "as_of": "2026-01-01T00:00:00Z",
+        "last_resolved_at": "2026-01-01T00:00:00Z",
+        "scoring_scope": "pooled",
+        "requested_domain": null,
+        "domain_n_resolved": null,
+        "rationale": "conformance vector",
+        "verifiability_tag": "judgment",
+        "recorded_at": "2026-01-01",
+        "backfilled": false,
+        "signature": "83244187532fb447ff97398e326298cf5ca831637f74b7119a6437616ea58f01b9ecd359a776627dcd12729d1bc3d54afac89390b5710c821938993fe8921b00",
+        "evidence_ref": null
+      },
+      "held_edges": [],
+      "ledger": {
+        "attestations": {},
+        "delegation_certs": {}
+      },
+      "expect": {
+        "valid": false,
+        "reason_contains": "decision_date"
+      }
+    },
+    {
+      "id": "P4-missing-recorded-at",
+      "clause": "\u00a72.2",
+      "spec_lines": "347",
+      "title": "recorded_at absent -> reject (presence gated; ordering/semantics deferred)",
+      "mode": "enforcing",
+      "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "subject": {
+        "schema": "cgr.attestation.v4",
+        "issuer": "gns-foundation",
+        "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+        "subject_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "subject_did": "did:key:z6Mkaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "agent_handle": "vector-agent@test",
+        "dimension": "receivables",
+        "cgr_score": 0.6666666666666666,
+        "confidence": 6.0,
+        "n_resolved": 12,
+        "capability_tier": 0.75,
+        "as_of": "2026-01-01T00:00:00Z",
+        "last_resolved_at": "2026-01-01T00:00:00Z",
+        "scoring_scope": "pooled",
+        "requested_domain": null,
+        "domain_n_resolved": null,
+        "rationale": "conformance vector",
+        "verifiability_tag": "judgment",
+        "decision_date": "2026-01-01",
+        "backfilled": false,
+        "signature": "c0f9b39a8c661869c3999747b75d034e781c85794f87d5366054155c503d34b7da16b38dc1a1526dc9153c7f23ed289504e50bdd7b782ba421d71e1d1edc7509",
+        "evidence_ref": null
+      },
+      "held_edges": [],
+      "ledger": {
+        "attestations": {},
+        "delegation_certs": {}
+      },
+      "expect": {
+        "valid": false,
+        "reason_contains": "recorded_at"
+      }
+    },
+    {
+      "id": "P5-missing-backfilled",
+      "clause": "\u00a72.2",
+      "spec_lines": "348",
+      "title": "backfilled absent -> reject (presence gated; false is a present value, not absent)",
+      "mode": "enforcing",
+      "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "subject": {
+        "schema": "cgr.attestation.v4",
+        "issuer": "gns-foundation",
+        "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+        "subject_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "subject_did": "did:key:z6Mkaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "agent_handle": "vector-agent@test",
+        "dimension": "receivables",
+        "cgr_score": 0.6666666666666666,
+        "confidence": 6.0,
+        "n_resolved": 12,
+        "capability_tier": 0.75,
+        "as_of": "2026-01-01T00:00:00Z",
+        "last_resolved_at": "2026-01-01T00:00:00Z",
+        "scoring_scope": "pooled",
+        "requested_domain": null,
+        "domain_n_resolved": null,
+        "rationale": "conformance vector",
+        "verifiability_tag": "judgment",
+        "decision_date": "2026-01-01",
+        "recorded_at": "2026-01-01",
+        "signature": "ef74c7bca9d4a75b4c4ade3623153168a2b01864ae10eb3f9cb90203a5be43c095d7a3e0ed5976a900bd207317ddae69d973d88c7672f914b0e78b27175fa500",
+        "evidence_ref": null
+      },
+      "held_edges": [],
+      "ledger": {
+        "attestations": {},
+        "delegation_certs": {}
+      },
+      "expect": {
+        "valid": false,
+        "reason_contains": "backfilled"
       }
     },
     {

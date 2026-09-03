@@ -513,6 +513,43 @@ now bites only over the domains that appear on non-scoring records, not over eve
 narrows the surface rather than forcing the fixed-vs-open decision — the interim position (relation
 vocab closed, `domain` vocab may be open) stands unchanged.
 
+### 2.6 Conformance sweep (P1.x) — the enforced-nowhere finding
+
+**What happened.** Resolving `domain` (§2.2) surfaced that it had been declared **REQUIRED** and
+validated by **nothing** — not the reference verifier, not `@geiant/core`, not one of the 44 corpus
+vectors. It had survived a spec review, a full corpus, and two independent implementations. That
+prompted a sweep of **every MUST / REQUIRED / MUST NOT** in this spec against both verifiers and the
+corpus, classifying each clause as: enforced in both, enforced in one (a between-implementation gap),
+covered by a vector, or **declared and checked nowhere**.
+
+**The finding.** `domain` was not a one-off. The **entire 0002 field set** was in the last bucket:
+
+| Field | §2.2 | Verifier | Vector |
+|---|---|---|---|
+| `domain` | was REQUIRED | neither | none |
+| `verifiability_tag` | REQUIRED | neither | none |
+| `decision_date` | REQUIRED | neither | none |
+| `recorded_at` | REQUIRED | neither | none |
+| `backfilled` | REQUIRED | neither | none |
+
+Five REQUIRED fields, gated by no code and exercised by no test. Separately, the sweep found the
+mirror-image blind spot — rules that **are** enforced in both verifiers but had **no vector** proving
+it: malformed `target.hash`, missing `target.kind`, missing `target.hash_alg`, invalid
+`target.kind`, and the neutrality rule (`subject_key ≠ issuer_key_id`). No between-implementation
+gap (bucket "enforced in one") was found: the two verifiers are faithful ports with identical gates.
+
+**What P1.x did about it.** `domain` → conditional gate (enforced half, §2.2). The other four 0002
+fields → **presence** gated in both verifiers (their semantics/ordering stay `[OPEN]`, above) with
+vectors `P1`–`P5`. The five vector-less-but-enforced rules → vectors `H3`–`H6`, `N1`. Every
+REQUIRED/MUST clause a verifier can act on now has a gate **and** a vector.
+
+**Go-forward rule (normative process).** A new signed field or normative clause is not "landed" until
+it ships with **both** (a) a verifier gate (or an explicit, recorded decision that it is
+surface-not-gate, like `evidence_tier`), and (b) at least one conformance vector that exercises the
+gate. "Declared in the spec" is not enforcement; a field with no gate and no vector is
+indistinguishable from an absent field, and — as the 0002 set showed — that gap is invisible until
+something happens to pull on it. Add the gate and the vector as part of the change, not later.
+
 ---
 
 ## 3. Revocation

@@ -200,6 +200,35 @@ V("H2-cert-wrong-alg", "§1.1", "82-98",
                                   "hash": cert_hash(cert(SK))}}]),
   {"valid": False, "reason_contains": "hash_alg"}, certs=[cert(SK)])
 
+# ── §1.1 target-shape gates (enforced in both verifiers; the sweep found them vector-less) ──
+V("H3-malformed-hash", "§1.1", "103",
+  "target.hash not lowercase-64-hex -> reject (malformed hash)",
+  att(SK, relates_to=[{"type": "revokes",
+                       "target": {"kind": "attestation", "hash_alg": "blake2b-256",
+                                  "hash": "NOT-HEX"}}]),
+  {"valid": False, "reason_contains": "malformed target hash"})
+V("H4-missing-kind", "§1.1", "85",
+  "target missing kind -> reject (invalid target kind)",
+  att(SK, relates_to=[{"type": "revokes",
+                       "target": {"hash_alg": "blake2b-256", "hash": "aa" * 32}}]),
+  {"valid": False, "reason_contains": "target kind"})
+V("H5-missing-hash-alg", "§1.1", "85",
+  "target missing hash_alg -> reject (hash_alg mismatch for kind)",
+  att(SK, relates_to=[{"type": "revokes",
+                       "target": {"kind": "attestation", "hash": "aa" * 32}}]),
+  {"valid": False, "reason_contains": "hash_alg"})
+V("H6-invalid-kind", "§1.1", "85",
+  "target.kind not in {attestation, delegation_cert} -> reject",
+  att(SK, relates_to=[{"type": "revokes",
+                       "target": {"kind": "bogus", "hash_alg": "blake2b-256", "hash": "aa" * 32}}]),
+  {"valid": False, "reason_contains": "target kind"})
+
+# ── neutrality (§2.2; enforced in both verifiers, the sweep found it vector-less) ──
+V("N1-self-attestation", "§2.2", "339",
+  "subject_key == issuer_key_id -> reject (neutrality violation)",
+  att(ISSUER_PUB),
+  {"valid": False, "reason_contains": "neutrality"})
+
 # ── §1.3 Traversal ───────────────────────────────────────────────────────────
 V("T1-unknown-type", "§1.3", "178-184",
   "unrecognized relation type -> reject (fail closed)",
@@ -404,6 +433,32 @@ V("D2-pooled-no-domain", "§2.2", "344",
   "scoring_scope=pooled with domain absent -> valid",
   att(SK),
   {"valid": True})
+
+# ── §2.2 0002 required-field PRESENCE gate (semantics deferred; see the sweep note) ───
+# Every v4 record MUST carry these four (0002). Presence is decidable today; decision_date/
+# recorded_at SEMANTICS + ordering (recorded_at >= decision_date) stay [OPEN] in §2.2, so only
+# presence is gated. verifiability_tag's VALUE is decidable (the domain gate references it) and
+# IS gated to {judgment, rule}.
+V("P1-missing-verifiability-tag", "§2.2", "345",
+  "verifiability_tag absent -> reject (required on every v4 record)",
+  att(SK, drop=("verifiability_tag",)),
+  {"valid": False, "reason_contains": "verifiability_tag"})
+V("P2-invalid-verifiability-tag", "§2.2", "345",
+  "verifiability_tag not in {judgment, rule} -> reject (value is decidable)",
+  att(SK, verifiability_tag="bogus"),
+  {"valid": False, "reason_contains": "verifiability_tag"})
+V("P3-missing-decision-date", "§2.2", "346",
+  "decision_date absent -> reject (presence gated; ordering/semantics deferred)",
+  att(SK, drop=("decision_date",)),
+  {"valid": False, "reason_contains": "decision_date"})
+V("P4-missing-recorded-at", "§2.2", "347",
+  "recorded_at absent -> reject (presence gated; ordering/semantics deferred)",
+  att(SK, drop=("recorded_at",)),
+  {"valid": False, "reason_contains": "recorded_at"})
+V("P5-missing-backfilled", "§2.2", "348",
+  "backfilled absent -> reject (presence gated; false is a present value, not absent)",
+  att(SK, drop=("backfilled",)),
+  {"valid": False, "reason_contains": "backfilled"})
 
 # ── §2.3 schema gate ─────────────────────────────────────────────────────────
 V("S1-unknown-schema", "§2.3", "337-349",
