@@ -45,6 +45,7 @@ def _fernet_token() -> str:
 
 def _build_corpus(dirpath: str) -> tuple[set[int], set[int]]:
     """Write positives.env + negatives.env; return their secret-line-number sets."""
+    _pg, _rd = "postgres" + "ql", "redis" + "s"   # split schemes: no literal `scheme://` in this source
     positives = [
         "# --- Trap 1: Fernet / provider-encryption key (3 keyword variants + connectors) ---",
         f"PROVIDER_ENCRYPTION_KEY={_fernet_key()}",
@@ -56,6 +57,13 @@ def _build_corpus(dirpath: str) -> tuple[set[int], set[int]]:
         f"grafomem_kek: {secrets.token_hex(32)}",
         "# --- Trap 3: Fernet token (gAAAAA prefix) ---",
         f'CACHED_CIPHERTEXT = "{_fernet_token()}"',
+        "# --- Trap 4: credentialed connection string to a ROUTABLE host (FQDN) ---",
+        # Scheme is assembled from a variable so THIS source file never contains a literal
+        # `scheme://…@host` (keeping the corpus's "no committed secret-shaped literal" invariant —
+        # so the full-tree scan does not flag this generator). At runtime the materialized line IS a
+        # literal `postgresql://…@fqdn` / `rediss://…@fqdn`, which the rule must catch.
+        f'db_url = "{_pg}://postgres:{secrets.token_urlsafe(18)}@db.prod.example.com:5432/app"',
+        f'REDIS_URL = "{_rd}://default:{secrets.token_urlsafe(16)}@cache-prod.internal.example.net:6380/0"',
     ]
     negatives = [
         "# legit values that MUST stay silent (no secret-key env-var anchor)",
@@ -75,6 +83,10 @@ def _build_corpus(dirpath: str) -> tuple[set[int], set[int]]:
         # generic-api-key rule — reshaped rather than allow-listed, so the corpus stays
         # a clean "zero negatives under the full ruleset" guarantee.)
         f'content_sha256 = "{secrets.token_hex(32)}"',
+        # Trap 4 must NOT fire on local-dev / placeholder connection strings:
+        'compose_db = "postgresql://grafomem:grafomem_dev@postgres:5432/grafomem"',   # compose service host
+        'doc_example = "postgresql://postgres:password@recovery-host:5432/grafomem"', # placeholder pw + single-label host
+        'local_redis = "redis://default:s3cr3t_but_local@localhost:6379/0"',         # loopback host
     ]
 
     def _write(name: str, lines: list[str]) -> set[int]:
