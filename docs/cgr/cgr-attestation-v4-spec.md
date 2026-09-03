@@ -341,7 +341,7 @@ in `v4` with unchanged meaning, except `schema` (§2.2).
 | `oracle_id` | **REQUIRED for grounding-class `dimension`; MUST be absent otherwise** | 0001. Identity of the resolution oracle. |
 | `audit_policy` | **REQUIRED for grounding-class `dimension`; MUST be absent otherwise** | 0001. Digest of the pre-registered audit policy. |
 | `n_unresolvable` | **OPTIONAL** (grounding-class only) | 0001. Uncertainty-mass count; absent ⇒ 0. |
-| `domain` | **REQUIRED** | 0002 gap (a). The subject/capability domain, vocabulary **extended** to include governance/strategy/compliance. Fixed-enum-vs-open is `[OPEN]` (§2.5). |
+| `domain` | **CONDITIONAL** | 0002 gap (a). The subject/capability domain. **REQUIRED on classified records (`verifiability_tag: rule`); MUST be absent on pooled judgment aggregates (`scoring_scope: "pooled"`)** — a pooled score spans domains and has none. See the domain gate below. Fixed-enum-vs-open is `[OPEN]` (§2.5). |
 | `verifiability_tag` | **REQUIRED** | 0002. `judgment` (moves a score) vs `rule` (recorded, non-scoring). Governance records use `rule` so they sit on the chain without polluting reputation. `[FLAG]` promoted into the signed body (it was a capture-path field) because whether a record scored an agent is tamper-evident-relevant, not advisory. |
 | `decision_date` | **REQUIRED** | 0002 gap (b). When the decision was made. In the **signed body** (§2.4). |
 | `recorded_at` | **REQUIRED** | 0002. When this attestation was captured/issued. `decision_date == recorded_at` ⇒ contemporaneous. |
@@ -393,6 +393,38 @@ concerns*. They are independent axes. So grounding is mutually exclusive only wi
 kinds** — an attestation resolves exactly one kind of outcome — while a grounding judgment **within
 any domain is fully expressible**: e.g. `dimension: "grounding"`, `domain: "deploy"` is a grounding
 audit of a deploy claim. There is no domain-orthogonality limitation and no trade to reverse.
+
+**`domain` gate — conditional, keyed off record class (resolved: was unconditionally REQUIRED).**
+`domain` is **not** required on every attestation. It is required on **classified records**
+(`verifiability_tag: rule`) and MUST be **absent** on **pooled judgment aggregates**
+(`scoring_scope: "pooled"`):
+
+```
+scoring_scope == "pooled"    → domain MUST be absent (reject if present)   # a pooled score has no single domain
+verifiability_tag == "rule"  → domain REQUIRED (a classified record names its area)
+```
+
+*Why this is the faithful shape, not the original required-on-everything.*
+[0002](../decisions/0002-cgr-governance-domain-and-backfill.md) asked only that **governance/rule
+records** carry a truthful domain — a per-record capture classification coupled to
+`verifiability_tag: rule` (non-scoring). `v4` over-generalised that to required-on-everything. A
+**pooled CGR score** is a Beta posterior recomputed across an identity's whole substrate; it has no
+single domain, so a `domain` field on it would have to be either dishonest (pick one) or meaningless
+(a sentinel). `v3` already expresses the domain story for scores through
+`scoring_scope` + `requested_domain` + `domain_n_resolved` — so `domain` adds no truthful bit to a
+pooled aggregate. The read surface (which mints exactly these pooled judgment aggregates) is simply
+the first aggregate to be measured against a field that was designed for classified records.
+
+**Enforcement split (deliberate).**
+
+- **ENFORCED NOW.** `domain` MUST be absent on pooled judgment aggregates
+  (`scoring_scope == "pooled"`). This is testable today against a real case — the read surface mints
+  pooled judgment aggregates — and both verifiers gate it (reject if present), mirroring the
+  grounding gate's "MUST be absent otherwise (reject if present)".
+- **NORMATIVE BUT UNENFORCED.** `domain` REQUIRED on `rule` records. Nothing mints a rule-tagged
+  governance record yet; enforcing a requirement whose only instance is hypothetical is the same trap
+  as shipping `corrects` speculatively — the rule is stated normatively now and gains a verifier gate
+  (and a corpus vector) when something real exercises it.
 
 `[OPEN]` **temporal-field overlap.** `v3` already carries `as_of` and `last_resolved_at`. `v4` adds
 `decision_date` and `recorded_at`. These are distinct in intent — `as_of`/`last_resolved_at` describe
@@ -474,6 +506,12 @@ because it is validity-affecting), while the **`domain` vocabulary may be open**
 a `rule`/non-scoring record is not validity-affecting the way an unknown edge is). If reviewers want
 both closed, §1.3's reject rule extends to `domain`; note that would make every new domain a
 versioning event.
+
+**Update (domain gate resolved, §2.2).** Confining `domain` to **classified `rule` records** (absent
+on pooled aggregates) shrinks the vocabulary that would need governing: the open-vs-closed question
+now bites only over the domains that appear on non-scoring records, not over every attestation. That
+narrows the surface rather than forcing the fixed-vs-open decision — the interim position (relation
+vocab closed, `domain` vocab may be open) stands unchanged.
 
 ---
 

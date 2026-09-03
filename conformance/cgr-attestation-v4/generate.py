@@ -68,8 +68,10 @@ def att(subject_key, *, dimension="receivables", relates_to=None, grounding=None
         "requested_domain": None,
         "domain_n_resolved": None,
         "rationale": "conformance vector",
-        # v4 additions (0002):
-        "domain": "deploy",
+        # v4 additions (0002). NOTE: `domain` is intentionally NOT in the default body — the
+        # default is a POOLED JUDGMENT AGGREGATE (scoring_scope="pooled", verifiability_tag=
+        # "judgment"), and the §2.2 domain gate requires `domain` to be ABSENT on those. Vectors
+        # that need a domain (the D1 negative) pass it via **overrides.
         "verifiability_tag": "judgment",
         "decision_date": "2026-01-01",
         "recorded_at": "2026-01-01",
@@ -387,6 +389,20 @@ V("G6-nongrounding-has-n-unresolvable", "§2.2", "305",
 V("G7-grounding-no-n-unresolvable", "§2.2", "203",
   "dimension=grounding, n_unresolvable absent -> valid (optional; defaults 0)",
   att(SK, dimension="grounding", grounding={}),
+  {"valid": True})
+
+# ── §2.2 domain gate (enforced half: absent on pooled judgment aggregates) ───
+# The default att() body is a pooled judgment aggregate (scoring_scope="pooled"); the gate
+# requires `domain` to be ABSENT on it. D1 carries a domain anyway -> reject. D2 is the positive
+# control (pooled, no domain -> valid). The UNENFORCED half (domain REQUIRED on `rule` records)
+# has NO vector by design — nothing mints a rule record yet; it gains one when something real does.
+V("D1-domain-on-pooled-judgment", "§2.2", "344",
+  "scoring_scope=pooled with a domain present -> reject (a pooled score has no single domain)",
+  att(SK, domain="deploy"),
+  {"valid": False, "reason_contains": "domain"})
+V("D2-pooled-no-domain", "§2.2", "344",
+  "scoring_scope=pooled with domain absent -> valid",
+  att(SK),
   {"valid": True})
 
 # ── §2.3 schema gate ─────────────────────────────────────────────────────────
