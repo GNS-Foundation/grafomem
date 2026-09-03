@@ -343,9 +343,9 @@ in `v4` with unchanged meaning, except `schema` (§2.2).
 | `n_unresolvable` | **OPTIONAL** (grounding-class only) | 0001. Uncertainty-mass count; absent ⇒ 0. |
 | `domain` | **CONDITIONAL** | 0002 gap (a). The subject/capability domain. **REQUIRED on classified records (`verifiability_tag: rule`); MUST be absent on pooled judgment aggregates (`scoring_scope: "pooled"`)** — a pooled score spans domains and has none. See the domain gate below. Fixed-enum-vs-open is `[OPEN]` (§2.5). |
 | `verifiability_tag` | **REQUIRED** | 0002. `judgment` (moves a score) vs `rule` (recorded, non-scoring). Governance records use `rule` so they sit on the chain without polluting reputation. `[FLAG]` promoted into the signed body (it was a capture-path field) because whether a record scored an agent is tamper-evident-relevant, not advisory. |
-| `decision_date` | **REQUIRED** | 0002 gap (b). When the decision was made. In the **signed body** (§2.4). |
-| `recorded_at` | **REQUIRED** | 0002. When this attestation was captured/issued. `decision_date == recorded_at` ⇒ contemporaneous. |
-| `backfilled` | **REQUIRED** | 0002. Boolean; `true` ⇒ recorded after the fact. Redundant with `decision_date < recorded_at` by design — an explicit flag is harder to misread than a timestamp comparison. |
+| `decision_date` | **CONDITIONAL** | 0002 gap (b). When a single decision was made. In the **signed body** (§2.4). **REQUIRED on classified records (`verifiability_tag: rule`); MUST be absent on pooled judgment aggregates (`scoring_scope: "pooled"`)** — a pooled score is not a single dated decision. See the pooled-aggregate absence gate below. |
+| `recorded_at` | **REQUIRED** | 0002. When this attestation was captured/issued — the wire-record issue time; **universal** (every v4 record has one). On a rule record, `decision_date == recorded_at` ⇒ contemporaneous. On the read surface it coincides with `as_of` (recompute-and-mint are one instant); it is the issuance anchor for stored/backfilled records. |
+| `backfilled` | **CONDITIONAL** | 0002. Boolean; `true` ⇒ recorded after the fact. Defined as `decision_date < recorded_at`, so it is meaningful only where `decision_date` is — hence **REQUIRED on `rule` records, MUST be absent on pooled judgment aggregates**, tracking `decision_date`. |
 
 **Grounding-class detection — resolved: infer from `dimension`.** Grounding-class is determined
 **solely** by the `dimension` value:
@@ -394,44 +394,68 @@ kinds** — an attestation resolves exactly one kind of outcome — while a grou
 any domain is fully expressible**: e.g. `dimension: "grounding"`, `domain: "deploy"` is a grounding
 audit of a deploy claim. There is no domain-orthogonality limitation and no trade to reverse.
 
-**`domain` gate — conditional, keyed off record class (resolved: was unconditionally REQUIRED).**
-`domain` is **not** required on every attestation. It is required on **classified records**
+**Pooled-aggregate absence gate — `domain`, `decision_date`, `backfilled` (keyed off record class).**
+These three fields are **per-record** concepts (a single decision, in a single area, made on a single
+date). None is required on every attestation. Each is required on **classified records**
 (`verifiability_tag: rule`) and MUST be **absent** on **pooled judgment aggregates**
 (`scoring_scope: "pooled"`):
 
 ```
-scoring_scope == "pooled"    → domain MUST be absent (reject if present)   # a pooled score has no single domain
-verifiability_tag == "rule"  → domain REQUIRED (a classified record names its area)
+scoring_scope == "pooled"    → domain, decision_date, backfilled MUST be absent (reject if present)
+verifiability_tag == "rule"  → domain, decision_date REQUIRED; backfilled REQUIRED (= decision_date < recorded_at)
 ```
 
 *Why this is the faithful shape, not the original required-on-everything.*
 [0002](../decisions/0002-cgr-governance-domain-and-backfill.md) asked only that **governance/rule
-records** carry a truthful domain — a per-record capture classification coupled to
-`verifiability_tag: rule` (non-scoring). `v4` over-generalised that to required-on-everything. A
-**pooled CGR score** is a Beta posterior recomputed across an identity's whole substrate; it has no
-single domain, so a `domain` field on it would have to be either dishonest (pick one) or meaningless
-(a sentinel). `v3` already expresses the domain story for scores through
-`scoring_scope` + `requested_domain` + `domain_n_resolved` — so `domain` adds no truthful bit to a
-pooled aggregate. The read surface (which mints exactly these pooled judgment aggregates) is simply
-the first aggregate to be measured against a field that was designed for classified records.
+records** carry these — a per-record capture classification coupled to `verifiability_tag: rule`
+(non-scoring). `v4` over-generalised them to required-on-everything. A **pooled CGR score** is a Beta
+posterior recomputed across an identity's whole substrate: it has **no single domain** (a `domain`
+would be dishonest or a sentinel — `v3` already carries the score's domain story via
+`scoring_scope` + `requested_domain` + `domain_n_resolved`), and it is **not a single dated decision**
+(a `decision_date` of the mint time asserts a decision that never happened; of the latest outcome
+duplicates `last_resolved_at`; the honest value is absent — and `backfilled`, defined as
+`decision_date < recorded_at`, is meaningless without a `decision_date`). The read surface mints
+exactly these pooled judgment aggregates, so it is the first aggregate measured against fields
+designed for classified records. `recorded_at` and `verifiability_tag`, by contrast, **are**
+well-defined on an aggregate (issue time; judgment-vs-rule) and stay universal.
 
-**Enforcement split (deliberate).**
+**Enforcement split (deliberate), for all three.**
 
-- **ENFORCED NOW.** `domain` MUST be absent on pooled judgment aggregates
-  (`scoring_scope == "pooled"`). This is testable today against a real case — the read surface mints
-  pooled judgment aggregates — and both verifiers gate it (reject if present), mirroring the
+- **ENFORCED NOW.** `domain`, `decision_date`, `backfilled` MUST be absent on pooled judgment
+  aggregates (`scoring_scope == "pooled"`). Testable today against a real case — the read surface
+  mints pooled judgment aggregates — and both verifiers gate it (reject if present), mirroring the
   grounding gate's "MUST be absent otherwise (reject if present)".
-- **NORMATIVE BUT UNENFORCED.** `domain` REQUIRED on `rule` records. Nothing mints a rule-tagged
+- **NORMATIVE BUT UNENFORCED.** All three REQUIRED on `rule` records. Nothing mints a rule-tagged
   governance record yet; enforcing a requirement whose only instance is hypothetical is the same trap
-  as shipping `corrects` speculatively — the rule is stated normatively now and gains a verifier gate
-  (and a corpus vector) when something real exercises it.
+  as shipping `corrects` speculatively — stated normatively now, gaining a verifier gate (and a corpus
+  vector) when something real exercises it.
 
-`[OPEN]` **temporal-field overlap.** `v3` already carries `as_of` and `last_resolved_at`. `v4` adds
-`decision_date` and `recorded_at`. These are distinct in intent — `as_of`/`last_resolved_at` describe
-*score/data currency*; `decision_date`/`recorded_at` describe *when the decision was made vs
-attested* — but a consumer could conflate `as_of` with `decision_date`. The spec must state the
-relationship explicitly before issuance (candidate: `as_of` ≥ `last_resolved_at`; `decision_date` is
-independent of both; `recorded_at` ≥ `decision_date`). Flagged so it is decided, not discovered.
+**Temporal-field relationships (resolved — was `[OPEN]`).** The four timestamps have distinct intent
+and a consumer must not conflate them:
+
+- `as_of` (v3) — **score/data currency**: when the posterior was computed. On the read surface,
+  ≈ the mint instant (recomputed per request).
+- `last_resolved_at` (v3) — **evidence freshness**: the newest resolved-outcome timestamp feeding the
+  posterior (may be **null** ⇒ nothing resolved).
+- `recorded_at` (v4) — **issuance**: when this wire record was minted. Universal.
+- `decision_date` (v4) — **when a single decision was made**. Present only on `rule` records; **absent
+  on pooled aggregates** (above), so it does not exist to be conflated with `as_of` there.
+
+The spec states these as **consumer expectations**; per the presence-gate pass's deliberate deferral,
+**none is enforced** (a verifier does not gate on timestamp ordering):
+
+```
+all records:   as_of >= last_resolved_at            (a score is computed at/after its freshest evidence; last_resolved_at may be null)
+rule records:  recorded_at >= decision_date          (a decision is recorded at/after it is made)
+               backfilled  == (decision_date < recorded_at)
+               decision_date is independent of as_of / last_resolved_at
+pooled aggs:   decision_date / backfilled absent → the rule-record relationships are vacuous
+```
+
+Enforcing timestamp ordering is deferred for the same reason the presence-gate pass deferred it: an
+ordering gate is a semantic claim about clocks and backfill that nothing yet needs a verifier to
+adjudicate. The only enforced temporal rule is the **presence/absence** gate above (a shape check,
+not an ordering check).
 
 ### 2.3 What a `v3` consumer sees
 
@@ -538,17 +562,41 @@ it: malformed `target.hash`, missing `target.kind`, missing `target.hash_alg`, i
 `target.kind`, and the neutrality rule (`subject_key ≠ issuer_key_id`). No between-implementation
 gap (bucket "enforced in one") was found: the two verifiers are faithful ports with identical gates.
 
-**What P1.x did about it.** `domain` → conditional gate (enforced half, §2.2). The other four 0002
-fields → **presence** gated in both verifiers (their semantics/ordering stay `[OPEN]`, above) with
-vectors `P1`–`P5`. The five vector-less-but-enforced rules → vectors `H3`–`H6`, `N1`. Every
-REQUIRED/MUST clause a verifier can act on now has a gate **and** a vector.
+**What P1.x did about it, and the field-scope correction that followed.** The fix came in two passes.
+First: `domain` → conditional gate (enforced half); the other four 0002 fields → **presence** gated,
+plus vectors `P1`–`P5`; the five vector-less-but-enforced rules → vectors `H3`–`H6`, `N1`. That closed
+the *enforcement* gap. But resolving the temporal-overlap question (§2.4) exposed a *second* gap in the
+same fields: **presence was the wrong scope for two of them.**
+
+**This is the third instance of one pattern.** 0002 solved a **per-record governance-capture** problem
+— a single decision, made in a single area, on a single date, recorded later. `v4` generalised its
+fields to **every** attestation. Three of the five do **not survive contact with a pooled aggregate**:
+
+| 0002 field | scope on an aggregate | resolution |
+|---|---|---|
+| `domain` | no single area | conditional — absent on pooled |
+| `decision_date` | not a single dated decision | conditional — absent on pooled |
+| `backfilled` | meaningless without `decision_date` | conditional — absent on pooled |
+| `recorded_at` | well-defined (issue time) | universal |
+| `verifiability_tag` | well-defined (judgment vs rule) | universal |
+
+So `decision_date` and `backfilled` moved from universal-presence to the **conditional** gate
+alongside `domain` (§2.2 pooled-aggregate absence gate); `recorded_at` and `verifiability_tag` stayed
+universal. Vectors `P3`/`P5` were **inverted** accordingly (present-on-pooled → reject).
 
 **Go-forward rule (normative process).** A new signed field or normative clause is not "landed" until
-it ships with **both** (a) a verifier gate (or an explicit, recorded decision that it is
-surface-not-gate, like `evidence_tier`), and (b) at least one conformance vector that exercises the
-gate. "Declared in the spec" is not enforcement; a field with no gate and no vector is
-indistinguishable from an absent field, and — as the 0002 set showed — that gap is invisible until
-something happens to pull on it. Add the gate and the vector as part of the change, not later.
+it ships with **all three** of:
+1. **a stated scope — universal or conditional — decided *when it lands***, not discovered by the
+   first record that cannot satisfy it. A per-record field (a single decision/area/date) is not
+   presumed universal; ask whether it survives a pooled aggregate before requiring it everywhere.
+2. **a verifier gate** (or an explicit, recorded decision that it is surface-not-gate, like
+   `evidence_tier`);
+3. **at least one conformance vector** that exercises the gate.
+
+"Declared in the spec" is not enforcement, and "REQUIRED everywhere" is not a scope decision — it is a
+default that the 0002 set showed to be wrong three times over. A field with no gate and no vector is
+indistinguishable from an absent one; a field with the wrong scope is a rejection waiting for the first
+honest record. Decide scope, add the gate, add the vector — as part of the change, not later.
 
 ---
 

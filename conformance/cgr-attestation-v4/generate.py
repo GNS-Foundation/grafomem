@@ -68,14 +68,13 @@ def att(subject_key, *, dimension="receivables", relates_to=None, grounding=None
         "requested_domain": None,
         "domain_n_resolved": None,
         "rationale": "conformance vector",
-        # v4 additions (0002). NOTE: `domain` is intentionally NOT in the default body — the
-        # default is a POOLED JUDGMENT AGGREGATE (scoring_scope="pooled", verifiability_tag=
-        # "judgment"), and the §2.2 domain gate requires `domain` to be ABSENT on those. Vectors
-        # that need a domain (the D1 negative) pass it via **overrides.
+        # v4 additions (0002). NOTE: the default is a POOLED JUDGMENT AGGREGATE (scoring_scope=
+        # "pooled", verifiability_tag="judgment"). Per the §2.2 pooled-aggregate absence gate, the
+        # three PER-RECORD fields — domain, decision_date, backfilled — MUST be ABSENT here, so none
+        # is in the default body; the vectors that need them (D1/P3/P5 negatives) add them via
+        # **overrides. recorded_at + verifiability_tag are UNIVERSAL and stay.
         "verifiability_tag": "judgment",
-        "decision_date": "2026-01-01",
         "recorded_at": "2026-01-01",
-        "backfilled": False,
     }
     if relates_to is not None:
         body["relates_to"] = relates_to
@@ -434,30 +433,30 @@ V("D2-pooled-no-domain", "§2.2", "344",
   att(SK),
   {"valid": True})
 
-# ── §2.2 0002 required-field PRESENCE gate (semantics deferred; see the sweep note) ───
-# Every v4 record MUST carry these four (0002). Presence is decidable today; decision_date/
-# recorded_at SEMANTICS + ordering (recorded_at >= decision_date) stay [OPEN] in §2.2, so only
-# presence is gated. verifiability_tag's VALUE is decidable (the domain gate references it) and
-# IS gated to {judgment, rule}.
+# ── §2.2 0002 fields — split by SCOPE (universal presence vs conditional absence-on-pooled) ──
+# UNIVERSAL (every v4 record): verifiability_tag (presence + value {judgment, rule}), recorded_at
+# (presence). CONDITIONAL (per-record; MUST be ABSENT on a pooled aggregate): decision_date,
+# backfilled — same shape as domain (D1). Their SEMANTICS/ordering stay stated-not-enforced (§2.4).
 V("P1-missing-verifiability-tag", "§2.2", "345",
-  "verifiability_tag absent -> reject (required on every v4 record)",
+  "verifiability_tag absent -> reject (universal; required on every v4 record)",
   att(SK, drop=("verifiability_tag",)),
   {"valid": False, "reason_contains": "verifiability_tag"})
 V("P2-invalid-verifiability-tag", "§2.2", "345",
   "verifiability_tag not in {judgment, rule} -> reject (value is decidable)",
   att(SK, verifiability_tag="bogus"),
   {"valid": False, "reason_contains": "verifiability_tag"})
-V("P3-missing-decision-date", "§2.2", "346",
-  "decision_date absent -> reject (presence gated; ordering/semantics deferred)",
-  att(SK, drop=("decision_date",)),
-  {"valid": False, "reason_contains": "decision_date"})
 V("P4-missing-recorded-at", "§2.2", "347",
-  "recorded_at absent -> reject (presence gated; ordering/semantics deferred)",
+  "recorded_at absent -> reject (universal; wire-record issue time)",
   att(SK, drop=("recorded_at",)),
   {"valid": False, "reason_contains": "recorded_at"})
-V("P5-missing-backfilled", "§2.2", "348",
-  "backfilled absent -> reject (presence gated; false is a present value, not absent)",
-  att(SK, drop=("backfilled",)),
+# P3/P5 INVERTED: decision_date / backfilled are per-record → MUST be absent on a pooled aggregate.
+V("P3-decision-date-on-pooled", "§2.2", "346",
+  "scoring_scope=pooled with decision_date present -> reject (a pooled score is not a single dated decision)",
+  att(SK, decision_date="2026-01-01"),
+  {"valid": False, "reason_contains": "decision_date"})
+V("P5-backfilled-on-pooled", "§2.2", "348",
+  "scoring_scope=pooled with backfilled present -> reject (meaningless without decision_date)",
+  att(SK, backfilled=False),
   {"valid": False, "reason_contains": "backfilled"})
 
 # ── §2.3 schema gate ─────────────────────────────────────────────────────────
