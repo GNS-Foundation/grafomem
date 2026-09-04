@@ -191,12 +191,37 @@ def test_get_attestation_returns_signed_envelope(wired):
     c = _client(wired.mcp, wired.tenant, ["cgr:read"])
     res = _rpc(c, "tools/call", {"name": "cgr_get_attestation",
                                  "arguments": {"subject": HANDLE, "domain": DOMAIN}}).json()["result"]
+    from aml.cgr.attestation import CGR_ATTESTATION_SCHEMA
     env = res["structuredContent"]
     assert env["result"] == "attestation"
-    assert env["attestation"]["schema"] == "cgr.attestation.v3"
+    # live mint emits the current default schema (v3 today) — tracked via the constant so the flip
+    # is one edit; the immutable v3 wire is locked by the golden test, not here.
+    assert env["attestation"]["schema"] == CGR_ATTESTATION_SCHEMA
     assert env["scoring_scope"] == "pooled"
     assert env["domain_n_resolved"] == 3
     assert env["attestation"]["evidence_ref"] is None      # no per-read anchor
+
+
+def test_get_attestation_emits_v4_when_flipped(wired, monkeypatch):
+    """The MCP mint path flips with the same single constant (shared read-core, so REST/MCP
+    equivalence is preserved under v4): with the schema flipped, cgr_get_attestation emits the
+    pooled-aggregate v4 body — ADDS recorded_at + verifiability_tag; KEEPS scoring_scope=pooled
+    + agent_handle; OMITS domain/decision_date/backfilled; no relates_to."""
+    import aml.cgr.attestation as _attmod
+    from aml.cgr.attestation import CGR_ATTESTATION_SCHEMA_V4
+    # patch ONLY the source constant — proves the single-constant flip propagates to the MCP path
+    monkeypatch.setattr(_attmod, "CGR_ATTESTATION_SCHEMA", CGR_ATTESTATION_SCHEMA_V4)
+    c = _client(wired.mcp, wired.tenant, ["cgr:read"])
+    env = _rpc(c, "tools/call", {"name": "cgr_get_attestation",
+                                 "arguments": {"subject": HANDLE, "domain": DOMAIN}}).json()["result"]["structuredContent"]
+    att = env["attestation"]
+    assert att["schema"] == "cgr.attestation.v4"
+    assert att["recorded_at"] and att["verifiability_tag"] == "judgment"
+    assert env["scoring_scope"] == "pooled" and att["scoring_scope"] == "pooled"   # honest-scope preserved
+    assert att["agent_handle"]                                                     # join key survives
+    for f in ("domain", "decision_date", "backfilled", "relates_to"):
+        assert f not in att
+    assert att["evidence_ref"] is None                                            # still no per-read anchor
 
 
 def test_envelope_equivalence_with_rest(wired):
@@ -214,7 +239,7 @@ def test_envelope_equivalence_with_rest(wired):
     rest_att = asyncio.run(wired.read(_req(wired.tenant), subject=HANDLE, domain=DOMAIN))["attestation"]
 
     a1, a2 = dict(mcp_att), dict(rest_att)
-    for k in ("as_of", "signature"):          # the only mint-time-derived fields
+    for k in ("as_of", "recorded_at", "signature"):   # mint-time-derived fields (recorded_at is v4)
         a1.pop(k, None); a2.pop(k, None)
     assert a1 == a2                            # identical content from the shared core
 

@@ -8,9 +8,20 @@ behaviour is exercised by the DB route tests (CI `test` job).
 """
 from __future__ import annotations
 
+import json
+import pathlib
+import shutil
+import subprocess
+
+import pytest
 from cryptography.hazmat.primitives.asymmetric import ed25519
 
-from aml.cgr.attestation import verify_attestation
+import aml.cgr.attestation as _attmod
+from aml.cgr.attestation import (
+    CGR_ATTESTATION_SCHEMA,
+    CGR_ATTESTATION_SCHEMA_V4,
+    verify_attestation,
+)
 from aml.cgr.identity import did_key
 from aml.cgr.routes import (
     READ_SURFACE_VERSION,
@@ -97,7 +108,66 @@ def test_no_per_domain_score_implied():
 def test_attestation_verifies_round_trip():
     env, verify = _env()
     assert verify_attestation(env["attestation"], verify) is True
-    assert env["attestation"]["schema"] == "cgr.attestation.v3"
+    # the live mint emits the CURRENT default schema — tracked via the constant so the emission
+    # bump is a single edit (it is "cgr.attestation.v3" today; the immutable v3 WIRE is locked by
+    # the golden fixture test, not here).
+    assert env["attestation"]["schema"] == CGR_ATTESTATION_SCHEMA
+
+
+# ── v4 emission (DORMANT until the constant flips; here exercised via monkeypatch) ──
+
+def _flip_to_v4(monkeypatch):
+    """Simulate the emission-bump flip. Patches EXACTLY ONE thing — the single source constant
+    aml.cgr.attestation.CGR_ATTESTATION_SCHEMA — proving the flip is that constant and nothing
+    else: build_attestation reads it at call time (the mint), and routes.py references it LIVE
+    (att['schema'] echo + the advertise endpoints), so one edit propagates everywhere."""
+    monkeypatch.setattr(_attmod, "CGR_ATTESTATION_SCHEMA", CGR_ATTESTATION_SCHEMA_V4)
+
+
+def test_read_surface_emits_v4_body_when_flipped(monkeypatch):
+    """With the schema flipped, the read surface emits the pooled-aggregate v4 body:
+    ADDS recorded_at + verifiability_tag=judgment; KEEPS agent_handle (cloud-v2 join key),
+    scoring_scope=pooled (honest-scope), as_of, last_resolved_at, subject_key; OMITS the
+    per-record fields domain/decision_date/backfilled; carries no relates_to; verifies green."""
+    _flip_to_v4(monkeypatch)
+    env, verify = _env()
+    att = env["attestation"]
+    assert att["schema"] == "cgr.attestation.v4"
+    assert att["recorded_at"] and att["verifiability_tag"] == "judgment"       # v4 ADDS
+    assert att["agent_handle"] == "cc-builder@ulissy"                          # cloud-v2 join key survives
+    assert att["scoring_scope"] == "pooled" and att["as_of"] and att["last_resolved_at"]
+    assert att["subject_key"]
+    for f in ("domain", "decision_date", "backfilled", "relates_to"):          # pooled-aggregate absence gate
+        assert f not in att
+    assert verify_attestation(att, verify) is True                            # signature over the v4 body holds
+    # unsigned envelope echoes the v4 convenience copies (authoritative copies signed in att)
+    assert env["recorded_at"] == att["recorded_at"] and env["verifiability_tag"] == "judgment"
+    assert env["issuer"]["schema"] == "cgr.attestation.v4"
+
+
+def test_read_surface_v4_round_trips_through_reference_verifier(monkeypatch):
+    """PROOF the mint and the verifier agree before anything is served: the read surface's v4
+    body verifies GREEN under the reference verifier (@gns-foundation/cgr-verify), pooled-aggregate
+    gate satisfied. Cross-language (Python mint -> JS verify) so JCS canonicalization also agrees.
+    Skips where node / the verifier harness is unavailable (the minimal CI python job)."""
+    _flip_to_v4(monkeypatch)
+    verifier = pathlib.Path(__file__).resolve().parent.parent / "clients" / "cgr-verify"
+    harness = verifier / "bin" / "verify-v4.mjs"
+    # need node AND the verifier's installed deps (@noble/*, canonicalize) — absent in the minimal
+    # CI python job (no `npm install`), present in a dev checkout. Skip cleanly rather than fail.
+    if shutil.which("node") is None or not harness.exists() or not (verifier / "node_modules").exists():
+        pytest.skip("node or clients/cgr-verify deps (node_modules) unavailable")
+    env, _ = _env()
+    att = env["attestation"]
+    payload = json.dumps({
+        "subject": att, "ledger": {}, "pinned_issuer": att["issuer_key_id"],
+        "held_edges": [], "mode": "non-enforcing", "seek_fails": False,
+    })
+    proc = subprocess.run(["node", str(harness)], input=payload, capture_output=True, text=True, timeout=60)
+    assert proc.returncode == 0, proc.stderr
+    res = json.loads(proc.stdout)
+    assert res.get("valid") is True, f"reference verifier rejected the read-surface mint: {res}"
+    assert res.get("schema") == "cgr.attestation.v4"
 
 
 def test_tamper_of_scope_fields_fails_verification():
@@ -146,9 +216,14 @@ def test_issuance_path_emits_null_domain_scope_fields():
     assert tg["scoring_scope"] == "pooled"
     assert tg["requested_domain"] is None
     assert tg["domain_n_resolved"] is None
-    # identical key set to a read-path attestation body (minus envelope-only keys)
+    # identical key set to a read-path attestation body (minus the build_attestation-added keys:
+    # envelope keys, schema/issuer/issuer_key_id, and — once flipped — the v4 recorded_at +
+    # verifiability_tag, which come from build_attestation, not to_tiergate).
     read_att, _ = _env(requested_domain="deploy-verification", domain_n_resolved=2)
-    read_body_keys = set(read_att["attestation"]) - {"signature", "evidence_ref", "schema", "issuer", "issuer_key_id"}
+    read_body_keys = set(read_att["attestation"]) - {
+        "signature", "evidence_ref", "schema", "issuer", "issuer_key_id",
+        "recorded_at", "verifiability_tag",
+    }
     assert set(tg) == read_body_keys
 
 

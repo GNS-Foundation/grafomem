@@ -1,0 +1,37 @@
+{
+  "provenance": {
+    "ticket": "grafomem v4 emission-bump (feat/v4-mint-dormant)",
+    "schema": "cgr.attestation.v4",
+    "canonicalization": "RFC 8785 (JCS); Ed25519 over raw canonical bytes",
+    "note": "CGR attestation v4 golden — deterministic test fixture (repeating-byte test issuer, seed 0x11). Pooled judgment aggregate: ADDS recorded_at + verifiability_tag=judgment; keeps scoring_scope/as_of/last_resolved_at/agent_handle; OMITS domain/decision_date/backfilled (pooled-aggregate absence gate); no relates_to. The v3 golden (cgr_attestation_v3_jcs.golden.json) is UNCHANGED (spec §7).",
+    "regen": "build_attestation(<v3-golden tiergate>, schema=CGR_ATTESTATION_SCHEMA_V4, recorded_at='2026-01-01T00:00:00Z') under FoundationIdentity(seed 0x11*32)."
+  },
+  "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+  "subject_key": "d759793bbc13a2819a827c76adb6fba8a49aee007f49f2d0992d99b825ad2c48",
+  "subject_did": "did:key:z6Mkg49NtQR2LyYRDCQFK4w1VVHqhypZSSRo7HsyuN7SV7v5",
+  "canonical_body_utf8": "{\"agent_handle\":\"analyst-a@example\",\"as_of\":\"2026-01-01T00:00:00Z\",\"capability_tier\":0.75,\"cgr_score\":0.6666666666666666,\"confidence\":6,\"dimension\":\"receivables\",\"domain_n_resolved\":null,\"issuer\":\"gns-foundation\",\"issuer_key_id\":\"d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737\",\"last_resolved_at\":\"2026-01-01T00:00:00Z\",\"n_resolved\":12,\"rationale\":\"score 0.667 ≥ 0.65 and n_resolved 12 ≥ 10\",\"recorded_at\":\"2026-01-01T00:00:00Z\",\"requested_domain\":null,\"schema\":\"cgr.attestation.v4\",\"scoring_scope\":\"pooled\",\"subject_did\":\"did:key:z6Mkg49NtQR2LyYRDCQFK4w1VVHqhypZSSRo7HsyuN7SV7v5\",\"subject_key\":\"d759793bbc13a2819a827c76adb6fba8a49aee007f49f2d0992d99b825ad2c48\",\"tier\":\"silver\",\"verifiability_tag\":\"judgment\"}",
+  "attestation": {
+    "agent_handle": "analyst-a@example",
+    "subject_key": "d759793bbc13a2819a827c76adb6fba8a49aee007f49f2d0992d99b825ad2c48",
+    "subject_did": "did:key:z6Mkg49NtQR2LyYRDCQFK4w1VVHqhypZSSRo7HsyuN7SV7v5",
+    "dimension": "receivables",
+    "tier": "silver",
+    "cgr_score": 0.6666666666666666,
+    "confidence": 6.0,
+    "n_resolved": 12,
+    "capability_tier": 0.75,
+    "as_of": "2026-01-01T00:00:00Z",
+    "last_resolved_at": "2026-01-01T00:00:00Z",
+    "scoring_scope": "pooled",
+    "requested_domain": null,
+    "domain_n_resolved": null,
+    "rationale": "score 0.667 ≥ 0.65 and n_resolved 12 ≥ 10",
+    "schema": "cgr.attestation.v4",
+    "issuer": "gns-foundation",
+    "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "recorded_at": "2026-01-01T00:00:00Z",
+    "verifiability_tag": "judgment",
+    "signature": "40919c691da9f8c52be0b7b0c31f3ae0ebd92485de990c57d2d4f711c876ca3795f15f100bf2eb39071fc52b76098283c88e215ba6285803c5ff54bdddc92b0e",
+    "evidence_ref": null
+  }
+}

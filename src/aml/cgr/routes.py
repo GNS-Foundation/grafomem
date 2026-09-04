@@ -31,9 +31,9 @@ class CalibrationBody(BaseModel):
 
 from datetime import datetime, timezone
 
-from aml.cgr.attestation import (
-    CGR_ATTESTATION_SCHEMA,
-    build_attestation,
+from aml.cgr import attestation as _attestation  # referenced LIVE so the emission-bump flip
+from aml.cgr.attestation import (                 # (attestation.CGR_ATTESTATION_SCHEMA) propagates
+    build_attestation,                            # here without a second edit — see get_issuer/list_attestations
 )
 from aml.cgr.engine import compute_scores, to_tiergate
 from aml.cgr.gate import calibration_tenant_tx
@@ -98,7 +98,10 @@ def build_read_envelope(match, requested_domain, domain_n_resolved, *, signer,
     tg = to_tiergate(match)
     tg["requested_domain"] = requested_domain
     tg["domain_n_resolved"] = domain_n_resolved
-    att = build_attestation(tg, signer=signer, issuer_key_id=issuer_key_id_hex, evidence_ref=None)
+    # recorded_at (v4 issue time) is threaded from the request `now` for determinism; it is only
+    # written into the signed body once the schema is v4 (dormant under v3 — see build_attestation).
+    att = build_attestation(tg, signer=signer, issuer_key_id=issuer_key_id_hex, evidence_ref=None,
+                            recorded_at=(now.isoformat() if now is not None else None))
     if anchor is not None:
         att["evidence_ref"] = anchor(tg, att)
     return {
@@ -111,9 +114,13 @@ def build_read_envelope(match, requested_domain, domain_n_resolved, *, signer,
         "scoring_scope": "pooled",                # NOT a per-domain score
         "requested_domain": requested_domain,     # convenience copy (authoritative copy signed in att)
         "domain_n_resolved": domain_n_resolved,   # backs the domain MATCH (convenience copy; signed in att)
+        # v4 convenience echoes — present only once the schema flips (authoritative copies signed in att);
+        # the spread keeps the v3 envelope shape byte-for-byte unchanged while v3 is live.
+        **({"recorded_at": att["recorded_at"], "verifiability_tag": att["verifiability_tag"]}
+           if "recorded_at" in att else {}),
         "freshness": _read_freshness(match.last_resolved_at, now=now),
         "issuer": {"issuer": ISSUER, "issuer_key_id": issuer_key_id_hex,
-                   "schema": CGR_ATTESTATION_SCHEMA},
+                   "schema": att["schema"]},   # the ACTUAL minted schema — single-constant flip
         "continuity": _read_continuity(match.subject_key, match.subject_did),
         "verify": {"recipe_url": _VERIFY_RECIPE_URL, "lib": _VERIFIER_LIB,
                    "issuer_pubkey": issuer_pubkey_hex},
@@ -380,7 +387,7 @@ def create_cgr_issuance_router(
             "issuer": ISSUER,
             "issuer_key_id": issuer_key_id(identity),
             "public_key": identity.public_key().hex(),
-            "schema": CGR_ATTESTATION_SCHEMA,
+            "schema": _attestation.CGR_ATTESTATION_SCHEMA,
         }
 
     @router.get("/attestations")
@@ -395,7 +402,7 @@ def create_cgr_issuance_router(
             "attestations": atts,
             "count": len(atts),
             "issuer": ISSUER,
-            "schema": CGR_ATTESTATION_SCHEMA,
+            "schema": _attestation.CGR_ATTESTATION_SCHEMA,
             "as_of": results[0].as_of if results else _now_iso(),
         }
 
