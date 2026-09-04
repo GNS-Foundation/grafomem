@@ -32,7 +32,7 @@ import hashlib
 
 import rfc8785
 
-CGR_ATTESTATION_SCHEMA = "cgr.attestation.v3"   # v3 (#2): signed body adds last_resolved_at (freshness). v2 added subject_key (#5).
+CGR_ATTESTATION_SCHEMA = "cgr.attestation.v4"   # v4 EMISSION BUMP (was v3). The v4 body is minted by build_attestation; see CGR_ATTESTATION_SCHEMA_V4 below.
 # v4 emission-bump TARGET — DORMANT. The mint below produces the v4 body iff the active schema is v4;
 # it is not until CGR_ATTESTATION_SCHEMA above is flipped to this value (a separate production deploy).
 CGR_ATTESTATION_SCHEMA_V4 = "cgr.attestation.v4"
