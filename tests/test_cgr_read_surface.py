@@ -57,11 +57,20 @@ def _result(**over):
     return CGRResult(**base)
 
 
-def _env(requested_domain="deploy-verification", domain_n_resolved=2, **over):
+def _env(requested_domain="deploy-verification", domain_n_resolved=2, continues_edge=None, **over):
     signer, verify, kid = _keypair()
     env = build_read_envelope(_result(**over), requested_domain, domain_n_resolved,
-                              signer=signer, issuer_key_id_hex=kid, issuer_pubkey_hex=kid)
+                              signer=signer, issuer_key_id_hex=kid, issuer_pubkey_hex=kid,
+                              continues_edge=continues_edge)
     return env, verify
+
+
+# a §5.3 continues edge as load_continues_edges returns it (target = A's delegation cert_hash)
+_CONTINUES_EDGE = {
+    "type": "continues",
+    "target": {"kind": "delegation_cert", "hash_alg": "sha-256", "hash": "ab" * 32},
+    "evidence_tier": "operator_verification",
+}
 
 
 # ── honest-scope: score is never returned without its evidence + freshness ──────
@@ -143,6 +152,62 @@ def test_read_surface_emits_v4_body_when_flipped(monkeypatch):
     # unsigned envelope echoes the v4 convenience copies (authoritative copies signed in att)
     assert env["recorded_at"] == att["recorded_at"] and env["verifiability_tag"] == "judgment"
     assert env["issuer"]["schema"] == "cgr.attestation.v4"
+
+
+def test_no_continues_edge_means_no_relates_to(monkeypatch):
+    """The common case: a subject with NO persisted continues edge → the pooled aggregate carries no
+    relates_to (unchanged shape). Guards against injecting an empty/spurious edge."""
+    _flip_to_v4(monkeypatch)
+    env, _ = _env(continues_edge=None)
+    assert "relates_to" not in env["attestation"]
+
+
+def test_read_surface_injects_continues_edge_into_signed_body(monkeypatch):
+    """§5.3 Option A: a subject WITH a persisted continues edge → it is injected into the SIGNED body
+    (relates_to), and the signature still verifies (the edge is inside the signed commitment, not the
+    envelope)."""
+    _flip_to_v4(monkeypatch)
+    env, verify = _env(continues_edge=_CONTINUES_EDGE)
+    att = env["attestation"]
+    assert att["relates_to"] == [_CONTINUES_EDGE]                 # in the body
+    assert att["relates_to"][0]["target"]["kind"] == "delegation_cert"
+    assert att["relates_to"][0]["evidence_tier"] == "operator_verification"
+    assert verify_attestation(att, verify) is True               # signed over, tamper-evident
+    # stripping the edge breaks the signature (it is signed, not an envelope add-on)
+    assert verify_attestation({k: v for k, v in att.items() if k != "relates_to"}, verify) is False
+
+
+def test_read_surface_continues_round_trips_lineage_truncated_unavailable(monkeypatch):
+    """The served ceremony shape (c14094ea → d3caa6f1): B's attestation carries the continues edge and
+    verifies GREEN under the reference verifier, with lineage_status == "truncated_unavailable".
+
+    THIS truncated_unavailable IS CORRECT — do NOT "fix" it to "complete". The continues target is A's
+    delegation cert, which lives in geiant's delegation_certificates, NOT in the envelope the read
+    surface serves. So the verifier, handed B with an empty ledger, cannot obtain the predecessor and
+    reports truncated_unavailable — the benign "predecessor not in hand" state (valid:true). This is
+    exactly the decided behaviour: continues is NAVIGABLE lineage, not resolved-in-place — a consumer
+    resolves the cert_hash against geiant out of band. lineage_status == "complete" would require the
+    read surface to bundle A's cert, which it deliberately does not. (See corpus CL1 vs CL2.)
+    """
+    _flip_to_v4(monkeypatch)
+    verifier = pathlib.Path(__file__).resolve().parent.parent / "clients" / "cgr-verify"
+    harness = verifier / "bin" / "verify-v4.mjs"
+    if shutil.which("node") is None or not harness.exists() or not (verifier / "node_modules").exists():
+        pytest.skip("node or clients/cgr-verify deps (node_modules) unavailable")
+    env, _ = _env(continues_edge=_CONTINUES_EDGE)
+    att = env["attestation"]
+    payload = json.dumps({
+        "subject": att, "ledger": {}, "pinned_issuer": att["issuer_key_id"],
+        "held_edges": [], "mode": "non-enforcing", "seek_fails": False,
+    })
+    proc = subprocess.run(["node", str(harness)], input=payload, capture_output=True, text=True, timeout=60)
+    assert proc.returncode == 0, proc.stderr
+    res = json.loads(proc.stdout)
+    assert res.get("valid") is True, f"reference verifier rejected the continues mint: {res}"
+    assert res.get("schema") == "cgr.attestation.v4"
+    # the load-bearing assertion — see the docstring for why truncated_unavailable is correct, not a bug
+    assert res.get("lineage_status") == "truncated_unavailable", res
+    assert res.get("evidence_tier") == "operator_verification", res
 
 
 def test_read_surface_v4_round_trips_through_reference_verifier(monkeypatch):

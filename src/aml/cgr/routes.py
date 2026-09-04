@@ -40,7 +40,7 @@ from aml.cgr.gate import calibration_tenant_tx
 from aml.cgr.identity import did_key
 from aml.cgr.issuance import ISSUER, issuer_key_id, make_signer
 from aml.cgr.scoring import DIMENSION_RECEIVABLES, _now_iso
-from aml.cgr.substrate import load_substrate
+from aml.cgr.substrate import load_continues_edges, load_substrate
 
 # Ticket 2 — external READ surface.
 READ_SURFACE_VERSION = "cgr-read/1"
@@ -88,7 +88,7 @@ def _read_continuity(subject_key: str | None, subject_did: str | None) -> dict:
 
 def build_read_envelope(match, requested_domain, domain_n_resolved, *, signer,
                         issuer_key_id_hex: str, issuer_pubkey_hex: str, anchor=None,
-                        now: datetime | None = None) -> dict:
+                        now: datetime | None = None, continues_edge: dict | None = None) -> dict:
     """Pure envelope assembly (no DB/routing) — unit-testable. Mints the fresh v3
     attestation with the SIGNED scope fields (requested_domain, domain_n_resolved),
     then wraps it so `score` is INSEPARABLE from its two evidence masses + freshness:
@@ -100,8 +100,12 @@ def build_read_envelope(match, requested_domain, domain_n_resolved, *, signer,
     tg["domain_n_resolved"] = domain_n_resolved
     # recorded_at (v4 issue time) is threaded from the request `now` for determinism; it is only
     # written into the signed body once the schema is v4 (dormant under v3 — see build_attestation).
+    # §5.3 continues edge (Option A): a subject's persisted lineage edge is injected into the SIGNED
+    # body at mint time, so every re-minted B carries it. Absent → no relates_to (pooled aggregate
+    # unchanged). Loaded in build_read_result (which holds the store); passed in here.
     att = build_attestation(tg, signer=signer, issuer_key_id=issuer_key_id_hex, evidence_ref=None,
-                            recorded_at=(now.isoformat() if now is not None else None))
+                            recorded_at=(now.isoformat() if now is not None else None),
+                            relates_to=([continues_edge] if continues_edge else None))
     if anchor is not None:
         att["evidence_ref"] = anchor(tg, att)
     return {
@@ -189,12 +193,18 @@ def build_read_result(decision_trail, store_manager, foundation_identity, tenant
             if rw.decision == "certify" and rw.verifiability_tag == "judgment"
             and rw.outcome in ("paid", "default"))
 
+    # §5.3 continues edge (Option A): look up a persisted lineage edge for this subject (keyed by
+    # subject_key = the successor B). At most one (anti-fork §5.3.4). Absent for every subject that
+    # has none — the overwhelming common case — so relates_to stays absent on the pooled aggregate.
+    continues_edge = load_continues_edges(store_manager, tenant_id).get(match.subject_key)
+
     return build_read_envelope(
         match, requested_domain, domain_n_resolved,
         signer=make_signer(foundation_identity),
         issuer_key_id_hex=issuer_key_id(foundation_identity),
         issuer_pubkey_hex=foundation_identity.public_key().hex(),
         anchor=None,   # uniform no-per-read-anchor (Phase 2 Q1)
+        continues_edge=continues_edge,
     )
 
 
