@@ -22,6 +22,7 @@ from fastapi import HTTPException
 
 from aml.cgr.attestation import (
     CGR_ATTESTATION_SCHEMA,
+    CGR_ATTESTATION_SCHEMA_V4,
     attestation_fingerprint,
     build_attestation,
     canonical_body,
@@ -133,8 +134,12 @@ def test_wrong_key_fails():
 
 def test_determinism_identical_bytes_and_signature():
     ident, signer, _ = _signer_verify(FOUNDATION_SEED)
-    a = build_attestation(_tiergate(), signer=signer, issuer_key_id=issuer_key_id(ident))
-    b = build_attestation(_tiergate(), signer=signer, issuer_key_id=issuer_key_id(ident))
+    # recorded_at pinned so the two mints are byte-identical regardless of the active schema
+    # (under v4 recorded_at defaults to now, which is legitimately time-varying like as_of).
+    a = build_attestation(_tiergate(), signer=signer, issuer_key_id=issuer_key_id(ident),
+                          recorded_at="2026-01-01T00:00:00Z")
+    b = build_attestation(_tiergate(), signer=signer, issuer_key_id=issuer_key_id(ident),
+                          recorded_at="2026-01-01T00:00:00Z")
     assert canonical_body(a) == canonical_body(b)
     assert a["signature"] == b["signature"]           # Ed25519 is deterministic
 
@@ -143,9 +148,12 @@ def test_evidence_ref_is_outside_the_signature():
     """evidence_ref is a post-hoc audit pointer; changing it must NOT break the
     signature (it is written after signing, so cannot be part of what is signed)."""
     ident, signer, verify = _signer_verify(FOUNDATION_SEED)
-    a = build_attestation(_tiergate(), signer=signer, issuer_key_id=issuer_key_id(ident))
+    # recorded_at pinned so evidence_ref is the ONLY difference between the two mints (under v4
+    # recorded_at would otherwise default to now and diverge between the two calls).
+    a = build_attestation(_tiergate(), signer=signer, issuer_key_id=issuer_key_id(ident),
+                          recorded_at="2026-01-01T00:00:00Z")
     b = build_attestation(_tiergate(), signer=signer, issuer_key_id=issuer_key_id(ident),
-                          evidence_ref="bc-xyz")
+                          evidence_ref="bc-xyz", recorded_at="2026-01-01T00:00:00Z")
     assert a["signature"] == b["signature"]
     assert verify_attestation(b, verify) is True
     assert attestation_fingerprint(a) == attestation_fingerprint(b)
@@ -173,6 +181,7 @@ def test_fingerprint_changes_on_tamper():
 
 _GOLDEN = pathlib.Path(__file__).resolve().parent / "fixtures" / "cgr_attestation_v3_jcs.golden.json"
 _GOLDEN_V2 = pathlib.Path(__file__).resolve().parent / "fixtures" / "cgr_attestation_v2_jcs.golden.json"
+_GOLDEN_V4 = pathlib.Path(__file__).resolve().parent / "fixtures" / "cgr_attestation_v4_jcs.golden.json"
 _TIERGATE_KEYS = ("agent_handle", "subject_key", "subject_did", "dimension", "tier", "cgr_score",
                   "confidence", "n_resolved", "capability_tier", "as_of", "last_resolved_at",
                   "scoring_scope", "requested_domain", "domain_n_resolved", "rationale")
@@ -240,9 +249,57 @@ def test_jcs_golden_fixture_wire_format_locked():
     # 4. determinism — re-signing the same seed reproduces the exact signature.
     # The seed is the module test constant (NOT stored in the fixture — secret-shaped
     # test material is kept out of committed JSON per the repo's secret-scan guidance).
+    # schema is PINNED to v3 (not the live constant) so this immutable-v3-wire test stays green
+    # across the emission-bump flip — re-minting the v3 golden must reproduce the v3 body.
     ident = FoundationIdentity(bytes.fromhex(FOUNDATION_SEED))
     tiergate = {k: att[k] for k in _TIERGATE_KEYS}
-    resigned = build_attestation(tiergate, signer=make_signer(ident), issuer_key_id=issuer_key_id(ident))
+    resigned = build_attestation(tiergate, signer=make_signer(ident), issuer_key_id=issuer_key_id(ident),
+                                 schema="cgr.attestation.v3")
+    assert resigned["signature"] == att["signature"]
+
+
+def test_v3_golden_is_unmutated_by_v4_work():
+    """Spec §7: the v3 golden MUST NOT be mutated. The v4 body is a NEW fixture alongside it.
+    Locks that the v3 golden still carries NO v4-only fields."""
+    att = json.loads(_GOLDEN.read_text())["attestation"]
+    assert att["schema"] == "cgr.attestation.v3"
+    for f in ("recorded_at", "verifiability_tag", "domain", "decision_date", "backfilled", "relates_to"):
+        assert f not in att, f"v3 golden must not carry v4 field {f}"
+
+
+def test_jcs_golden_v4_fixture_wire_format_locked():
+    """The v4 wire-format contract — the pooled judgment aggregate the read surface will emit
+    once the schema flips. Locks the canonical bytes; ADDS recorded_at + verifiability_tag;
+    KEEPS scoring_scope/as_of/last_resolved_at/agent_handle/subject_key; OMITS the per-record
+    fields domain/decision_date/backfilled (pooled-aggregate absence gate); no relates_to."""
+    fx = json.loads(_GOLDEN_V4.read_text())
+    att = fx["attestation"]
+
+    # 1. wire format locked — JCS canonical bytes equal the committed string
+    assert canonical_body(att).decode("utf-8") == fx["canonical_body_utf8"]
+    assert att["schema"] == "cgr.attestation.v4"
+    # v4 ADDS (in the signed body):
+    assert '"recorded_at":"' in fx["canonical_body_utf8"] and att["recorded_at"]
+    assert '"verifiability_tag":"judgment"' in fx["canonical_body_utf8"]
+    # v4 KEEPS the honest-scope + join-key + identity fields (cloud-v2 joins on agent_handle):
+    assert '"scoring_scope":"pooled"' in fx["canonical_body_utf8"]
+    assert att["agent_handle"] and att["subject_key"] and att["as_of"] and att["last_resolved_at"]
+    # v4 OMITS the per-record fields (pooled-aggregate absence gate) and carries no relation edge:
+    for f in ("domain", "decision_date", "backfilled", "relates_to"):
+        assert f not in att, f"pooled v4 aggregate must omit {f}"
+        assert f'"{f}"' not in fx["canonical_body_utf8"]
+
+    # 2. signature verifies over the raw JCS bytes under the pinned Foundation key
+    verify = make_verifier(bytes.fromhex(fx["issuer_key_id"]))
+    assert verify_attestation(att, verify) is True
+    # 3. one-byte tamper of a v4 field → signature fails
+    assert verify_attestation({**att, "recorded_at": "2020-01-01T00:00:00Z"}, verify) is False
+    assert verify_attestation({**att, "verifiability_tag": "rule"}, verify) is False
+    # 4. determinism — re-minting the same inputs at v4 reproduces the exact signature
+    ident = FoundationIdentity(bytes.fromhex(FOUNDATION_SEED))
+    tiergate = {k: att[k] for k in _TIERGATE_KEYS}
+    resigned = build_attestation(tiergate, signer=make_signer(ident), issuer_key_id=issuer_key_id(ident),
+                                 schema=CGR_ATTESTATION_SCHEMA_V4, recorded_at=att["recorded_at"])
     assert resigned["signature"] == att["signature"]
 
 

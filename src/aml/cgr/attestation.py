@@ -33,6 +33,9 @@ import hashlib
 import rfc8785
 
 CGR_ATTESTATION_SCHEMA = "cgr.attestation.v3"   # v3 (#2): signed body adds last_resolved_at (freshness). v2 added subject_key (#5).
+# v4 emission-bump TARGET — DORMANT. The mint below produces the v4 body iff the active schema is v4;
+# it is not until CGR_ATTESTATION_SCHEMA above is flipped to this value (a separate production deploy).
+CGR_ATTESTATION_SCHEMA_V4 = "cgr.attestation.v4"
 ISSUER = "gns-foundation"
 
 # Fields present in the envelope but excluded from the signed / fingerprinted body.
@@ -71,19 +74,41 @@ def attestation_fingerprint(att: dict) -> str:
     return hashlib.blake2b(canonical_body(att), digest_size=32).hexdigest()
 
 
-def build_attestation(tiergate: dict, *, signer, issuer_key_id: str, evidence_ref=None) -> dict:
+def _iso_now() -> str:
+    """Mint-time ISO-8601 UTC timestamp (matches scoring._now_iso format)."""
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
+
+
+def build_attestation(tiergate: dict, *, signer, issuer_key_id: str, evidence_ref=None,
+                      schema: str | None = None, recorded_at: str | None = None) -> dict:
     """Wrap a `to_tiergate` dict in a Foundation-signed attestation.
 
     `signer(canonical_bytes) -> sig_hex` is injected (built from the Foundation
     identity in the route layer). `evidence_ref` is the envelope pointer; it does
     not participate in the signature.
+
+    `schema` defaults to the module constant `CGR_ATTESTATION_SCHEMA` (currently v3), so the
+    EMISSION BUMP is a single change: flip that constant to v4 and every mint funnelling through
+    here emits the v4 body. Callers may also pass `schema=CGR_ATTESTATION_SCHEMA_V4` explicitly
+    (tests do, to exercise the dormant v4 path without flipping the constant).
+
+    v4 body (pooled judgment aggregate — the read surface's shape): ADDS `recorded_at` (issue time)
+    and `verifiability_tag="judgment"`; keeps everything from `to_tiergate` (scoring_scope,
+    as_of, last_resolved_at, agent_handle, …); OMITS the per-record fields `domain`/`decision_date`/
+    `backfilled` (the §2.2 pooled-aggregate absence gate); carries no `relates_to` (the continues
+    edge is a later step). `recorded_at` may be injected for determinism (goldens/tests); otherwise now.
     """
+    schema = schema or CGR_ATTESTATION_SCHEMA
     body = {
         **tiergate,
-        "schema": CGR_ATTESTATION_SCHEMA,
+        "schema": schema,
         "issuer": ISSUER,
         "issuer_key_id": issuer_key_id,
     }
+    if schema == CGR_ATTESTATION_SCHEMA_V4:
+        body["recorded_at"] = recorded_at or _iso_now()
+        body["verifiability_tag"] = "judgment"
     signature = signer(_canon(body))
     return {**body, "signature": signature, "evidence_ref": evidence_ref}
 
