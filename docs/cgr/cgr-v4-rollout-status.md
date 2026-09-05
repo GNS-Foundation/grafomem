@@ -98,6 +98,24 @@ Two things decouple from the rest and deserve to be read first:
    correct per-kind `hash_alg` and fingerprints, obeying the multiplicity rules. The substrate must
    actually *carry* the relation data — non-trivial.
 
+### Operational reality of the flip — downtime & rollback cost (corrected 2026-09-04)
+
+The emission bump reasoning leaned on "the read surface re-mints per request and persists nothing, so
+the flip is a single-constant change and **rollback is immediate**." That is true of the **data** —
+there is no stored v4 body to reconcile — but it is **false of the service**, and the distinction was
+discovered the hard way during the 2026-09-04 flip:
+
+- The flip is a **redeploy**, and prod runs a **single replica with no healthcheck-gated handoff**. The
+  2026-09-04 flip left prod **externally unreachable (`HTTP 000`) for ~25–30 minutes** during the
+  cutover (old instance stops before the slow-cold-starting new one serves). Any redeploy does this;
+  it is not caused by the schema change.
+- Therefore **rollback is NOT immediate**: reverting the constant is *another* redeploy = **another
+  ~25–30 minutes of downtime**. An abort (bad deploy out **and** revert in) is **~an hour of
+  unavailability**, not a moment. Budget deploys and rollbacks as ~30-min planned outages until a
+  zero-downtime path exists (second replica + rolling handoff, or moving startup warmup off the
+  readiness path). Tracked as an operational-resilience (DORA) issue, not an inconvenience — see
+  grafomem#108.
+
 ### Tests & fixtures
 
 5. **The v3-pinned read-surface tests** — `test_cgr_read_surface.py:100` and `test_cgr_read_mcp.py:196`
