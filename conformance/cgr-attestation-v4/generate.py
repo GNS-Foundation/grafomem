@@ -389,6 +389,21 @@ V("C1-cert-target-revokes", "§1.1/§3", "89-98",
   att(SK, relates_to=[{"type": "revokes", "target": tgt_cert(_c)}]),
   {"valid": True}, certs=[_c])
 
+# ── continues -> delegation_cert (the §5.3 ceremony output: B continues A's cert_hash) ─────────
+# The rotation-continuity ceremony anchors the continues target to A's delegation cert_hash (§5.3.3).
+# Two cases the served edge produces, depending on whether the verifier is handed A's cert:
+_cc = cert("ee" * 32)     # A's delegation cert, RESOLVABLE (supplied in the verifier's ledger)
+V("CL1-continues-cert-resolvable", "§1.3/§5.3", "778-807",
+  "continues -> delegation_cert with the cert IN the ledger -> valid, lineage complete",
+  att(SK, relates_to=[_edge("continues", tgt_cert(_cc), tier="custody_record")]),
+  {"valid": True, "lineage_status": "complete", "evidence_tier": "custody_record"}, certs=[_cc])
+_cc2 = cert("f0" * 32)    # A's cert NOT supplied — lives off-envelope (geiant delegation_certificates)
+V("CL2-continues-cert-unreachable", "§1.3/§5.3", "778-807",
+  "continues -> delegation_cert with the cert ABSENT from the ledger -> valid, lineage "
+  "truncated_unavailable (the read surface serves B's edge but not A's cert — navigable, not resolved)",
+  att(SK, relates_to=[_edge("continues", tgt_cert(_cc2), tier="operator_verification")]),
+  {"valid": True, "lineage_status": "truncated_unavailable", "evidence_tier": "operator_verification"})
+
 # ── §2.2 Grounding gate (GROUNDING_DIMENSIONS = {"grounding"}) ────────────────
 V("G1-grounding-complete", "§2.2", "272-305",
   "dimension=grounding with oracle_id + audit_policy -> valid",
