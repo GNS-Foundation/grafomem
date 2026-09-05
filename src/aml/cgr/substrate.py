@@ -30,6 +30,10 @@ CGR_OUTCOME_SCHEMA = "cgr.outcome.v1"
 CGR_REVIEWS_STORE = "cgr-reviews"
 CGR_REVIEW_SCHEMA = "cgr.review.v1"
 CGR_ROTATION_STORE = "cgr-identity"   # Ticket #7: append-only key-rotation proofs
+# §5.3 continues-edge records live in the SAME identity store (lineage is an identity concern),
+# distinguished by their schema tag. Each is a Foundation-side ceremony output: the relation from a
+# successor B to its predecessor A's cert_hash, injected into B's re-minted attestation (§1, Option A).
+CGR_CONTINUES_SCHEMA = "cgr.continues.v1"
 from aml.cgr.identity import CGR_ROTATION_SCHEMA, RotationProof  # noqa: E402  (schema tag + dataclass)
 
 
@@ -258,6 +262,59 @@ def load_rotations(store_manager, tenant_id: str) -> list[RotationProof]:
         except (TypeError, ValueError):
             continue                                # malformed row → skip (verified later anyway)
     return proofs
+
+
+def _tenant_continues(backend, tenant_id: str) -> list:
+    """Every §5.3 continues-edge record for a tenant (mirrors _tenant_rotations)."""
+    rows = []
+    for m in _scoped_audit(backend, tenant_id):
+        md = m.metadata or {}
+        if md.get("cgr_schema") == CGR_CONTINUES_SCHEMA and m.tenant_id == tenant_id:
+            rows.append(m)
+    return rows
+
+
+def load_continues_edges(store_manager, tenant_id: str) -> dict[str, dict]:
+    """Persisted §5.3 continues edges for a tenant, keyed by successor `subject_key`, each returned as
+    a READY-TO-INJECT `relates_to` edge `{type, target, evidence_tier}`. Tenant-scoped (RLS-enforced
+    via `_scoped_audit`). At most one continues per subject (anti-fork §5.3.4) — a later record for the
+    same subject wins. RAW: no signature check at read time — the edge's tamper-evidence is the mint
+    signature over the whole body when it rides in B's re-minted attestation (Option A)."""
+    backend = store_manager.get_or_create_named(CGR_ROTATION_STORE).backend
+    edges: dict[str, dict] = {}
+    for m in _tenant_continues(backend, tenant_id):
+        md = m.metadata or {}
+        subject = md.get("subject")
+        target_hash = md.get("target_hash")
+        tier = md.get("evidence_tier")
+        if not (subject and target_hash and tier):
+            continue                                # malformed → skip
+        edges[subject] = {
+            "type": "continues",
+            "target": {
+                "kind": md.get("target_kind", "delegation_cert"),
+                "hash_alg": md.get("target_hash_alg", "sha-256"),
+                "hash": target_hash,
+            },
+            "evidence_tier": tier,
+        }
+    return edges
+
+
+def continues_edge_metadata(*, subject_key: str, target_hash: str, evidence_tier: str,
+                            decision_date: str, recorded_at: str, target_kind: str = "delegation_cert",
+                            target_hash_alg: str = "sha-256", ceremony_ref=None) -> dict:
+    """Fact-shaped metadata for ONE continues-edge record (mirrors `_rotation_metadata` in
+    demo_routes). Written append-only to the identity store by the §5.3 ceremony (admin-only); read
+    back by `load_continues_edges` and injected at the mint seam. `subject` == the successor key B."""
+    return {
+        "predicate": "continues", "subject": subject_key, "object": target_hash,
+        "cgr_schema": CGR_CONTINUES_SCHEMA,
+        "target_kind": target_kind, "target_hash_alg": target_hash_alg, "target_hash": target_hash,
+        "evidence_tier": evidence_tier,
+        "decision_date": decision_date, "recorded_at": recorded_at,
+        "ceremony_ref": ceremony_ref,
+    }
 
 
 def export_rotations(store_manager, tenant_id: str) -> list[dict]:
