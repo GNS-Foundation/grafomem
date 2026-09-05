@@ -3,7 +3,7 @@
   "note": "TEST vectors \u2014 deterministic repeating-byte issuer key, NOT a real key. See README.md for the resolution model, the seek/mode split, and the grounding-gate scope.",
   "issuer_pubkey_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
   "agent_pubkey_hex": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
-  "vector_count": 56,
+  "vector_count": 58,
   "modes": [
     "enforcing",
     "non-enforcing"
@@ -8999,6 +8999,131 @@
       },
       "expect": {
         "valid": true
+      }
+    },
+    {
+      "id": "CL1-continues-cert-resolvable",
+      "clause": "\u00a71.3/\u00a75.3",
+      "spec_lines": "778-807",
+      "title": "continues -> delegation_cert with the cert IN the ledger -> valid, lineage complete",
+      "mode": "enforcing",
+      "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "subject": {
+        "schema": "cgr.attestation.v4",
+        "issuer": "gns-foundation",
+        "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+        "subject_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "subject_did": "did:key:z6Mkaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "agent_handle": "vector-agent@test",
+        "dimension": "receivables",
+        "cgr_score": 0.6666666666666666,
+        "confidence": 6.0,
+        "n_resolved": 12,
+        "capability_tier": 0.75,
+        "as_of": "2026-01-01T00:00:00Z",
+        "last_resolved_at": "2026-01-01T00:00:00Z",
+        "scoring_scope": "pooled",
+        "requested_domain": null,
+        "domain_n_resolved": null,
+        "rationale": "conformance vector",
+        "verifiability_tag": "judgment",
+        "recorded_at": "2026-01-01",
+        "relates_to": [
+          {
+            "type": "continues",
+            "target": {
+              "kind": "delegation_cert",
+              "hash_alg": "sha-256",
+              "hash": "8ebcff71e5efacbcc6a32f16690f0cea5e5a9e1afbd4a242dc6177f3cf5d8489"
+            },
+            "evidence_tier": "custody_record"
+          }
+        ],
+        "signature": "556198f9de59479bb7b2c0396865f8dea420dd43ba195d61216e69313b918f25a80e4fbcccf26d86aca64fd3a162f2bf79f21553fc631efc66ad6a487706f107",
+        "evidence_ref": null
+      },
+      "held_edges": [],
+      "ledger": {
+        "attestations": {},
+        "delegation_certs": {
+          "8ebcff71e5efacbcc6a32f16690f0cea5e5a9e1afbd4a242dc6177f3cf5d8489": {
+            "version": 1,
+            "agent_pk": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "principal_pk": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "h3_cells": [
+              "851e8053fffffff"
+            ],
+            "facets": [
+              "energy@italy-geiant"
+            ],
+            "not_before": "2026-08-31T00:00:00.000Z",
+            "not_after": "2027-08-31T00:00:00.000Z",
+            "max_depth": 0,
+            "constraints": {
+              "allowed_tools": [
+                "perception_weather"
+              ],
+              "max_ops_per_hour": 1000
+            }
+          }
+        }
+      },
+      "expect": {
+        "valid": true,
+        "lineage_status": "complete",
+        "evidence_tier": "custody_record"
+      }
+    },
+    {
+      "id": "CL2-continues-cert-unreachable",
+      "clause": "\u00a71.3/\u00a75.3",
+      "spec_lines": "778-807",
+      "title": "continues -> delegation_cert with the cert ABSENT from the ledger -> valid, lineage truncated_unavailable (the read surface serves B's edge but not A's cert \u2014 navigable, not resolved)",
+      "mode": "enforcing",
+      "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "subject": {
+        "schema": "cgr.attestation.v4",
+        "issuer": "gns-foundation",
+        "issuer_key_id": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+        "subject_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "subject_did": "did:key:z6Mkaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "agent_handle": "vector-agent@test",
+        "dimension": "receivables",
+        "cgr_score": 0.6666666666666666,
+        "confidence": 6.0,
+        "n_resolved": 12,
+        "capability_tier": 0.75,
+        "as_of": "2026-01-01T00:00:00Z",
+        "last_resolved_at": "2026-01-01T00:00:00Z",
+        "scoring_scope": "pooled",
+        "requested_domain": null,
+        "domain_n_resolved": null,
+        "rationale": "conformance vector",
+        "verifiability_tag": "judgment",
+        "recorded_at": "2026-01-01",
+        "relates_to": [
+          {
+            "type": "continues",
+            "target": {
+              "kind": "delegation_cert",
+              "hash_alg": "sha-256",
+              "hash": "080785228f0b9d73208cefacf237e545f3d45b30b567ee4348d64077fb761a92"
+            },
+            "evidence_tier": "operator_verification"
+          }
+        ],
+        "signature": "2a3ab4ed63a91b12937c12f9dc7c3e1984048e340553765d34da698d52f3a36831a133762f88361cb74b90937ac1ed599f9db55f2878113c7fd43f24096b4905",
+        "evidence_ref": null
+      },
+      "held_edges": [],
+      "ledger": {
+        "attestations": {},
+        "delegation_certs": {}
+      },
+      "expect": {
+        "valid": true,
+        "lineage_status": "truncated_unavailable",
+        "evidence_tier": "operator_verification"
       }
     },
     {

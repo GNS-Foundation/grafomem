@@ -81,7 +81,8 @@ def _iso_now() -> str:
 
 
 def build_attestation(tiergate: dict, *, signer, issuer_key_id: str, evidence_ref=None,
-                      schema: str | None = None, recorded_at: str | None = None) -> dict:
+                      schema: str | None = None, recorded_at: str | None = None,
+                      relates_to: list | None = None) -> dict:
     """Wrap a `to_tiergate` dict in a Foundation-signed attestation.
 
     `signer(canonical_bytes) -> sig_hex` is injected (built from the Foundation
@@ -96,8 +97,10 @@ def build_attestation(tiergate: dict, *, signer, issuer_key_id: str, evidence_re
     v4 body (pooled judgment aggregate — the read surface's shape): ADDS `recorded_at` (issue time)
     and `verifiability_tag="judgment"`; keeps everything from `to_tiergate` (scoring_scope,
     as_of, last_resolved_at, agent_handle, …); OMITS the per-record fields `domain`/`decision_date`/
-    `backfilled` (the §2.2 pooled-aggregate absence gate); carries no `relates_to` (the continues
-    edge is a later step). `recorded_at` may be injected for determinism (goldens/tests); otherwise now.
+    `backfilled` (the §2.2 pooled-aggregate absence gate). `relates_to` (§1 relation edges — e.g. a
+    §5.3 `continues` edge) is carried in the signed body **iff** provided (Option A: the read surface
+    injects a subject's persisted edge at mint time); absent otherwise. `recorded_at` may be injected
+    for determinism (goldens/tests); otherwise now.
     """
     schema = schema or CGR_ATTESTATION_SCHEMA
     body = {
@@ -109,6 +112,11 @@ def build_attestation(tiergate: dict, *, signer, issuer_key_id: str, evidence_re
     if schema == CGR_ATTESTATION_SCHEMA_V4:
         body["recorded_at"] = recorded_at or _iso_now()
         body["verifiability_tag"] = "judgment"
+        # §1 relation edges (v4). Injected into the SIGNED body before signing, so a re-minted
+        # subject carries its persisted continues edge tamper-evidently (Option A). Absent when the
+        # subject has no edge — the pooled aggregate is unchanged. relates_to is a v4-only field.
+        if relates_to:
+            body["relates_to"] = relates_to
     signature = signer(_canon(body))
     return {**body, "signature": signature, "evidence_ref": evidence_ref}
 
