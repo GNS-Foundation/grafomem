@@ -24,6 +24,7 @@ live in their own repos**; where the two touch, they cross-reference.
 | [0005](0005-custody-managed-principals.md) | Custody-managed principals (target design) | proposed — unblocked (0004 resolved) |
 | [0006](0006-enforcement-boundary-for-revocation.md) | Enforcement boundary: what revocation guarantees, and what lies outside it | **accepted** 2026-09-02 (A2 deny-unregistered; B2 rejected; enforce-or-label) — label-non-strippability open |
 | [0007](0007-geiant-core-has-no-reverse-edge-index.md) | No reverse edge index (ecosystem-wide): enforcing-mode v4 not implementable against any store — @geiant/core or the grafomem read surface | proposed 2026-09-01 (finding + absent-entirely; extended ecosystem-wide 2026-09-01; index design & issuance gate open) |
+| [0008](0008-identity-continuity-has-no-shared-data-path.md) | Identity continuity has no shared data path: shared subject namespace, disjoint data — geiant agents aren't grafomem CGR subjects, so the continues edge has no first case on the read surface | proposed 2026-09-04 (states the problem; different-subject vs different-surface options open) |
 
 **Resolved at P0.4 (2026-08-31):** 0001, 0002 and 0004 shared one versioning question — how CGR adds
 signed meaning — and it resolved to a **schema bump to `cgr.attestation.v4`**, carrying a generic
