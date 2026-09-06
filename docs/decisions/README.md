@@ -60,3 +60,35 @@ golden-fixture regeneration are P1. *(Formal acceptance lands when this PR merge
 This format is deliberately legible alongside the ADR-style records used in product repos, but it
 is the Foundation's own convention, not an import: records here are numeric (`0001`), product ADRs
 are `ADR-000N`, and the two cross-link.
+
+## Primary-source verification (load-bearing claims)
+
+Three corrections in one week ([[0008]] two→three actors; [[0009]] gap 3 corrected twice; the AMLR
+Art. 18 citation) shared **one** root cause: a finding was accepted from a **single vantage** — one
+repo side, one system side, one research report — stated with **more confidence than that one source
+supported**, and then **propagated** into records and toward the pitch before anyone checked it against
+source. This convention exists to catch that class of error at the point of entry, not in a later
+correction.
+
+- **A _load-bearing external claim_ must be verified against a primary source before it enters a
+  record or the pitch.** Load-bearing = a regulatory citation (article number **and** heading), a legal
+  effect, a deployment/topology fact, a claim about another system's schema or behaviour, or anything a
+  reader (or a supervisor, or a client) would rely on. The primary source is the authority itself —
+  **EUR-Lex for EU law**, the official spec/standard text, the code/DDL/deploy metadata for a system
+  fact — **not** a summary, a research report, a blog, or another one of our own records.
+- **Cite what you verified, at the granularity you verified it.** An article citation carries its
+  **heading** and the **operative sentence** (e.g. *Art. 18 "Outsourcing"*, not a paraphrase of what we
+  wish it said). If a claim rests on several provisions, cite each for the part it actually establishes;
+  do not let one citation carry two claims.
+- **Distinguish "verified against source" from "taken from a report."** A finding still at
+  report/single-source stage is **provisional** — mark it so (in `provenance`, or inline) rather than
+  stating it flat. A research report is a lead to verify, not itself a primary source.
+- **Two-vantage rule for cross-system / distributed findings.** A claim about a distributed system
+  (client **and** server, repo **and** deploy, one repo **and** its sibling) is not "established" from
+  one side. State the vantage examined and flag the unexamined one, or examine it, before asserting.
+- **Corrections stay visible.** When a propagated claim is corrected, record the correction **and its
+  propagation path** in the affected record (as [[0008]] and [[0009]] do) — the correction is data about
+  how the error travelled, not just a fix.
+
+This is a Foundation record-keeping discipline; product repos (ADR-style) inherit the same bar for
+load-bearing claims, since a citation wrong here is wrong in the pitch too.
