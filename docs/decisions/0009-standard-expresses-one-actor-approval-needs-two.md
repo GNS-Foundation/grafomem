@@ -2,8 +2,8 @@
 status: proposed
 record_date: 2026-09-06
 corrected_date: 2026-09-06
-provenance: raised-from-implementation — surfaced while scoping B3's minimum attestable disposition record for an AML alert (Ulissy-s-r-l/eu-governed-agent, ADR-0008), and confirmed independently the same day against the TrueForge agent harness and cgr.attestation.v4. CORRECTED the same day (2026-09-06) after a read-only investigation of the GNS identity layer found gap 3 was overstated (see "Correction").
-scope: (standard) cgr.attestation.v4 signed body, its signature model (§0, §2), and the verifiability_tag vocabulary (§2.2); (implementation) the grafomem CGR read surface and capture path, the GNS identity layer (gns-backend `/identities` + `/aliases`, the `records`/`aliases` tables) and geiant `agent_registry` — the person-capable identity plumbing gap 3 concerns — and, as corroboration, the TrueForge harness session_event schema.
+provenance: raised-from-implementation — surfaced while scoping B3's minimum attestable disposition record for an AML alert (Ulissy-s-r-l/eu-governed-agent, ADR-0008), and confirmed independently the same day against the TrueForge agent harness and cgr.attestation.v4. Gap 3 CORRECTED TWICE the same day (2026-09-06): first after reading the GNS server (gap 3 overstated as "no namespace"), then again after reading the Dart client (`gns_browser`) — both prior versions wrongly assumed a thin person layer from server-only evidence (see "Corrections to gap 3").
+scope: (standard) cgr.attestation.v4 signed body, its signature model (§0, §2), and the verifiability_tag vocabulary (§2.2); (implementation) the grafomem CGR read surface and capture path, the GNS identity layer server-side (gns-backend `/identities` + `/aliases`, `records`/`aliases`, proof-of-trajectory `/v1/verify`) AND client-side (the `gns_browser` Dart self-custody client — keygen, Keychain/Keystore custody, `grafomem.hitl.approval.v1` signing, enrollment), and geiant `agent_registry` — the person-capable identity plumbing gap 3 concerns — and, as corroboration, the TrueForge harness session_event schema.
 ---
 
 # 0009 — the standard expresses one actor; a defensible approval needs two
@@ -20,7 +20,21 @@ scope: (standard) cgr.attestation.v4 signed body, its signature model (§0, §2)
   and its single signature). Product-side motivation: `Ulissy-s-r-l/eu-governed-agent` ADR-0008 (B3 is
   the best client of a general ledger) and ADR-0003 (DORA Art. 30(3)).
 
-## Correction (2026-09-06) — read this first
+## Corrections to gap 3 — read this first (gap 3 has been corrected TWICE)
+
+Gap 3 has now been rewritten **twice**, and both prior versions were wrong **for the same reason**:
+they described the person-identity layer as thin, and that was **an artefact of reading only the
+server**. The client half of a self-custody identity system was never examined until the second
+correction. The pattern matters more than either specific error: **a finding about a distributed
+system was derived from one side of it, and stated with more confidence than one-sided evidence
+supported — twice.** Version 1 (at creation): "no natural-person identity namespace." Version 2
+(**Correction 1**, below): "no *accountable, verified* person identity" — better, but still assumed the
+person layer was thin because it too read only `gns-backend`. Version 3 (**Correction 2**, below, and
+the current gap-3 body) restates it after reading the **Dart client**: the person layer is **not thin —
+it is unassured and unwired**. Both corrections are kept visible rather than quietly settling on a third
+version.
+
+### Correction 1 (2026-09-06) — gap 3 was too strong ("no namespace")
 
 The original gap 3 (below, restated) claimed **"no natural-person identity namespace."** A same-day,
 read-only investigation of the GNS identity layer showed **that was too strong.** GNS **has a
@@ -34,6 +48,33 @@ defensible approval still needs two — but gap 3 is **restated** below from "no
 sharper and correct finding. Two subsections are added — the **precondition** this exposes and **what a
 natural-person principal needs that an agent does not** — and a **shared-framing** section ties this
 record to [[0008]]. Corrected visibly, not silently, per the discipline of the 0008 rewrite.
+
+### Correction 2 (2026-09-06, after reading the Dart client) — gap 3, second revision
+
+Correction 1 still read only the **server**. A read-only investigation of the **Dart/Flutter client**
+(`gns_browser`, HEAD `6ec2d01`, active) showed the human-identity workflow is **genuinely split**, and
+the client holds the sovereign half — so "the person layer is thin" was wrong a **second** time. **What
+is actually built on the client** (record as built; do not re-derive):
+
+- **Self-custody.** `gns_browser` generates an **Ed25519 + X25519** keypair **on device**
+  (`identity_keypair.dart:30-55`) and stores the private key in **`flutter_secure_storage`** — iOS
+  Keychain / Android EncryptedSharedPreferences (`secure_storage.dart:23-24,164-166`). **The private
+  key never crosses the wire** (only public key + signatures are sent).
+- **A human-approval signing primitive, domain-separated against blind-signing.** `signBytesToHex()`
+  **refuses to sign** any payload lacking the prefix **`grafomem.hitl.approval.v1:`**
+  (`identity_wallet.dart:179-202`). **The domain tag is already namespaced for grafomem** — the
+  connection between a person's self-custodied approval signature and grafomem HITL was **contemplated
+  and left unfinished.**
+- **An owner→agent attestation** *"signed by the human owner"* (`agent_identity.dart:67`).
+- **A real enrollment flow** — handle **reserve** then **claim**, signed client-side, with the server
+  storing `pubkey / handle / pot_proof / signature` and verifying the signature (`identity_wallet.dart`
+  → `POST /aliases/{h}/reserve`, `PUT /aliases/{h}`; `aliases.ts:156-271`).
+
+So self-custody and human-approval-signing — the parts Correction 1 still implied had to be built — are
+**built**. Gap 3 is therefore restated a second time below (**"not thin — unassured and unwired"**),
+what-is-built is moved out of the gap, and a **caveat** and an **open question** (both below) are added.
+The record's **conclusion is still unchanged**: the standard expresses one actor; a defensible approval
+needs two.
 
 ## Context — how it was found
 
@@ -82,41 +123,59 @@ issuer's** (§0, §2.4). A supervisor can verify **the Foundation issued the rec
 **the MLRO signed it**. The single signer is structurally the **wrong signer for accountability** —
 accountability under Art. 18 rests on the natural person, and the record binds to the emitter instead.
 
-**3. No _accountable, verified_ natural-person identity — and the accountable-signature model is not
-wired to the person-capable layer that exists.** *(Restated 2026-09-06 — see the Correction. The
-original claim, "no natural-person identity namespace," was too strong: a person-capable layer exists.)*
+**3. The person layer is not thin — it is _unassured_ and _unwired_.** *(Restated a **second** time
+2026-09-06 — see "Corrections to gap 3." v1: "no namespace." v2: "no accountable, verified person
+identity." v3, here: the person layer is substantial but unassured and unwired. Both earlier versions
+read only the server; this one reads the client too.)*
 
-A person-capable identity layer **does** exist in GNS: `GET /identities/:pk` derives `subject_type`
-with **`human` as the default** (`gns-backend/src/api/identities.ts:107-108`), handles are
-**person-claimable** and verified against a **client-held `pk_root`** (`aliases.ts:220`), and the OAuth
-path already mints `gns_subject_type: 'human'` (`oauth.ts:733,748`). **Self-custody is a first-class
-path.** So the prerequisite for gaps 1 and 2 is **closer than first written** — but two things it needs
-for accountability are missing, and these are the sharper finding:
+**What is built (recorded as built — do not re-derive; details in Correction 2 above):** a real
+self-custody person-identity **client** exists — `gns_browser` generates Ed25519+X25519 **on device**
+and keeps the private key in Keychain/Keystore (`identity_keypair.dart:30-55`,
+`secure_storage.dart:23-24`), signs with a **domain-separated human-approval primitive** that refuses
+any payload lacking `grafomem.hitl.approval.v1:` (`identity_wallet.dart:179-202` — a tag **already
+namespaced for grafomem**), carries an **owner→agent attestation signed by the human owner**
+(`agent_identity.dart:67`), and runs a **real enrollment flow** (handle reserve/claim, signed
+client-side; server stores pubkey/handle/pot_proof/signature and verifies). So **self-custody and
+human-approval-signing are built**, not missing.
 
-- **`human` is derived by _absence_, not asserted.** An identity is `human` simply because its pubkey
-  is **not** found in the agent table (`identities.ts:107-108`); there is **no stored `subject_type`
-  column**. Accountability that rests on *"we didn't find this key in the agent table"* is not
-  accountability — it is a default, and a positive **verified** assertion is what Art. 18 requires.
-- **`verified` is proof-of-trust, not identity assurance.** The alias `verified` flag attests
-  proof-of-trust over the handle claim; it proves *a handle controls a key*, **not which real person
-  holds it**. Art. 18 needs a **positive, verified binding of key → named person** (an MLRO the
-  supervisor can confirm), which GNS does not provide.
+**What survives — the surviving gaps.** The person layer cannot yet carry accountability for four
+reasons:
 
-**And the accountable-signature model is not wired to this layer at all.** The v4 mint signs with the
-Foundation issuer key (gap 2); nothing binds a GNS `human` identity's self-custodied key to a
-disposition. `agent_pk` is the **agent's** key; `delegation_certificates` bind a **principal to an
-agent**; per [[0003]] principals are **ephemeral** (minted in memory, discarded). So even with a
-person-capable registry present, **there is still no accountable analyst/MLRO identity bound to a
-signed decision.**
+- **(a) No real-world identity assurance binding a key to a _named_ person.** There is **no KYC and no
+  IDV anywhere** (client or server). `proof_of_humanity` is **proof-of-_trajectory_**
+  (`gns-backend/src/api/verify.ts`, *"rather than biometrics"*): a **sybil-resistance** scheme that
+  proves *a key-holding device has moved and accrued trust over time*, **not that a specific named human
+  is present or is who they claim to be**. Art. 18 needs a positive binding of key → *named* person; GNS
+  provides key → *pseudonymous, movement-attested* handle. `human` is still additionally derived by
+  **absence** server-side (`identities.ts:107-108` — not-in-agent-table ⇒ human, no stored
+  `subject_type`), and the alias `verified` flag is proof-of-trust, not identity assurance.
+- **(b) The human-approval signature is not wired into the CGR mint.** The v4 attestation is
+  Foundation-signed and carries **no slot** for the client's `grafomem.hitl.approval.v1` signature
+  (§0, §2.4; gap 2). The two halves exist but are **not connected** — the grafomem-named domain tag is
+  evidence the connection was contemplated and never completed.
+- **(c) No role-tenure lifecycle.** Custody exists, but *"valid then, not authorized now"* (an MLRO
+  leaving a role while their past signatures stay valid and attributable) is not modeled; revocation is
+  an agent-level denylist (`agent_registry.revoked_at`).
+- **(d) The server still types `human` by absence** — a rich client does not change that there is no
+  **positive, typed, verified** person assertion anywhere.
 
-**Precondition (record it explicitly):** converting **`human`-by-absence into a positive, verified
-assertion** is a precondition for closing this record **regardless of which design option is later
-chosen**. No option that leaves accountability resting on a derivation can satisfy Art. 18.
+**The caveat that must ride with this (bears on any design choice).** `gns_browser` is a **consumer
+geolocation and gamification app**; its identity model is engineered for **pseudonymous
+sybil-resistance**, which is the **wrong assurance model for AML**. **Adopt the _mechanism_** —
+self-custody keys and domain-separated approval signing — **not the identity _semantics_.**
+**Proof-of-trajectory cannot be back-filled into proof-of-identity**: accruing movement history never
+becomes a vetted named person, so real-world assurance (a) is net-new regardless of how much of the
+client is reused.
+
+**Precondition (unchanged, and sharpened):** converting **`human`-by-absence into a positive, verified
+assertion** — and adding real-world identity assurance (a) — is a precondition for closing this record
+**regardless of which design option is later chosen**. No option that leaves accountability resting on a
+derivation or on proof-of-trajectory can satisfy Art. 18.
 
 Note the adjacency to [[0008]]: that record found there is no shared *data path* for agent identity
-across the systems that need it; this one finds the person-capable layer that exists **cannot yet carry
-accountability** — the same under-built identity substrate, seen at the person layer (see **Shared
-framing with 0008** below).
+across the systems that need it; this one finds a **substantial person-identity client** that exists but
+**cannot yet carry accountability** (unassured, unwired) — the same under-built identity substrate, seen
+at the person layer (see **Shared framing with 0008** below).
 
 **What a natural-person principal must satisfy that an agent principal need not.** This bears on any
 design, so it is recorded here rather than deferred:
@@ -124,8 +183,10 @@ design, so it is recorded here rather than deferred:
 - **Self-custody of the signing key.** An agent's key is **system-held** (`GEIANT_AGENT_SK` in
   Railway env, geiant `setup-agent.ts`) — correct for an agent, because the system *is* the agent. An
   MLRO's key **cannot** be system-held: whoever holds the secret can forge the approval, so a
-  system-custodied signature **proves nothing about the human's decision**. The ecosystem *can* do
-  self-custody (GNS BYOK / client-signed alias claims), but the governed-agent path does not use it.
+  system-custodied signature **proves nothing about the human's decision**. **This requirement is
+  already met by `gns_browser`** (on-device keygen, Keychain/Keystore custody, key never leaves the
+  device) — it is a client to adopt, not a mechanism to build (gap 3(a)/(b)). The **governed-agent**
+  path, by contrast, does not self-custody.
 - **A role-tenure lifecycle, not a denylist.** Agent revocation is outright deny
   (`agent_registry.revoked_at`). A person leaving a role is different: their **past signatures must
   remain valid and attributable** (they were accountable then) while their **authority to sign new
@@ -197,15 +258,25 @@ principal field, a natural-person identity namespace with its own registry and d
 some composition of these — and how any of it interacts with [[0003]]'s ephemerality and [[0008]]'s
 missing data path — is a **later decision**. This record's job is narrower and prior to all of that:
 
-> **The standard models one actor where the regulation requires two, and a natural-person identity
-> namespace is the prerequisite for closing the gap.**
+> **The standard models one actor where the regulation requires two. The prerequisite for closing the
+> gap is not a person _namespace_ — a self-custody person client already exists — but an _accountable,
+> verified, and wired_ person identity: real-world assurance binding a key to a named person, and that
+> person's approval signature bound into the attestation.**
 
 ## Open questions
 
 - **Identity-layer prerequisite (blocks any fix for gaps 1–2):** what is the natural-person identity
   namespace — a registry, a key model, a delegation/authority model — and how does it relate to
   `agent_pk`, to `delegation_certificates`, and to [[0003]]'s ephemeral principals? Does it share the
-  [[0008]] identity plumbing or is it a separate layer?
+  [[0008]] identity plumbing or is it a separate layer? *(Partly answered by the client investigation: a
+  self-custody person client exists (`gns_browser`); the open part is real-world assurance (gap 3(a))
+  and wiring to the mint (gap 3(b)).)*
+- **iCloud Keychain sync of the signing key (open question, not a defect).** `gns_browser`'s
+  `flutter_secure_storage` is configured `synchronizable: true` (`secure_storage.dart:53-58`), so the
+  private key **propagates across a user's Apple devices via iCloud Keychain**. Appropriate for a
+  consumer wallet; **an open question for a signing key whose entire purpose is that exactly one person
+  controls it** — cloud propagation widens the custody surface of an accountability key. To be resolved
+  by whoever adopts the mechanism (gap 3), not asserted here as wrong.
 - **Signature model:** does a defensible approval need a **second signature** in the wire (the approver
   co-signs), or a separate approver attestation **linked** to the agent's record — and what does either
   do to the current single-signer, flat-body format (§2.4)?
