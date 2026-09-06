@@ -5,7 +5,10 @@
   co-signature envelope", accepted 2026-09-06). Not implementation; no corpus, no fixtures, no verifier
   code in this document.
 - **Schema string:** `cgr.cosign.v1`
-- **Date:** 2026-09-06
+- **Date:** 2026-09-06 · **Amended 2026-09-06** — added **predicate-based required-ness** (§5.1). Found
+  by the first implementation attempt (mapping the envelope onto CCR's learning transaction): §5's
+  per-profile *static* required-ness could not express doc 04's `HighRiskUpdate ⇒ RequiredApproval`, so
+  the spec is catching up to a real consumer. Recorded visibly, per the corrections discipline.
 - **Inputs:** [0009](../decisions/0009-standard-expresses-one-actor-approval-needs-two.md) (the accepted
   decision this specifies), [0006](../decisions/0006-enforcement-boundary-for-revocation.md) (enforce-or-label;
   the strippability register), [0003](../decisions/0003-principal-identity-is-not-stable.md) (why the
@@ -196,12 +199,54 @@ differ only in **what `content_body` is** and **what it references**.
 
 **How a payload declares its mode and required-ness.** The `profile` field names a profile registered
 in a **profile registry** (a companion document; not this spec). Each registry entry declares:
-`(profile_string, approval_mode, approver_signature: REQUIRED, referenced-records: none | required)`.
-A verifier MUST read the record's `profile`, look up its registry entry, and enforce that entry's
-required-ness. `approval_mode` in the record MUST equal the profile's declared mode (reject on
-mismatch). `[OPEN]` The registry's format and governance (closed-per-version like the `v4`
+`(profile_string, approval_mode, approver_signature: <required-ness>, referenced-records: none | required)`,
+where `<required-ness>` is either **unconditional** (`REQUIRED`) or **conditional** (a predicate over
+`content_body`, §5.1). A verifier MUST read the record's `profile`, look up its registry entry, and
+enforce that entry's required-ness. `approval_mode` in the record MUST equal the profile's declared mode
+(reject on mismatch). `[OPEN]` The registry's format and governance (closed-per-version like the `v4`
 vocabularies, vs open) is left to the profile-registry document; the interim expectation is
 **closed-per-version**, so consumers cannot disagree on a profile's mode or required-ness.
+
+### 5.1 Conditional (predicate-based) required-ness
+
+*(Added 2026-09-06 — see the amendment note in the header. The static form above could not express a
+consumer that needs approval only for **some** records — doc 04's `HighRiskUpdate ⇒ RequiredApproval`.)*
+
+A profile MAY declare `approver_signature` **REQUIRED when a predicate over `content_body` holds**,
+instead of unconditionally. The predicate form is **deliberately narrow — a single (field-path,
+operator, literal) triple, not an expression language:**
+
+```jsonc
+"approver_signature": {
+  "required_when": { "field": "risk_class", "op": "eq", "value": "high" }
+}
+```
+
+- **`field`** — a dot-path into `content_body` (e.g. `risk_class`, `delta.risk_class`). It MUST resolve
+  to a scalar (string, number, or boolean); a path that is absent or resolves to a non-scalar makes the
+  predicate **false** (the field cannot trigger a requirement it cannot evaluate) — but a verifier MUST
+  surface `predicate_unresolved` so a misspelled path is not silently non-triggering.
+- **`op`** — a **closed set**: `eq`, `ne`, `in`, `lt`, `lte`, `gt`, `gte`. `in` takes an array `value`.
+  Ordering ops apply to numbers only (a non-number operand makes the predicate false + `predicate_unresolved`).
+- **`value`** — a JSON scalar (or array for `in`). No references, no computation.
+
+**Verifier obligation (normative).** A verifier MUST: (1) resolve the predicate against `content_body`;
+(2) if it holds, treat `approver_signature` as REQUIRED and **reject** a record that satisfies the
+predicate without a valid approver signature (the §7.2 non-conformance rule, now conditional); (3) if it
+does not hold, the approver signature is OPTIONAL — but if one **is** present it MUST still verify
+(§8.4). An **unconditional** `REQUIRED` is the degenerate predicate that is always true. A profile
+declaring neither is malformed (reject at profile resolution).
+
+**Why a predicate, not two profiles.** Routing a high-risk update to a "requires-approval" profile and a
+low-risk one to a "no-approval" profile puts the **risk decision outside the signed record**: the
+`risk_class` lives in `content_body` (signed), but *which profile was chosen* is a routing act with
+nothing in the record to check it against. A **low-risk profile stamped on a high-risk update is then a
+silent downgrade** — the verifier sees a self-consistent no-approval record and cannot know approval was
+owed. The predicate keeps the requirement **verifiable from the record itself**: the verifier reads
+`risk_class` from the signed body, evaluates the predicate, and *derives* that approval was required —
+so a missing approver signature on a high-risk record is a rejection, not an invisible policy choice.
+This is the same principle as putting the relation edge in the signed body rather than the envelope
+(`v4` §2.4): a validity-affecting fact must be inside what the signature covers.
 
 ---
 
@@ -244,11 +289,14 @@ Stated in the same register as the Experience-Ledger honesty clause and [0006](.
 1. **Stripping the approver signature produces an INVALID record.** Because the system signature covers
    a body that includes `approver_signature` (§2.3), removing or altering it breaks the outer signature.
    Cryptographically enforced; requires no envelope-specific logic beyond signature verification.
-2. **An approver-less record of an approval-requiring profile is NON-CONFORMANT.** A verifier MUST
-   reject a record whose `profile` declares `approver_signature: REQUIRED` and which lacks a valid
-   approver signature (§5, §8). This is a **verifier rule**, not a property of the bytes — the
-   enforce-or-label posture of [0006]; a consumer that does not enforce it is the hole. `[0006-B]`
-   *which* consumers are obligated to enforce (all, vs only chain-writers) inherits 0006 Question B.
+2. **An approver-less record for which approval is required is NON-CONFORMANT.** A verifier MUST
+   reject a record whose `profile` requires an approver signature — **unconditionally, or via a §5.1
+   predicate that the record's `content_body` satisfies** — and which lacks a valid approver signature
+   (§5, §5.1, §8.3a-4). Because the predicate is evaluated over the *signed* `content_body`, a high-risk
+   record cannot dodge the requirement by omitting the signature: the verifier derives that approval was
+   owed. This is a **verifier rule**, not a property of the bytes — the enforce-or-label posture of
+   [0006]; a consumer that does not enforce it is the hole. `[0006-B]` *which* consumers are obligated to
+   enforce (all, vs only chain-writers) inherits 0006 Question B.
 3. **A compromised or re-minting issuer can always sign a fresh approver-less record.** No envelope
    stops the holder of the system key from signing a different artifact. This is **detectable against
    externally-held commitments** — the record anchored into the append-only gcrumbs chain with
@@ -267,13 +315,19 @@ the first failure:
 
 1. **Schema.** `schema == "cgr.cosign.v1"`; else out of scope (reject in an enforcing context).
 2. **Profile resolution.** Resolve `profile` in the registry; obtain its `approval_mode` and
-   required-ness. MUST reject if `profile` is unknown (fail closed) or if `record.approval_mode` ≠ the
-   profile's declared mode.
+   required-ness (unconditional, or a §5.1 predicate). MUST reject if `profile` is unknown (fail closed)
+   or if `record.approval_mode` ≠ the profile's declared mode.
 3. **Content integrity.** Recompute `BLAKE2b-256(JCS(content_body))`; MUST equal
-   `approval_assertion.content_digest`. Reject on mismatch.
-4. **Approver signature.** Recompute `DOMAIN_TAG_BYTES ‖ JCS(approval_assertion)`; verify the Ed25519
-   `approver_signature` against `approver_key_id`. MUST reject if the profile requires an approver
-   signature and it is absent (§7.2) or invalid.
+   `approval_assertion.content_digest`. Reject on mismatch. *(Do this before step 3a — the predicate is
+   evaluated over the content that step 3 just proved matches the digest.)*
+   - **3a. Required-ness resolution (§5.1).** Evaluate the profile's required-ness against `content_body`:
+     unconditional ⇒ REQUIRED; predicate ⇒ REQUIRED iff it holds. Surface `predicate_unresolved` if a
+     predicate field is absent/non-scalar (treated as not-holding). The result — "approver signature
+     required: yes/no" — drives step 4.
+4. **Approver signature.** If required (per 3a) and **absent**, MUST reject (§7.2 non-conformance,
+   conditional per §5.1). If **present** (whether required or not), recompute
+   `DOMAIN_TAG_BYTES ‖ JCS(approval_assertion)` and verify the Ed25519 `approver_signature` against
+   `approver_key_id`; MUST reject if invalid. (An optional-and-absent approver signature is conformant.)
 5. **Approval binds this content.** Confirm `approval_assertion.content_digest` equals the digest
    computed in step 3 (i.e. the signature verified in step 4 is over *this* content). (Redundant with 3
    only if the assertion was not tampered; kept explicit because it is the property that matters.)
