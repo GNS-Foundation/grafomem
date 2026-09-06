@@ -2,7 +2,7 @@
 status: proposed
 record_date: 2026-09-06
 corrected_date: 2026-09-06
-provenance: raised-from-implementation — surfaced while scoping B3's minimum attestable disposition record for an AML alert (Ulissy-s-r-l/eu-governed-agent, ADR-0008), and confirmed independently the same day against the TrueForge agent harness and cgr.attestation.v4. Gap 3 CORRECTED TWICE the same day (2026-09-06): first after reading the GNS server (gap 3 overstated as "no namespace"), then again after reading the Dart client (`gns_browser`) — both prior versions wrongly assumed a thin person layer from server-only evidence (see "Corrections to gap 3").
+provenance: raised-from-implementation — surfaced while scoping B3's minimum attestable disposition record for an AML alert (Ulissy-s-r-l/eu-governed-agent, ADR-0008), and confirmed independently the same day against the TrueForge agent harness and cgr.attestation.v4. Gap 3 CORRECTED TWICE the same day (2026-09-06): first after reading the GNS server (gap 3 overstated as "no namespace"), then again after reading the Dart client (`gns_browser`) — both prior versions wrongly assumed a thin person layer from server-only evidence (see "Corrections to gap 3"). Separately, the AMLR Art. 18 citation was corrected the same day after primary-source verification (Art. 18 = "Outsourcing"; the named-person-decides claim re-cited to Art. 11 + Recital 38 + AI Act Art. 14) — see "Correction — AMLR Art. 18 citation."
 scope: (standard) cgr.attestation.v4 signed body, its signature model (§0, §2), and the verifiability_tag vocabulary (§2.2); (implementation) the grafomem CGR read surface and capture path, the GNS identity layer server-side (gns-backend `/identities` + `/aliases`, `records`/`aliases`, proof-of-trajectory `/v1/verify`) AND client-side (the `gns_browser` Dart self-custody client — keygen, Keychain/Keystore custody, `grafomem.hitl.approval.v1` signing, enrollment), and geiant `agent_registry` — the person-capable identity plumbing gap 3 concerns — and, as corroboration, the TrueForge harness session_event schema.
 ---
 
@@ -76,6 +76,38 @@ what-is-built is moved out of the gap, and a **caveat** and an **open question**
 The record's **conclusion is still unchanged**: the standard expresses one actor; a defensible approval
 needs two.
 
+## Correction — AMLR Art. 18 citation (2026-09-06)
+
+The original record cited **"AMLR Art. 18 — responsibility is non-transferable"** as the ground for *both*
+claims it makes: (i) accountability cannot pass to the agent, and (ii) a named natural person must decide
+and sign. **Verified against primary source, that citation was carrying more than it should.** AMLR
+**Art. 18 is titled "Outsourcing"**; its operative sentence is *"The obliged entity shall remain fully
+liable for any action … connected to the outsourced tasks that are carried out by service providers"*
+(EUR-Lex Reg. (EU) 2024/1624; amlr.eu/article-18-outsourcing). It contains **no natural-person signature
+provision.**
+
+- **Claim (i) survives on Art. 18** — an agent preparing dispositions is functionally an outsourced /
+  automated task, and Art. 18 keeps liability with the obliged entity, so accountability cannot transfer
+  to the agent. This is the **outsourcing lens**, and it is sound.
+- **Claim (ii) does not rest on Art. 18** — the "named natural person decides/signs" claim rests on
+  **AMLR Art. 11 (Compliance functions)** — the management body appoints a compliance officer *"responsible
+  for the policies, procedures and controls in the day-to-day operation"* — and **Recital 38** (*"responsibility
+  … should rest ultimately with the management body"*), plus **AI Act (Reg. (EU) 2024/1689) Art. 14 (Human
+  oversight)** (a natural person can *"disregard, override or reverse the output"*). **No** EU provision
+  mandates a *signature technology* for dispositions; the requirement is accountability + oversight, and a
+  signature is the *means of evidencing* it. The body above (Context and gaps 2/3) has been re-cited
+  accordingly.
+
+**Propagation note (recorded, per the discipline of the other corrections).** This mis-citation entered
+through a **research report**, was repeated into this record and into `Ulissy-s-r-l/eu-governed-agent`'s
+roadmap **without being checked against source**, and would have gone into the pitch — it is *load-bearing
+in the pitch, not just here*. It is the **third instance this week** of a finding taken from a single
+source and propagated before verification: cf. [[0008]]'s "two actors" (a one-side repo sweep, corrected
+to three) and this record's gap 3 (corrected twice from **server-only** reading before the client was
+examined). The pattern — **confidence exceeding the breadth of the evidence, then propagated** — is the
+thing to notice, not the individual error. Fixed here and in the roadmap; verified against EUR-Lex /
+amlr.eu / the AI Act text before correcting.
+
 ## Context — how it was found
 
 Scoping B3's **minimum attestable disposition record** for an AML alert reduced the requirement to a
@@ -85,14 +117,25 @@ single shape:
 
 This shape is not a design preference; it is what the governing instruments require:
 
-- **AMLR (Regulation (EU) 2024/1624) Art. 18 — responsibility is non-transferable.** The obliged
-  entity, and in practice a **named natural person** (the MLRO or a delegate), remains accountable for
-  the disposition. The agent **prepares**; the human **decides**. A defensible record must therefore
-  make the **human decision-maker identifiable and bound to the decision** — not the tool, not the
-  vendor.
-- **AI Act Art. 14 — human oversight.** A natural person must be able to **oversee and intervene**
-  (approve, modify, override, escalate), and the record must show the intervention was **exercised**,
-  not presumed. A rubber-stamp that cannot be distinguished from a genuine review does not satisfy this.
+- **AMLR (Regulation (EU) 2024/1624) — a named, designated natural person is accountable.** The
+  compliance function is a **named person**: the management body appoints a member responsible for
+  compliance and **"a compliance officer … responsible for the policies, procedures and controls in the
+  day-to-day operation"** (**Art. 11, Compliance functions**), and *"responsibility … should rest
+  ultimately with the management body"* (**Recital 38**). So the accountable decision-maker is a
+  specific natural person, not the tool — the record must make that person **identifiable and bound to
+  the disposition**. *(See the citation correction below: this claim rests on Art. 11 / Recital 38, not
+  on Art. 18.)*
+- **AMLR Art. 18 (Outsourcing) — accountability cannot be transferred to the agent.** *"The obliged
+  entity shall remain fully liable for any action … connected to the outsourced tasks that are carried
+  out by service providers."* An agent that prepares dispositions is functionally an **outsourced /
+  automated task**, so Art. 18 keeps the liability with the obliged entity and its compliance officer —
+  it **bars transfer of accountability to the agent**. Art. 18 does **not** mandate a human signature;
+  it establishes non-transfer, which is why the *agent prepares, the human decides* split is required.
+- **AI Act (Regulation (EU) 2024/1689) Art. 14 — human oversight.** A natural person must be able to
+  **oversee and intervene** — high-risk AI must let a deployer *"disregard, override or reverse the
+  output"* and *"intervene … or interrupt"* — and the record must show the intervention was
+  **exercised**, not presumed. A rubber-stamp that cannot be distinguished from a genuine review does
+  not satisfy this.
 
 **Confirmed independently in two unrelated systems on the same day (2026-09-06):**
 
@@ -121,7 +164,9 @@ decider to a decision. So **"approved by Y" is inexpressible** in the standard a
 two envelope keys, and the signature is Ed25519 over that body — **one signature, the Foundation
 issuer's** (§0, §2.4). A supervisor can verify **the Foundation issued the record**; they cannot verify
 **the MLRO signed it**. The single signer is structurally the **wrong signer for accountability** —
-accountability under Art. 18 rests on the natural person, and the record binds to the emitter instead.
+accountability rests on the obliged entity's designated compliance officer (AMLR Art. 11; Recital 38),
+and cannot be transferred to an automated/outsourced actor (Art. 18), yet the record binds to the
+emitter instead.
 
 **3. The person layer is not thin — it is _unassured_ and _unwired_.** *(Restated a **second** time
 2026-09-06 — see "Corrections to gap 3." v1: "no namespace." v2: "no accountable, verified person
@@ -145,7 +190,8 @@ reasons:
   IDV anywhere** (client or server). `proof_of_humanity` is **proof-of-_trajectory_**
   (`gns-backend/src/api/verify.ts`, *"rather than biometrics"*): a **sybil-resistance** scheme that
   proves *a key-holding device has moved and accrued trust over time*, **not that a specific named human
-  is present or is who they claim to be**. Art. 18 needs a positive binding of key → *named* person; GNS
+  is present or is who they claim to be**. The AMLR accountability model (the named compliance officer,
+  Art. 11 / Recital 38) needs a positive binding of key → *named* person; GNS
   provides key → *pseudonymous, movement-attested* handle. `human` is still additionally derived by
   **absence** server-side (`identities.ts:107-108` — not-in-agent-table ⇒ human, no stored
   `subject_type`), and the alias `verified` flag is proof-of-trust, not identity assurance.
@@ -170,7 +216,8 @@ client is reused.
 **Precondition (unchanged, and sharpened):** converting **`human`-by-absence into a positive, verified
 assertion** — and adding real-world identity assurance (a) — is a precondition for closing this record
 **regardless of which design option is later chosen**. No option that leaves accountability resting on a
-derivation or on proof-of-trajectory can satisfy Art. 18.
+derivation or on proof-of-trajectory can satisfy the AMLR accountability model (Art. 11 / Recital 38,
+with Art. 18 barring transfer to the agent).
 
 Note the adjacency to [[0008]]: that record found there is no shared *data path* for agent identity
 across the systems that need it; this one finds a **substantial person-identity client** that exists but
@@ -245,7 +292,8 @@ though the choice of design is the next decision, not this record's to make.
 State this plainly: the gap is **not about AML.** Any **regulated approval workflow** — anywhere a
 human must approve, and be accountable for, what an agent prepared — needs the same thing: **"human Y
 approved agent's X, signed and reconstructable."** AML is merely the first place the requirement was
-scoped concretely (AMLR Art. 18, AI Act Art. 14). Per **ADR-0008** (B3 is the best *client* of a
+scoped concretely (AMLR Art. 11 + Recital 38 accountability, Art. 18 non-transfer of liability, AI Act
+Art. 14 oversight). Per **ADR-0008** (B3 is the best *client* of a
 general ledger; anything the ledger cannot express becomes a Foundation record, not a product-side
 workaround), the fix belongs **upstream in the standard** — a general two-actor / natural-person
 identity capability — **not as an AML bolt-on in B3's write path.** Solving it in B3 would be exactly
