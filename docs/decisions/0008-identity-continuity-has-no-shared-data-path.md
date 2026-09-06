@@ -2,7 +2,8 @@
 status: proposed
 record_date: 2026-09-04
 corrected_date: 2026-09-05
-provenance: raised-from-implementation — surfaced during the read-only pre-flight of the §5.3 continues-edge ceremony for the c14094ea → d3caa6f1 rotation (2026-09-04). CORRECTED 2026-09-05 after a live-wiring investigation found a THIRD actor the original sweep missed (see "Correction").
+updated_date: 2026-09-06
+provenance: raised-from-implementation — surfaced during the read-only pre-flight of the §5.3 continues-edge ceremony for the c14094ea → d3caa6f1 rotation (2026-09-04). CORRECTED 2026-09-05 after a live-wiring investigation found a THIRD actor the original sweep missed (see "Correction"). UPDATED 2026-09-06 with identity-layer findings — deployment precision, the two-handle-namespace collision, and shared framing with [[0009]] (see "Update 2026-09-06").
 scope: (standard) the CGR continues edge (§1, §5.3) and 0004 rotation-continuity; (implementation) the shared GNS identity Supabase, gns-backend, geiant, and grafomem — the systems that jointly touch agent identity
 ---
 
@@ -26,6 +27,44 @@ both `c14094ea` and `d3caa6f1`. A follow-up **live-wiring investigation (2026-09
 real topology, corrected here. The record's **conclusion is unchanged** — there is still no shared
 *lineage* data path, and grafomem's CGR surface still has no path to the identity data — but the
 **options change**, so the correction is recorded visibly rather than silently.
+
+## Update (2026-09-06) — identity-layer findings
+
+A read-only investigation of the GNS identity layer (done while working [[0009]]) sharpens two claims in
+this record and adds one. **The record's conclusion is unchanged;** these are corrections of precision,
+recorded visibly.
+
+**1. Deployment precision — "NOT deployed" was stronger than the evidence.** This record says
+gns-backend's Railway project has **zero services**, and that is true. But the GNS **resolve/identity
+API answered live today** — `HIVE_BASE = gns-browser-production.up.railway.app` returned structured
+`400/404`s to read-only probes of `/aliases/:handle` and `/identities/:pk`, i.e. a **live service**, not
+a dead endpoint. Both hold: the identity **read surface is live under a different service name**
+(`gns-browser-production`), while **breadcrumb writes still bypass it** (geiant writes Supabase
+directly) — which was this record's actual point. So "gns-backend not deployed" must be read as *"the
+Railway project by that name has no services, and the write path bypasses the API"* — **not** as *"the
+identity layer is dead."* The identity layer is live and person-capable ([[0009]]); what is missing is
+the shared *lineage/write* path, unchanged. Consequently **Option 3** below ("gns-backend as a
+service") is less hypothetical than written for *reads* — a resolve API is already serving — though it
+remains hypothetical for the *lineage-write* path this record is about.
+
+**2. Two unrelated handle namespaces in the same Supabase project (new — latent collision).** There are
+**two "handle" namespaces**, unrelated, in `kaqwkxfaclyqjlfhxrmt`:
+
+- **GNS aliases** — the resolvable namespace `gns_resolve` reads: flat, lowercase,
+  `^[a-z0-9_]{3,20}$` (`gns-backend/src/types/index.ts:282`), backed by the `aliases` table
+  (handle → `pk_root`).
+- **`agent_registry.handle`** — a **facet-form** string, `role@region-geiant`
+  (DDL comment `"energy@italy-geiant"`, `geiant/packages/mcp-audit/supabase/migrations/20260320_agent_audit.sql:142`),
+  which would **fail the GNS `HANDLE_REGEX`** (contains `@` and `-`).
+
+They have **no FK**, share no grammar, and `agent_registry.handle` is **never consulted by the
+resolver**. Recorded here because a future reader will assume "handle" means one thing: it does not, and
+any lineage/identity design touching either must not conflate them. (The `agent_pk` namespace this
+record is about is shared by all three actors; the *handle* namespaces are not.)
+
+**3. Shared framing with [[0009]].** See the new section **"Shared framing with 0009"** below: 0008 and
+0009 are **two relation types over one under-built identity substrate**, not one problem and not two
+unrelated ones.
 
 ## Disambiguation — "GCRUMBS"/"breadcrumbs" is four things
 
@@ -58,7 +97,10 @@ share a data path:
 - **gns-backend** — the API server that **owns that schema in code** (its migrations created those
   tables). **It is NOT deployed:** its Railway project has **zero services**, and geiant bypasses it
   by writing Supabase directly. So gns-backend is a dead API in front of a live DB. **Any option that
-  names gns-backend as a host must state that it is not currently running.**
+  names gns-backend as a host must state that it is not currently running.** *(Refined 2026-09-06: the
+  GNS **resolve/identity read API** is in fact **live** under a different service name
+  (`gns-browser-production`); "not deployed" refers to the Railway project of that name and to the
+  bypassed **write** path — see "Update 2026-09-06" §1. The identity layer is not dead.)*
 - **grafomem** — a **separate system**: its own database, its own local breadcrumb chain
   (`gcrumbs.py`), **no connection to the shared Supabase**. Its CGR substrate is built from Ticket-#1
   captured governed decisions joined to resolved outcomes — a different dataset from the identity
@@ -88,6 +130,27 @@ motivation actually lives.
 - **grafomem's CGR read surface has no path to the shared identity database at all.** That part of the
   original finding is unchanged and is the sharpest version of it: even where the identity data lives
   (the shared Supabase, live via geiant), grafomem is not attached to it.
+
+## Shared framing with 0009 — two relations over one under-built substrate
+
+*(Added 2026-09-06.)* This record and [[0009]] (the standard expresses one actor; a defensible approval
+needs two) are **not one problem, and not two unrelated ones.** They are **two relation types over one
+under-built identity substrate:**
+
+- **This record (0008) needs agent → agent succession** — a record binding one `agent_pk` to its
+  successor across rotation. The identities are **agents** whose keys are **system-held** and rotate on
+  compromise.
+- **[[0009]] needs person → key → decision** — a record binding a **natural person** to a
+  self-custodied key, and that key to an approval.
+
+**Neither is expressible for the same reasons.** The current model **derives actor type rather than
+storing it** (gns-backend `identities.ts:107-108` — `human` by absence, no stored `subject_type`),
+**discards principals** (per [[0003]], ephemeral and self-vouching), **stores no succession edge** (this
+record — no rotation/predecessor/successor record type anywhere), and **binds no person to a signature**
+([[0009]] gaps 1–3). Fix the substrate and each becomes one relation type over it; leave it and neither
+can be expressed. They should therefore be weighed **together** — a single design that serves both is
+worth more than two point fixes — even though the choice of design is the next decision, not this
+record's to make.
 
 ## What was built is correct — it simply has no first case
 

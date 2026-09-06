@@ -1,8 +1,9 @@
 ---
 status: proposed
 record_date: 2026-09-06
-provenance: raised-from-implementation — surfaced while scoping B3's minimum attestable disposition record for an AML alert (Ulissy-s-r-l/eu-governed-agent, ADR-0008), and confirmed independently the same day against the TrueForge agent harness and cgr.attestation.v4.
-scope: (standard) cgr.attestation.v4 signed body, its signature model (§0, §2), and the verifiability_tag vocabulary (§2.2); (implementation) the grafomem CGR read surface and capture path, and — as corroboration, not as a dependency — the TrueForge harness session_event schema.
+corrected_date: 2026-09-06
+provenance: raised-from-implementation — surfaced while scoping B3's minimum attestable disposition record for an AML alert (Ulissy-s-r-l/eu-governed-agent, ADR-0008), and confirmed independently the same day against the TrueForge agent harness and cgr.attestation.v4. CORRECTED the same day (2026-09-06) after a read-only investigation of the GNS identity layer found gap 3 was overstated (see "Correction").
+scope: (standard) cgr.attestation.v4 signed body, its signature model (§0, §2), and the verifiability_tag vocabulary (§2.2); (implementation) the grafomem CGR read surface and capture path, the GNS identity layer (gns-backend `/identities` + `/aliases`, the `records`/`aliases` tables) and geiant `agent_registry` — the person-capable identity plumbing gap 3 concerns — and, as corroboration, the TrueForge harness session_event schema.
 ---
 
 # 0009 — the standard expresses one actor; a defensible approval needs two
@@ -18,6 +19,21 @@ scope: (standard) cgr.attestation.v4 signed body, its signature model (§0, §2)
   and the temporal fields discussed in gap 5), and `cgr-attestation-v4-spec.md` §0/§2 (the signed body
   and its single signature). Product-side motivation: `Ulissy-s-r-l/eu-governed-agent` ADR-0008 (B3 is
   the best client of a general ledger) and ADR-0003 (DORA Art. 30(3)).
+
+## Correction (2026-09-06) — read this first
+
+The original gap 3 (below, restated) claimed **"no natural-person identity namespace."** A same-day,
+read-only investigation of the GNS identity layer showed **that was too strong.** GNS **has a
+person-capable identity layer**: `GET /identities/:pk` derives `subject_type` with **`human` as the
+default** (`gns-backend/src/api/identities.ts:107-108`); handles are **person-claimable** and verified
+against a **client-held `pk_root`** (`aliases.ts:220`); and the OAuth login path already mints
+`gns_subject_type: 'human'` as an id-token claim (`oauth.ts:733,748`). **Self-custody is a first-class
+path.** The record's **conclusion is unchanged** — the standard still expresses one actor, and a
+defensible approval still needs two — but gap 3 is **restated** below from "no namespace" to "no
+**accountable, verified** person identity, not wired to the accountable-signature model," which is the
+sharper and correct finding. Two subsections are added — the **precondition** this exposes and **what a
+natural-person principal needs that an agent does not** — and a **shared-framing** section ties this
+record to [[0008]]. Corrected visibly, not silently, per the discipline of the 0008 rewrite.
 
 ## Context — how it was found
 
@@ -66,14 +82,58 @@ issuer's** (§0, §2.4). A supervisor can verify **the Foundation issued the rec
 **the MLRO signed it**. The single signer is structurally the **wrong signer for accountability** —
 accountability under Art. 18 rests on the natural person, and the record binds to the emitter instead.
 
-**3. No natural-person identity namespace.** This is the **prerequisite** for closing gaps 1 and 2 —
-you cannot add an approver field or an approver signature with no identity to populate or sign with.
-Today: `agent_pk` is the **agent's** key; `delegation_certificates` bind a **principal to an agent**;
-and per [[0003]] principals are **ephemeral** (minted in memory, discarded — no stable, Foundation-
-vouched principal identity exists). **There is no registered analyst or MLRO identity to sign as.**
+**3. No _accountable, verified_ natural-person identity — and the accountable-signature model is not
+wired to the person-capable layer that exists.** *(Restated 2026-09-06 — see the Correction. The
+original claim, "no natural-person identity namespace," was too strong: a person-capable layer exists.)*
+
+A person-capable identity layer **does** exist in GNS: `GET /identities/:pk` derives `subject_type`
+with **`human` as the default** (`gns-backend/src/api/identities.ts:107-108`), handles are
+**person-claimable** and verified against a **client-held `pk_root`** (`aliases.ts:220`), and the OAuth
+path already mints `gns_subject_type: 'human'` (`oauth.ts:733,748`). **Self-custody is a first-class
+path.** So the prerequisite for gaps 1 and 2 is **closer than first written** — but two things it needs
+for accountability are missing, and these are the sharper finding:
+
+- **`human` is derived by _absence_, not asserted.** An identity is `human` simply because its pubkey
+  is **not** found in the agent table (`identities.ts:107-108`); there is **no stored `subject_type`
+  column**. Accountability that rests on *"we didn't find this key in the agent table"* is not
+  accountability — it is a default, and a positive **verified** assertion is what Art. 18 requires.
+- **`verified` is proof-of-trust, not identity assurance.** The alias `verified` flag attests
+  proof-of-trust over the handle claim; it proves *a handle controls a key*, **not which real person
+  holds it**. Art. 18 needs a **positive, verified binding of key → named person** (an MLRO the
+  supervisor can confirm), which GNS does not provide.
+
+**And the accountable-signature model is not wired to this layer at all.** The v4 mint signs with the
+Foundation issuer key (gap 2); nothing binds a GNS `human` identity's self-custodied key to a
+disposition. `agent_pk` is the **agent's** key; `delegation_certificates` bind a **principal to an
+agent**; per [[0003]] principals are **ephemeral** (minted in memory, discarded). So even with a
+person-capable registry present, **there is still no accountable analyst/MLRO identity bound to a
+signed decision.**
+
+**Precondition (record it explicitly):** converting **`human`-by-absence into a positive, verified
+assertion** is a precondition for closing this record **regardless of which design option is later
+chosen**. No option that leaves accountability resting on a derivation can satisfy Art. 18.
+
 Note the adjacency to [[0008]]: that record found there is no shared *data path* for agent identity
-across the systems that need it; this one finds there is no *natural-person* identity layer at all —
-**the same missing identity plumbing, one layer up.**
+across the systems that need it; this one finds the person-capable layer that exists **cannot yet carry
+accountability** — the same under-built identity substrate, seen at the person layer (see **Shared
+framing with 0008** below).
+
+**What a natural-person principal must satisfy that an agent principal need not.** This bears on any
+design, so it is recorded here rather than deferred:
+
+- **Self-custody of the signing key.** An agent's key is **system-held** (`GEIANT_AGENT_SK` in
+  Railway env, geiant `setup-agent.ts`) — correct for an agent, because the system *is* the agent. An
+  MLRO's key **cannot** be system-held: whoever holds the secret can forge the approval, so a
+  system-custodied signature **proves nothing about the human's decision**. The ecosystem *can* do
+  self-custody (GNS BYOK / client-signed alias claims), but the governed-agent path does not use it.
+- **A role-tenure lifecycle, not a denylist.** Agent revocation is outright deny
+  (`agent_registry.revoked_at`). A person leaving a role is different: their **past signatures must
+  remain valid and attributable** (they were accountable then) while their **authority to sign new
+  dispositions ends** — *"valid then, not authorized now."* An outright denylist cannot express that.
+- **External verifiability, not internal consistency.** An agent identity need only be internally
+  consistent (a pubkey the system recognizes). A person identity must be verifiable **to a supervisor**
+  — they must confirm the key belongs to the **specific named accountable person**, not merely that
+  some registered, `human`-by-default key signed.
 
 ### The other three
 
@@ -103,7 +163,23 @@ neither ingests nor stores a per-alert disposition. (The capture path plus grafo
 gcrumbs chain supplies ordering / append-only / tamper-evidence, but still binds to a **system** key,
 not the human decider's — so it does not close gaps 1–3 either.)
 
-## Scope — general, not AML-specific
+## Shared framing with 0008 — two relations over one under-built substrate
+
+*(Added 2026-09-06.)* [[0008]] and this record are **not one problem, and not two unrelated ones.**
+They are **two relation types over one under-built identity substrate:**
+
+- **[[0008]] needs agent → agent succession** — a record binding one `agent_pk` to its successor across
+  rotation. The identities are **agents** whose keys are **system-held** and rotate on compromise.
+- **This record (0009) needs person → key → decision** — a record binding a **natural person** to a
+  self-custodied key, and that key to an approval.
+
+**Neither is expressible for the same reasons.** The current model **derives actor type rather than
+storing it** (`identities.ts:107-108` — `human` by absence), **discards principals** (per [[0003]],
+ephemeral and self-vouching), **stores no succession edge** ([[0008]] — no rotation/predecessor record
+type anywhere), and **binds no person to a signature** (gaps 1–3 above). Fix the substrate and each
+becomes one relation type over it; leave it and neither can be expressed. That is why they should be
+weighed **together** — a single design that serves both is worth more than two point fixes — even
+though the choice of design is the next decision, not this record's to make.
 
 State this plainly: the gap is **not about AML.** Any **regulated approval workflow** — anywhere a
 human must approve, and be accountable for, what an agent prepared — needs the same thing: **"human Y
