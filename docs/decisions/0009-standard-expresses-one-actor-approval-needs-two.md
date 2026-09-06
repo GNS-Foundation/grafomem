@@ -1,17 +1,23 @@
 ---
-status: proposed
+status: accepted
+decision_date: 2026-09-06
 record_date: 2026-09-06
 corrected_date: 2026-09-06
-provenance: raised-from-implementation — surfaced while scoping B3's minimum attestable disposition record for an AML alert (Ulissy-s-r-l/eu-governed-agent, ADR-0008), and confirmed independently the same day against the TrueForge agent harness and cgr.attestation.v4. Gap 3 CORRECTED TWICE the same day (2026-09-06): first after reading the GNS server (gap 3 overstated as "no namespace"), then again after reading the Dart client (`gns_browser`) — both prior versions wrongly assumed a thin person layer from server-only evidence (see "Corrections to gap 3"). Separately, the AMLR Art. 18 citation was corrected the same day after primary-source verification (Art. 18 = "Outsourcing"; the named-person-decides claim re-cited to Art. 11 + Recital 38 + AI Act Art. 14) — see "Correction — AMLR Art. 18 citation." Sharpened 2026-09-06 by B2 scoping — the resolution shape (a general signed two-actor decision record, cgr.disposition.v1, not a v4 extension) is now concrete; still proposed, not resolved (see "Resolution shape").
+provenance: raised-from-implementation — surfaced while scoping B3's minimum attestable disposition record for an AML alert (Ulissy-s-r-l/eu-governed-agent, ADR-0008), and confirmed independently the same day against the TrueForge agent harness and cgr.attestation.v4. Gap 3 CORRECTED TWICE the same day (2026-09-06): first after reading the GNS server (gap 3 overstated as "no namespace"), then again after reading the Dart client (`gns_browser`) — both prior versions wrongly assumed a thin person layer from server-only evidence (see "Corrections to gap 3"). Separately, the AMLR Art. 18 citation was corrected the same day after primary-source verification (Art. 18 = "Outsourcing"; the named-person-decides claim re-cited to Art. 11 + Recital 38 + AI Act Art. 14) — see "Correction — AMLR Art. 18 citation." Sharpened 2026-09-06 by B2 scoping — the resolution shape (a general signed two-actor decision record, not a v4 extension) is now concrete (see "Resolution shape"). ACCEPTED 2026-09-06: resolved by a general two-party co-signature envelope cgr.cosign.v1 (record-agnostic) with cgr.disposition.v1 as its first profile — decision only, spec is the next step; gap 3a (verified named-person identity) NOT resolved, remains the separate assurance dependency (see "Decision — the two-party co-signature envelope").
 scope: (standard) cgr.attestation.v4 signed body, its signature model (§0, §2), and the verifiability_tag vocabulary (§2.2); (implementation) the grafomem CGR read surface and capture path, the GNS identity layer server-side (gns-backend `/identities` + `/aliases`, `records`/`aliases`, proof-of-trajectory `/v1/verify`) AND client-side (the `gns_browser` Dart self-custody client — keygen, Keychain/Keystore custody, `grafomem.hitl.approval.v1` signing, enrollment), and geiant `agent_registry` — the person-capable identity plumbing gap 3 concerns — and, as corroboration, the TrueForge harness session_event schema.
 ---
 
 # 0009 — the standard expresses one actor; a defensible approval needs two
 
-- **Status:** **Proposed** 2026-09-06 — this states the problem; it does **not** resolve it. It records
-  a category-level gap: the standard models **one actor** (the agent, signed by the Foundation issuer)
-  where the regulation a governed AML disposition must satisfy requires **two** (an agent that prepares
-  and a named natural person who decides and signs).
+- **Status:** **Accepted 2026-09-06** — the problem (below) is a category-level gap: the standard models
+  **one actor** (the agent, signed by the Foundation issuer) where the regulation a governed AML
+  disposition must satisfy requires **two** (an agent that prepares and a named natural person who
+  decides and signs). **Resolved** by the decision in **"Decision — the two-party co-signature
+  envelope"** below: a general, record-agnostic **`cgr.cosign.v1`** envelope, with **`cgr.disposition.v1`**
+  as its first profile. This is the *decision*, not the implementation — the spec is the next step and is
+  to be authored against this accepted record. Gap 3a (a *verified named-person* identity) is **not**
+  resolved here; it remains the separate assurance dependency (see the Decision's "What this does not
+  resolve").
 - **Record date:** 2026-09-06
 - **Relates to:** [[0003]] (principal identity is not stable — why there is no natural-person key to
   sign as), [[0008]] (identity continuity has no shared data path — the adjacent missing-identity
@@ -374,6 +380,98 @@ belong in the standard beside `cgr.disposition.v1`:
 
 The two are **not interchangeable**: HMAC for identifiers (joinable), BLAKE2b/Merkle for content
 (tamper-evident). Using one where the other is needed is an error the general spec should foreclose.
+
+## Decision — the two-party co-signature envelope (accepted 2026-09-06)
+
+**Decided:** resolve the gap with a **general, record-agnostic two-party co-signature envelope,
+`cgr.cosign.v1`**, and author **`cgr.disposition.v1`** (the B2 disposition) as its **first profile**.
+This is the *decision*; the spec is the next step and is to be written against this accepted record.
+
+**Why a general envelope, not a v4 extension, and not a per-record schema.** v4 **cannot** host a
+two-actor record — no record class fits, one signer slot, no content-field home (see "Resolution shape"
+above) — and overloading it would repeat the pattern this project **corrected three times this week**
+(0008 two→three actors; gap 3 twice; the AMLR Art. 18 citation). A per-record schema would serve B3
+only and re-implement the same primitive for CCR's learning transaction and the MCP surface next —
+reproducing the exact "four systems, same missing primitive" finding that motivates this record. The
+missing thing is a **primitive (bound human approval)**, not a disposition schema, so it is fixed
+record-agnostically once.
+
+### The construction (decided)
+
+**Three layers:**
+- **Content body**, referenced by a **BLAKE2b `content_digest`** (`content_digest = BLAKE2b-256(JCS(content_body))`),
+  so signatures bind to content without re-embedding it.
+- **Approval assertion**: `{content_digest, approver_id, approver_key_id, approver_act, decision_date,
+  record_nonce}`. `record_nonce` binds the assertion to this specific record, so a valid approver
+  signature cannot be replayed onto a different one.
+- **Two nested signatures.**
+
+**Approver signature (inner).** The approver signs **`DOMAIN_TAG ‖ JCS(approval_assertion)`** with
+**`grafomem.hitl.approval.v1`** as `DOMAIN_TAG` — **adopting the exact separator `gns_browser`'s signer
+already enforces** (`signBytesToHex` refuses any payload lacking that prefix). Because the assertion
+carries `content_digest` and the human's own `approver_act`, the signature is **self-contained and
+independently verifiable with only the approver's public key** — a supervisor confirms "this person
+signed this decision" without trusting the system.
+
+**System signature (outer).** The system **counter-signs the whole artifact INCLUDING the approver
+signature** (`JCS(content_body ∪ approval_assertion ∪ approver_signature ∪ system_metadata)`).
+**Nesting, not parallel detached signatures, is decided** — and the reason is recorded: with parallel
+signatures each over the content only, the system signature would still verify after the approver block
+was lifted out, so the approval could be stripped leaving a valid system record. Nesting ties the two:
+altering or removing the inner signature breaks the outer.
+
+**Two placements, one construction (decided).** The same envelope serves both modes from the B2/CCR
+unification — it is **not** two envelopes:
+- **Approval-bound** — the envelope wraps the **decision record itself** (the approval gates *the
+  action*; B3/`cgr.disposition.v1`).
+- **Approval-free** — the experience stays raw, single-system-signed history (CCR keeps the ledger free
+  of interpretation); the approval is a **separate linked transaction** that is *itself* this same
+  envelope, referencing the experience by hash (the approval gates *a policy update*, e.g. CCR's
+  learning transaction).
+
+### Strippability (decided claim, stated in the ledger's tamper-evidence register)
+
+Honestly and precisely, matching the Experience-Ledger honesty clause (tamper-*evident*, not
+tamper-*proof*):
+- **Stripping the approver signature produces an INVALID record** — the outer system signature breaks
+  (cryptographically enforced).
+- **An approver-less record of an approval-bound type is NON-CONFORMANT** — a verifier MUST reject it
+  (a *verifier rule*, not a property of the bytes; the enforce-or-label posture of [[0006]]).
+- **A compromised or re-minting issuer can always sign a fresh approver-less record** — this is
+  **detectable against externally-held commitments** (the gcrumbs chain + externally-anchored epochs)
+  but **not preventable**. No envelope stops the holder of the system key from signing a different
+  artifact.
+
+So the guarantee is **tamper-evident and conformance-enforced, not tamper-proof.** Hardening is the same
+as [[0006]]'s: anchor the record into the append-only gcrumbs chain with externally-held epoch
+commitments — detection, not prevention.
+
+### Composition with what exists (decided)
+
+`gns_browser`'s self-custodied Ed25519 signer **fits as-is**: its `grafomem.hitl.approval.v1:` prefix
+**becomes** the envelope's `DOMAIN_TAG` (domain separation is a feature — it stops cross-protocol
+signature replay). What changes is **caller-side only**: the caller constructs the structured JCS
+`approval_assertion` (including `approver_act`) and hands *those* bytes to the signer, rather than an
+opaque payload. No change to the signer or the key custody.
+
+### What this does NOT resolve
+
+**Gap 3a — a *verified named-person* identity — is not resolved by this decision.** The envelope
+structurally unblocks the approver socket (gaps 1 and 2: an approver principal, and human
+non-repudiation via the second signature). Binding the approver's key to a **named, accountable,
+verified** person remains the **separate assurance dependency** — bank-vouched enrolment or a QES
+co-signature — tracked in the identity-assurance work, not closed here.
+
+### Cost accepted with this decision (recorded, not discovered later)
+
+A record-agnostic envelope becomes a **third conformance surface** (alongside the attestation and the
+delegation-cert formats), carrying its own: **canonicalisation rules** (the exact JCS scope of each
+signature), **required-ness rules per payload type** (which profiles MUST carry the approver signature —
+the non-conformance rule above), **conformance corpus vectors** (a stripped-approver vector, a
+lifted-to-different-content vector, a replayed-nonce vector, a valid two-signature vector), and
+**verifier obligations** (verify both signatures; enforce presence per profile; surface, don't gate on,
+the assurance tier). **This is the accepted price of not reinventing the primitive a fifth time** — it
+is stated here so it is visible in the decision rather than discovered at implementation.
 
 ## Open questions
 
