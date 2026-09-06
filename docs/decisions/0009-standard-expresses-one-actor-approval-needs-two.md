@@ -2,7 +2,7 @@
 status: proposed
 record_date: 2026-09-06
 corrected_date: 2026-09-06
-provenance: raised-from-implementation — surfaced while scoping B3's minimum attestable disposition record for an AML alert (Ulissy-s-r-l/eu-governed-agent, ADR-0008), and confirmed independently the same day against the TrueForge agent harness and cgr.attestation.v4. Gap 3 CORRECTED TWICE the same day (2026-09-06): first after reading the GNS server (gap 3 overstated as "no namespace"), then again after reading the Dart client (`gns_browser`) — both prior versions wrongly assumed a thin person layer from server-only evidence (see "Corrections to gap 3"). Separately, the AMLR Art. 18 citation was corrected the same day after primary-source verification (Art. 18 = "Outsourcing"; the named-person-decides claim re-cited to Art. 11 + Recital 38 + AI Act Art. 14) — see "Correction — AMLR Art. 18 citation."
+provenance: raised-from-implementation — surfaced while scoping B3's minimum attestable disposition record for an AML alert (Ulissy-s-r-l/eu-governed-agent, ADR-0008), and confirmed independently the same day against the TrueForge agent harness and cgr.attestation.v4. Gap 3 CORRECTED TWICE the same day (2026-09-06): first after reading the GNS server (gap 3 overstated as "no namespace"), then again after reading the Dart client (`gns_browser`) — both prior versions wrongly assumed a thin person layer from server-only evidence (see "Corrections to gap 3"). Separately, the AMLR Art. 18 citation was corrected the same day after primary-source verification (Art. 18 = "Outsourcing"; the named-person-decides claim re-cited to Art. 11 + Recital 38 + AI Act Art. 14) — see "Correction — AMLR Art. 18 citation." Sharpened 2026-09-06 by B2 scoping — the resolution shape (a general signed two-actor decision record, cgr.disposition.v1, not a v4 extension) is now concrete; still proposed, not resolved (see "Resolution shape").
 scope: (standard) cgr.attestation.v4 signed body, its signature model (§0, §2), and the verifiability_tag vocabulary (§2.2); (implementation) the grafomem CGR read surface and capture path, the GNS identity layer server-side (gns-backend `/identities` + `/aliases`, `records`/`aliases`, proof-of-trajectory `/v1/verify`) AND client-side (the `gns_browser` Dart self-custody client — keygen, Keychain/Keystore custody, `grafomem.hitl.approval.v1` signing, enrollment), and geiant `agent_registry` — the person-capable identity plumbing gap 3 concerns — and, as corroboration, the TrueForge harness session_event schema.
 ---
 
@@ -310,6 +310,70 @@ missing data path — is a **later decision**. This record's job is narrower and
 > gap is not a person _namespace_ — a self-custody person client already exists — but an _accountable,
 > verified, and wired_ person identity: real-world assurance binding a key to a named person, and that
 > person's approval signature bound into the attestation.**
+
+The section below (added 2026-09-06) **sharpens what a resolution must provide**; it still does not
+choose among the options above or resolve this record.
+
+## Resolution shape — what unblocking 0009 requires (sharpened by B2, 2026-09-06)
+
+Scoping the AML disposition evidence schema (**B2**, `Ulissy-s-r-l/eu-governed-agent`
+`docs/specs/b2-aml-disposition-evidence-schema.md`) turned the abstract two-actor gap into a **concrete
+resolution shape**. This does not resolve 0009 — it states, concretely, what resolving it requires.
+
+**What 0009 needs to unblock is a general SIGNED TWO-ACTOR DECISION RECORD** — an agent prepares, a
+**named human approves and signs** — carrying, at minimum:
+
+- `decision_date` **and** `recorded_at` (when the human decided vs when it was recorded — distinct on
+  purpose);
+- an **authority anchor** (the procedure/rule-set and the agent/model version in force);
+- an **evidence digest** (a tamper-evident commitment to what the agent saw — see the general
+  primitives below);
+- a **two-signature envelope** — the issuer/system signature **and** the accountable person's signature
+  over the same canonical record.
+
+Working name for the general record: **`cgr.disposition.v1`**. B2 is its first **AML profile** (the AML
+vocabularies and content semantics live product-side; this general record lives here).
+
+### v4 cannot carry it — three reasons (concrete now)
+
+Measured against a real record (the B2 disposition), `cgr.attestation.v4` **cannot** carry a signed
+two-actor decision, for three independent reasons:
+
+1. **No record class fits.** A disposition is a **single dated substantive human decision**. In v4 that
+   needs `decision_date`/`domain`, which exist **only on `rule` records** and **MUST be absent on
+   `pooled` aggregates** — but `rule` means *recorded, non-scoring governance record*, and a
+   disposition is neither a governance rule nor a pooled reputation aggregate. **This is gap 5 (the
+   `verifiability_tag` axis conflation) biting concretely** — the vocabulary has no value for what a
+   disposition is.
+2. **One signer slot.** The v4 wire carries exactly one signature (the Foundation issuer's, §0/§2.4).
+   There is **no approver-signature slot**, so the accountable human's signature (gaps 1-2) is
+   **inexpressible**.
+3. **No home for the content fields.** `alert_ref`, `subject_ref`, `evidence_digest`,
+   `disposition_outcome`, `authority_anchor` have **no v4 fields**; adding them is a schema event, not
+   an additive change.
+
+**Conclusion: the answer is a NEW record type, not an extension of v4.** A **reputation aggregate**
+(what v4 mints) and a **signed two-actor decision** are **different kinds of record**. Overloading the
+attestation to carry a disposition would repeat the exact pattern this project corrected three times
+this week (0008 two→three actors; gap 3 twice; the AMLR Art. 18 citation) — stretching one construct
+past what it was built to mean. `cgr.disposition.v1` is a distinct record that reuses v4's JCS
+canonicalisation and Ed25519 conventions but has its own field set and a two-signature envelope.
+
+### General primitives that belong in the standard (generalise, don't reinvent)
+
+Two primitives the B2 evidence digest and PII boundary rely on are **general, not AML-specific**, and
+belong in the standard beside `cgr.disposition.v1`:
+
+- **Evidence-digest primitive** — a **BLAKE2b / Merkle content commitment** with **selective
+  disclosure** (prove one item was in the evidence set without revealing the rest). Already exists in
+  grafomem as [`src/aml/provenance.py`](../../src/aml/provenance.py) (BLAKE2b, tenant-separated content
+  commitments) — **generalise it**, do not reinvent.
+- **Identifier pseudonym primitive** — a **deterministic, per-tenant, domain-separated HMAC pseudonym**
+  (equality-joinable within a tenant, non-reversible, no cross-tenant correlation). Already exists as
+  [`src/aml/cloud/invoice_pseudonym.py`](../../src/aml/cloud/invoice_pseudonym.py) — **generalise it**.
+
+The two are **not interchangeable**: HMAC for identifiers (joinable), BLAKE2b/Merkle for content
+(tamper-evident). Using one where the other is needed is an error the general spec should foreclose.
 
 ## Open questions
 
