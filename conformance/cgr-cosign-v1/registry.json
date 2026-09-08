@@ -1,0 +1,21 @@
+{
+  "_WARNING": "TEST FIXTURE — NOT THE PROFILE REGISTRY. Profile resolution (cgr-cosign-v1-spec §8 step 2) is NORMATIVE, but the registry DOCUMENT is UNWRITTEN (§11 Q3). The conformance corpus went first. Whoever writes the real registry MUST either match these pinned entries (bound-unconditional, bound-predicate, free, and the unknown-profile reject behaviour) or RETARGET every vector in conformance/cgr-cosign-v1/. Do not write a 'reasonable' registry in ignorance of this file — the corpus is the constraint. Files travel without their READMEs, so this warning rides inside the JSON.",
+  "note": "Each entry: (approval_mode, approver_signature required-ness, referenced_records) per §5.",
+  "profiles": {
+    "test.bound.unconditional": {
+      "approval_mode": "bound",
+      "approver_signature": "REQUIRED",
+      "referenced_records": "none"
+    },
+    "test.bound.predicate": {
+      "approval_mode": "bound",
+      "approver_signature": { "required_when": { "field": "risk_class", "op": "eq", "value": "high" } },
+      "referenced_records": "none"
+    },
+    "test.free": {
+      "approval_mode": "free",
+      "approver_signature": "REQUIRED",
+      "referenced_records": "required"
+    }
+  }
+}
