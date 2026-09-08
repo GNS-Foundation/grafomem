@@ -29,7 +29,14 @@ import generate as G  # noqa: E402  (reuse the exact production JCS + key helper
 
 VECTORS = json.loads((_CORPUS / "vectors.json").read_text())["vectors"]
 REGISTRY = json.loads((_CORPUS / "registry.json").read_text())
-FAMILIES = {"W", "S", "P", "D", "R", "U", "N", "K", "A", "F", "X"}
+FAMILIES = {"W", "S", "P", "D", "R", "U", "N", "K", "A", "F", "X", "I"}
+
+
+def _trusted_issuers(vec):
+    """The trusted issuer set for a vector, derived from its `pinned_issuer` (decision 0011
+    §8.2a). REQUIRED input to verify() with no default — this is the interface contract the
+    corpus pins. The harness never reads the record's self-declared issuer_key_id for trust."""
+    return ["ed25519:" + vec["pinned_issuer"]]
 
 
 def _family(vid: str) -> str:
@@ -45,9 +52,14 @@ def test_corpus_wellformed():
     # coverage: every family in the approved matrix is present
     assert {_family(i) for i in ids} >= FAMILIES, f"missing families: {FAMILIES - {_family(i) for i in ids}}"
 
-    # registry fixture carries its loud in-file warning and the three pinned profiles
+    # registry fixture carries its loud in-file warnings and the pinned profiles
     assert "TEST FIXTURE" in REGISTRY["_WARNING"] and "UNWRITTEN" in REGISTRY["_WARNING"]
-    assert set(REGISTRY["profiles"]) == {"test.bound.unconditional", "test.bound.predicate", "test.free"}
+    # decision 0011: the trusted-issuer-set contract rides inside the fixture too
+    assert "TRUSTED ISSUER SET" in REGISTRY["_WARNING_TRUSTED_ISSUERS"] \
+        and "NO default" in REGISTRY["_WARNING_TRUSTED_ISSUERS"]
+    assert set(REGISTRY["profiles"]) == {
+        "test.bound.unconditional", "test.bound.predicate", "test.bound.predicate.in",
+        "test.bound.predicate.in.malformed", "test.free"}
 
     for v in VECTORS:
         for k in ("id", "clause", "spec_lines", "title", "subject", "expect"):
@@ -59,15 +71,19 @@ def test_corpus_wellformed():
 
     # valid-expected records with a full approver block MUST genuinely verify — so a
     # future verifier's reject (if any) is attributable to the tested defect, not to
-    # incidental malformation.
+    # incidental malformation. The system signature is verified against the record's OWN
+    # self-declared issuer_key_id (not a hardcoded 0x11) — the I2 control is a valid record
+    # signed by 0x33, and it must verify under 0x33; its rejection-vs-acceptance is the
+    # trusted-set's job (step 2a), not a crypto property.
     for v in VECTORS:
         rec = v["subject"]
         if v["expect"]["valid"] and rec.get("approver_signature") and rec.get("approval_assertion"):
             a = rec["approval_assertion"]
+            issuer_pub = rec["system_metadata"]["issuer_key_id"].split(":", 1)[1]
             assert G._verify(G.APPROVER_PUB, G._sig_hex(rec["approver_signature"]),
                              G.DOMAIN_TAG + G._canon(a)), f"{v['id']}: approver sig should verify"
-            assert G._verify(G.ISSUER_PUB, G._sig_hex(rec["system_signature"]),
-                             G._sysbody_bytes(rec)), f"{v['id']}: system sig should verify"
+            assert G._verify(issuer_pub, G._sig_hex(rec["system_signature"]),
+                             G._sysbody_bytes(rec)), f"{v['id']}: system sig should verify (self-declared issuer)"
             assert a["content_digest"] == G.content_digest(rec["content_body"]), \
                 f"{v['id']}: content_digest should match"
 
@@ -135,6 +151,52 @@ def test_corpus_wellformed():
     s = _subject("F2-free-unresolved-reference")
     assert all(_is_b2_256(r) for r in s["content_body"]["references"])   # well-formed, just unresolvable
 
+    # ── decision 0011 additions ───────────────────────────────────────────────
+    # coverage: the 0011 vectors are present and tagged
+    for vid in ("U4-predicate-in-nonarray", "R5-predicate-in-holds", "R6-predicate-in-false",
+                "I1-untrusted-issuer", "I2-trusted-issuer-control"):
+        assert "amended-0011" in _vector(vid).get("tags", []), f"{vid}: must be tagged amended-0011"
+
+    # GAP 2 defect presence — the `in` operator, well-formed and malformed:
+    # U4: the profile's predicate uses `in` with a NON-ARRAY value (the malformed operand),
+    # the record is high-risk and UNSIGNED (so a verifier reading non-array `in` as
+    # predicate-false passes an unsigned high-risk record — the fail-open this vector catches).
+    s = _subject("U4-predicate-in-nonarray")
+    _pred = REGISTRY["profiles"][s["profile"]]["approver_signature"]["required_when"]
+    assert _pred["op"] == "in" and not isinstance(_pred["value"], list), "U4: profile `in` value must be non-array"
+    assert s["content_body"].get("risk_class") == "high" and "approver_signature" not in s, \
+        "U4: must be a high-risk UNSIGNED record (fail-open is dangerous, not cosmetic)"
+    assert _vector("U4-predicate-in-nonarray")["expect"]["reason_contains"] == "predicate_unresolved"
+    # R5/R6: the WELL-FORMED `in` (array value), pinned in both directions.
+    r5p = REGISTRY["profiles"][_subject("R5-predicate-in-holds")["profile"]]["approver_signature"]["required_when"]
+    assert r5p["op"] == "in" and isinstance(r5p["value"], list), "R5: profile `in` value must be an array"
+    assert _subject("R5-predicate-in-holds")["content_body"]["risk_class"] in r5p["value"] \
+        and _subject("R5-predicate-in-holds").get("approver_signature"), "R5: member present + signed (required, holds)"
+    assert _subject("R6-predicate-in-false")["content_body"]["risk_class"] not in r5p["value"] \
+        and "approver_signature" not in _subject("R6-predicate-in-false"), "R6: member absent + unsigned (optional, false)"
+
+    # GAP 1 defect presence + BYTE PROBE — issuer pinning (I1), mirroring the N1 invariant:
+    # the record's system signature verifies CLEANLY under its own self-declared 0x33 issuer
+    # (so a step-2a-skipping verifier passes it), while the vector pins 0x11 — the mismatch is
+    # the defect. Without the clean self-verify the vector would prove nothing (it would reject
+    # on crypto, not on trust).
+    i1v = _vector("I1-untrusted-issuer")
+    i1 = i1v["subject"]
+    _i1_issuer = i1["system_metadata"]["issuer_key_id"].split(":", 1)[1]
+    assert _i1_issuer == G.UNTRUSTED_ISSUER_PUB, "I1: record must self-declare the 0x33 issuer"
+    assert i1v["pinned_issuer"] == G.ISSUER_PUB, "I1: the trusted set must pin 0x11 (0x33 untrusted)"
+    assert _i1_issuer != i1v["pinned_issuer"], "I1: self-declared issuer must differ from the pinned/trusted one"
+    assert G._verify(_i1_issuer, G._sig_hex(i1["system_signature"]), G._sysbody_bytes(i1)), \
+        "I1: system signature MUST verify under its self-declared 0x33 key (otherwise-valid; a 2a-skip passes it)"
+    assert not G._verify(i1v["pinned_issuer"], G._sig_hex(i1["system_signature"]), G._sysbody_bytes(i1)), \
+        "I1: the 0x33 signature must NOT verify under the pinned 0x11 key"
+    assert i1v["expect"]["reason_contains"] == "issuer_untrusted"
+    # I2 positive control: SAME record, but pins 0x33 -> trust check passes -> valid.
+    i2v = _vector("I2-trusted-issuer-control")
+    assert i2v["subject"] == i1, "I2 must be byte-identical to I1 (only the trusted set differs)"
+    assert i2v["pinned_issuer"] == G.UNTRUSTED_ISSUER_PUB and i2v["expect"]["valid"] is True, \
+        "I2: control pins 0x33 and expects valid (proves I1 rejects on trust, not otherwise)"
+
 
 def _is_b2_256(ref: str) -> bool:
     if not isinstance(ref, str) or not ref.startswith("b2-256:"):
@@ -172,7 +234,10 @@ def test_cosign_conformance(vec):
     verifier = _load_verifier()
     if verifier is None:
         pytest.skip("no verifier")
-    result = verifier.verify(vec["subject"], REGISTRY, vec.get("ledger", {}))
+    # decision 0011 §8.2a: verify() takes the trusted issuer set (REQUIRED, no default) as a
+    # 4th argument, derived from the vector's pinned_issuer. The amended verifiers consume it;
+    # the pre-0011 verifiers (3-arg) are updated in the verifiers PR that follows this corpus.
+    result = verifier.verify(vec["subject"], REGISTRY, vec.get("ledger", {}), _trusted_issuers(vec))
     exp = vec["expect"]
     assert result.get("valid") == exp["valid"], f"{vec['id']}: {result}"
     if exp["valid"] is False:

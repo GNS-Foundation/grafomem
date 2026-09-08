@@ -1,11 +1,12 @@
 {
   "corpus": "cgr.cosign.v1 conformance",
-  "spec": "docs/cgr/cgr-cosign-v1-spec.md (amended by decision 0010)",
-  "note": "TEST vectors \u2014 deterministic repeating-byte issuer key 0x11 / approver key 0x22, NOT real keys. Profile registry (registry.json) is a TEST FIXTURE \u2014 see README.",
+  "spec": "docs/cgr/cgr-cosign-v1-spec.md (amended by decisions 0010 and 0011)",
+  "note": "TEST vectors \u2014 deterministic repeating-byte issuer key 0x11 / approver key 0x22 / UNTRUSTED issuer 0x33, NOT real keys. Profile registry (registry.json) is a TEST FIXTURE \u2014 see README. The trusted issuer set is derived per-vector from `pinned_issuer` (decision 0011 \u00a78.2a): the trusted issuer for every vector is its pinned 0x11 key, except I2 (control) which pins 0x33.",
   "issuer_pubkey_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
   "approver_pubkey_hex": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+  "untrusted_issuer_pubkey_hex": "17cb79fb2b4120f2b1ec65e4198d6e08b28e813feb01e4a400839b85e18080ce",
   "domain_tag": "grafomem.hitl.approval.v1:",
-  "vector_count": 23,
+  "vector_count": 28,
   "vectors": [
     {
       "id": "W1-valid-bound",
@@ -460,6 +461,109 @@
       ]
     },
     {
+      "id": "U4-predicate-in-nonarray",
+      "clause": "\u00a75.1/\u00a78.3a",
+      "spec_lines": "255-262",
+      "title": "`in` operator with a non-array value -> reject predicate_unresolved (0011: unresolvable is uniform)",
+      "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "approver_pub": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+      "subject": {
+        "schema": "cgr.cosign.v1",
+        "profile": "test.bound.predicate.in.malformed",
+        "approval_mode": "bound",
+        "content_body": {
+          "decision": "file",
+          "risk_class": "high",
+          "case_id": "c-1"
+        },
+        "system_metadata": {
+          "issuer": "gns-foundation",
+          "issuer_key_id": "ed25519:d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+          "recorded_at": "2026-09-08"
+        },
+        "system_signature": "ed25519-sig:005b135401f3aada7f6b278ff550f62136e62c737354d30ae4723af816e590990230f4ac8ccdbd9b4f4434c47a0d94101d7ab54e55ac22e6cfae1cab89fbed02",
+        "evidence_ref": null
+      },
+      "expect": {
+        "valid": false,
+        "reason_contains": "predicate_unresolved"
+      },
+      "tags": [
+        "amended-0011"
+      ]
+    },
+    {
+      "id": "R5-predicate-in-holds",
+      "clause": "\u00a75.1/\u00a78.4",
+      "spec_lines": "255-256",
+      "title": "`in` predicate holds (risk_class in [high,critical]), approver present -> valid",
+      "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "approver_pub": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+      "subject": {
+        "schema": "cgr.cosign.v1",
+        "profile": "test.bound.predicate.in",
+        "approval_mode": "bound",
+        "content_body": {
+          "decision": "file",
+          "risk_class": "high",
+          "case_id": "c-1"
+        },
+        "approval_assertion": {
+          "content_digest": "b2-256:c4c6c3d7fa9c975f02118712dfa676f4a1d003a831e28cf778fb78ae8b56a2c8",
+          "approver_id": "did:person:test-approver",
+          "approver_key_id": "ed25519:a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+          "approver_act": "approve",
+          "decision_date": "2026-09-08T00:00:00Z",
+          "record_nonce": "nonce-0001"
+        },
+        "approver_signature": "ed25519-sig:7dd5ee6d5331ffedf902710c9c5f30174c0d58185dc7e2ca75ede9032737953292d837d9f09d84ccc0b54941f31e4c3b7bd6102c82ba981ac3db2033e835550f",
+        "system_metadata": {
+          "issuer": "gns-foundation",
+          "issuer_key_id": "ed25519:d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+          "recorded_at": "2026-09-08"
+        },
+        "system_signature": "ed25519-sig:b534e344b046594f71f2e2ed83df153dcd793902c54754acb5bd69c6627d44658c260b812ad65bea805d2aab8549cb84feb8878b6feb92010a9a4de8fd937d07",
+        "evidence_ref": null
+      },
+      "expect": {
+        "valid": true
+      },
+      "tags": [
+        "amended-0011"
+      ]
+    },
+    {
+      "id": "R6-predicate-in-false",
+      "clause": "\u00a75.1/\u00a78.3a",
+      "spec_lines": "255-256",
+      "title": "`in` predicate false (risk_class not in [high,critical]), approver absent -> PASS (optional)",
+      "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "approver_pub": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+      "subject": {
+        "schema": "cgr.cosign.v1",
+        "profile": "test.bound.predicate.in",
+        "approval_mode": "bound",
+        "content_body": {
+          "decision": "file",
+          "risk_class": "low",
+          "case_id": "c-2"
+        },
+        "system_metadata": {
+          "issuer": "gns-foundation",
+          "issuer_key_id": "ed25519:d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+          "recorded_at": "2026-09-08"
+        },
+        "system_signature": "ed25519-sig:24379b5059d4fb57c3cc1d569faf8fe181f43b00b8cf438664c6149c0d430ee8432131add300154b8558e6380fbecc6714a74fac0d236a3207d56791812dd005",
+        "evidence_ref": null
+      },
+      "expect": {
+        "valid": true
+      },
+      "tags": [
+        "amended-0011"
+      ]
+    },
+    {
       "id": "N1-stripped-approver-sig",
       "clause": "\u00a77.1/\u00a78.6",
       "spec_lines": "289-291",
@@ -861,6 +965,87 @@
           "approver_id": "did:person:test-approver"
         }
       }
+    },
+    {
+      "id": "I1-untrusted-issuer",
+      "clause": "\u00a78.2a",
+      "spec_lines": "355-375",
+      "title": "system signature valid under a self-declared issuer NOT in the trusted set -> reject issuer_untrusted",
+      "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "approver_pub": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+      "subject": {
+        "schema": "cgr.cosign.v1",
+        "profile": "test.bound.unconditional",
+        "approval_mode": "bound",
+        "content_body": {
+          "decision": "file",
+          "risk_class": "high",
+          "case_id": "c-1"
+        },
+        "approval_assertion": {
+          "content_digest": "b2-256:c4c6c3d7fa9c975f02118712dfa676f4a1d003a831e28cf778fb78ae8b56a2c8",
+          "approver_id": "did:person:test-approver",
+          "approver_key_id": "ed25519:a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+          "approver_act": "approve",
+          "decision_date": "2026-09-08T00:00:00Z",
+          "record_nonce": "nonce-0001"
+        },
+        "approver_signature": "ed25519-sig:7dd5ee6d5331ffedf902710c9c5f30174c0d58185dc7e2ca75ede9032737953292d837d9f09d84ccc0b54941f31e4c3b7bd6102c82ba981ac3db2033e835550f",
+        "system_metadata": {
+          "issuer": "gns-foundation",
+          "issuer_key_id": "ed25519:17cb79fb2b4120f2b1ec65e4198d6e08b28e813feb01e4a400839b85e18080ce",
+          "recorded_at": "2026-09-08"
+        },
+        "system_signature": "ed25519-sig:d36dcc8cb523b1aaf505fb684b48d09c0fa6d2f322d45e06d631864de966b1e10fcda522d584c82999fa9f20855d262ffb36e12f79a8d8e608e1e00cc38d1407",
+        "evidence_ref": null
+      },
+      "expect": {
+        "valid": false,
+        "reason_contains": "issuer_untrusted"
+      },
+      "tags": [
+        "amended-0011"
+      ]
+    },
+    {
+      "id": "I2-trusted-issuer-control",
+      "clause": "\u00a78.2a",
+      "spec_lines": "355-375",
+      "title": "the SAME record with its issuer IN the trusted set -> valid (positive control: proves I1 rejects on trust, not otherwise)",
+      "pinned_issuer": "17cb79fb2b4120f2b1ec65e4198d6e08b28e813feb01e4a400839b85e18080ce",
+      "approver_pub": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+      "subject": {
+        "schema": "cgr.cosign.v1",
+        "profile": "test.bound.unconditional",
+        "approval_mode": "bound",
+        "content_body": {
+          "decision": "file",
+          "risk_class": "high",
+          "case_id": "c-1"
+        },
+        "approval_assertion": {
+          "content_digest": "b2-256:c4c6c3d7fa9c975f02118712dfa676f4a1d003a831e28cf778fb78ae8b56a2c8",
+          "approver_id": "did:person:test-approver",
+          "approver_key_id": "ed25519:a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+          "approver_act": "approve",
+          "decision_date": "2026-09-08T00:00:00Z",
+          "record_nonce": "nonce-0001"
+        },
+        "approver_signature": "ed25519-sig:7dd5ee6d5331ffedf902710c9c5f30174c0d58185dc7e2ca75ede9032737953292d837d9f09d84ccc0b54941f31e4c3b7bd6102c82ba981ac3db2033e835550f",
+        "system_metadata": {
+          "issuer": "gns-foundation",
+          "issuer_key_id": "ed25519:17cb79fb2b4120f2b1ec65e4198d6e08b28e813feb01e4a400839b85e18080ce",
+          "recorded_at": "2026-09-08"
+        },
+        "system_signature": "ed25519-sig:d36dcc8cb523b1aaf505fb684b48d09c0fa6d2f322d45e06d631864de966b1e10fcda522d584c82999fa9f20855d262ffb36e12f79a8d8e608e1e00cc38d1407",
+        "evidence_ref": null
+      },
+      "expect": {
+        "valid": true
+      },
+      "tags": [
+        "amended-0011"
+      ]
     }
   ]
 }
