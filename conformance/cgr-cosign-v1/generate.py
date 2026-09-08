@@ -203,23 +203,35 @@ V("U3-predicate-field-null", "§5.1/§8.3a", "225-228",
   {"valid": False, "reason_contains": "predicate_unresolved"},
   tags=["amended-0010"])
 
-# ── N: nesting — stripping/altering the approver signature (§7.1) ──────────────
-# N1: build a VALID record, then STRIP approver_signature but KEEP the original system
-# signature. The system signature covered a body that INCLUDED approver_signature, so it
-# now fails against the stripped body. (The Layer-1 self-check proves this on the bytes.)
-_valid_for_strip = record(P_UNCOND, "bound", DECISION, a=assertion(DECISION))
-_stripped = {k: v for k, v in _valid_for_strip.items() if k != "approver_signature"}
+# ── N: nesting / system-signature coverage (§7.1, §8.6) ───────────────────────
+# CORPUS CORRECTION (found implementing the JS verifier, v4-style): the original N1/N2
+# used a REQUIRED profile and rejected at §8.4 (approver required-and-absent / present-and-
+# invalid) BEFORE reaching the system-signature check (§8.6) — so they did NOT isolate the
+# nesting property. A non-conformant PARALLEL-signature verifier would also reject them.
+# Fixed to force the rejection through §8.6.
+#
+# N1: strip approver_signature under an OPTIONAL profile (predicate false -> approver
+# optional), keeping the original system signature. §8.4 passes (optional+absent); the
+# rejection MUST come from §8.6, because the system signature covered a body that INCLUDED
+# approver_signature. This ISOLATES nesting: a parallel-signature verifier accepts the
+# stripped record; a nested one rejects.
+_valid_opt = record(P_PRED, "bound", DECISION_LOW, a=assertion(DECISION_LOW))  # predicate false -> optional
+_stripped = {k: v for k, v in _valid_opt.items() if k != "approver_signature"}
 V("N1-stripped-approver-sig", "§7.1/§8.6", "289-291",
-  "approver_signature removed, original system_signature kept -> system sig fails -> reject",
-  _stripped, {"valid": False, "reason_contains": "signature"})
+  "approver_signature stripped under an OPTIONAL profile -> system signature fails (nesting isolated)",
+  _stripped, {"valid": False, "reason_contains": "system signature"})
 
-# N2: alter the approver_signature byte-wise, keep the original system signature. Because
-# approver_signature is inside the system's signed body, the alteration breaks the outer sig.
-_altered = dict(_valid_for_strip)
-_altered["approver_signature"] = "ed25519-sig:" + ("ff" + _valid_for_strip["approver_signature"].split(":", 1)[1][2:])
-V("N2-altered-approver-sig", "§7.1/§8.6", "289-291",
-  "approver_signature altered, original system_signature kept -> system sig fails -> reject",
-  _altered, {"valid": False, "reason_contains": "signature"})
+# N2: tamper a signed-but-non-content field (system_metadata.recorded_at) after signing.
+# content_digest (§8.3) still matches, so the rejection MUST come from §8.6 — proving the
+# system signature covers the whole body (the substrate that makes nesting work). Altering
+# the APPROVER signature instead cannot reach §8.6 (§8.4 catches a present-but-invalid sig
+# first — that is R4), so N2 tests the system signature's body coverage rather than a
+# masked approver-sig alteration.
+_tampered = json.loads(json.dumps(_valid_opt))                 # deep copy
+_tampered["system_metadata"]["recorded_at"] = "2099-01-01"     # signed field, changed post-signing
+V("N2-tampered-signed-field", "§7.1/§8.6", "117-131",
+  "a signed field altered after signing (content_digest still matches) -> system signature fails",
+  _tampered, {"valid": False, "reason_contains": "system signature"})
 
 # ── K: replay (§4 / §8.7) ─────────────────────────────────────────────────────
 # K1: identical-content replay — a prior record with the same (approver_key_id, record_nonce)
@@ -314,21 +326,20 @@ def prove_invariants():
     assert a["content_digest"] == content_digest(w1["content_body"]), "W1 content_digest must match"
 
     # (b) THE NESTING INVARIANT (N1), proven on the bytes, the important probe:
-    #     the ORIGINAL system signature, verified against the STRIPPED body, MUST FAIL.
-    #     Not re-signed, not re-derived — the intact record's signature over the stripped bytes.
+    #     the ORIGINAL system signature (carried unchanged on the stripped record), verified
+    #     against the STRIPPED body, MUST FAIL. Not re-signed, not re-derived.
     n1 = next(v for v in VECTORS if v["id"] == "N1-stripped-approver-sig")["subject"]
     assert "approver_signature" not in n1, "N1 subject must have the approver signature stripped"
-    orig_sig = _valid_for_strip["system_signature"]                 # signature from the INTACT record
-    assert not _verify(ISSUER_PUB, _sig_hex(orig_sig), _sysbody_bytes(n1)), \
+    assert not _verify(ISSUER_PUB, _sig_hex(n1["system_signature"]), _sysbody_bytes(n1)), \
         "NESTING BROKEN: original system signature must NOT verify against the stripped body"
-    # and the intact record's signature DOES verify against the intact body (control)
-    assert _verify(ISSUER_PUB, _sig_hex(orig_sig), _sysbody_bytes(_valid_for_strip)), \
+    # control: the intact record's signature DOES verify against its intact body.
+    assert _verify(ISSUER_PUB, _sig_hex(_valid_opt["system_signature"]), _sysbody_bytes(_valid_opt)), \
         "control: intact system signature must verify against the intact body"
 
-    # (c) N2 altered approver sig likewise breaks the outer signature.
-    n2 = next(v for v in VECTORS if v["id"] == "N2-altered-approver-sig")["subject"]
-    assert not _verify(ISSUER_PUB, _sig_hex(_valid_for_strip["system_signature"]), _sysbody_bytes(n2)), \
-        "N2: altering approver_signature must break the system signature"
+    # (c) N2 tampered signed field likewise breaks the system signature (§8.6 body coverage).
+    n2 = next(v for v in VECTORS if v["id"] == "N2-tampered-signed-field")["subject"]
+    assert not _verify(ISSUER_PUB, _sig_hex(n2["system_signature"]), _sysbody_bytes(n2)), \
+        "N2: tampering a signed field must break the system signature"
 
     # (d) K2 lift: the assertion's content_digest does NOT match the recomputed body digest.
     k2 = next(v for v in VECTORS if v["id"] == "K2-lift-to-different-content")["subject"]

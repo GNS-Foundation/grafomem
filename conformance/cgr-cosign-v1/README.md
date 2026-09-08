@@ -62,8 +62,8 @@ fail-open **before** any verifier existed (decision 0010).
 | `R3` | §5.1/§8.3a | predicate false (`risk_class=low`), approver absent → **pass** |
 | `R4` | §8.4 | approver present (optional) but **invalid** → reject (present MUST verify) |
 | `U1`–`U3` | §5.1/§8.3a | predicate field **absent / non-scalar / null** → **reject `predicate_unresolved`** (decision 0010) |
-| `N1` | §7.1/§8.6 | strip approver sig, keep system sig → **system sig fails** → reject (nesting) |
-| `N2` | §7.1/§8.6 | alter approver sig, keep system sig → system sig fails → reject |
+| `N1` | §7.1/§8.6 | strip approver sig **under an optional profile** → §8.4 passes, **§8.6 system sig fails** → reject (nesting isolated) |
+| `N2` | §7.1/§8.6 | **tamper a signed field** (`recorded_at`) after signing → §8.6 system sig fails → reject |
 | `K1` | §4/§8.7 | duplicate `(approver_key_id, record_nonce)` in `ledger.seen` → reject (replay) |
 | `K2` | §4/§8.3 | approver sig lifted onto different content → `content_digest` mismatch → reject |
 | `A1` | §6/§8.8 | `approve` with `agent_draft_digest` present → reject |
@@ -72,6 +72,16 @@ fail-open **before** any verifier existed (decision 0010).
 | `F1` | §8.9 | free-mode malformed reference hash → reject |
 | `F2` | §8.9 | free-mode well-formed but unresolvable reference → **degrade** (surface, valid) — **tagged `flips-if-8.9-must-resolve`** |
 | `X1` | §8 | verifier **surfaces** `approver_id`/`approver_act`/`decision_date` and **MUST NOT gate** → valid + surfaced |
+
+## Corpus correction — found implementing the JS verifier
+The original `N1`/`N2` (shipped in the corpus PR) used a **REQUIRED** profile: stripping/altering
+the approver signature rejected at **§8.4** (approver required-and-absent / present-and-invalid)
+**before** the system-signature check (§8.6), so they did **not** isolate nesting — a non-conformant
+**parallel-signature** verifier would have rejected them too (identical to `R1`/`R4`). Building the
+reference verifier surfaced this (the same way `v4`'s corpus caught its malformed-hash placeholder).
+Fixed here so the rejection is forced through §8.6: `N1` strips under an **optional** profile; `N2`
+tampers a signed non-content field. Both now reject with `system signature`, and only a **nested**
+verifier passes them.
 
 ## The nesting invariant, proved on the bytes (N1)
 `generate.py:prove_invariants()` and `test_corpus_wellformed` both assert: the **original**

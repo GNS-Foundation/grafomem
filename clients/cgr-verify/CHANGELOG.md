@@ -2,6 +2,25 @@
 
 All notable changes to `@gns-foundation/cgr-verify`.
 
+## 0.4.0 — 2026-09-08
+
+Adds a `cgr.cosign.v1` verifier (`verifyCosign`, `src/cosign.js`) — the two-party
+co-signature envelope (`docs/cgr/cgr-cosign-v1-spec.md`, amended by decision 0010:
+predicate-unresolved → reject). **Minor bump:** additive (a new export + a new CLI
+`bin/verify-cosign.mjs`); attestation v1–v4 verification is unchanged.
+
+### Added
+- `verifyCosign(record, registry, ledger)` — §8 ordered checks, failing closed: schema,
+  profile resolution (unknown/mode-mismatch), content integrity (BLAKE2b-256 over JCS),
+  predicate required-ness (unresolved → reject, per 0010), approver signature (over
+  `DOMAIN_TAG ‖ JCS(assertion)`, independently verifiable), system signature (over the body
+  **including** `approver_signature` — catches stripping), nonce replay, act/draft
+  consistency, free-mode reference well-formedness (§8.9 degrade). Surfaces
+  `approver_id`/`approver_act`/`decision_date`/`assurance_tier` and **does not gate** on the tier.
+- `bin/verify-cosign.mjs` — conformance bridge driven by `conformance/cgr-cosign-v1/`.
+- Passes all 23 corpus vectors (`CGR_COSIGN_VERIFIER=… pytest tests/test_cosign_conformance.py`).
+  Implementing it surfaced a corpus correction (N1/N2 now isolate the §8.6 nesting check).
+
 ## 0.3.0 — 2026-09-02
 
 Adds `evidence_tier` on the `continues` edge (spec §1.1). **Minor bump, not patch**: the field is
