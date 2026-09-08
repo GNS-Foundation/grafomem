@@ -9,6 +9,14 @@
   by the first implementation attempt (mapping the envelope onto CCR's learning transaction): §5's
   per-profile *static* required-ness could not express doc 04's `HighRiskUpdate ⇒ RequiredApproval`, so
   the spec is catching up to a real consumer. Recorded visibly, per the corrections discipline.
+- **Amended 2026-09-08** — **predicate-unresolved now REJECTS** (§5.1, §8.3a), and a **§5 note** fixes
+  free-mode references inside the signed `content_body` (never `evidence_ref`). The predicate amendment
+  closes a **fail-open**: an unresolvable `required_when.field` previously made the requirement *optional*
+  (a misspelled path on a high-risk profile silently dropped the approval requirement). Found **writing
+  the conformance corpus before any implementation** — the same order `v4` followed, and the same way
+  `v4`'s corpus caught a spec error. Decision
+  [0010](../decisions/0010-cosign-predicate-unresolved-must-reject.md). Recorded visibly, per the
+  corrections discipline.
 - **Inputs:** [0009](../decisions/0009-standard-expresses-one-actor-approval-needs-two.md) (the accepted
   decision this specifies), [0006](../decisions/0006-enforcement-boundary-for-revocation.md) (enforce-or-label;
   the strippability register), [0003](../decisions/0003-principal-identity-is-not-stable.md) (why the
@@ -196,6 +204,11 @@ differ only in **what `content_body` is** and **what it references**.
   records). The approval gates *a policy update*; the referenced experiences remain **separate,
   plain (single-system-signed) records**, kept raw. `approver_signature` MUST be present on the
   transaction; the referenced records MUST be identified by `b2-256:` hashes in `content_body`.
+  **Note (2026-09-08):** those reference hashes live **inside `content_body`** (signed, and covered by
+  `content_digest`) — a profile MUST NOT place them in the excluded `evidence_ref` envelope key (§2.3).
+  A referenced-record set is validity-affecting (it is *what the approval approves*), and a
+  validity-affecting fact must be inside what the signatures cover — the same principle as §5.1 and
+  `v4` §2.4. `evidence_ref` remains for non-validity-affecting evidence pointers only.
 
 **How a payload declares its mode and required-ness.** The `profile` field names a profile registered
 in a **profile registry** (a companion document; not this spec). Each registry entry declares:
@@ -223,19 +236,28 @@ operator, literal) triple, not an expression language:**
 ```
 
 - **`field`** — a dot-path into `content_body` (e.g. `risk_class`, `delta.risk_class`). It MUST resolve
-  to a scalar (string, number, or boolean); a path that is absent or resolves to a non-scalar makes the
-  predicate **false** (the field cannot trigger a requirement it cannot evaluate) — but a verifier MUST
-  surface `predicate_unresolved` so a misspelled path is not silently non-triggering.
+  to a scalar (string, number, or boolean). A path that is **absent, null, or resolves to a non-scalar**
+  makes the required-ness **UNDETERMINED**, and an undetermined required-ness is **not resolvable to
+  "optional"** — the verifier MUST **reject** with reason `predicate_unresolved` (§8.3a). *(Amended
+  2026-09-08 — decision [0010](../decisions/0010-cosign-predicate-unresolved-must-reject.md). Previously
+  an unresolvable path made the predicate `false` — i.e. approval optional — with `predicate_unresolved`
+  merely surfaced; that **failed open**: a misspelled path on a high-risk profile silently removed the
+  approval requirement. Found writing the corpus before any implementation.)*
 - **`op`** — a **closed set**: `eq`, `ne`, `in`, `lt`, `lte`, `gt`, `gte`. `in` takes an array `value`.
-  Ordering ops apply to numbers only (a non-number operand makes the predicate false + `predicate_unresolved`).
+  Ordering ops apply to numbers only; a non-number operand likewise makes the required-ness
+  **UNDETERMINED** → **reject** with `predicate_unresolved` (§8.3a), not a silent `false`.
 - **`value`** — a JSON scalar (or array for `in`). No references, no computation.
 
 **Verifier obligation (normative).** A verifier MUST: (1) resolve the predicate against `content_body`;
 (2) if it holds, treat `approver_signature` as REQUIRED and **reject** a record that satisfies the
 predicate without a valid approver signature (the §7.2 non-conformance rule, now conditional); (3) if it
-does not hold, the approver signature is OPTIONAL — but if one **is** present it MUST still verify
-(§8.4). An **unconditional** `REQUIRED` is the degenerate predicate that is always true. A profile
-declaring neither is malformed (reject at profile resolution).
+resolves and does **not** hold, the approver signature is OPTIONAL — but if one **is** present it MUST
+still verify (§8.4); (4) if it is **unresolvable** (absent/null/non-scalar field, or a type-mismatched
+operand), the required-ness is UNDETERMINED and the verifier MUST **reject** with reason
+`predicate_unresolved` — it MUST NOT treat unresolvable as "optional" (decision 0010: fail closed, in
+line with §8's own "failing closed on the first failure"). An **unconditional** `REQUIRED` is the
+degenerate predicate that is always true. A profile declaring neither is malformed (reject at profile
+resolution).
 
 **Why a predicate, not two profiles.** Routing a high-risk update to a "requires-approval" profile and a
 low-risk one to a "no-approval" profile puts the **risk decision outside the signed record**: the
@@ -321,9 +343,15 @@ the first failure:
    `approval_assertion.content_digest`. Reject on mismatch. *(Do this before step 3a — the predicate is
    evaluated over the content that step 3 just proved matches the digest.)*
    - **3a. Required-ness resolution (§5.1).** Evaluate the profile's required-ness against `content_body`:
-     unconditional ⇒ REQUIRED; predicate ⇒ REQUIRED iff it holds. Surface `predicate_unresolved` if a
-     predicate field is absent/non-scalar (treated as not-holding). The result — "approver signature
-     required: yes/no" — drives step 4.
+     unconditional ⇒ REQUIRED; predicate that **resolves** ⇒ REQUIRED iff it holds, OPTIONAL if it does
+     not. If the predicate is **unresolvable** (field absent/null/non-scalar, or a type-mismatched
+     operand), the required-ness is **UNDETERMINED** and the verifier MUST **reject** with reason
+     `predicate_unresolved` — it MUST NOT treat unresolvable as "optional." *(Amended 2026-09-08 —
+     decision [0010](../decisions/0010-cosign-predicate-unresolved-must-reject.md). This step was the
+     **sole exception** to §8's "failing closed on the first failure"; it now fails closed like every
+     other step. Previously it surfaced `predicate_unresolved` and treated the predicate as not-holding —
+     a silent fail-open in the one predicate the envelope exists to enforce.)* The result — REQUIRED /
+     OPTIONAL / (rejected: UNDETERMINED) — drives step 4.
 4. **Approver signature.** If required (per 3a) and **absent**, MUST reject (§7.2 non-conformance,
    conditional per §5.1). If **present** (whether required or not), recompute
    `DOMAIN_TAG_BYTES ‖ JCS(approval_assertion)` and verify the Ed25519 `approver_signature` against
