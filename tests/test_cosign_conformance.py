@@ -80,9 +80,9 @@ def test_corpus_wellformed():
     assert not G._verify(G.ISSUER_PUB, G._sig_hex(n1["system_signature"]), G._sysbody_bytes(n1)), \
         "N1: original system signature MUST NOT verify against the stripped body (nesting)"
 
-    n2 = _subject("N2-altered-approver-sig")
+    n2 = _subject("N2-tampered-signed-field")
     assert not G._verify(G.ISSUER_PUB, G._sig_hex(n2["system_signature"]), G._sysbody_bytes(n2)), \
-        "N2: original system signature MUST NOT verify against the altered body"
+        "N2: original system signature MUST NOT verify against the tampered body"
 
     # K2 lift: the carried assertion's digest does not match the record's actual content.
     k2 = _subject("K2-lift-to-different-content")

@@ -463,20 +463,20 @@
       "id": "N1-stripped-approver-sig",
       "clause": "\u00a77.1/\u00a78.6",
       "spec_lines": "289-291",
-      "title": "approver_signature removed, original system_signature kept -> system sig fails -> reject",
+      "title": "approver_signature stripped under an OPTIONAL profile -> system signature fails (nesting isolated)",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "approver_pub": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
       "subject": {
         "schema": "cgr.cosign.v1",
-        "profile": "test.bound.unconditional",
+        "profile": "test.bound.predicate",
         "approval_mode": "bound",
         "content_body": {
           "decision": "file",
-          "risk_class": "high",
-          "case_id": "c-1"
+          "risk_class": "low",
+          "case_id": "c-2"
         },
         "approval_assertion": {
-          "content_digest": "b2-256:c4c6c3d7fa9c975f02118712dfa676f4a1d003a831e28cf778fb78ae8b56a2c8",
+          "content_digest": "b2-256:99fd05d932ce04b6bd910a3c117005263c059e77eece5cffa074192c33bd45f8",
           "approver_id": "did:person:test-approver",
           "approver_key_id": "ed25519:a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
           "approver_act": "approve",
@@ -488,50 +488,50 @@
           "issuer_key_id": "ed25519:d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
           "recorded_at": "2026-09-08"
         },
-        "system_signature": "ed25519-sig:5ea4e2127430a265a2030a4c7c8a73345716d71124a9651883a70df03e6467955aa78ce8a1a6bb8d4eae3c33421fc530bbf5584c5edbc873434f2e66b7074608",
+        "system_signature": "ed25519-sig:4de37e211c2e560b1f0aac69065bf25471782cf80b2551dce59ce7c4fa0221ca76db057d25b41e445c0a7d7bdbb3e2dc06f3f3e99a0c0be758feab160b07e90d",
         "evidence_ref": null
       },
       "expect": {
         "valid": false,
-        "reason_contains": "signature"
+        "reason_contains": "system signature"
       }
     },
     {
-      "id": "N2-altered-approver-sig",
+      "id": "N2-tampered-signed-field",
       "clause": "\u00a77.1/\u00a78.6",
-      "spec_lines": "289-291",
-      "title": "approver_signature altered, original system_signature kept -> system sig fails -> reject",
+      "spec_lines": "117-131",
+      "title": "a signed field altered after signing (content_digest still matches) -> system signature fails",
       "pinned_issuer": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
       "approver_pub": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
       "subject": {
         "schema": "cgr.cosign.v1",
-        "profile": "test.bound.unconditional",
+        "profile": "test.bound.predicate",
         "approval_mode": "bound",
         "content_body": {
           "decision": "file",
-          "risk_class": "high",
-          "case_id": "c-1"
+          "risk_class": "low",
+          "case_id": "c-2"
         },
         "approval_assertion": {
-          "content_digest": "b2-256:c4c6c3d7fa9c975f02118712dfa676f4a1d003a831e28cf778fb78ae8b56a2c8",
+          "content_digest": "b2-256:99fd05d932ce04b6bd910a3c117005263c059e77eece5cffa074192c33bd45f8",
           "approver_id": "did:person:test-approver",
           "approver_key_id": "ed25519:a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
           "approver_act": "approve",
           "decision_date": "2026-09-08T00:00:00Z",
           "record_nonce": "nonce-0001"
         },
-        "approver_signature": "ed25519-sig:ffd5ee6d5331ffedf902710c9c5f30174c0d58185dc7e2ca75ede9032737953292d837d9f09d84ccc0b54941f31e4c3b7bd6102c82ba981ac3db2033e835550f",
+        "approver_signature": "ed25519-sig:b1f31409f3550e935959e452e755176988bd8eafc1e95983f2c9115c424646dd6200abc6b50b5a03d1dcf775d44df4bec95e5938493f0efebf09df95f437e20e",
         "system_metadata": {
           "issuer": "gns-foundation",
           "issuer_key_id": "ed25519:d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
-          "recorded_at": "2026-09-08"
+          "recorded_at": "2099-01-01"
         },
-        "system_signature": "ed25519-sig:5ea4e2127430a265a2030a4c7c8a73345716d71124a9651883a70df03e6467955aa78ce8a1a6bb8d4eae3c33421fc530bbf5584c5edbc873434f2e66b7074608",
+        "system_signature": "ed25519-sig:4de37e211c2e560b1f0aac69065bf25471782cf80b2551dce59ce7c4fa0221ca76db057d25b41e445c0a7d7bdbb3e2dc06f3f3e99a0c0be758feab160b07e90d",
         "evidence_ref": null
       },
       "expect": {
         "valid": false,
-        "reason_contains": "signature"
+        "reason_contains": "system signature"
       }
     },
     {

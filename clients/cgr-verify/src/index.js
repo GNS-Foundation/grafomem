@@ -312,3 +312,9 @@ export async function verifyCGRAttestationV4(subject, ledger, pinnedIssuer, opts
   if (continuesEdge) out.evidence_tier = continuesEdge.evidence_tier;
   return out;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// cgr.cosign.v1 — two-party co-signature envelope (docs/cgr/cgr-cosign-v1-spec.md,
+// amended by decision 0010). Separate module; re-exported here for a single API surface.
+// ═══════════════════════════════════════════════════════════════════════════
+export { verifyCosign, contentDigest, COSIGN_SCHEMA, DOMAIN_TAG } from './cosign.js';
