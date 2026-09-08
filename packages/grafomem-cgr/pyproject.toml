@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "grafomem-cgr"
-version = "0.1.0"
+version = "0.2.0"
 description = "MCP server that captures agent judgments and outcomes as CGR substrate on GRAFOMEM Cloud"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -24,6 +24,9 @@ classifiers = [
 # Deliberately minimal: the client is stdlib-only (urllib/json) apart from the MCP
 # server runtime. mcp 1.x has the low-level Server.list_tools API used here; 2.0 removed it.
 dependencies = ["mcp>=1.0,<2"]
+
+[project.optional-dependencies]
+verify = ["rfc8785>=0.1", "cryptography>=42"]
 
 [project.urls]
 Homepage = "https://grafomem.com"
