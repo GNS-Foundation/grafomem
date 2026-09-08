@@ -17,6 +17,15 @@
   `v4`'s corpus caught a spec error. Decision
   [0010](../decisions/0010-cosign-predicate-unresolved-must-reject.md). Recorded visibly, per the
   corrections discipline.
+- **Amended 2026-09-08** — **§8 now pins the issuer key** (new step 2a) and **unresolvable is uniform
+  across operators** (§5.1, §8.3a). Both closed **fail-open** assumptions the spec made and never stated,
+  found by **two independently-written verifiers against one corpus**: the issuer gap surfaced as an
+  *agreement that was luck rather than specification* (neither verifier pinned `issuer_key_id`, so both
+  verified the system signature against the record's **self-declared** issuer key — valid under any
+  consistent issuer key); the operator gap surfaced as a *divergence* (non-array `in` read false in JS,
+  unresolved-reject in Python). Decision
+  [0011](../decisions/0011-cosign-issuer-trust-and-uniform-unresolved.md). Recorded visibly, per the
+  corrections discipline.
 - **Inputs:** [0009](../decisions/0009-standard-expresses-one-actor-approval-needs-two.md) (the accepted
   decision this specifies), [0006](../decisions/0006-enforcement-boundary-for-revocation.md) (enforce-or-label;
   the strippability register), [0003](../decisions/0003-principal-identity-is-not-stable.md) (why the
@@ -243,19 +252,28 @@ operator, literal) triple, not an expression language:**
   an unresolvable path made the predicate `false` — i.e. approval optional — with `predicate_unresolved`
   merely surfaced; that **failed open**: a misspelled path on a high-risk profile silently removed the
   approval requirement. Found writing the corpus before any implementation.)*
-- **`op`** — a **closed set**: `eq`, `ne`, `in`, `lt`, `lte`, `gt`, `gte`. `in` takes an array `value`.
-  Ordering ops apply to numbers only; a non-number operand likewise makes the required-ness
-  **UNDETERMINED** → **reject** with `predicate_unresolved` (§8.3a), not a silent `false`.
+- **`op`** — a **closed set**: `eq`, `ne`, `in`, `lt`, `lte`, `gt`, `gte`. `in` takes an **array**
+  `value`; a **non-array `value` for `in`** makes the required-ness **UNDETERMINED** → **reject** with
+  `predicate_unresolved` (§8.3a), not a silent `false` (a non-iterable operand cannot be meaningfully
+  tested for membership). Ordering ops apply to numbers only; a non-number operand likewise makes the
+  required-ness **UNDETERMINED** → **reject** with `predicate_unresolved` (§8.3a). *(The `in`-operand
+  rule was added 2026-09-08 — decision
+  [0011](../decisions/0011-cosign-issuer-trust-and-uniform-unresolved.md): unresolvable is uniform
+  across all operators, a general rule so each operator added later inherits it.)* **The general rule:
+  any operand a given operator cannot meaningfully evaluate makes the required-ness UNDETERMINED, and
+  UNDETERMINED rejects.**
 - **`value`** — a JSON scalar (or array for `in`). No references, no computation.
 
 **Verifier obligation (normative).** A verifier MUST: (1) resolve the predicate against `content_body`;
 (2) if it holds, treat `approver_signature` as REQUIRED and **reject** a record that satisfies the
 predicate without a valid approver signature (the §7.2 non-conformance rule, now conditional); (3) if it
 resolves and does **not** hold, the approver signature is OPTIONAL — but if one **is** present it MUST
-still verify (§8.4); (4) if it is **unresolvable** (absent/null/non-scalar field, or a type-mismatched
-operand), the required-ness is UNDETERMINED and the verifier MUST **reject** with reason
-`predicate_unresolved` — it MUST NOT treat unresolvable as "optional" (decision 0010: fail closed, in
-line with §8's own "failing closed on the first failure"). An **unconditional** `REQUIRED` is the
+still verify (§8.4); (4) if it is **unresolvable for any reason** (absent/null/non-scalar field, a
+type-mismatched ordering operand, a non-array `in` operand, or any comparably malformed operand of any
+operator), the required-ness is UNDETERMINED and the verifier MUST **reject** with reason
+`predicate_unresolved` — it MUST NOT treat unresolvable as "optional" (decisions 0010 and 0011: fail
+closed, in line with §8's own "failing closed on the first failure"; 0011 generalised the scope from the
+cases 0010 enumerated to "unevaluable for any reason"). An **unconditional** `REQUIRED` is the
 degenerate predicate that is always true. A profile declaring neither is malformed (reject at profile
 resolution).
 
@@ -339,14 +357,38 @@ the first failure:
 2. **Profile resolution.** Resolve `profile` in the registry; obtain its `approval_mode` and
    required-ness (unconditional, or a §5.1 predicate). MUST reject if `profile` is unknown (fail closed)
    or if `record.approval_mode` ≠ the profile's declared mode.
+   - **2a. Issuer trust (issuer key pinning).** The verifier MUST check `system_metadata.issuer_key_id`
+     against a **caller-supplied trusted issuer set** and MUST reject with reason `issuer_untrusted` if
+     the record's issuer key is not in that set. **Self-declaration is insufficient** — step 6 verifies
+     the system signature against the key the record *names itself*, which proves only internal
+     consistency, not that a trusted system issued it. This step is what makes the issuer binding real;
+     without it a cosign record verifies as valid under **any** issuer key that signs it consistently,
+     and an envelope whose purpose is attributing a decision to **two** parties attributes only one. It
+     follows attestation v3's pinning precedent (`cgr-ticket-05-identity-binding.md`: *"Keep
+     `issuer_key_id === pinned`"*), with **one hard rule**: the trusted set is a **REQUIRED caller input
+     with no default** — there is **no trust-everything path**; a verifier given no trusted set MUST
+     reject (or refuse to run), never fall back to accepting the self-declared key. It is a **gate**
+     (unlike the surfaced-not-gated *assurance tier* below), and is ordered **before** the
+     system-signature verification (step 6) it qualifies, so an untrusted issuer is rejected before a
+     signature verification is spent on it. *(Amended 2026-09-08 — decision
+     [0011](../decisions/0011-cosign-issuer-trust-and-uniform-unresolved.md). Added after two
+     independently-written verifiers both verified against the record's self-declared `issuer_key_id` —
+     an agreement that was luck, not specification: the spec never asked either to pin the issuer.)*
 3. **Content integrity.** Recompute `BLAKE2b-256(JCS(content_body))`; MUST equal
    `approval_assertion.content_digest`. Reject on mismatch. *(Do this before step 3a — the predicate is
    evaluated over the content that step 3 just proved matches the digest.)*
    - **3a. Required-ness resolution (§5.1).** Evaluate the profile's required-ness against `content_body`:
      unconditional ⇒ REQUIRED; predicate that **resolves** ⇒ REQUIRED iff it holds, OPTIONAL if it does
-     not. If the predicate is **unresolvable** (field absent/null/non-scalar, or a type-mismatched
-     operand), the required-ness is **UNDETERMINED** and the verifier MUST **reject** with reason
-     `predicate_unresolved` — it MUST NOT treat unresolvable as "optional." *(Amended 2026-09-08 —
+     not. If the predicate is **unresolvable — for *any* reason** — the required-ness is **UNDETERMINED**
+     and the verifier MUST **reject** with reason `predicate_unresolved`; it MUST NOT treat unresolvable
+     as "optional." Unresolvable is a **general condition, not an operator enumeration**: it covers a
+     field that is absent / null / non-scalar, a type-mismatched **ordering** operand, a **non-array
+     `value` for the `in` operator**, and any comparably malformed operand of any operator added to §5.1
+     later — every such operator inherits this rule without a further amendment. *(Amended 2026-09-08 —
+     decision [0011](../decisions/0011-cosign-issuer-trust-and-uniform-unresolved.md) generalised the
+     scope from the cases 0010 enumerated to "unevaluable for any reason," after two verifiers diverged
+     on a non-array `in` value: false in one, unresolved-reject in the other — the same fail-open class
+     0010 closed, one operator over.)* *(Amended 2026-09-08 —
      decision [0010](../decisions/0010-cosign-predicate-unresolved-must-reject.md). This step was the
      **sole exception** to §8's "failing closed on the first failure"; it now fails closed like every
      other step. Previously it surfaced `predicate_unresolved` and treated the predicate as not-holding —
