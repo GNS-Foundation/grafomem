@@ -14,6 +14,21 @@ record of judgments and their results.
 This package is the **capture** half only. It writes to your tenant; it does not compute,
 serve, or display scores.
 
+## `cgr.cosign.v1` verifier (optional extra)
+
+Beside the capture client, this package also ships a **reference verifier** for the
+`cgr.cosign.v1` two-party co-signature envelope — `grafomem_cgr.cosign_verify.verify(record,
+registry, ledger)`, implementing `docs/cgr/cgr-cosign-v1-spec.md` §8 (amended by decision
+0010). It is the **second, independent** reference implementation (the first is
+`@gns-foundation/cgr-verify`, JS); both pass the same conformance corpus at
+`conformance/cgr-cosign-v1/`. Install its deps with the extra:
+
+```bash
+pip install grafomem-cgr[verify]      # rfc8785 + cryptography
+```
+
+Capture does not depend on it; the extra is verifier-only.
+
 ## What it is not
 
 - It does not score anything at capture time, and it does not read scores back into your session.
