@@ -1,5 +1,6 @@
 {
-  "_WARNING": "TEST FIXTURE — NOT THE PROFILE REGISTRY. Profile resolution (cgr-cosign-v1-spec §8 step 2) is NORMATIVE, but the registry DOCUMENT is UNWRITTEN (§11 Q3). The conformance corpus went first. Whoever writes the real registry MUST either match these pinned entries (bound-unconditional, bound-predicate, free, and the unknown-profile reject behaviour) or RETARGET every vector in conformance/cgr-cosign-v1/. Do not write a 'reasonable' registry in ignorance of this file — the corpus is the constraint. Files travel without their READMEs, so this warning rides inside the JSON.",
+  "_WARNING": "TEST FIXTURE — NOT THE PROFILE REGISTRY. Profile resolution (cgr-cosign-v1-spec §8 step 2) is NORMATIVE, but the registry DOCUMENT is UNWRITTEN (§11 Q3). The conformance corpus went first. Whoever writes the real registry MUST either match these pinned entries (bound-unconditional, bound-predicate, bound-predicate-in, bound-predicate-in-malformed, free, and the unknown-profile reject behaviour) or RETARGET every vector in conformance/cgr-cosign-v1/. Do not write a 'reasonable' registry in ignorance of this file — the corpus is the constraint. Files travel without their READMEs, so this warning rides inside the JSON.",
+  "_WARNING_TRUSTED_ISSUERS": "TRUSTED ISSUER SET IS PART OF THE INTERFACE CONTRACT (decision 0011 §8.2a). A conformant verify() takes a REQUIRED trusted-issuer-set input with NO default and NO trust-everything path. This registry does NOT carry the trusted set — the harness derives it per-vector from each vector's `pinned_issuer` (the trusted issuer is the 0x11 key every vector pins, except the I2 control which pins 0x33). A real deployment supplies the trusted set at the call site, never from the record's self-declared issuer_key_id.",
   "note": "Each entry: (approval_mode, approver_signature required-ness, referenced_records) per §5.",
   "profiles": {
     "test.bound.unconditional": {
@@ -10,6 +11,16 @@
     "test.bound.predicate": {
       "approval_mode": "bound",
       "approver_signature": { "required_when": { "field": "risk_class", "op": "eq", "value": "high" } },
+      "referenced_records": "none"
+    },
+    "test.bound.predicate.in": {
+      "approval_mode": "bound",
+      "approver_signature": { "required_when": { "field": "risk_class", "op": "in", "value": ["high", "critical"] } },
+      "referenced_records": "none"
+    },
+    "test.bound.predicate.in.malformed": {
+      "approval_mode": "bound",
+      "approver_signature": { "required_when": { "field": "risk_class", "op": "in", "value": "high" } },
       "referenced_records": "none"
     },
     "test.free": {

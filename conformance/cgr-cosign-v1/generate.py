@@ -32,14 +32,20 @@ from cryptography.hazmat.primitives.asymmetric import ed25519  # noqa: E402
 # ── deterministic TEST keys (repeating-byte seeds; NOT real keys) ─────────────
 ISSUER_SK = ed25519.Ed25519PrivateKey.from_private_bytes(bytes([0x11]) * 32)
 APPROVER_SK = ed25519.Ed25519PrivateKey.from_private_bytes(bytes([0x22]) * 32)
+# 0x33 — a THIRD test key: a well-formed issuer that is NOT in the trusted set (decision 0011,
+# gap 1). Records it signs verify cleanly under their own self-declared issuer_key_id — so a
+# verifier that skips §8 step 2a (issuer pinning) passes them. That is the defect I1 isolates.
+UNTRUSTED_ISSUER_SK = ed25519.Ed25519PrivateKey.from_private_bytes(bytes([0x33]) * 32)
 def _pub_hex(sk): return sk.public_key().public_bytes_raw().hex()
 ISSUER_PUB = _pub_hex(ISSUER_SK)
 APPROVER_PUB = _pub_hex(APPROVER_SK)
+UNTRUSTED_ISSUER_PUB = _pub_hex(UNTRUSTED_ISSUER_SK)
 
 SCHEMA = "cgr.cosign.v1"
 DOMAIN_TAG = b"grafomem.hitl.approval.v1:"          # §9 — the real signer's domain tag
 APPROVER_KEY_ID = "ed25519:" + APPROVER_PUB
 ISSUER_KEY_ID = "ed25519:" + ISSUER_PUB
+UNTRUSTED_ISSUER_KEY_ID = "ed25519:" + UNTRUSTED_ISSUER_PUB
 ENVELOPE_KEYS = ("system_signature", "evidence_ref")  # §2.3 — excluded from the system's signed body
 
 
@@ -76,34 +82,43 @@ def approver_sign(a) -> str:
     return "ed25519-sig:" + APPROVER_SK.sign(DOMAIN_TAG + _canon(a)).hex()
 
 
-def system_sign(record) -> str:
-    """§2.3 — Ed25519 over JCS(record minus envelope keys), which INCLUDES approver_signature."""
+def system_sign(record, sk=ISSUER_SK) -> str:
+    """§2.3 — Ed25519 over JCS(record minus envelope keys), which INCLUDES approver_signature.
+    `sk` selects the signing key (0x33 for the untrusted-issuer vectors, decision 0011)."""
     body = {k: v for k, v in record.items() if k not in ENVELOPE_KEYS}
-    return "ed25519-sig:" + ISSUER_SK.sign(_canon(body)).hex()
+    return "ed25519-sig:" + sk.sign(_canon(body)).hex()
 
 
 def record(profile, approval_mode, content_body, *, a=None, approver_sig=None,
-           include_approver=True, sign_system=True):
+           include_approver=True, sign_system=True,
+           issuer_sk=ISSUER_SK, issuer_key_id=ISSUER_KEY_ID):
     """Assemble a cosign record. `a` is the approval_assertion (omit for approver-less
     vectors); `approver_sig` overrides the computed signature (for invalid-sig vectors).
-    `include_approver=False` omits assertion+signature entirely (approver-less)."""
+    `include_approver=False` omits assertion+signature entirely (approver-less).
+    `issuer_sk`/`issuer_key_id` select the system issuer — kept consistent so the record
+    ALWAYS self-verifies under its own self-declared `issuer_key_id` (the point of I1: it
+    is cryptographically valid; only the trust check rejects it)."""
     rec = {"schema": SCHEMA, "profile": profile, "approval_mode": approval_mode,
            "content_body": content_body}
     if include_approver and a is not None:
         rec["approval_assertion"] = a
         rec["approver_signature"] = approver_sig if approver_sig is not None else approver_sign(a)
-    rec["system_metadata"] = {"issuer": "gns-foundation", "issuer_key_id": ISSUER_KEY_ID,
+    rec["system_metadata"] = {"issuer": "gns-foundation", "issuer_key_id": issuer_key_id,
                               "recorded_at": "2026-09-08"}
     if sign_system:
-        rec["system_signature"] = system_sign(rec)
+        rec["system_signature"] = system_sign(rec, issuer_sk)
     rec["evidence_ref"] = None
     return rec
 
 
 VECTORS = []
-def V(id, clause, lines, title, subject, expect, *, ledger=None, tags=None):
+def V(id, clause, lines, title, subject, expect, *, ledger=None, tags=None, pinned_issuer=None):
+    """`pinned_issuer` is the hex pubkey of the SOLE trusted issuer for this vector; the
+    harness derives the trusted set from it (decision 0011 §8.2a). Defaults to 0x11 — so
+    every pre-existing vector keeps its verdict unchanged under the amended interface
+    (the regression property). Only I1/I2 override it."""
     entry = {"id": id, "clause": clause, "spec_lines": lines, "title": title,
-             "pinned_issuer": ISSUER_PUB, "approver_pub": APPROVER_PUB,
+             "pinned_issuer": pinned_issuer or ISSUER_PUB, "approver_pub": APPROVER_PUB,
              "subject": subject, "expect": expect}
     if ledger is not None:
         entry["ledger"] = ledger
@@ -115,6 +130,8 @@ def V(id, clause, lines, title, subject, expect, *, ledger=None, tags=None):
 # profiles the corpus pins (must match registry.json)
 P_UNCOND = "test.bound.unconditional"
 P_PRED = "test.bound.predicate"
+P_PRED_IN = "test.bound.predicate.in"                # §5.1 `in` operator, WELL-FORMED array value
+P_PRED_IN_BAD = "test.bound.predicate.in.malformed"  # §5.1 `in` with a NON-ARRAY value (0011 gap 2)
 P_FREE = "test.free"
 
 # a plain content body for a bound decision
@@ -202,6 +219,32 @@ V("U3-predicate-field-null", "§5.1/§8.3a", "225-228",
          include_approver=False),
   {"valid": False, "reason_contains": "predicate_unresolved"},
   tags=["amended-0010"])
+
+# U4: the `in` operator with a NON-ARRAY `value` (decision 0011, gap 2). A verifier that
+# reads a non-array `in` as predicate-FALSE treats this high-risk record as approval-OPTIONAL
+# and PASSES it unsigned — the exact fail-open class 0010 closed, one operator over. A
+# conformant verifier rejects: a scalar operand cannot be tested for membership -> UNDETERMINED.
+# The record is UNSIGNED so the fail-open is dangerous (not merely a wording difference).
+V("U4-predicate-in-nonarray", "§5.1/§8.3a", "255-262",
+  "`in` operator with a non-array value -> reject predicate_unresolved (0011: unresolvable is uniform)",
+  record(P_PRED_IN_BAD, "bound", DECISION, include_approver=False),   # risk_class=high, unsigned
+  {"valid": False, "reason_contains": "predicate_unresolved"},
+  tags=["amended-0011"])
+
+# ── R5/R6: the WELL-FORMED `in` operator, pinned in BOTH directions (0011, gap 2) ──────
+# R5: `in` holds (member present) -> approver REQUIRED -> signed record -> valid.
+V("R5-predicate-in-holds", "§5.1/§8.4", "255-256",
+  "`in` predicate holds (risk_class in [high,critical]), approver present -> valid",
+  record(P_PRED_IN, "bound", DECISION, a=assertion(DECISION)),        # risk_class=high, signed
+  {"valid": True},
+  tags=["amended-0011"])
+
+# R6: `in` false (member absent) -> approver OPTIONAL -> unsigned record -> valid.
+V("R6-predicate-in-false", "§5.1/§8.3a", "255-256",
+  "`in` predicate false (risk_class not in [high,critical]), approver absent -> PASS (optional)",
+  record(P_PRED_IN, "bound", DECISION_LOW, include_approver=False),   # risk_class=low, unsigned
+  {"valid": True},
+  tags=["amended-0011"])
 
 # ── N: nesting / system-signature coverage (§7.1, §8.6) ───────────────────────
 # CORPUS CORRECTION (found implementing the JS verifier, v4-style): the original N1/N2
@@ -295,6 +338,28 @@ V("X1-surface-approver-metadata", "§8", "347-353",
          a=assertion(DECISION, approver_act="override", agent_draft_digest=B2("11"))),
   {"valid": True, "surfaced": {"approver_act": "override", "approver_id": "did:person:test-approver"}})
 
+# ── I: issuer key pinning (§8 step 2a, decision 0011 gap 1) ────────────────────
+# I1 and I2 are the SAME record — a well-formed cosign record whose system signature is
+# produced by the 0x33 key and whose self-declared issuer_key_id is 0x33's. It verifies
+# CLEANLY under its own issuer_key_id, so a verifier that skips step 2a (issuer pinning)
+# passes it. The ONLY difference is the trusted set the harness derives from `pinned_issuer`:
+#   I1 pins 0x11  -> 0x33 is NOT trusted -> reject issuer_untrusted   (the gap)
+#   I2 pins 0x33  -> 0x33 IS  trusted    -> valid                     (positive control)
+# The control proves I1 rejects SPECIFICALLY on the trust check, not on any other defect —
+# without it, a vector that rejected for an unrelated reason would masquerade as testing 2a.
+_untrusted_rec = record(P_UNCOND, "bound", DECISION, a=assertion(DECISION),
+                        issuer_sk=UNTRUSTED_ISSUER_SK, issuer_key_id=UNTRUSTED_ISSUER_KEY_ID)
+V("I1-untrusted-issuer", "§8.2a", "355-375",
+  "system signature valid under a self-declared issuer NOT in the trusted set -> reject issuer_untrusted",
+  _untrusted_rec, {"valid": False, "reason_contains": "issuer_untrusted"},
+  tags=["amended-0011"])   # pinned_issuer defaults to 0x11; record's issuer is 0x33
+
+V("I2-trusted-issuer-control", "§8.2a", "355-375",
+  "the SAME record with its issuer IN the trusted set -> valid (positive control: proves I1 rejects on trust, not otherwise)",
+  _untrusted_rec, {"valid": True},
+  pinned_issuer=UNTRUSTED_ISSUER_PUB,
+  tags=["amended-0011"])
+
 
 # ── Layer-1 generator-side proofs (the invariants must hold on the BYTES) ──────
 def _verify(pub_hex: str, sig_hex: str, msg: bytes) -> bool:
@@ -346,16 +411,39 @@ def prove_invariants():
     assert k2["approval_assertion"]["content_digest"] != content_digest(k2["content_body"]), \
         "K2: lifted assertion digest must not match the new content"
 
+    # (e) THE ISSUER-PINNING PROBE (I1), mirroring the N1 invariant on the bytes (decision 0011):
+    #     the untrusted record's system signature MUST verify CLEANLY under its own self-declared
+    #     0x33 issuer_key_id — otherwise the vector would reject for a crypto reason, not the trust
+    #     check, and prove nothing (same failure mode as recompute-over-stripped). The DEFECT is the
+    #     mismatch: the record self-declares 0x33 while I1 pins 0x11.
+    i1 = next(v for v in VECTORS if v["id"] == "I1-untrusted-issuer")
+    i1s = i1["subject"]
+    assert i1s["system_metadata"]["issuer_key_id"] == UNTRUSTED_ISSUER_KEY_ID, "I1 must self-declare 0x33"
+    assert _verify(UNTRUSTED_ISSUER_PUB, _sig_hex(i1s["system_signature"]), _sysbody_bytes(i1s)), \
+        "I1: system signature MUST verify under its self-declared 0x33 key (otherwise-valid; a 2a-skipping verifier passes it)"
+    assert not _verify(ISSUER_PUB, _sig_hex(i1s["system_signature"]), _sysbody_bytes(i1s)), \
+        "I1: the 0x33 signature must NOT verify under 0x11 (the keys are distinct)"
+    assert i1["pinned_issuer"] == ISSUER_PUB and i1s["system_metadata"]["issuer_key_id"] != ISSUER_KEY_ID, \
+        "I1: the DEFECT is pinned 0x11 vs self-declared 0x33 — the mismatch step 2a must catch"
+    # control: I2 is the SAME record but pins 0x33 (its own issuer) — the trust check would pass.
+    i2 = next(v for v in VECTORS if v["id"] == "I2-trusted-issuer-control")
+    assert i2["subject"] == i1s, "I2 must be the SAME record as I1 (only the trusted set differs)"
+    assert i2["pinned_issuer"] == UNTRUSTED_ISSUER_PUB, "I2 control must pin 0x33 (issuer trusted)"
+
 
 def main():
     prove_invariants()
     out = {
         "corpus": "cgr.cosign.v1 conformance",
-        "spec": "docs/cgr/cgr-cosign-v1-spec.md (amended by decision 0010)",
-        "note": "TEST vectors — deterministic repeating-byte issuer key 0x11 / approver key 0x22, "
-                "NOT real keys. Profile registry (registry.json) is a TEST FIXTURE — see README.",
+        "spec": "docs/cgr/cgr-cosign-v1-spec.md (amended by decisions 0010 and 0011)",
+        "note": "TEST vectors — deterministic repeating-byte issuer key 0x11 / approver key 0x22 / "
+                "UNTRUSTED issuer 0x33, NOT real keys. Profile registry (registry.json) is a TEST "
+                "FIXTURE — see README. The trusted issuer set is derived per-vector from `pinned_issuer` "
+                "(decision 0011 §8.2a): the trusted issuer for every vector is its pinned 0x11 key, "
+                "except I2 (control) which pins 0x33.",
         "issuer_pubkey_hex": ISSUER_PUB,
         "approver_pubkey_hex": APPROVER_PUB,
+        "untrusted_issuer_pubkey_hex": UNTRUSTED_ISSUER_PUB,
         "domain_tag": DOMAIN_TAG.decode(),
         "vector_count": len(VECTORS),
         "vectors": VECTORS,
@@ -363,8 +451,9 @@ def main():
     (_HERE / "vectors.json").write_text(json.dumps(out, indent=2, sort_keys=False) + "\n")
     (_HERE / "issuer.json").write_text(json.dumps(
         {"issuer_pubkey_hex": ISSUER_PUB, "approver_pubkey_hex": APPROVER_PUB,
+         "untrusted_issuer_pubkey_hex": UNTRUSTED_ISSUER_PUB,
          "domain_tag": DOMAIN_TAG.decode(),
-         "note": "deterministic TEST keys (repeating-byte seeds 0x11 / 0x22) — NOT real keys"},
+         "note": "deterministic TEST keys (repeating-byte seeds 0x11 / 0x22 / 0x33 untrusted) — NOT real keys"},
         indent=2) + "\n")
     print(f"wrote {len(VECTORS)} vectors; nesting + well-formedness invariants proved on the bytes")
 
