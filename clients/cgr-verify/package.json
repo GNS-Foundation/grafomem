@@ -19,7 +19,7 @@
     "fixtures"
   ],
   "scripts": {
-    "test": "node test/verify.test.mjs && node test/smoke.v4.test.mjs"
+    "test": "node test/verify.test.mjs && node test/smoke.v4.test.mjs && node test/smoke.cosign.test.mjs"
   },
   "dependencies": {
     "@noble/ed25519": "^2.1.0",
