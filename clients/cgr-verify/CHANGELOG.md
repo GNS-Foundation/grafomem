@@ -2,6 +2,28 @@
 
 All notable changes to `@gns-foundation/cgr-verify`.
 
+## 0.5.0 — 2026-09-09
+
+Implements decision **0011** in `verifyCosign` — issuer key pinning (§8.2a) and uniform
+unresolvable across operators. **Minor bump:** `verifyCosign` gains a **required** 4th
+argument (the trusted issuer set); a call that omits it now fails closed (`no trusted issuer
+set`) rather than trusting the record's self-declared issuer. Attestation v1–v4 unchanged.
+
+### Changed
+- `verifyCosign(record, registry, ledger, trustedIssuers)` — new **required** `trustedIssuers`
+  set (array or `Set` of issuer key ids; `ed25519:<hex>` or bare hex). **No default, no
+  trust-everything path:** absent or empty ⇒ reject. New ordered step **2a** (after profile
+  resolution, before the system-signature check) rejects `issuer_untrusted` when the record's
+  `system_metadata.issuer_key_id` is not in the trusted set — self-declaration alone is
+  insufficient (decision 0011 gap 1).
+- §5.1 `in` operator with a **non-array** `value` now resolves **UNDETERMINED** → reject
+  `predicate_unresolved` (previously read as predicate-false — a fail-open; decision 0011
+  gap 2, corpus vector `U4`). Brings the JS verifier into line with the Python one.
+- `bin/verify-cosign.mjs` threads `trusted_issuers` from the stdin payload.
+
+Passes the full 28-vector `conformance/cgr-cosign-v1/` corpus (incl. `I1`/`I2`/`U4`/`R5`/`R6`),
+0 verdict disagreements with the Python reference verifier.
+
 ## 0.4.0 — 2026-09-08
 
 Adds a `cgr.cosign.v1` verifier (`verifyCosign`, `src/cosign.js`) — the two-party

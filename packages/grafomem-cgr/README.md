@@ -18,10 +18,13 @@ serve, or display scores.
 
 Beside the capture client, this package also ships a **reference verifier** for the
 `cgr.cosign.v1` two-party co-signature envelope — `grafomem_cgr.cosign_verify.verify(record,
-registry, ledger)`, implementing `docs/cgr/cgr-cosign-v1-spec.md` §8 (amended by decision
-0010). It is the **second, independent** reference implementation (the first is
-`@gns-foundation/cgr-verify`, JS); both pass the same conformance corpus at
-`conformance/cgr-cosign-v1/`. Install its deps with the extra:
+registry, ledger, trusted_issuers)`, implementing `docs/cgr/cgr-cosign-v1-spec.md` §8 (amended
+by decisions 0010 and 0011). `trusted_issuers` is **required** (§8.2a issuer pinning): a
+collection of issuer key ids with **no default and no trust-everything path** — omitting it or
+passing an empty set rejects, rather than trusting the record's self-declared issuer. It is the
+**second, independent** reference implementation (the first is `@gns-foundation/cgr-verify`,
+JS); both pass the same 28-vector conformance corpus at `conformance/cgr-cosign-v1/` with zero
+verdict disagreements. Install its deps with the extra:
 
 ```bash
 pip install grafomem-cgr[verify]      # rfc8785 + cryptography

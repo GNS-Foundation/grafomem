@@ -1,9 +1,14 @@
 """cgr.cosign.v1 verifier — the second, independent reference implementation.
 
-Written from docs/cgr/cgr-cosign-v1-spec.md §8 (amended by decision 0010), NOT ported
-from clients/cgr-verify/src/cosign.js — two implementations are only worth their cost if
-arrived at separately. Where this and the JS verifier disagree on a corpus vector, that
+Written from docs/cgr/cgr-cosign-v1-spec.md §8 (amended by decisions 0010 and 0011), NOT
+ported from clients/cgr-verify/src/cosign.js — two implementations are only worth their cost
+if arrived at separately. Where this and the JS verifier disagree on a corpus vector, that
 is UNDERSPECIFICATION and goes upstream as a spec finding, not reconciled here.
+
+Decision 0011 added §8.2a (issuer key MUST be pinned against a caller-supplied trusted set —
+REQUIRED input, no default) and generalised unresolvable-predicate rejection uniformly across
+operators. This verifier already rejected a non-array `in` operand (gap 2 was already correct
+here — it was the JS side that changed), so 0011's only code change here is step 2a.
 
 Target: conformance/cgr-cosign-v1/vectors.json (drive via CGR_COSIGN_VERIFIER). Reuses
 the canonicalization the spec pins (RFC 8785 / JCS via `rfc8785`), Ed25519 over the raw
@@ -86,13 +91,14 @@ def _resolve(body: Any, path: str):
 
 def _required_by_predicate(pred: dict, body: Any) -> bool:
     """Return True/False if the predicate resolves; raise _Reject('predicate_unresolved')
-    if it cannot be meaningfully evaluated (decision 0010: UNDETERMINED -> reject).
+    if it cannot be meaningfully evaluated (decisions 0010 and 0011: UNDETERMINED -> reject,
+    uniformly across operators).
 
-    Independent call worth recording: an `in` whose `value` is not an array, and any op
-    outside the closed set, are treated here as UNRESOLVED (a predicate that cannot be
-    meaningfully evaluated is not a basis for passing) — see the report; the JS verifier
-    treats a non-array `in` as simply false. No corpus vector exercises `in`, so this is
-    an unpinned divergence, not a vector disagreement."""
+    An `in` whose `value` is not an array, and any op outside the closed set, are UNRESOLVED
+    here (a predicate that cannot be meaningfully evaluated is not a basis for passing). This
+    was an independent call when first written; decision 0011 pinned it as the spec rule
+    (corpus vector U4), and the JS verifier — which previously read a non-array `in` as
+    false — was brought into line. This implementation is unchanged."""
     field, op, value = pred.get("field"), pred.get("op"), pred.get("value")
     if op not in _ALL_OPS or field is None:
         raise _Reject("predicate_unresolved: malformed predicate")
@@ -114,19 +120,42 @@ def _required_by_predicate(pred: dict, body: Any) -> bool:
     return {"lt": v < value, "lte": v <= value, "gt": v > value, "gte": v >= value}[op]
 
 
+# ── §8.2a issuer trust (decision 0011) ───────────────────────────────────────
+
+_REQUIRED = object()   # sentinel: trusted_issuers has NO default — omitting it rejects
+
+
+def _normalize_trusted(t) -> set:
+    """The REQUIRED trusted issuer set (§8.2a): accepts a collection of "ed25519:<hex>" or
+    bare-hex key ids, returns a set of bare hex. Rejects when absent or empty — no default,
+    no trust-everything path."""
+    if t is _REQUIRED:
+        raise _Reject("no trusted issuer set: verify() requires a trusted issuer set (decision 0011 §8.2a)")
+    if not isinstance(t, (set, frozenset, list, tuple)):
+        raise _Reject("no trusted issuer set: must be a non-empty collection of issuer key ids")
+    norm = {x.rsplit(":", 1)[-1] for x in t if isinstance(x, str) and x}
+    if not norm:
+        raise _Reject("no trusted issuer set: empty (no trust-everything path)")
+    return norm
+
+
 # ── §8 verifier ──────────────────────────────────────────────────────────────
 
-def verify(record: dict, registry: dict, ledger: Optional[dict] = None) -> dict:
+def verify(record: dict, registry: dict, ledger: Optional[dict] = None,
+           trusted_issuers=_REQUIRED) -> dict:
     """Verify a cgr.cosign.v1 record against §8, failing closed on the first failure.
-    Returns {valid, reason?, surfaced?, references_unresolved?}."""
+    `trusted_issuers` is the REQUIRED trusted issuer set (§8.2a, decision 0011) — no default;
+    omitting it or passing an empty set rejects. Returns
+    {valid, reason?, surfaced?, references_unresolved?}."""
     ledger = ledger or {}
     try:
-        return _verify(record, registry, ledger)
+        trusted = _normalize_trusted(trusted_issuers)
+        return _verify(record, registry, ledger, trusted)
     except _Reject as r:
         return {"valid": False, "reason": r.reason}
 
 
-def _verify(record: dict, registry: dict, ledger: dict) -> dict:
+def _verify(record: dict, registry: dict, ledger: dict, trusted: set) -> dict:
     if not isinstance(record, dict):
         raise _Reject("no record")
     a = record.get("approval_assertion")
@@ -142,6 +171,13 @@ def _verify(record: dict, registry: dict, ledger: dict) -> dict:
         raise _Reject(f"unknown profile: {record.get('profile')}")
     if record.get("approval_mode") != entry.get("approval_mode"):
         raise _Reject(f"approval_mode mismatch (profile expects {entry.get('approval_mode')})")
+
+    # 2a — issuer trust (§8.2a, decision 0011). The issuer key MUST be in the caller-supplied
+    #      trusted set; self-declaration (verified at step 6) is insufficient. Ordered before
+    #      step 6 so an untrusted issuer is rejected before a signature is verified against it.
+    issuer_key_id = (record.get("system_metadata") or {}).get("issuer_key_id")
+    if not isinstance(issuer_key_id, str) or issuer_key_id.rsplit(":", 1)[-1] not in trusted:
+        raise _Reject(f"issuer_untrusted: {issuer_key_id}")
 
     # 3 — content integrity. Only checkable when an assertion carries a digest; the spec
     #     assumes an assertion at §8.3 and does not state the approver-less case — recorded
