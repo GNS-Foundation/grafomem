@@ -1,7 +1,9 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // cgr.cosign.v1 — two-party co-signature envelope verifier.
-// Implements docs/cgr/cgr-cosign-v1-spec.md §8 (amended by decision 0010:
-// predicate-unresolved -> REJECT). Target: conformance/cgr-cosign-v1/vectors.json.
+// Implements docs/cgr/cgr-cosign-v1-spec.md §8 (amended by decisions 0010:
+// predicate-unresolved -> REJECT, and 0011: issuer key MUST be pinned against a trusted
+// set [§8.2a], and unresolvable is uniform across operators). Target:
+// conformance/cgr-cosign-v1/vectors.json.
 //
 // Canonicalization + signatures are IDENTICAL to the attestation verifier: RFC 8785
 // (JCS), Ed25519 over the raw canonical bytes with NO prehash. BLAKE2b-256 content
@@ -60,7 +62,10 @@ function evalPredicate(pred, body) {
   switch (pred.op) {
     case 'eq': return { resolved: true, holds: v === val };
     case 'ne': return { resolved: true, holds: v !== val };
-    case 'in': return { resolved: true, holds: Array.isArray(val) && val.includes(v) };
+    // `in` needs an ARRAY operand; a non-array value is UNDETERMINED, not false (decision
+    // 0011: unresolvable is uniform across operators — a non-iterable operand cannot be
+    // meaningfully tested for membership, so it rejects like an absent field, not passes).
+    case 'in': return Array.isArray(val) ? { resolved: true, holds: val.includes(v) } : { resolved: false };
     default: {                                          // ordering ops: numbers only
       if (typeof v !== 'number' || typeof val !== 'number') return { resolved: false };
       const c = { lt: v < val, lte: v <= val, gt: v > val, gte: v >= val };
@@ -71,15 +76,30 @@ function evalPredicate(pred, body) {
 
 const isB2 = (h) => typeof h === 'string' && /^b2-256:[0-9a-f]{64}$/.test(h);
 
+/** §8.2a (decision 0011): normalize the REQUIRED trusted issuer set to a Set of bare hex
+ *  key ids (accepts "ed25519:<hex>" or bare hex; array or Set). Returns null when the set is
+ *  absent or empty — the caller MUST reject: no default, no trust-everything path. */
+function normalizeTrusted(t) {
+  let arr;
+  if (t instanceof Set) arr = [...t];
+  else if (Array.isArray(t)) arr = t;
+  else return null;
+  arr = arr.filter((x) => typeof x === 'string' && x.length > 0).map(stripPrefix);
+  return arr.length ? new Set(arr) : null;
+}
+
 /**
  * Verify a cgr.cosign.v1 record. §8 ordered checks, failing closed on the first failure.
- *   record   — the envelope.
- *   registry — { profiles: { <profile>: {approval_mode, approver_signature, referenced_records} } }.
- *   ledger   — { seen: [[approver_key_id, record_nonce], ...], resolvable: [<b2-256 hash>...] }.
+ *   record         — the envelope.
+ *   registry       — { profiles: { <profile>: {approval_mode, approver_signature, referenced_records} } }.
+ *   ledger         — { seen: [[approver_key_id, record_nonce], ...], resolvable: [<b2-256 hash>...] }.
+ *   trustedIssuers — REQUIRED trusted issuer set (§8.2a, decision 0011): an array or Set of
+ *                    issuer key ids. No default, no fallback to the record's self-declared
+ *                    issuer — absent or empty ⇒ reject.
  * Returns { valid, reason?, surfaced?, references_unresolved? }. The assurance tier is
  * SURFACED, never gated on (§8).
  */
-export async function verifyCosign(record, registry, ledger = {}) {
+export async function verifyCosign(record, registry, ledger = {}, trustedIssuers) {
   if (!record || typeof record !== 'object') return fail('no record');
 
   // 1. schema
@@ -90,6 +110,16 @@ export async function verifyCosign(record, registry, ledger = {}) {
   if (!entry) return fail(`unknown profile: ${record.profile}`);
   if (record.approval_mode !== entry.approval_mode) {
     return fail(`approval_mode mismatch: record ${record.approval_mode} != profile ${entry.approval_mode}`);
+  }
+
+  // 2a. issuer trust (§8.2a, decision 0011): the issuer key MUST be in the caller-supplied
+  //     trusted set. Self-declaration (verified at step 6) is insufficient — a record vouches
+  //     for its own issuer otherwise. REQUIRED input, no default, no trust-everything path.
+  const trusted = normalizeTrusted(trustedIssuers);
+  if (!trusted) return fail('no trusted issuer set: verifyCosign requires a trusted issuer set (decision 0011 §8.2a)');
+  const issuerKeyId = record.system_metadata && record.system_metadata.issuer_key_id;
+  if (typeof issuerKeyId !== 'string' || !trusted.has(stripPrefix(issuerKeyId))) {
+    return fail(`issuer_untrusted: ${issuerKeyId}`);
   }
 
   const a = record.approval_assertion;
