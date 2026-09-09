@@ -90,3 +90,76 @@ export declare function verifyCGRAttestationV4(
   pinnedIssuerPubKeyHex: string,
   opts: VerifyV4Options,
 ): Promise<VerifyResultV4>;
+
+// ── cgr.cosign.v1 — two-party co-signature envelope ─────────────────────────
+export declare const COSIGN_SCHEMA: string;
+/** §9 domain tag the approver signature is bound under (`grafomem.hitl.approval.v1:`). */
+export declare const DOMAIN_TAG: string;
+
+/** §2.1 content digest of a content_body — `b2-256:` + hex(BLAKE2b-256(JCS(body))). */
+export declare function contentDigest(body: unknown): string;
+
+/** §5.1 required-ness predicate: a single (field-path, op, literal) triple over content_body. */
+export interface CosignPredicate {
+  field: string;
+  op: 'eq' | 'ne' | 'in' | 'lt' | 'lte' | 'gt' | 'gte';
+  /** Scalar for eq/ne/ordering; an ARRAY for `in` (a non-array `in` value is UNDETERMINED → reject). */
+  value: unknown;
+}
+
+/** A profile entry in the registry. `approver_signature` is either unconditional `'REQUIRED'`
+ *  or a predicate that makes it required only when it holds (§5, §5.1). */
+export interface CosignProfile {
+  approval_mode: 'bound' | 'free';
+  approver_signature: 'REQUIRED' | { required_when: CosignPredicate };
+  referenced_records?: 'none' | 'required' | string;
+}
+
+/** The profile registry — profile name → profile. §8 step 2 resolves against it (fail closed on
+ *  unknown). The registry DOCUMENT is unwritten (spec §11 Q3); see the README for the shape and a
+ *  minimal working example. */
+export interface CosignRegistry {
+  profiles: Record<string, CosignProfile>;
+}
+
+export interface CosignLedger {
+  /** Seen (approver_key_id, record_nonce) pairs — a duplicate is a replay (§4/§8.7). */
+  seen?: Array<[string, string]>;
+  /** Free-mode: reference hashes the consumer can resolve; unresolved ones degrade (§8.9). */
+  resolvable?: string[];
+}
+
+/** The REQUIRED trusted issuer set (§8.2a, decision 0011): issuer key ids (`ed25519:<hex>` or bare
+ *  hex). NO default and NO trust-everything path — absent or empty ⇒ the verifier rejects, never
+ *  falling back to the record's self-declared issuer. */
+export type TrustedIssuers = Iterable<string>;
+
+export interface VerifyCosignResult {
+  valid: boolean;
+  /** Present on rejection. `issuer_untrusted` (§8.2a), `predicate_unresolved` (§5.1/§8.3a),
+   *  `content_digest mismatch`, `system signature verification failed`, etc. */
+  reason?: string;
+  /** MUST-surface / MUST-NOT-gate fields (§8): approver identity, act, date, and the assurance
+   *  tier (how strongly the approver key is bound to a named person — established elsewhere, gap 3a).
+   *  A `valid` verdict does NOT mean high assurance; tier policy is the relying party's to enforce. */
+  surfaced?: {
+    approver_id?: string;
+    approver_act?: 'approve' | 'modify' | 'override';
+    decision_date?: string;
+    assurance_tier: null;
+  };
+  /** Free mode only: a well-formed reference could not be resolved (§8.9 degrade — not a rejection). */
+  references_unresolved?: boolean;
+}
+
+/**
+ * Verify a cgr.cosign.v1 two-party co-signature record offline. §8 ordered checks, failing closed.
+ * `trustedIssuers` is REQUIRED (§8.2a) — omitting it or passing an empty set rejects; the issuer is
+ * checked against it BEFORE the system signature, never trusted on the record's own say-so.
+ */
+export declare function verifyCosign(
+  record: Record<string, unknown>,
+  registry: CosignRegistry,
+  ledger: CosignLedger | undefined,
+  trustedIssuers: TrustedIssuers,
+): Promise<VerifyCosignResult>;

@@ -24,7 +24,22 @@ set`) rather than trusting the record's self-declared issuer. Attestation v1–v
 Passes the full 28-vector `conformance/cgr-cosign-v1/` corpus (incl. `I1`/`I2`/`U4`/`R5`/`R6`),
 0 verdict disagreements with the Python reference verifier.
 
-## 0.4.0 — 2026-09-08
+### Also in this release (publish prep — `verifyCosign` reaches consumers for the first time)
+- **`index.d.ts` now types `verifyCosign`** and its `CosignRegistry` / `CosignProfile` /
+  `CosignPredicate` / `CosignLedger` / `TrustedIssuers` / `VerifyCosignResult` types. The export
+  existed in `index.js` since 0.4.0 but was untyped (`.d.ts` drift).
+- **README** documents co-signed records, the required trusted-issuer set, the **registry contract
+  and a minimal working example** (there is no published registry yet — §11 Q3), and the honest
+  limits (key-not-person / gap 3a; the strippability register; assurance tier **surfaced, not gated**).
+- **`test/smoke.cosign.test.mjs`** — a shipped, fixture-free smoke test (mints from seeds): valid
+  record, stripped-approver-sig → nesting fail, the required-trusted-set contract, and issuer pinning.
+
+> **Note — first published release with `cosign`.** 0.4.0 was prepared but **never published to npm**
+> (latest published is 0.3.0). So for a consumer upgrading from 0.3.0, `verifyCosign` is **entirely
+> new** and its trusted-issuer argument is **required from the outset** — there is no prior 3-argument
+> call to migrate. The attestation API (`verifyCGRAttestation`, `verifyCGRAttestationV4`) is unchanged.
+
+## 0.4.0 — 2026-09-08 (unpublished)
 
 Adds a `cgr.cosign.v1` verifier (`verifyCosign`, `src/cosign.js`) — the two-party
 co-signature envelope (`docs/cgr/cgr-cosign-v1-spec.md`, amended by decision 0010:
