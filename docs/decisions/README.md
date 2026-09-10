@@ -125,4 +125,12 @@ the claim, the vantage that produced it, and why the corroboration failed.
   "3 vs 10" mismatch offered alongside it was the *same* mis-scoped read counted twice. *Lesson:
   before calling something a second vantage, state what it would have shown had the claim been
   false.*
+- **2026-09-10 — "the erasure daemon has no port, so it must not receive an HTTP healthcheck."**
+  *Withdrawn.* Inferred from the Railway API showing no domains attached to the service. Absence of
+  a public domain says nothing about whether a process binds a port:
+  `src/aml/cloud/erasure_daemon.py:94-119` builds a FastAPI app, mounts Prometheus at `/metrics`,
+  serves `GET /health`, and binds `PORT` (default 9091) under uvicorn — with a comment stating the
+  purpose outright, *"Bind to PORT for Railway healthchecks and metrics scraping."* The healthcheck
+  it has is deliberate. *Lesson: platform metadata describes what the platform was told, not what
+  the process does — when the claim is about program behaviour, read the program.*
 
