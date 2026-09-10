@@ -148,6 +148,15 @@ def create_erasure_router(erasure_service) -> APIRouter:
                 requested_by=req.requested_by,
                 signing_identity=signing_identity,
             )
+        except RuntimeError as e:
+            if "ledger unavailable" in str(e):
+                # Ledger down is a dependency outage, not a server bug: 503 tells
+                # the caller to retry once the ledger is back, and monitoring can
+                # distinguish it from real 500s.
+                logger.error("Erasure REFUSED — ledger unavailable: %s", e)
+                raise HTTPException(503, str(e))
+            logger.error("Failed to issue erasure certificate: %s", e)
+            raise HTTPException(500, f"Failed to issue certificate: {e}")
         except Exception as e:
             logger.error("Failed to issue erasure certificate: %s", e)
             raise HTTPException(500, f"Failed to issue certificate: {e}")
