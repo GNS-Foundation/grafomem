@@ -9,10 +9,14 @@ Two uses:
     OR live substrate rows.
 
 CLI:  python -m aml.cgr.validate --synthetic
-      python -m aml.cgr.validate --tenant <tenant_id>     # live (needs GRAFOMEM_DB_URL)
+      python -m aml.cloud.cgr_validate_cli --tenant <tenant_id>   # live (product side)
 
-Imports: numpy + stdlib for the core; the live path lazy-imports the cloud
-data-access classes (allowed — decision_trail/stores/backends), never portal/UI.
+Imports: numpy + stdlib, and **nothing from `aml.cloud` at any depth**. This
+package is the standard; `aml.cloud` is product code, and the dependency may
+only run product -> standard. So `validate_live()` takes its decision-trail and
+store providers as *arguments* (same duck-typing `load_substrate` already uses),
+and the concrete cloud wiring lives on the product side in
+`aml.cloud.cgr_validate_cli`. Enforced by `tests/test_cgr_import_boundary.py`.
 """
 from __future__ import annotations
 
@@ -206,29 +210,37 @@ def _run_synthetic() -> int:
     return 0 if ok else 1
 
 
-def _run_live(tenant_id: str) -> int:
-    import os
-    from aml.cloud.decision_trail import DecisionTrailService
-    from aml.server.stores import StoreManager
-    from aml.backends.postgres_gmp import PostgresGMPBackend
-    db = os.environ["GRAFOMEM_DB_URL"]
-    dt = DecisionTrailService(db)
-    sm = StoreManager(lambda: PostgresGMPBackend(db))
+def validate_live(decision_trail, store_manager, tenant_id: str) -> dict:
+    """Validation report over one tenant's live substrate.
+
+    The providers are **injected**, not constructed here: this module names no
+    concrete `aml.cloud` class, so the standard does not depend on the product.
+    `decision_trail` needs `.query_decisions(tenant_id=, limit=, offset=)` and
+    `store_manager` needs `.get_or_create_named(...)` — the same duck-typed
+    contract `load_substrate` has always required. The product-side entry point
+    that supplies them is `aml.cloud.cgr_validate_cli`.
+    """
     from aml.cgr.substrate import load_substrate
-    rows = load_substrate(dt, sm, tenant_id)
-    rep = validate_report(rows)
-    print(format_report(rep, f"— tenant {tenant_id[:12]} (live)"))
-    return 0
+    rows = load_substrate(decision_trail, store_manager, tenant_id)
+    return validate_report(rows)
+
+
+_LIVE_MOVED = (
+    "the live path moved to the product side of the standard/product boundary.\n"
+    "Run:  python -m aml.cloud.cgr_validate_cli --tenant <tenant_id>\n"
+    "(`aml.cgr` must not import `aml.cloud` — tests/test_cgr_import_boundary.py)"
+)
 
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="CGR-v1 validation report")
     g = ap.add_mutually_exclusive_group()
     g.add_argument("--synthetic", action="store_true", help="run on the synthetic fixture (default)")
-    g.add_argument("--tenant", type=str, help="run on a live tenant's substrate (needs GRAFOMEM_DB_URL)")
+    g.add_argument("--tenant", type=str,
+                   help="MOVED -> python -m aml.cloud.cgr_validate_cli --tenant <id>")
     args = ap.parse_args(argv)
     if args.tenant:
-        return _run_live(args.tenant)
+        ap.error(_LIVE_MOVED)
     return _run_synthetic()
 
 
