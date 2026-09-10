@@ -133,4 +133,17 @@ the claim, the vantage that produced it, and why the corroboration failed.
   purpose outright, *"Bind to PORT for Railway healthchecks and metrics scraping."* The healthcheck
   it has is deliberate. *Lesson: platform metadata describes what the platform was told, not what
   the process does — when the claim is about program behaviour, read the program.*
+- **2026-09-10 — "the erasure ledger lives in a separate, restore-independent `grafomem_ledger`
+  database."** *Wrong.* The I0 setup SQL was drafted against that target — a distinct database and a
+  role `erasure_ledger_app` — from reading `erasure_ledger.py`'s "external key store" docstring and
+  `backup-dr-runbook.md`'s restore-independence protocol as the live configuration. Verified reality
+  (#138; incident 2026-09-10, fact 6): `GRAFOMEM_LEDGER_URL` points at the **same host and same
+  database** as `GRAFOMEM_DB_URL` (only the user differs, `postgres` vs `grafomem_rt`); the role in
+  the matrix is **`grafomem_ledger`**; and the restore-independence claim was itself withdrawn in
+  #138. The "external key store" never existed — the design document described the system as intended,
+  not as deployed. (Secondary defect in the same draft: `:'password'` placed inside a `DO $$…$$`
+  block, where psql does **not** expand it — the role would have received the literal string as its
+  password; corrected to a top-level `ALTER ROLE … PASSWORD`.) *Lesson: a design doc is a claim about
+  intent, not a source of config — when the claim is about what is deployed, read the environment, not
+  the spec.*
 
