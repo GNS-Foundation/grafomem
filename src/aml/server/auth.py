@@ -123,10 +123,28 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
             ).fetchone()
 
             is_legacy = False
-            # Fallback for legacy schema
+            # Fallback for legacy schema — ONLY for tenants that have never had a
+            # tenant_api_keys row.
+            #
+            # Unrestricted, this branch is a revocation bypass. The admin rotation
+            # route (cloud/routes.py:203) deletes every tenant_api_keys row and
+            # mints a new key WITHOUT syncing the legacy tenants.api_key column
+            # (the portal route at cloud/portal_routes.py:398 does sync it). The
+            # stale tenants.api_key therefore still resolved here — and this branch
+            # returns role 'admin' with no scopes, no allowed_stores, no
+            # ip_allowlist and no expiry, i.e. a BROADER and non-expiring identity
+            # than the key it replaced.
+            #
+            # NOT EXISTS is the narrow fix: a tenant that has any tenant_api_keys
+            # row is managed by the new path, so its legacy column must never
+            # authenticate. Legacy-only tenants (no rows at all) are unaffected.
+            # The column and this branch are removed entirely in the HMAC work.
             if not row:
                 row = conn.execute(
-                    "SELECT id as tenant_id, 'admin' as role FROM tenants WHERE api_key = %s",
+                    "SELECT t.id as tenant_id, 'admin' as role FROM tenants t "
+                    "WHERE t.api_key = %s "
+                    "  AND NOT EXISTS (SELECT 1 FROM tenant_api_keys k "
+                    "                  WHERE k.tenant_id = t.id)",
                     (api_key,),
                 ).fetchone()
                 is_legacy = True
