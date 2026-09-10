@@ -35,6 +35,27 @@ before anyone commits. It earns a number if and when it becomes a decision.
    One (`aml.cgr.validate`) is already inverted. Two more (`provenance.py`, `backends/interface.py`)
    are module-level and both want `aml.cloud.identity.SigningIdentity`.
 
+## First milestone
+
+**The distributed package contains no product code:** `pip install grafomem` yields a wheel with no
+`aml.cloud` and no `static/portal` content.
+
+Chosen as the first milestone because it is the only part of the separation that is **externally
+observable and independently checkable** — anyone can `pip download grafomem` and list the wheel.
+It needs neither the assignment instrument nor the `src/aml/server/` decision, so it is not blocked
+on the two slowest things here. It is a `pyproject.toml` change (`packages.find` and
+`[tool.setuptools.package-data]`, which today ships `static/portal/*` and `cloud/templates/*.yaml`
+deliberately, so the portal mounts on deployed containers) plus whatever breaks when the deployed
+image can no longer rely on those files being present — which is itself the cheapest available
+probe of how entangled the runtime really is.
+
+**What it does not do — recorded plainly:** it changes what *future* releases contain. **Releases
+already on PyPI ship `aml.cloud` and `static/portal` under MIT © GNS Foundation, and cannot be
+recalled.** Yanking a release removes it from dependency resolution; it does not retract the grant
+or un-distribute the copies. So this milestone bounds the exposure going forward and does nothing
+about the exposure already created — which is why the MIT publication is the first question for
+counsel in [0012](0012-product-code-resident-in-the-foundation-repo-by-exception.md), not the last.
+
 ## What is explicitly NOT in scope
 
 - **The `grafomem-web` frontend move.** Relocating `grafomem-web/cloud*` between repos was assessed

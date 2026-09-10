@@ -1,9 +1,9 @@
 ---
-status:        proposed
-decision_date: —
+status:        accepted
+decision_date: 2026-09-10
 record_date:   2026-09-10
 provenance:    found-scoping-the-standard/product-separation; the code facts below were RE-DERIVED from source on 2026-09-10 rather than carried over from the working note (per the primary-source convention), so the earlier note's phrasing should be diffed against this before acceptance
-scope:         repository layout of GNS-Foundation/grafomem — `src/aml/cloud`, `src/aml/static/portal`; the "Grafomem" mark. Counterpart record: Ulissy-s-r-l/eu-governed-agent ADR-0011; parent: ADR-0005
+scope:         repository layout of GNS-Foundation/grafomem — `src/aml/cloud`, `src/aml/static/portal`; the "Grafomem" mark. Counterpart record: Ulissy-s-r-l/eu-governed-agent ADR-0012; parent: ADR-0005
 ---
 
 # 0012 — Ulissy product code is resident in the Foundation repo **by exception**
@@ -44,6 +44,7 @@ deployed containers. Every release therefore distributes the product code to any
 |---|---|
 | `src/aml/cloud/` | **82 Python modules at the top level** (`src/aml/cloud/*.py`); 92 tracked files in total, the remainder being 7 `migrations/` and 5 `templates/` files |
 | `src/aml/static/portal/` | 3 files — `index.html`, `portal.css`, `portal.js` |
+| `src/aml/cloud/erasure_daemon.py` | runs as its own production service, **`grafomem-deamon`** (`python -m aml.cloud.erasure_daemon`) — the GDPR erasure sweeper and SIEM exporter. Counted inside the 82 above; called out because it is a *separately deployed* product component, not only a module |
 
 **3. Four import paths run standard -> product** (outside `src/aml/server/`, which is treated
 separately below). Every one of them is the *wrong* direction: the Foundation-side code depends on
@@ -98,13 +99,17 @@ because nothing operational is improved by moving the files before the ownership
 Ulissy S.R.L. for use in the product name **"GRAFOMEM Cloud"**. A licence, not an assignment: the
 mark stays with the neutral body, which is the same reason the issuer key does.
 
-**4. This states INTENDED ownership.** The paragraphs above record what the parties intend to be
-true. They are **not** a legal conclusion, and this record does not itself effect any transfer.
-**The assignment instrument — and its direction — are for counsel to confirm.** The direction is
-genuinely open: whether Ulissy assigns to the Foundation, the Foundation assigns to Ulissy, or the
-code is licensed in one direction and never assigned, depends on who authored it, under what
-engagement, and on what the already-executed MIT publication (finding 1) did to the options. None
-of that is settled by writing it down here.
+**4. This records the entities' decision; the instrument is pending execution.** Paragraphs 1–3
+are the decision the parties have taken, recorded as taken — not an aspiration. What remains is
+**execution: the assignment instrument is pending execution by counsel.**
+
+Its *direction* is a counsel question rather than a re-opened decision: whether Ulissy assigns to
+the Foundation, the Foundation assigns to Ulissy, or the code is licensed one way and never
+assigned, depends on who authored it, under what engagement, and on what the already-executed MIT
+publication (finding 1) did to the options. **This record does not itself effect any transfer.**
+
+**Authorship entity:** *to be supplied by the operator and recorded here.* Its absence does not
+qualify the decision above — it is an input counsel needs, not a condition on what was decided.
 
 ## Consequences
 
