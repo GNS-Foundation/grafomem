@@ -28,6 +28,13 @@ live in their own repos**; where the two touch, they cross-reference.
 | [0010](0010-cosign-predicate-unresolved-must-reject.md) | `cgr.cosign.v1` predicate-unresolved must REJECT, not pass-with-a-warning — the §5.1 required-ness predicate fails OPEN as written (absent/non-scalar/null `required_when.field` ⇒ requirement optional ⇒ high-risk record passes unsigned); found writing the corpus before any implementation; three-way divergence (spec text "optional" vs commissioning instruction "fail closed" vs §8 preamble "fail closed"); amendment = unresolved ⇒ reject with `predicate_unresolved` as reason (§8.3a brought into line with §8's preamble, its sole exception removed); + §5 note (free-mode refs live in signed `content_body`, never `evidence_ref`) | **accepted 2026-09-08** (reject-on-unresolved CHOSEN over treat-as-REQUIRED-then-reject-if-unsigned; cost = malformed predicate DoSes that profile's records until fixed — visible, one-directional, bounded) |
 | [0011](0011-cosign-issuer-trust-and-uniform-unresolved.md) | `cgr.cosign.v1` MUST pin the issuer key, and unresolvable is uniform across operators — two gaps of the same shape (spec assumed, never stated), found by two independently-written verifiers against one corpus. **Gap 1 (larger):** §8 never pins `issuer_key_id`, so both verifiers check the system signature against the record's SELF-DECLARED issuer key ⇒ valid under ANY consistent issuer key ⇒ approver binding holds but issuer binding does not; surfaced as an *agreement that was luck, not specification*. Amendment = §8 MUST check `issuer_key_id` against a caller-supplied trusted set, REQUIRED input, no default, no trust-everything path (attestation-v3 precedent, ticket-05). **Gap 2:** 0010 pinned field-resolution + ordering-operand type but not the `in`-operand shape ⇒ non-array `in` reads false (JS) vs unresolved-reject (Python); surfaced as a *divergence*. Amendment = unresolvable is uniform across all operators (general rule, not an enumeration) ⇒ any unevaluable predicate rejects `predicate_unresolved` | **accepted 2026-09-08** (gap 1 touches JS+Python alike — a step both missed; gap 2 aligns JS to Python; corpus adds `0x33` untrusted-signer vector + two well-formed `in` vectors, amendment lands first) |
 | [0009](0009-standard-expresses-one-actor-approval-needs-two.md) | The standard expresses one actor; a defensible approval needs two — v4 models agent + issuer but has no approver principal and one signature slot (the issuer's, not the decider's); found scoping B3's AML disposition record, confirmed same-day in TrueForge and v4; general (AMLR Art. 11 accountability + Recital 38, Art. 18 non-transfer, AI Act Art. 14 oversight), belongs upstream per ADR-0008 | **accepted 2026-09-06** (resolved by a general two-party co-signature envelope `cgr.cosign.v1`, record-agnostic, with `cgr.disposition.v1` as its first profile — NOT a v4 extension; nested approver+system signatures, `grafomem.hitl.approval.v1` domain tag, tamper-evident+conformance-enforced not tamper-proof; **gap 3a verified-named-person identity NOT resolved** — separate assurance dependency; cost accepted = a third conformance surface). Prior history: gap 3 **corrected TWICE same day** (v1 "no namespace" → v2 server-only "no accountable/verified person" → v3 after reading the Dart client: person layer is **not thin, it is unassured+unwired** — `gns_browser` self-custody + `grafomem.hitl.approval.v1` signing are built; missing = KYC/IDV (PoH is proof-of-*trajectory*), mint-wiring, role-tenure; adopt mechanism not consumer identity semantics; iCloud-sync of signing key = open Q); **AMLR Art. 18 citation corrected** (Art. 18 = Outsourcing/non-transfer; the named-person-decides claim re-cited to Art. 11 + Recital 38 + AI Act Art. 14 — 3rd propagated-citation fix this week); **resolution shape sharpened by B2** (needs a general signed two-actor decision record `cgr.disposition.v1` — NOT a v4 extension: no record class fits [gap 5], one signer slot, no content-field home; evidence-digest + HMAC-pseudonym primitives generalise from provenance.py/invoice_pseudonym.py — now ACCEPTED, see above) |
+| [0012](0012-product-code-resident-in-the-foundation-repo-by-exception.md) | Ulissy product code is resident in the Foundation repo **by exception** — `src/aml/cloud` (82 top-level modules) + `src/aml/static/portal` are Ulissy assets living in a **PUBLIC**, MIT-licensed © GNS Foundation repo, and shipping inside the public PyPI `grafomem` wheel; four standard→product import paths verified (`provenance.py`, `backends/interface.py` module-level; `cli.py`, `cgr/validate.py` lazy), with `src/aml/server/` named as a fifth and much larger surface held out of scope. Foundation retains spec, issuer key, conformance, `cgr-verify` and the "Grafomem" mark; the mark is **licensed** to Ulissy for "GRAFOMEM Cloud". Records the **entities' decision**; the assignment instrument is **pending execution by counsel**, and its direction is a counsel question | **accepted** 2026-09-10 (counterpart: `eu-governed-agent` ADR-0012; parent: ADR-0005) |
+
+**Unnumbered records.** A *design spike* scopes work without deciding anything, so it does not spend a
+permanent number: [`separation-of-product-code-design-spike.md`](separation-of-product-code-design-spike.md)
+(proposed 2026-09-10) prices the full extraction of the product code — with history — plus the deploy and
+distribution retarget, and puts one question in front of it: does `src/aml/server/` follow the product,
+stay with the standard, or split. It gets a number if it becomes a decision. It **does not gate bank contact**.
 
 **Resolved at P0.4 (2026-08-31):** 0001, 0002 and 0004 shared one versioning question — how CGR adds
 signed meaning — and it resolved to a **schema bump to `cgr.attestation.v4`**, carrying a generic
@@ -94,3 +101,36 @@ correction.
 
 This is a Foundation record-keeping discipline; product repos (ADR-style) inherit the same bar for
 load-bearing claims, since a citation wrong here is wrong in the pitch too.
+
+### Failure log
+
+Concrete instances, kept so the convention above stays attached to what it cost. Each entry names
+the claim, the vantage that produced it, and why the corroboration failed.
+
+- **2026-09-10 — "`railway.toml` is not applied; there is no deploy gate."** *Wrong.* The claim came
+  from scanning the whole `railway status --json` payload for keys matching
+  `healthcheck|replica|restart` and reading the first matches as the `grafomem` service. They were
+  **`Postgres`**, which has no `railway.toml` and therefore shows Railway's defaults
+  (`healthcheckPath=null`, `restartPolicyMaxRetries=10`). Scoped to the right service, the manifest
+  reads `configFile=/railway.toml`, `healthcheckPath=/health`, `restartPolicyMaxRetries=3` — the
+  file **is** applied. The true finding is narrower and was already correct before the "correction":
+  the gate is **present but vacuous**, because `/health` returns a static `ok` without touching the
+  database. *Lesson: a payload containing many services is many vantages, not one — scope the query
+  to the subject before reading the answer.*
+- **2026-09-10 — the corroboration that was not one.** The same wrong claim was supported by "the
+  API service config has no healthcheck field," offered as a second vantage. It is not: an **absent
+  field does not distinguish _unset_ from _set-from-the-config-file_**, so it was consistent with
+  both readings and could not discriminate between them. A second observation that cannot come out
+  differently under the competing hypothesis is not corroboration. The `restartPolicyMaxRetries`
+  "3 vs 10" mismatch offered alongside it was the *same* mis-scoped read counted twice. *Lesson:
+  before calling something a second vantage, state what it would have shown had the claim been
+  false.*
+- **2026-09-10 — "the erasure daemon has no port, so it must not receive an HTTP healthcheck."**
+  *Withdrawn.* Inferred from the Railway API showing no domains attached to the service. Absence of
+  a public domain says nothing about whether a process binds a port:
+  `src/aml/cloud/erasure_daemon.py:94-119` builds a FastAPI app, mounts Prometheus at `/metrics`,
+  serves `GET /health`, and binds `PORT` (default 9091) under uvicorn — with a comment stating the
+  purpose outright, *"Bind to PORT for Railway healthchecks and metrics scraping."* The healthcheck
+  it has is deliberate. *Lesson: platform metadata describes what the platform was told, not what
+  the process does — when the claim is about program behaviour, read the program.*
+
