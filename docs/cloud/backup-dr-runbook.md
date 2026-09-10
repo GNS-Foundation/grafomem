@@ -25,9 +25,33 @@ To satisfy stringent DORA (Digital Operational Resilience Act) and GDPR complian
 
 ## 3. Snapshot Restoration Procedure
 
+> **⚠ WITHDRAWN 2026-09-10 — this section does not deliver what it claims.**
+> Per the erasure-ledger incident of 2026-09-10 (recorded in `grafomem-internal`),
+> the protocol below **cannot currently prevent resurrection**, for two
+> independent reasons:
+>
+> 1. **The probe validates against the restored database itself.** Step 3.2 reads
+>    `erasure_certificates` from the recovery instance — but certificates issued
+>    *after* the snapshot point are missing from exactly the dataset being
+>    validated. The probe therefore passes on the very resurrections it exists to
+>    catch. Validation must run against an erasure record that is **independent
+>    of the database being restored**; no such populated, independent record
+>    exists today.
+> 2. **The independent record that was designed for this — `erasure_ledger` — is
+>    empty and co-located.** It lives in the same database, and its pool has been
+>    unable to authenticate since at least the earliest retained logs; 14 signed
+>    certificates issued after 2026-06-22 have no ledger row.
+>
+> Until the ledger is relocated to a store independent of the primary database
+> and backfilled, treat a restore as **unable to automatically re-apply
+> post-snapshot erasures**. The manual mitigation is Step 3.3's sweep driven by
+> whatever certificate evidence exists *outside* the restored instance (e.g. the
+> current production `erasure_certificates` table, exported before cutover).
+> This notice is dated and stays until relocation lands.
+
 Restoring a database from a snapshot inherently risks rolling back the clock on data deletions. If a user exercised their right to be forgotten *after* the snapshot was taken, restoring that snapshot will illegally "resurrect" their data. 
 
-To prevent this, GRAFOMEM mandates the **Restore-then-W6 Probe** protocol.
+To prevent this, GRAFOMEM intended the **Restore-then-W6 Probe** protocol (see withdrawal above):
 
 ### Step 3.1: Provision and Restore
 1. Provision an isolated recovery database instance.
