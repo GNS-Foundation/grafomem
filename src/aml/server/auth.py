@@ -95,6 +95,19 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
         """Remove a key from the TTL cache (e.g. on revocation)."""
         self._api_key_cache.pop(api_key, None)
 
+    def invalidate_tenant(self, tenant_id: str) -> int:
+        """Drop every cached entry belonging to `tenant_id`. Returns how many.
+
+        Rotation deletes ALL of a tenant's tenant_api_keys rows at once, so the
+        caller does not know which keys are cached — evicting by tenant is both
+        simpler and safer than tracking individual keys. Both cache write sites
+        (API key at :201, portal JWT at :235) store tenant_id at index 0.
+        """
+        stale = [k for k, v in self._api_key_cache.items() if v and v[0] == tenant_id]
+        for k in stale:
+            del self._api_key_cache[k]
+        return len(stale)
+
     def _resolve_api_key(self, api_key: str) -> tuple[str, str, list[str], list[str], str | None, list[str]] | None:
         """Resolve an API key to (tenant_id, role, scopes, allowed_stores, key_id, ip_allowlist) using the DB.
 
@@ -123,10 +136,28 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
             ).fetchone()
 
             is_legacy = False
-            # Fallback for legacy schema
+            # Fallback for legacy schema — ONLY for tenants that have never had a
+            # tenant_api_keys row.
+            #
+            # Unrestricted, this branch is a revocation bypass. The admin rotation
+            # route (cloud/routes.py:203) deletes every tenant_api_keys row and
+            # mints a new key WITHOUT syncing the legacy tenants.api_key column
+            # (the portal route at cloud/portal_routes.py:398 does sync it). The
+            # stale tenants.api_key therefore still resolved here — and this branch
+            # returns role 'admin' with no scopes, no allowed_stores, no
+            # ip_allowlist and no expiry, i.e. a BROADER and non-expiring identity
+            # than the key it replaced.
+            #
+            # NOT EXISTS is the narrow fix: a tenant that has any tenant_api_keys
+            # row is managed by the new path, so its legacy column must never
+            # authenticate. Legacy-only tenants (no rows at all) are unaffected.
+            # The column and this branch are removed entirely in the HMAC work.
             if not row:
                 row = conn.execute(
-                    "SELECT id as tenant_id, 'admin' as role FROM tenants WHERE api_key = %s",
+                    "SELECT t.id as tenant_id, 'admin' as role FROM tenants t "
+                    "WHERE t.api_key = %s "
+                    "  AND NOT EXISTS (SELECT 1 FROM tenant_api_keys k "
+                    "                  WHERE k.tenant_id = t.id)",
                     (api_key,),
                 ).fetchone()
                 is_legacy = True
@@ -374,3 +405,32 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
         )
         set_current_tenant(request.state.tenant.tenant_id)   # RLS: central tenant context
         return await call_next(request)
+
+
+
+def invalidate_tenant_key_cache(request, tenant_id: str) -> int:
+    """Evict a tenant's cached API keys from the LIVE auth middleware instance.
+
+    Without this, revocation is only eventually-consistent: `_api_key_cache` has a
+    60s TTL, so a key that has been used once keeps authenticating for up to 60s
+    after its row is deleted — on every rotation path, regardless of the database.
+
+    The middleware is registered with `app.add_middleware(...)`, which defers
+    instantiation to Starlette's startup build, so no reference is kept on
+    app.state. The built chain is walked instead. A miss is logged rather than
+    raised: failing to clear a cache must not turn a successful rotation into a
+    500, but it must not pass silently either.
+    """
+    node = getattr(getattr(request, "app", None), "middleware_stack", None)
+    for _ in range(50):
+        if node is None:
+            break
+        if isinstance(node, TenantAuthMiddleware):
+            return node.invalidate_tenant(tenant_id)
+        node = getattr(node, "app", None)
+    logger.warning(
+        "auth cache NOT invalidated for tenant %s — TenantAuthMiddleware not found "
+        "in the middleware chain; revoked keys stay valid until the 60s TTL expires",
+        tenant_id,
+    )
+    return 0

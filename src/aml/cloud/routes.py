@@ -211,6 +211,10 @@ async def rotate_key(tenant_id: str, request: Request):
         conn = mgr._get_conn()
         conn.execute("DELETE FROM tenant_api_keys WHERE tenant_id = %s", (tenant_id,))
         new_key = mgr.create_api_key(tenant_id, name="default_admin", role="admin")
+        # Deleting the rows is not revocation on its own: the auth middleware
+        # caches key resolutions for 60s. Evict them or the old key keeps working.
+        from aml.server.auth import invalidate_tenant_key_cache
+        invalidate_tenant_key_cache(request, tenant_id)
     except Exception as e:
         raise HTTPException(500, f"Error rotating keys: {e}")
     return RotateKeyResponse(tenant_id=tenant_id, new_api_key=new_key["api_key"])

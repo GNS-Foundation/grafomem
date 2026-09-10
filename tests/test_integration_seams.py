@@ -145,26 +145,42 @@ def test_rbac_delete_memory(tenant_setup, client):
     # 200 if backend supports delete, 503 if CapabilityNotSupported, 403 if RBAC blocked
     assert response.status_code in (200, 503)
 
-def test_key_rotation(tenant_setup, client, tenant_manager):
-    # Test rotating a key logic via DB and HTTP
-    admin_key = tenant_setup["admin_key"]
-    tenant_id = tenant_setup["tenant_id"]
-    
-    # Rotate admin key
+def test_key_rotation(client, tenant_manager):
+    """Rotation issues a working key and revokes the old one.
+
+    Uses its OWN tenant, not the shared `tenant_setup` fixture. Rotating the
+    shared tenant deletes every one of its tenant_api_keys rows, so every later
+    test in this module was authenticating with a REVOKED key — and passing only
+    because the middleware's 60s cache kept it alive. That is what the old
+    comment here ("Old key might still be accepted if auth middleware uses
+    lru_cache, so we skip asserting that it's rejected") was describing: the test
+    suite had encoded the revocation bug as expected behaviour. Now that the
+    rotate routes evict the tenant's cached keys, the old key is genuinely
+    rejected and this asserts it.
+    """
+    import uuid as _uuid
+    info = tenant_manager.create_tenant(name=f"rotation-{_uuid.uuid4().hex[:8]}")
+    tenant_id, old_key = info.id, info.api_key
+
     response = client.post(f"/v1/cloud/tenants/{tenant_id}/rotate-key",
-        headers={"Authorization": f"Bearer {admin_key}"}
+        headers={"Authorization": f"Bearer {old_key}"}
     )
     assert response.status_code == 200
     new_key = response.json()["new_api_key"]
-    
-    # Old key might still be accepted if auth middleware uses lru_cache
-    # so we skip asserting that it's rejected.
-    
-    # New key should work
+
+    # New key works.
     response = client.get(f"/v1/cloud/tenants/{tenant_id}",
         headers={"Authorization": f"Bearer {new_key}"}
     )
     assert response.status_code == 200
+
+    # Old key is rejected — immediately, not after the cache TTL.
+    response = client.get(f"/v1/cloud/tenants/{tenant_id}",
+        headers={"Authorization": f"Bearer {old_key}"}
+    )
+    assert response.status_code == 403, (
+        f"revoked key still accepted ({response.status_code})"
+    )
 import json
 
 def test_run_honors_timeout_seconds(tenant_setup, client):
