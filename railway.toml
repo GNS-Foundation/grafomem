@@ -1,6 +1,31 @@
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
+# Deploy only when a changed file matches. Every entry below is an input to the
+# built image or to the build/deploy config itself — derived from the Dockerfile's
+# COPY lines (23-27), not guessed. Anything the image consumes and this list omits
+# would silently stop triggering deploys, leaving production stale against main.
+#   src/                → COPY src/ src/                     (the application)
+#   adapter_template/   → COPY adapter_template/ ...
+#   corpus/             → COPY corpus/ corpus/               (conformance corpus)
+#   tests/              → COPY tests/ tests/                 (see note below)
+#   pyproject.toml      → COPY pyproject.toml README.md ./   (deps + package-data)
+#   README.md           → same COPY; pyproject reads it at build time
+#   Dockerfile          → the build recipe
+#   railway.toml        → this file
+# NOTE: tests/ is listed because the Dockerfile copies it INTO the runtime image
+# (lines 27 and 50), so a test-only change genuinely changes the artefact. If that
+# copy is removed, drop tests/ from this list in the same change.
+watchPatterns = [
+    "src/**",
+    "adapter_template/**",
+    "corpus/**",
+    "tests/**",
+    "pyproject.toml",
+    "README.md",
+    "Dockerfile",
+    "railway.toml",
+]
 
 [deploy]
 healthcheckPath = "/health"
