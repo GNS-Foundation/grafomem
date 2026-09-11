@@ -231,7 +231,17 @@ async def destroy_tenant_key(
     
     # 2. Delete the DEK
     tkm.destroy_tenant_key(tenant_id)
-    
+
+    # 3. Admin-plane audit row (actor = caller tenant, target = destroyed tenant).
+    try:
+        al = getattr(request.app.state, "audit_logger", None)
+        if al is not None:
+            al.log(tenant_id=tenant_id, actor=user.get("tenant_id", "unknown"),
+                   action="destroy_key", resource=f"tenant:{tenant_id}",
+                   metadata={"certificate_id": entry_id})
+    except Exception:
+        logger.exception("audit log write failed for destroy_key")
+
     # Remove from TenantManager (or set a status flag, we just return success for now)
     return {"destroyed": True, "tenant_id": tenant_id, "certificate_id": entry_id}
 

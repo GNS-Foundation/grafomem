@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
-from aml.server.scopes import ROLE_SCOPES, validate_scopes
+from aml.server.scopes import ROLE_SCOPES, validate_scopes, TENANT_ADMIN_SCOPES
 
 import psycopg
 from psycopg.rows import dict_row
@@ -232,10 +232,13 @@ class TenantManager:
             "VALUES (%s, %s, %s, %s, %s, %s)",
             (tenant_id, name, api_key, plan, now, home_region),
         )
+        # Own-tenant admin, NOT platform: no '*', no admin:platform (P0 2026-09-11).
+        # The default key fully operates ITS OWN tenant; platform routes require
+        # platform-operator identity (PLATFORM_TENANT_IDS), not a scope this key holds.
         conn.execute(
             "INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role, scopes, created_at) "
             "VALUES (gen_random_uuid()::text, %s, %s, 'Default Admin Key', 'admin', %s, %s)",
-            (tenant_id, api_key, ["*"], now),
+            (tenant_id, api_key, TENANT_ADMIN_SCOPES, now),
         )
         logger.info("Tenant created: %s (%s, plan=%s)", tenant_id, name, plan)
 

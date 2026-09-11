@@ -133,4 +133,17 @@ the claim, the vantage that produced it, and why the corroboration failed.
   purpose outright, *"Bind to PORT for Railway healthchecks and metrics scraping."* The healthcheck
   it has is deliberate. *Lesson: platform metadata describes what the platform was told, not what
   the process does — when the claim is about program behaviour, read the program.*
+- **2026-09-11 — "multi-tenant isolation is VALIDATED."** *True for the data plane, false for the
+  control plane.* The whitepapers mark tenant isolation ✅ VALIDATED (cross-tenant *store/memory*
+  access → 403, two-sided P0-3). But that validation never covered the **admin/control plane**:
+  `create_tenant` minted every tenant's default key with `role='admin'` + `scopes=['*']`,
+  `require_scope('admin:platform')` treated `'*'` as satisfying it, and `_require_admin` only checked
+  `role=='admin'` — so any tenant's default key could call platform routes for *other* tenants, and
+  `list_tenants` returned **every tenant's `api_key`**. A "VALIDATED isolation" claim scoped to one
+  plane read as covering both. **Exploitation is undeterminable from retained data — no audit logging
+  on these routes** (the `audit_logs` table existed but the admin routes never wrote to it; proxy logs
+  carry no caller tenant and have short retention). *Lesson: an isolation claim names the plane it was
+  tested on; the admin plane is a separate surface and was never tested. Fixed: platform routes gated on
+  operator identity (`PLATFORM_TENANT_IDS`), never on `'*'`; list/get stripped of `api_key`; admin
+  routes now write `audit_logs`. See the incident record in `grafomem-internal`.*
 
