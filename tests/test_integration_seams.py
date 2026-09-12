@@ -117,20 +117,34 @@ def test_rbac_read_only_can_retrieve(tenant_setup, client):
     assert len(mems) > 0
     assert "Agent was here" in mems[0]["content"]
 
-def test_rbac_admin_cloud_endpoints(tenant_setup, client):
-    # Admin can access /v1/cloud/tenants
+def test_rbac_admin_cloud_endpoints(tenant_setup, client, monkeypatch):
+    # P0 2026-09-11: /v1/cloud/tenants is a PLATFORM route. A tenant's own admin key
+    # (role=admin) is NOT a platform operator and must be denied — this is the
+    # cross-tenant privilege-escalation that used to pass via scopes=['*'].
     admin_key = tenant_setup["admin_key"]
-    response = client.get(f"/v1/cloud/tenants",
+    tenant_id = tenant_setup["tenant_id"]
+    monkeypatch.delenv("PLATFORM_TENANT_IDS", raising=False)
+    response = client.get("/v1/cloud/tenants",
         headers={"Authorization": f"Bearer {admin_key}"}
     )
-    assert response.status_code == 200
-    
-    # Agent cannot access /v1/cloud/tenants
+    assert response.status_code == 403, response.text
+
+    # Only a platform operator (tenant id in PLATFORM_TENANT_IDS) may list tenants.
+    monkeypatch.setenv("PLATFORM_TENANT_IDS", tenant_id)
+    response = client.get("/v1/cloud/tenants",
+        headers={"Authorization": f"Bearer {admin_key}"}
+    )
+    assert response.status_code == 200, response.text
+    # Platform list carries no api_key (show-once at mint/rotate only).
+    for row in response.json():
+        assert "api_key" not in row, f"api_key leaked: {row}"
+
+    # An agent key is never a platform operator, allowlisted or not.
     agent_key = tenant_setup["agent_key"]
-    response = client.get(f"/v1/cloud/tenants",
+    response = client.get("/v1/cloud/tenants",
         headers={"Authorization": f"Bearer {agent_key}"}
     )
-    assert response.status_code == 403
+    assert response.status_code == 403, response.text
 
 def test_rbac_delete_memory(tenant_setup, client):
     # Agent can delete memory
