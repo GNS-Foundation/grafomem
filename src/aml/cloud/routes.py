@@ -16,10 +16,31 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
-from aml.server.scopes import require_scope
+from aml.server.scopes import require_scope, require_platform, require_platform_or_self, TENANT_ADMIN_SCOPES
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger("grafomem.cloud.routes")
+
+
+def _caller_tenant_id(request: Request) -> str:
+    """The authenticated caller's tenant id (or 'unknown' in no-auth mode)."""
+    ctx = getattr(request.state, "tenant", None)
+    return getattr(ctx, "tenant_id", "unknown") if ctx is not None else "unknown"
+
+
+def _audit(request: Request, action: str, target_tenant_id: str, **metadata) -> None:
+    """Write an admin-plane audit row (best-effort). Records the CALLER as actor and
+    the TARGET tenant as the resource — the caller≠target trail whose absence made the
+    priv-esc exploitation undeterminable from retained data."""
+    try:
+        al = getattr(request.app.state, "audit_logger", None)
+        if al is None:
+            return
+        caller = _caller_tenant_id(request)
+        al.log(tenant_id=target_tenant_id, actor=caller, action=action,
+               resource=f"tenant:{target_tenant_id}", metadata=metadata)
+    except Exception:  # audit must never break the request path
+        logger.exception("audit log write failed for action=%s", action)
 
 
 # ============================================================================
@@ -34,13 +55,20 @@ class TenantLimitsResponse(BaseModel):
 
 
 class TenantResponse(BaseModel):
-    """Full tenant representation."""
+    """Tenant representation for list/get. **Never carries `api_key`** — key material
+    is show-once at mint/rotate only (a list/get that returned keys was the cross-tenant
+    key-disclosure). See TenantCreatedResponse for the mint response."""
     id: str
     name: str
-    api_key: str
     plan: str
     created_at: datetime
     limits: TenantLimitsResponse
+
+
+class TenantCreatedResponse(TenantResponse):
+    """Mint response only — carries the freshly generated `api_key` exactly once.
+    The caller must store it now; it is not retrievable from any list/get afterwards."""
+    api_key: str
 
 
 class CreateTenantRequest(BaseModel):
@@ -117,19 +145,34 @@ def _compliance(request: Request):
     return tracker
 
 
+def _tenant_limits(info) -> TenantLimitsResponse:
+    return TenantLimitsResponse(
+        max_memories=info.limits.max_memories,
+        max_stores=info.limits.max_stores,
+        max_requests_per_minute=info.limits.max_requests_per_minute,
+    )
+
+
 def _tenant_to_response(info) -> TenantResponse:
-    """Convert a TenantInfo dataclass to a Pydantic response model."""
+    """Convert a TenantInfo to the list/get response — WITHOUT api_key."""
     return TenantResponse(
         id=info.id,
         name=info.name,
-        api_key=info.api_key,
         plan=info.plan,
         created_at=info.created_at,
-        limits=TenantLimitsResponse(
-            max_memories=info.limits.max_memories,
-            max_stores=info.limits.max_stores,
-            max_requests_per_minute=info.limits.max_requests_per_minute,
-        ),
+        limits=_tenant_limits(info),
+    )
+
+
+def _tenant_to_created_response(info) -> TenantCreatedResponse:
+    """Convert a freshly minted TenantInfo to the create response — WITH api_key (show-once)."""
+    return TenantCreatedResponse(
+        id=info.id,
+        name=info.name,
+        plan=info.plan,
+        created_at=info.created_at,
+        limits=_tenant_limits(info),
+        api_key=info.api_key,
     )
 
 
@@ -164,34 +207,33 @@ def _require_admin(request: Request):
 router = APIRouter(prefix="/v1/cloud", tags=["Cloud Management"])
 
 
-@router.post("/tenants", response_model=TenantResponse, status_code=201)
+@router.post("/tenants", response_model=TenantCreatedResponse, status_code=201)
 async def create_tenant(req: CreateTenantRequest, request: Request):
-    """Provision a new tenant with the specified plan."""
-    _require_admin(request)
-    require_scope(request, "admin:platform")
+    """Provision a new tenant with the specified plan. PLATFORM operators only."""
+    require_platform(request)
     mgr = _tenant_manager(request)
     try:
         info = mgr.create_tenant(name=req.name, plan=req.plan)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
-    return _tenant_to_response(info)
+    _audit(request, "create_tenant", info.id, name=req.name, plan=req.plan)
+    return _tenant_to_created_response(info)
 
 
 @router.get("/tenants", response_model=list[TenantResponse])
 async def list_tenants(request: Request):
-    """List all provisioned tenants."""
-    _require_admin(request)
-    require_scope(request, "admin:platform")
+    """List all provisioned tenants. PLATFORM operators only. Responses carry NO api_key."""
+    require_platform(request)
     mgr = _tenant_manager(request)
     tenants = mgr.list_tenants()
+    _audit(request, "list_tenants", "*", count=len(tenants))
     return [_tenant_to_response(t) for t in tenants]
 
 
 @router.get("/tenants/{tenant_id}", response_model=TenantResponse)
 async def get_tenant(tenant_id: str, request: Request):
-    """Retrieve a single tenant by ID."""
-    _require_admin(request)
-    require_scope(request, "admin:platform")
+    """Retrieve a single tenant by ID. PLATFORM operator, or the tenant itself. No api_key."""
+    require_platform_or_self(request, tenant_id)
     mgr = _tenant_manager(request)
     info = mgr.get_tenant(tenant_id)
     if info is None:
@@ -203,14 +245,16 @@ async def get_tenant(tenant_id: str, request: Request):
     "/tenants/{tenant_id}/rotate-key", response_model=RotateKeyResponse,
 )
 async def rotate_key(tenant_id: str, request: Request):
-    """Revoke the current API key and issue a new one."""
-    _require_admin(request)
-    require_scope(request, "admin:platform")
+    """Revoke the current API key and issue a new one. PLATFORM operator, or the tenant itself."""
+    require_platform_or_self(request, tenant_id)
+    _audit(request, "rotate_key", tenant_id)
     mgr = _tenant_manager(request)
     try:
         conn = mgr._get_conn()
         conn.execute("DELETE FROM tenant_api_keys WHERE tenant_id = %s", (tenant_id,))
-        new_key = mgr.create_api_key(tenant_id, name="default_admin", role="admin")
+        # Regenerated default key is own-tenant admin, NOT platform/superuser (P0 2026-09-11).
+        new_key = mgr.create_api_key(tenant_id, name="default_admin", role="admin",
+                                     scopes=TENANT_ADMIN_SCOPES)
         # Deleting the rows is not revocation on its own: the auth middleware
         # caches key resolutions for 60s. Evict them or the old key keeps working.
         from aml.server.auth import invalidate_tenant_key_cache
@@ -226,9 +270,9 @@ async def rotate_key(tenant_id: str, request: Request):
 async def get_usage(
     tenant_id: str, request: Request, period: str = "current_month",
 ):
-    """Retrieve aggregated usage for a tenant's billing period."""
-    _require_admin(request)
-    require_scope(request, "admin:platform")
+    """Retrieve aggregated usage for a tenant's billing period. PLATFORM operator, or the tenant itself."""
+    require_platform_or_self(request, tenant_id)
+    _audit(request, "usage", tenant_id, period=period)
     svc = _metering(request)
 
     # Verify tenant exists
@@ -260,9 +304,8 @@ async def get_usage(
 async def get_compliance(
     tenant_id: str, request: Request, limit: int = 10,
 ):
-    """Retrieve conformance audit history for a tenant."""
-    _require_admin(request)
-    require_scope(request, "admin:platform")
+    """Retrieve conformance audit history for a tenant. Own tenant, or platform."""
+    require_platform_or_self(request, tenant_id)
     tracker = _compliance(request)
 
     # Verify tenant exists
@@ -310,8 +353,8 @@ def _stripe_billing(request: Request):
 
 @router.post("/billing/checkout")
 async def billing_checkout(req: CheckoutRequest, request: Request):
-    """Create a Stripe Checkout Session and return the redirect URL."""
-    require_scope(request, "admin:platform")
+    """Create a Stripe Checkout Session and return the redirect URL. Own tenant, or platform."""
+    require_platform_or_self(request, req.tenant_id)
     svc = _stripe_billing(request)
     try:
         url = svc.create_checkout_session(
@@ -352,8 +395,8 @@ class SubscriptionResponse(BaseModel):
 
 @router.get("/billing/subscription/{tenant_id}", response_model=SubscriptionResponse)
 async def get_subscription(tenant_id: str, request: Request):
-    """Retrieve a tenant's current Stripe subscription."""
-    require_scope(request, "admin:platform")
+    """Retrieve a tenant's current Stripe subscription. Own tenant, or platform."""
+    require_platform_or_self(request, tenant_id)
     svc = _stripe_billing(request)
     sub = svc.get_subscription(tenant_id)
     if sub is None:
@@ -369,8 +412,8 @@ async def get_subscription(tenant_id: str, request: Request):
 
 @router.post("/billing/cancel/{tenant_id}")
 async def cancel_subscription(tenant_id: str, request: Request):
-    """Cancel a tenant's Stripe subscription."""
-    require_scope(request, "admin:platform")
+    """Cancel a tenant's Stripe subscription. Own tenant, or platform."""
+    require_platform_or_self(request, tenant_id)
     svc = _stripe_billing(request)
     ok = svc.cancel_subscription(tenant_id)
     if not ok:
