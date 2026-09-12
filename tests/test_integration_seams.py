@@ -118,33 +118,30 @@ def test_rbac_read_only_can_retrieve(tenant_setup, client):
     assert "Agent was here" in mems[0]["content"]
 
 def test_rbac_admin_cloud_endpoints(tenant_setup, client, monkeypatch):
-    # P0 2026-09-11: /v1/cloud/tenants is a PLATFORM route. A tenant's own admin key
-    # (role=admin) is NOT a platform operator and must be denied — this is the
-    # cross-tenant privilege-escalation that used to pass via scopes=['*'].
+    # P0 2026-09-11: /v1/cloud/tenants is a PLATFORM route gated on PLATFORM_TENANT_IDS
+    # IDENTITY — not on role/scope. Deterministic: set the allowlist explicitly rather
+    # than relying on it being empty (CI/other env may set it). require_platform is
+    # per-TENANT, so a tenant's admin AND agent keys behave identically — what decides
+    # access is whether the caller's tenant is in the allowlist.
     admin_key = tenant_setup["admin_key"]
-    tenant_id = tenant_setup["tenant_id"]
-    monkeypatch.delenv("PLATFORM_TENANT_IDS", raising=False)
-    response = client.get("/v1/cloud/tenants",
-        headers={"Authorization": f"Bearer {admin_key}"}
-    )
-    assert response.status_code == 403, response.text
-
-    # Only a platform operator (tenant id in PLATFORM_TENANT_IDS) may list tenants.
-    monkeypatch.setenv("PLATFORM_TENANT_IDS", tenant_id)
-    response = client.get("/v1/cloud/tenants",
-        headers={"Authorization": f"Bearer {admin_key}"}
-    )
-    assert response.status_code == 200, response.text
-    # Platform list carries no api_key (show-once at mint/rotate only).
-    for row in response.json():
-        assert "api_key" not in row, f"api_key leaked: {row}"
-
-    # An agent key is never a platform operator, allowlisted or not.
     agent_key = tenant_setup["agent_key"]
-    response = client.get("/v1/cloud/tenants",
-        headers={"Authorization": f"Bearer {agent_key}"}
-    )
-    assert response.status_code == 403, response.text
+    tenant_id = tenant_setup["tenant_id"]
+    OTHER = "00000000000000000000000000000000"  # a tenant id that is NOT this tenant
+
+    # This tenant is NOT the platform operator → 403 for its keys (the priv-esc that
+    # used to pass via scopes=['*']). Both the admin and agent key must be denied.
+    monkeypatch.setenv("PLATFORM_TENANT_IDS", OTHER)
+    r = client.get("/v1/cloud/tenants", headers={"Authorization": f"Bearer {admin_key}"})
+    assert r.status_code == 403, r.text
+    r = client.get("/v1/cloud/tenants", headers={"Authorization": f"Bearer {agent_key}"})
+    assert r.status_code == 403, r.text
+
+    # This tenant IS the platform operator → 200, and the list carries no api_key.
+    monkeypatch.setenv("PLATFORM_TENANT_IDS", tenant_id)
+    r = client.get("/v1/cloud/tenants", headers={"Authorization": f"Bearer {admin_key}"})
+    assert r.status_code == 200, r.text
+    for row in r.json():
+        assert "api_key" not in row, f"api_key leaked: {row}"
 
 def test_rbac_delete_memory(tenant_setup, client):
     # Agent can delete memory
