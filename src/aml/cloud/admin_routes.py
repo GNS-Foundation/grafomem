@@ -95,7 +95,10 @@ async def list_tenants(
 ):
     """List all tenants. Super-admin only in production;
     currently returns the authenticated user's tenant."""
-    require_scope(request, "admin:platform")
+    # NOT platform-gated: these are the customer console (portal-JWT via _require_admin)
+    # scoped to the caller's OWN tenant by _verify_tenant_access. The former
+    # require_scope('admin:platform') here is now the platform-operator gate and would
+    # lock customers out of their own console — removed (P0 2026-09-11).
     tm = _tenant_manager(request)
     tenant_id = user.get("tenant_id", "")
 
@@ -123,7 +126,10 @@ async def get_tenant(
     user: dict = Depends(_require_admin),
 ):
     """Get detailed tenant information."""
-    require_scope(request, "admin:platform")
+    # NOT platform-gated: these are the customer console (portal-JWT via _require_admin)
+    # scoped to the caller's OWN tenant by _verify_tenant_access. The former
+    # require_scope('admin:platform') here is now the platform-operator gate and would
+    # lock customers out of their own console — removed (P0 2026-09-11).
     _verify_tenant_access(user, tenant_id)
     tm = _tenant_manager(request)
 
@@ -136,7 +142,8 @@ async def get_tenant(
         "id": tenant.id,
         "name": tenant.name,
         "plan": tenant.plan,
-        "api_key_prefix": tenant.api_key[:8] + "...",
+        # No key material in any response (P0 2026-09-11). `tenant.id` is the non-secret
+        # identifier; key material is show-once at mint/rotate only.
         "limits": {
             "max_memories": tenant.limits.max_memories,
             "max_stores": tenant.limits.max_stores,
@@ -156,7 +163,10 @@ async def update_tenant(
     user: dict = Depends(_require_admin),
 ):
     """Update tenant name or plan. Requires owner/admin role."""
-    require_scope(request, "admin:platform")
+    # NOT platform-gated: these are the customer console (portal-JWT via _require_admin)
+    # scoped to the caller's OWN tenant by _verify_tenant_access. The former
+    # require_scope('admin:platform') here is now the platform-operator gate and would
+    # lock customers out of their own console — removed (P0 2026-09-11).
     _verify_tenant_access(user, tenant_id)
     tm = _tenant_manager(request)
 
@@ -189,7 +199,10 @@ async def destroy_tenant_key(
     user: dict = Depends(_require_admin),
 ):
     """Crypto-erase a tenant by destroying its DEK. Irreversible."""
-    require_scope(request, "admin:platform")
+    # NOT platform-gated: these are the customer console (portal-JWT via _require_admin)
+    # scoped to the caller's OWN tenant by _verify_tenant_access. The former
+    # require_scope('admin:platform') here is now the platform-operator gate and would
+    # lock customers out of their own console — removed (P0 2026-09-11).
     _verify_tenant_access(user, tenant_id)
 
     if req.confirmation != "I understand this is irreversible":
@@ -254,7 +267,10 @@ async def invite_member(
     user: dict = Depends(_require_admin),
 ):
     """Invite a team member to the tenant."""
-    require_scope(request, "admin:platform")
+    # NOT platform-gated: these are the customer console (portal-JWT via _require_admin)
+    # scoped to the caller's OWN tenant by _verify_tenant_access. The former
+    # require_scope('admin:platform') here is now the platform-operator gate and would
+    # lock customers out of their own console — removed (P0 2026-09-11).
     _verify_tenant_access(user, tenant_id)
     tm = _tenant_manager(request)
 
@@ -277,7 +293,10 @@ async def list_members(
     user: dict = Depends(_require_admin),
 ):
     """List all members of a tenant."""
-    require_scope(request, "admin:platform")
+    # NOT platform-gated: these are the customer console (portal-JWT via _require_admin)
+    # scoped to the caller's OWN tenant by _verify_tenant_access. The former
+    # require_scope('admin:platform') here is now the platform-operator gate and would
+    # lock customers out of their own console — removed (P0 2026-09-11).
     _verify_tenant_access(user, tenant_id)
     tm = _tenant_manager(request)
     members = tm.list_members(tenant_id)
@@ -293,7 +312,10 @@ async def update_member_role(
     user: dict = Depends(_require_admin),
 ):
     """Update a team member's role."""
-    require_scope(request, "admin:platform")
+    # NOT platform-gated: these are the customer console (portal-JWT via _require_admin)
+    # scoped to the caller's OWN tenant by _verify_tenant_access. The former
+    # require_scope('admin:platform') here is now the platform-operator gate and would
+    # lock customers out of their own console — removed (P0 2026-09-11).
     _verify_tenant_access(user, tenant_id)
     tm = _tenant_manager(request)
 
@@ -314,7 +336,10 @@ async def remove_member(
     user: dict = Depends(_require_admin),
 ):
     """Remove a team member from the tenant."""
-    require_scope(request, "admin:platform")
+    # NOT platform-gated: these are the customer console (portal-JWT via _require_admin)
+    # scoped to the caller's OWN tenant by _verify_tenant_access. The former
+    # require_scope('admin:platform') here is now the platform-operator gate and would
+    # lock customers out of their own console — removed (P0 2026-09-11).
     _verify_tenant_access(user, tenant_id)
     tm = _tenant_manager(request)
 
@@ -335,7 +360,10 @@ async def get_usage(
     Aggregates memory count, store count, decision count, and
     API request metrics from the metering service.
     """
-    require_scope(request, "admin:platform")
+    # NOT platform-gated: these are the customer console (portal-JWT via _require_admin)
+    # scoped to the caller's OWN tenant by _verify_tenant_access. The former
+    # require_scope('admin:platform') here is now the platform-operator gate and would
+    # lock customers out of their own console — removed (P0 2026-09-11).
     _verify_tenant_access(user, tenant_id)
     tm = _tenant_manager(request)
 

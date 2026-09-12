@@ -304,9 +304,8 @@ async def get_usage(
 async def get_compliance(
     tenant_id: str, request: Request, limit: int = 10,
 ):
-    """Retrieve conformance audit history for a tenant."""
-    _require_admin(request)
-    require_scope(request, "admin:platform")
+    """Retrieve conformance audit history for a tenant. Own tenant, or platform."""
+    require_platform_or_self(request, tenant_id)
     tracker = _compliance(request)
 
     # Verify tenant exists
@@ -354,8 +353,8 @@ def _stripe_billing(request: Request):
 
 @router.post("/billing/checkout")
 async def billing_checkout(req: CheckoutRequest, request: Request):
-    """Create a Stripe Checkout Session and return the redirect URL."""
-    require_scope(request, "admin:platform")
+    """Create a Stripe Checkout Session and return the redirect URL. Own tenant, or platform."""
+    require_platform_or_self(request, req.tenant_id)
     svc = _stripe_billing(request)
     try:
         url = svc.create_checkout_session(
@@ -396,8 +395,8 @@ class SubscriptionResponse(BaseModel):
 
 @router.get("/billing/subscription/{tenant_id}", response_model=SubscriptionResponse)
 async def get_subscription(tenant_id: str, request: Request):
-    """Retrieve a tenant's current Stripe subscription."""
-    require_scope(request, "admin:platform")
+    """Retrieve a tenant's current Stripe subscription. Own tenant, or platform."""
+    require_platform_or_self(request, tenant_id)
     svc = _stripe_billing(request)
     sub = svc.get_subscription(tenant_id)
     if sub is None:
@@ -413,8 +412,8 @@ async def get_subscription(tenant_id: str, request: Request):
 
 @router.post("/billing/cancel/{tenant_id}")
 async def cancel_subscription(tenant_id: str, request: Request):
-    """Cancel a tenant's Stripe subscription."""
-    require_scope(request, "admin:platform")
+    """Cancel a tenant's Stripe subscription. Own tenant, or platform."""
+    require_platform_or_self(request, tenant_id)
     svc = _stripe_billing(request)
     ok = svc.cancel_subscription(tenant_id)
     if not ok:
