@@ -25,6 +25,15 @@ been applied in any environment we control. `008_push_tokens_converge.sql` is th
 guard for any external self-hoster who applied the original 006 (adds `tenant_id` / the approver FK if
 missing). From 007/008 onward, immutability holds.
 
+## No new tables via `ensure_schema`
+
+From 2026-09-15 on, **new tables are numbered migrations, never `ensure_schema` DDL.** A service's
+`ensure_schema` must not introduce a new table. The existing `ensure_schema` DDL is being retired: in
+cloud the runtime process does no boot DDL (it runs as `grafomem_rt`, which owns nothing), so
+`ensure_schema` is gated off there — `ErasureLedger` first, the rest once the `--ensure-schema` release
+step lands. When an existing `ensure_schema` table next needs a change, convert it to a numbered migration
+and record the current state with a **verify-first baseline**.
+
 ## Grant rule
 
 In a **split-role** deployment (`GRAFOMEM_RUNTIME_ROLE` set) every migration that `CREATE`s a table MUST,
