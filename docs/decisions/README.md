@@ -146,13 +146,20 @@ the claim, the vantage that produced it, and why the corroboration failed.
   tested on; the admin plane is a separate surface and was never tested. Fixed: platform routes gated on
   operator identity (`PLATFORM_TENANT_IDS`), never on `'*'`; list/get stripped of `api_key`; admin
   routes now write `audit_logs`. See the incident record in `grafomem-internal`.*
-- **2026-09-15 — "14 pre-ledger erasures to backfill (I0c)."** *Wrong count — the number was never
-  derived.* I carried "14" from a work-queue summary into an I0c deliverable and even annotated the
-  extraction query "expect 14" — without ever running the anti-join (I have no prod DB access, so the
-  count could only have come from the very query I was handing over). The authoritative
-  `erasure_certificates LEFT JOIN erasure_ledger ON entry_id = certificate_id WHERE ledger IS NULL`
-  returns **27** (25 signed + 2 unsigned), across 9 test tenants, 31 May–28 Jun. *Lesson: a count is a
-  primary-source fact — if the query that would produce it has not run, the number is unknown, not
-  inherited. Annotating a query with an "expected" value I could not have computed dressed a guess as a
-  prediction; the honest placeholder was "run this and tell me the count."*
+- **2026-09-15 — the I0c backfill count, and what "14" actually was.** The I0c deliverable said the
+  backfill set was "14" and annotated the extraction query "expect 14." Two things were wrong, and a
+  first draft of *this very entry* added a third. **(1) Wrong denominator.** 14 is not the number of
+  certificates missing a ledger row — it is a *subset*: the signed certs completed AFTER the ledger
+  write shipped 2026-06-22, i.e. the ones the code itself should have written (the 2026-09-10
+  erasure-ledger incident, fact #4, verified in prod). The anti-join for *all* pre-ledger certs returns
+  **27** (25 signed + 2 unsigned); the 13 pre-code certs that incident called "legitimately absent" are
+  still real ledger gaps. **(2) Unposed scope question.** Whether to backfill only the 14
+  code-should-have-written rows or all 25 signed pre-ledger rows was a decision I never surfaced — the
+  operator chose all 25 signed (2 unsigned excluded, an I0b finding). **(3) The correction that also
+  skipped the source.** My first draft of this entry called 14 "never derived … a guess dressed as a
+  prediction" — but it *was* derived and prod-verified in the incident record; I wrote the correction
+  without re-reading the primary source it was about. *Lesson: a count carries a denominator — check
+  which set it belongs to before quoting it, and never present a subset as the total; the choice
+  between subsets is the operator's, not one to settle by picking a number. And a correction is a
+  claim too: verify it against the same primary source before writing it down.*
 
