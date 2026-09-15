@@ -1,3 +1,4 @@
+-- class: ledger
 -- Migration 009: erasure_ledger — the append-only crypto-erasure log.
 --
 -- The I0 shape (erasure_ledger.py:ensure_schema) plus the I0c `backfill` provenance

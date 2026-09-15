@@ -42,3 +42,20 @@ runtime process (which owns no tables) cannot use the new table. The runner **re
 without the grant. Wrap the `GRANT` in a `DO $$ … IF EXISTS (SELECT 1 FROM pg_roles …) … $$` guard so it
 is a no-op in single-role self-host. `ALTER DEFAULT PRIVILEGES … TO grafomem_rt` (operator runbook) is
 the backstop; the in-file grant is the explicit belt.
+
+### Ledger-class tables
+
+A migration declares a table **append-only ledger-class** with a header marker — **`-- class: ledger`**
+on its own line — never inferred from the name. For a ledger-class migration the runner requires, per
+CREATE'd table:
+
+- the **ledger role** (`grafomem_ledger`) granted **INSERT + SELECT** (it appends, and reads back for
+  restore-scrub), and **not** UPDATE/DELETE (append-only);
+- the **runtime role** (`grafomem_rt`) **SELECT-only**, which needs an **explicit
+  `REVOKE INSERT, UPDATE, DELETE ON <table> FROM grafomem_rt;`** in the same file — because
+  `ALTER DEFAULT PRIVILEGES` grants the runtime role full DML on every migrate-created table, so the
+  revoke is what actually makes it read-only.
+
+The runner rejects a ledger-class migration that violates any of these. `009_erasure_ledger.sql` carries
+the marker for classification but predates the rule and is applied in every environment we control, so it
+is grandfathered (exempt from the REVOKE requirement); new ledger-class migrations are not.

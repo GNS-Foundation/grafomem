@@ -85,6 +85,44 @@ def _granted_tables(sql: str, role: str) -> set[str]:
     return granted
 
 
+# A migration declares itself ledger-class with a header marker — NOT inferred from
+# the table name. Ledger-class tables are append-only: the ledger role writes+reads,
+# the runtime role is read-only.
+_LEDGER_CLASS_MARKER = re.compile(r"^\s*--\s*class:\s*ledger\b", re.IGNORECASE | re.MULTILINE)
+_WRITE_PRIVS = frozenset({"INSERT", "UPDATE", "DELETE"})
+
+# Migrations that predate the ledger-class rule and are already applied in every
+# environment we control (so the runner never re-validates them here). Kept
+# header-marked for classification, but exempt from the REVOKE requirement — a fresh
+# split-role install is the only residual (see the design report). New ledger-class
+# migrations get no such exemption.
+_LEDGER_RULE_GRANDFATHERED = frozenset({"009_erasure_ledger.sql"})
+
+
+def _stmt_privs(sql: str, verb: str, connector: str, table: str, role: str) -> set[str]:
+    """Privileges named in `verb` (GRANT/REVOKE) statements on `table` to/from `role`.
+
+    `connector` is 'to' for GRANT, 'from' for REVOKE. Handles multi-role clauses and
+    grants/revokes wrapped in DO-blocks (scans to the statement's ';'). `ALL` expands.
+    """
+    privs: set[str] = set()
+    pat = re.compile(
+        verb + r"\s+(.+?)\s+on\s+(?:table\s+)?[\"']?(?:public\.)?" + re.escape(table)
+        + r"\b[^;]*?\b" + connector + r"\b([^;]*)",
+        re.IGNORECASE | re.DOTALL,
+    )
+    for m in pat.finditer(sql):
+        priv_str, roles_clause = m.group(1).upper(), m.group(2)
+        if not re.search(r"(?<![A-Za-z0-9_])" + re.escape(role) + r"(?![A-Za-z0-9_])", roles_clause):
+            continue
+        if re.search(r"\bALL\b", priv_str):
+            privs |= {"SELECT", *_WRITE_PRIVS}
+        for p in ("SELECT", *_WRITE_PRIVS):
+            if re.search(r"\b" + p + r"\b", priv_str):
+                privs.add(p)
+    return privs
+
+
 def validate_migration_sql(
     name: str, sql: str, runtime_role: str | None, ledger_role: str = LEDGER_ROLE
 ) -> None:
@@ -102,13 +140,36 @@ def validate_migration_sql(
             f"deployment; add e.g. "
             f"`GRANT SELECT, INSERT, UPDATE, DELETE ON <table> TO {runtime_role};`"
         )
-    ledger_created = {t for t in created if "ledger" in t}
-    missing_ledger = ledger_created - _granted_tables(sql, ledger_role)
-    if missing_ledger:
-        raise MigrationError(
-            f"{name}: ledger table {sorted(missing_ledger)} without a GRANT to "
-            f"{ledger_role!r}. Ledger tables are written by the ledger role too."
-        )
+    # Ledger-class rule (declared by the `-- class: ledger` header marker, not the name).
+    # Append-only: ledger role INSERT+SELECT (it also reads for restore-scrub), no
+    # UPDATE/DELETE; runtime role SELECT-only, which requires an explicit REVOKE because
+    # ALTER DEFAULT PRIVILEGES grants the runtime role full DML on every migrate-created table.
+    if _LEDGER_CLASS_MARKER.search(sql) and name not in _LEDGER_RULE_GRANDFATHERED:
+        for tbl in sorted(created):
+            rt_granted = _stmt_privs(sql, "grant", "to", tbl, runtime_role)
+            rt_revoked = _stmt_privs(sql, "revoke", "from", tbl, runtime_role)
+            led_granted = _stmt_privs(sql, "grant", "to", tbl, ledger_role)
+            if rt_granted & _WRITE_PRIVS:
+                raise MigrationError(
+                    f"{name}: ledger-class table {tbl!r} grants "
+                    f"{sorted(rt_granted & _WRITE_PRIVS)} to {runtime_role!r}; it must be SELECT-only."
+                )
+            if not _WRITE_PRIVS <= rt_revoked:
+                raise MigrationError(
+                    f"{name}: ledger-class table {tbl!r} must "
+                    f"`REVOKE INSERT, UPDATE, DELETE ON {tbl} FROM {runtime_role};` — ALTER DEFAULT "
+                    f"PRIVILEGES grants the runtime role full DML on migrate-created tables."
+                )
+            if not {"INSERT", "SELECT"} <= led_granted:
+                raise MigrationError(
+                    f"{name}: ledger-class table {tbl!r} must GRANT INSERT + SELECT to "
+                    f"{ledger_role!r} (it appends and reads back for restore-scrub)."
+                )
+            if led_granted & {"UPDATE", "DELETE"}:
+                raise MigrationError(
+                    f"{name}: ledger-class table {tbl!r} grants "
+                    f"{sorted(led_granted & {'UPDATE', 'DELETE'})} to {ledger_role!r}; a ledger is append-only."
+                )
 
 
 def _check_ident(role: str | None) -> None:
