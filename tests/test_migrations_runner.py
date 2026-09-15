@@ -150,6 +150,28 @@ def test_migration_sql_files_present_on_disk():
     assert "006_push_tokens.sql" in files and "007_orchestrator_agent_cgr_identity.sql" in files
 
 
+def _read_migration(name: str) -> str:
+    return (_migrations_dir() / name).read_text()
+
+
+def test_006_satisfies_grant_rule_and_has_tenant_and_fk():
+    sql = _read_migration("006_push_tokens.sql")
+    # Grant present (inside the guarded DO block) ⇒ the runner accepts it.
+    validate_migration_sql("006_push_tokens.sql", sql, runtime_role="grafomem_rt")
+    assert "tenant_id" in sql
+    assert "REFERENCES hitl_approvers" in sql and "ON DELETE CASCADE" in sql
+    assert "pg_roles" in sql  # grant is guarded for single-role self-host
+
+
+def test_008_convergence_is_idempotent_and_guarded():
+    sql = _read_migration("008_push_tokens_converge.sql")
+    assert "ADD COLUMN IF NOT EXISTS tenant_id" in sql
+    assert "pg_constraint" in sql  # FK added only if absent (no ADD CONSTRAINT IF NOT EXISTS in PG)
+    assert "approver_push_tokens_approver_id_fkey" in sql
+    # No CREATE TABLE ⇒ grant rule not triggered; still valid.
+    validate_migration_sql("008_push_tokens_converge.sql", sql, runtime_role="grafomem_rt")
+
+
 def test_package_data_ships_migrations_sql():
     # Regression for the root cause: the wheel omitted cloud/migrations/*.sql, so the
     # deployed runner found zero files and applied nothing.
