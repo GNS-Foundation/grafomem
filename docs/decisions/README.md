@@ -146,4 +146,13 @@ the claim, the vantage that produced it, and why the corroboration failed.
   tested on; the admin plane is a separate surface and was never tested. Fixed: platform routes gated on
   operator identity (`PLATFORM_TENANT_IDS`), never on `'*'`; list/get stripped of `api_key`; admin
   routes now write `audit_logs`. See the incident record in `grafomem-internal`.*
+- **2026-09-15 — "14 pre-ledger erasures to backfill (I0c)."** *Wrong count — the number was never
+  derived.* I carried "14" from a work-queue summary into an I0c deliverable and even annotated the
+  extraction query "expect 14" — without ever running the anti-join (I have no prod DB access, so the
+  count could only have come from the very query I was handing over). The authoritative
+  `erasure_certificates LEFT JOIN erasure_ledger ON entry_id = certificate_id WHERE ledger IS NULL`
+  returns **27** (25 signed + 2 unsigned), across 9 test tenants, 31 May–28 Jun. *Lesson: a count is a
+  primary-source fact — if the query that would produce it has not run, the number is unknown, not
+  inherited. Annotating a query with an "expected" value I could not have computed dressed a guess as a
+  prediction; the honest placeholder was "run this and tell me the count."*
 
