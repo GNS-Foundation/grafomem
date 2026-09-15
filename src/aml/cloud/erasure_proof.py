@@ -356,6 +356,34 @@ class ErasureProofService:
             "legal_basis": legal_basis,
         }
 
+        # Step 4.5: Ledger row FIRST — before signing, before the certificate row.
+        #
+        # Incident 2026-09-10 (grafomem-internal): this write used to run LAST and
+        # unguarded, after the certificate insert. With the ledger pool unable to
+        # authenticate, 14 signed certificates were issued with no ledger row — a
+        # certificate asserting an erasure the restore-time record knew nothing
+        # about. The ledger and the certificates live in different pools (by
+        # design — the ledger is meant to be an independent store), so one shared
+        # transaction is not possible; ordering is the enforceable half of
+        # atomicity here, and the safe partial state is "ledger row without
+        # certificate" (the scrub in Step 1 has already happened), never the
+        # reverse. A dead ledger aborts the request: no signature, no certificate.
+        if self._erasure_ledger is not None:
+            try:
+                self._erasure_ledger.record_subject_erasure(
+                    entry_id=certificate_id,
+                    tenant_id=tenant_id,
+                    fact_ref=fact_ref,
+                    content_hash=content_hash,
+                    certificate=cert_data,
+                )
+            except Exception as e:
+                raise RuntimeError(
+                    "erasure ledger unavailable — the erasure was scrubbed but NOT "
+                    "certified, and no certificate was issued. Restore the ledger "
+                    f"connection and re-issue. Underlying error: {e}"
+                ) from e
+
         signature = None
         public_key = None
         key = signing_identity or self._signing_identity
@@ -384,16 +412,6 @@ class ErasureProofService:
                 "Ed25519-signed at issuance" if signature else None,
             ),
         )
-        
-
-        if self._erasure_ledger and signature is not None:
-            self._erasure_ledger.record_subject_erasure(
-                entry_id=certificate_id,
-                tenant_id=tenant_id,
-                fact_ref=fact_ref,
-                content_hash=content_hash,
-                certificate=cert_data
-            )
 
         logger.info(
             "Erasure certificate issued: cert=%s tenant=%s fact_ref=%s scrubbed=%d",
