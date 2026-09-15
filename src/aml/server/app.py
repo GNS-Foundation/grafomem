@@ -857,7 +857,20 @@ def create_app(
                 logger.warning(f"GRAFOMEM_LEDGER_URL not set! Defaulting to local {ledger_url} to ensure restore-independence.")
 
             el = ErasureLedger(ledger_url, open=not spec_only)
-            _init(el)
+            # erasure_ledger is migration-owned (migration 009). In cloud the runtime
+            # process must not attempt DDL — the ledger role has no CREATE on schema
+            # public, so the boot ensure_schema only ever logged a permission error.
+            # Skip it in cloud (migrations own the table); self-host still ensures it.
+            # First of the ensure_schema:* cascade to be gated; the rest follow once
+            # the --ensure-schema release step lands.
+            from aml.cloud.migrations_runner import boot_migrations_enabled as _boot_ddl_enabled
+            if _boot_ddl_enabled(effective_auth_mode):
+                _init(el)
+            else:
+                logger.info(
+                    "startup ▶ skip ensure_schema:ErasureLedger in cloud "
+                    "(table owned by migration 009; runtime does no DDL)"
+                )
             app.state.erasure_ledger = el
             
             master_key_hex = os.environ.get("GRAFOMEM_MASTER_KEY")
