@@ -3,11 +3,18 @@ import sys
 import uuid
 import requests
 
+from aml.prod_target_guard import guard_not_prod
+
+
 def main():
     api_url = os.environ.get("GRAFOMEM_API_URL")
     if not api_url:
         print("❌ ERROR: GRAFOMEM_API_URL is required.")
         sys.exit(1)
+
+    # This script creates a real tenant ("Resil Finding 1"). Refuse production
+    # unless --allow-prod (per invocation) or GRAFOMEM_ALLOW_PROD=1.
+    guard_not_prod(api_url)
 
     flight_id = uuid.uuid4().hex[:8]
     ephemeral_email = f"resil-f1-{flight_id}@test.com"
