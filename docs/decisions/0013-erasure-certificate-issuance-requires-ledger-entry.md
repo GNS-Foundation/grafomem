@@ -1,6 +1,7 @@
 # 0013 — Erasure-certificate issuance requires a prior ledger entry (issuance obligation, not a validity property)
 
-**Status:** proposed 2026-09-15 · **Relates to:** [0003](0003-principal-identity-is-not-stable.md),
+**Status:** **accepted 2026-09-15** (framing + the three resolutions below; enforcement = grafomem-internal
+I0b, after merge) · **Relates to:** [0003](0003-principal-identity-is-not-stable.md),
 [0005](0005-custody-managed-principals.md) (certificate validity = signature); grafomem-internal I0b.
 
 ## Question
@@ -59,9 +60,15 @@ restore-independence.
 - Enforcement is grafomem-internal I0b: reorder both write sites + three fail-closed gates (empty
   governance/coverage; unsigned; unconfigured/unreachable ledger), each with a must-fail test.
 
-## Open (for acceptance)
+## Resolved (operator, 2026-09-15)
 
-1. Empty governance/coverage at issuance — **refuse** (recommended) vs allow-with-a-non-conformant flag.
-2. Self-host with no ledger — **required by default** (recommended), explicit `ERASURE_LEDGER_OPTIONAL=1`
-   opt-out only.
-3. Orphan-ledger reconciliation sweep — recommended, separate.
+1. **Empty governance/coverage at issuance → REFUSE.** No certificate is issued for an erasure whose
+   `governance_record` is NULL/empty or `coverage` is `{}`.
+2. **Ledger required by default.** `ERASURE_LEDGER_OPTIONAL=1` (dev/test only) may let the *erasure itself*
+   proceed, but it **NEVER issues a certificate** — the response states
+   **"erased, no certificate issued: ledger not configured"**. **No unledgered certificate exists in any
+   mode**, ever: with a ledger → ledger-first then certificate; without a ledger under the opt-out →
+   erase, no certificate. The default (no opt-out) aborts with 5xx and does not erase.
+3. **Orphan-ledger reconciliation sweep → yes, a SEPARATE PR after I0b.**
+
+These are decided; this record carries the answers, not the questions.
