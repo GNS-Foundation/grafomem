@@ -106,6 +106,39 @@ def _check_ident(role: str | None) -> None:
         raise MigrationError(f"invalid role identifier: {role!r}")
 
 
+# ── baseline verification ────────────────────────────────────────────────────
+
+def _created_tables(sql: str) -> set[str]:
+    return {m.group(1).lower() for m in _CREATE_TABLE_RE.finditer(sql)}
+
+
+def verify_baseline_present(version: str, sql: str, table_exists) -> None:
+    """Refuse to baseline a version whose schema is not actually present.
+
+    Baseline records an *already-applied* migration without running it, so it must
+    only be used when the objects genuinely exist. `table_exists(name) -> bool` is
+    the check. A version with no `CREATE TABLE` we can verify (e.g. an ALTER-only
+    migration) is refused — baseline is only for schema we can confirm present.
+    """
+    created = _created_tables(sql)
+    if not created:
+        raise MigrationError(
+            f"{version}: cannot baseline — no CREATE TABLE to verify. Baseline is only "
+            f"for migrations whose objects can be confirmed present; record this another way."
+        )
+    missing = sorted(t for t in created if not table_exists(t))
+    if missing:
+        raise MigrationError(
+            f"{version}: refusing to baseline — schema not present: {missing}. "
+            f"Baseline is for an already-applied migration; apply it via the runner instead."
+        )
+
+
+def _table_exists(conn: "psycopg.Connection", name: str) -> bool:
+    row = conn.execute("SELECT to_regclass(%s)", (f"public.{name}",)).fetchone()
+    return bool(row and row[0] is not None)
+
+
 # ── schema_migrations ledger ─────────────────────────────────────────────────
 
 def _ensure_schema_migrations(conn: "psycopg.Connection", runtime_role: str | None) -> None:
@@ -187,21 +220,25 @@ def baseline_migrations(
 
     For migrations already applied out-of-band (e.g. by hand as ``postgres``): the
     objects exist, so re-running would fail or duplicate. Recorded with
-    ``applied_via='baseline'`` so provenance is explicit. Verify the schema is
-    actually present first (operator step) — this only writes the ledger row.
+    ``applied_via='baseline'`` so provenance is explicit. Each version's schema is
+    **verified present** (its CREATE TABLE targets must exist) before it is recorded
+    — baseline of an absent schema is refused.
     """
     if runtime_role is None:
         runtime_role = os.environ.get(RUNTIME_ROLE_ENV) or None
     _check_ident(runtime_role)
-    known = {f.name for f in _sql_files(migrations_dir or _migrations_dir())}
-    unknown = [v for v in versions if v not in known]
+    files = {f.name: f for f in _sql_files(migrations_dir or _migrations_dir())}
+    unknown = [v for v in versions if v not in files]
     if unknown:
         raise MigrationError(f"unknown migrations to baseline (not in migrations dir): {unknown}")
     with _connect(migrate_url) as conn:
         conn.autocommit = False
         _ensure_schema_migrations(conn, runtime_role)
+        conn.commit()
         recorded = []
         for version in versions:
+            sql = files[version].read_text()
+            verify_baseline_present(version, sql, lambda t: _table_exists(conn, t))  # refuses if absent
             conn.execute(
                 "INSERT INTO schema_migrations (version, applied_via) VALUES (%s, 'baseline') "
                 "ON CONFLICT (version) DO NOTHING",
@@ -209,7 +246,7 @@ def baseline_migrations(
             )
             recorded.append(version)
         conn.commit()
-    logger.info("baselined migrations (no SQL run): %s", recorded)
+    logger.info("baselined migrations (verified present, no SQL run): %s", recorded)
     return {"baselined": recorded}
 
 

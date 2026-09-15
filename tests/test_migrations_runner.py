@@ -11,6 +11,7 @@ from aml.cloud.migrations_runner import (
     MigrationError,
     boot_migrations_enabled,
     validate_migration_sql,
+    verify_baseline_present,
     _check_ident,
     _sql_files,
     _migrations_dir,
@@ -62,6 +63,39 @@ def test_grant_rule_is_noop_for_single_role_selfhost():
 
 def test_non_create_migration_needs_no_grant():
     validate_migration_sql("007.sql", "ALTER TABLE orchestrator_agents ADD COLUMN agent_key TEXT;", runtime_role=RT)
+
+
+# ── baseline verifies schema is present (must-fail: absent schema refused) ────
+def test_baseline_refuses_absent_schema():
+    sql = "CREATE TABLE hitl_approvers (approver_id TEXT PRIMARY KEY);"
+    with pytest.raises(MigrationError):
+        verify_baseline_present("005_hitl_approval.sql", sql, table_exists=lambda t: False)  # must raise
+
+
+def test_baseline_accepts_present_schema():
+    sql = (
+        "CREATE TABLE hitl_approvers (approver_id TEXT PRIMARY KEY);\n"
+        "CREATE TABLE hitl_approval_requests (request_id TEXT PRIMARY KEY);"
+    )
+    verify_baseline_present("005_hitl_approval.sql", sql, table_exists=lambda t: True)  # no raise
+
+
+def test_baseline_refuses_when_only_some_tables_present():
+    sql = (
+        "CREATE TABLE hitl_approvers (approver_id TEXT);\n"
+        "CREATE TABLE hitl_approval_requests (request_id TEXT);"
+    )
+    with pytest.raises(MigrationError):  # one present, one absent → refuse
+        verify_baseline_present("005.sql", sql, table_exists=lambda t: t == "hitl_approvers")
+
+
+def test_baseline_refuses_unverifiable_alter_only():
+    # 007 is ALTER-only: nothing to verify → refuse (must be recorded another way).
+    with pytest.raises(MigrationError):
+        verify_baseline_present(
+            "007.sql", "ALTER TABLE orchestrator_agents ADD COLUMN agent_key TEXT;",
+            table_exists=lambda t: True,
+        )
 
 
 # ── boot gating: cloud never auto-migrates; self-host does; env overrides ─────
