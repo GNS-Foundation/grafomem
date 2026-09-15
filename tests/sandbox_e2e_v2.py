@@ -56,6 +56,11 @@ import httpx
 # ============================================================================
 
 BASE_URL = os.environ.get("GRAFOMEM_URL", "http://localhost:8080")
+
+# This suite creates real tenants ("Conformance Tenant A"); refuse a production
+# target unless explicitly overridden — see aml.prod_target_guard.
+from aml.prod_target_guard import guard_not_prod
+
 import uuid
 TEST_EMAIL = f"conformance_a_{uuid.uuid4().hex[:8]}@grafomem.test"
 TEST_PASSWORD = "ConformanceTest2026!"
@@ -1846,7 +1851,11 @@ def main() -> None:
                         help=f"Server URL (default: {BASE_URL})")
     parser.add_argument("--report", action="store_true",
                         help="Emit signed JSON conformance report")
+    parser.add_argument("--allow-prod", action="store_true",
+                        help="Permit a production target (this suite creates real tenants). "
+                             "Per-invocation; GRAFOMEM_ALLOW_PROD=1 also works.")
     args = parser.parse_args()
+    guard_not_prod(args.url)
 
     # Determine provider and live mode
     if args.anthropic:

@@ -3,7 +3,9 @@ import json
 import os
 import subprocess
 
-API_URL = os.environ.get("GRAFOMEM_API_URL", "https://grafomem-production.up.railway.app")
+API_URL = os.environ.get("GRAFOMEM_API_URL")
+if not API_URL:
+    raise SystemExit("set GRAFOMEM_API_URL to run the live flight (no production default — point at staging/localhost, or set the prod URL explicitly)")
 # Live-flight key is supplied at run time, never committed (a prior hardcoded key was rotated out).
 API_KEY = os.environ.get("GRAFOMEM_FLIGHT_API_KEY", "")
 if not API_KEY:

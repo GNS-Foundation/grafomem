@@ -22,6 +22,8 @@ from datetime import datetime, timezone
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
+from aml.prod_target_guard import guard_not_prod
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -95,6 +97,10 @@ def run_resilience():
     if not api_url:
         print("❌ ERROR: GRAFOMEM_API_URL is required.")
         sys.exit(1)
+
+    # This script creates real tenants ("Resil …"). Refuse production unless
+    # --allow-prod (per invocation) or GRAFOMEM_ALLOW_PROD=1.
+    guard_not_prod(api_url)
 
     valid_openai = os.environ.get("OPENAI_API_KEY")
     valid_gemini = os.environ.get("GEMINI_API_KEY")
