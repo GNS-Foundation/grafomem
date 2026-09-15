@@ -1254,13 +1254,15 @@ def create_app(
             from aml.cloud.memory_routes import get_memory_sync_routes
             app.include_router(get_memory_sync_routes(wm, app.state.store_manager, audit_export), prefix="/v1/memory")
             logger.info("Memory Sync & Export enabled (/v1/memory)")
-            # Ensure all migrations apply after base schema is created —
-            # enqueued LAST so it runs after every ensure_schema step, inside
-            # the guarded (executor + timeout + log-and-continue) lifespan phase.
-            from aml.cloud.migrations_runner import apply_migrations
-            if not spec_only:
+            # Migrations are a deliberate RELEASE STEP run by the migrate role, not
+            # boot-time DDL by the runtime process (which, in cloud, owns no tables
+            # and cannot run DDL — it only logged failures every boot). In cloud
+            # mode the boot apply is a no-op; self-host keeps auto-apply on.
+            # Run migrations out-of-band with: python -m aml.cloud.migrations_runner
+            from aml.cloud.migrations_runner import boot_apply_if_enabled, boot_migrations_enabled
+            if not spec_only and boot_migrations_enabled(effective_auth_mode):
                 startup_db_steps.append(
-                    ("apply_migrations", lambda: apply_migrations(db_url))
+                    ("apply_migrations", lambda: boot_apply_if_enabled(db_url, effective_auth_mode))
                 )
 
         except ImportError as e:

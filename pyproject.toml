@@ -71,7 +71,7 @@ where = ["src"]
 # The OntologyTemplate YAMLs are read at runtime by aml.cloud.templates.registry
 # (os.listdir on the package dir); without this line the installed package had only
 # engine.py/registry.py, so /v1/templates listed nothing and install 404'd.
-aml = ["static/portal/*", "static/landing/*", "static/verify/*", "cloud/templates/*.yaml"]
+aml = ["static/portal/*", "static/landing/*", "static/verify/*", "cloud/templates/*.yaml", "cloud/migrations/*.sql"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
