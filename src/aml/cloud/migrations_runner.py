@@ -66,13 +66,23 @@ _CREATE_TABLE_RE = re.compile(
 
 
 def _granted_tables(sql: str, role: str) -> set[str]:
-    """Tables `sql` GRANTs some privilege on to `role` (best-effort SQL scan)."""
-    pat = re.compile(
-        r"grant\s+[^;]*?\bon\s+(?:table\s+)?[\"']?(?:public\.)?([a-z_][a-z0-9_]*)"
-        r"[^;]*?\bto\s+\"?" + re.escape(role) + r"\b",
+    """Tables `sql` GRANTs some privilege on to `role` (best-effort SQL scan).
+
+    Accepts a **multi-role TO clause** (``... TO a, b``) and grants wrapped in a
+    ``DO $$ … $$`` guard: the role list after ``TO`` is captured up to the statement's
+    ``;`` and `role` is matched as a whole word anywhere in it.
+    """
+    granted: set[str] = set()
+    for m in re.finditer(
+        r"grant\s+[^;]*?\bon\s+(?:table\s+)?[\"']?(?:public\.)?([a-z_][a-z0-9_]*)\b"
+        r"[^;]*?\bto\b([^;]*)",
+        sql,
         re.IGNORECASE | re.DOTALL,
-    )
-    return {m.group(1).lower() for m in pat.finditer(sql)}
+    ):
+        table, roles_clause = m.group(1), m.group(2)
+        if re.search(r"(?<![A-Za-z0-9_])" + re.escape(role) + r"(?![A-Za-z0-9_])", roles_clause):
+            granted.add(table.lower())
+    return granted
 
 
 def validate_migration_sql(
