@@ -50,7 +50,7 @@ def test_assert_not_corp_allows_other():
 
 def _cfg(tenant="dogfood-t", roles=None, forbidden=None):
     c = Config.__new__(Config)
-    c.base_url = "https://api.grafomem.com"
+    c.base_url = "http://localhost:8080"  # policy unit test — never dialed; not a production host
     c.tenant_key = "k"
     c.expected_tenant = tenant
     # ops/ always denies corp (see ops.cgr_capture_mcp.main); mirror that policy here.

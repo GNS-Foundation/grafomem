@@ -9,6 +9,14 @@ def main():
         print("❌ ERROR: GRAFOMEM_API_URL is required.")
         sys.exit(1)
 
+    # This script creates a real tenant ("Resil Finding 1"). Refuse production unless overridden.
+    from urllib.parse import urlparse as _urlparse
+    if (_urlparse(api_url).hostname or "") in ("api.grafomem.com", "grafomem-production.up.railway.app") \
+            and os.environ.get("GRAFOMEM_ALLOW_PROD") != "1":
+        print("❌ ERROR: refusing to run against production (creates real tenants). "
+              "Point at staging, or set GRAFOMEM_ALLOW_PROD=1 to override.")
+        sys.exit(1)
+
     flight_id = uuid.uuid4().hex[:8]
     ephemeral_email = f"resil-f1-{flight_id}@test.com"
 
