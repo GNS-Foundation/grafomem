@@ -116,6 +116,26 @@ def test_auto_migrate_env_overrides(monkeypatch, val, expected):
     assert boot_migrations_enabled("cloud") is expected  # override wins even in cloud
 
 
+# ── bootstrap never labels pre-existing rows (applied_via nullable, no default) ─
+def test_ensure_schema_migrations_applied_via_has_no_default():
+    from aml.cloud.migrations_runner import _ensure_schema_migrations
+
+    stmts = []
+
+    class _FakeConn:
+        def execute(self, sql, *a):
+            stmts.append(sql)
+            return self
+
+    _ensure_schema_migrations(_FakeConn(), None)  # runtime_role None → no GRANT
+    add = [s for s in stmts if "ADD COLUMN" in s and "applied_via" in s]
+    assert add, "expected an ADD COLUMN applied_via statement"
+    up = " ".join(add).upper()
+    # A DEFAULT or NOT NULL would backfill false provenance onto pre-existing rows.
+    assert "DEFAULT" not in up, "applied_via ADD COLUMN must have no DEFAULT"
+    assert "NOT NULL" not in up, "applied_via ADD COLUMN must be nullable"
+
+
 # ── role identifier is validated (no SQL injection via role name) ────────────
 def test_check_ident_rejects_bad_role():
     with pytest.raises(MigrationError):
