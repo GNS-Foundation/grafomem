@@ -142,16 +142,21 @@ def _table_exists(conn: "psycopg.Connection", name: str) -> bool:
 # ── schema_migrations ledger ─────────────────────────────────────────────────
 
 def _ensure_schema_migrations(conn: "psycopg.Connection", runtime_role: str | None) -> None:
+    # `applied_via` is NULLABLE with NO default. A row that pre-existed this column —
+    # recorded by an older runner, or a migration applied out-of-band (e.g. by hand as
+    # `postgres`) — reads NULL, i.e. "provenance unknown". Every row this runner writes
+    # sets it explicitly ('runner' on apply, 'baseline' on baseline), so bootstrap NEVER
+    # labels a row it did not itself write. A DEFAULT here would backdate false provenance
+    # onto pre-existing rows.
     conn.execute(
         """CREATE TABLE IF NOT EXISTS schema_migrations (
                version     TEXT PRIMARY KEY,
                applied_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-               applied_via TEXT NOT NULL DEFAULT 'runner'
+               applied_via TEXT
            )"""
     )
-    # For pre-existing ledgers created before this column existed.
     conn.execute(
-        "ALTER TABLE schema_migrations ADD COLUMN IF NOT EXISTS applied_via TEXT NOT NULL DEFAULT 'runner'"
+        "ALTER TABLE schema_migrations ADD COLUMN IF NOT EXISTS applied_via TEXT"
     )
     if runtime_role:
         conn.execute(f"GRANT SELECT ON schema_migrations TO {runtime_role}")
