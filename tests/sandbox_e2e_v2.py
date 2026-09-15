@@ -57,21 +57,9 @@ import httpx
 
 BASE_URL = os.environ.get("GRAFOMEM_URL", "http://localhost:8080")
 
-# This suite creates real tenants ("Conformance Tenant A"). Refuse a production
-# target unless explicitly overridden, so a stray --url/GRAFOMEM_URL can't seed
-# prod with test tenants (as happened 31 May–28 Jun; see the erasure-ledger incident).
-_PROD_HOSTS = ("api.grafomem.com", "grafomem-production.up.railway.app")
-
-
-def _guard_not_prod(url: str) -> None:
-    from urllib.parse import urlparse
-    host = urlparse(url).hostname or ""
-    if host in _PROD_HOSTS and os.environ.get("GRAFOMEM_ALLOW_PROD") != "1":
-        raise SystemExit(
-            f"refusing to run against production host {host!r} — this suite creates real tenants; "
-            "point it at staging/localhost, or set GRAFOMEM_ALLOW_PROD=1 to override."
-        )
-
+# This suite creates real tenants ("Conformance Tenant A"); refuse a production
+# target unless explicitly overridden — see aml.prod_target_guard.
+from aml.prod_target_guard import guard_not_prod
 
 import uuid
 TEST_EMAIL = f"conformance_a_{uuid.uuid4().hex[:8]}@grafomem.test"
@@ -1863,8 +1851,11 @@ def main() -> None:
                         help=f"Server URL (default: {BASE_URL})")
     parser.add_argument("--report", action="store_true",
                         help="Emit signed JSON conformance report")
+    parser.add_argument("--allow-prod", action="store_true",
+                        help="Permit a production target (this suite creates real tenants). "
+                             "Per-invocation; GRAFOMEM_ALLOW_PROD=1 also works.")
     args = parser.parse_args()
-    _guard_not_prod(args.url)
+    guard_not_prod(args.url)
 
     # Determine provider and live mode
     if args.anthropic:
