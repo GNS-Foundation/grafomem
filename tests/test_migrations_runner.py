@@ -45,46 +45,63 @@ def test_create_if_not_exists_and_public_schema_are_matched():
         validate_migration_sql("x.sql", "CREATE TABLE IF NOT EXISTS public.foo (id INT);", runtime_role=RT)
 
 
-def test_ledger_table_needs_ledger_grant_too():
+# ── ledger-class rule (declared by `-- class: ledger` header marker) ─────────
+_LEDGER_OK = (
+    "-- class: ledger\n"
+    "CREATE TABLE erasure_ledger (entry_id TEXT PRIMARY KEY);\n"
+    "GRANT SELECT, INSERT ON erasure_ledger TO grafomem_ledger;\n"
+    "GRANT SELECT ON erasure_ledger TO grafomem_rt;\n"
+    "REVOKE INSERT, UPDATE, DELETE ON erasure_ledger FROM grafomem_rt;\n"
+)
+
+
+def test_ledger_class_compliant_passes():
+    validate_migration_sql("010_x_ledger.sql", _LEDGER_OK, runtime_role=RT)  # no raise
+
+
+def test_ledger_class_rt_write_grant_rejected():  # must-fail (a)
+    bad = _LEDGER_OK + "GRANT INSERT ON erasure_ledger TO grafomem_rt;\n"
+    with pytest.raises(MigrationError):
+        validate_migration_sql("010_x_ledger.sql", bad, runtime_role=RT)
+
+
+def test_ledger_class_missing_revoke_rejected():  # must-fail (b)
+    bad = _LEDGER_OK.replace("REVOKE INSERT, UPDATE, DELETE ON erasure_ledger FROM grafomem_rt;\n", "")
+    with pytest.raises(MigrationError):
+        validate_migration_sql("010_x_ledger.sql", bad, runtime_role=RT)
+
+
+def test_ledger_class_ledger_missing_insert_rejected():  # must-fail (c)
+    bad = _LEDGER_OK.replace(
+        "GRANT SELECT, INSERT ON erasure_ledger TO grafomem_ledger;\n",
+        "GRANT SELECT ON erasure_ledger TO grafomem_ledger;\n",
+    )
+    with pytest.raises(MigrationError):
+        validate_migration_sql("010_x_ledger.sql", bad, runtime_role=RT)
+
+
+def test_ledger_class_ledger_write_grant_rejected():  # must-fail (d) — append-only
+    bad = _LEDGER_OK + "GRANT UPDATE ON erasure_ledger TO grafomem_ledger;\n"
+    with pytest.raises(MigrationError):
+        validate_migration_sql("010_x_ledger.sql", bad, runtime_role=RT)
+
+
+def test_ledger_class_is_by_marker_not_name():
+    # A table named *ledger* WITHOUT the marker is a plain table: only the rt grant is required.
     sql = (
         "CREATE TABLE erasure_ledger (entry_id TEXT PRIMARY KEY);\n"
-        "GRANT SELECT, INSERT ON erasure_ledger TO grafomem_rt;"
+        "GRANT SELECT ON erasure_ledger TO grafomem_rt;\n"
     )
-    with pytest.raises(MigrationError):  # missing grant to grafomem_ledger
-        validate_migration_sql("00x_ledger.sql", sql, runtime_role=RT)
-    sql_ok = sql + "\nGRANT SELECT, INSERT ON erasure_ledger TO grafomem_ledger;"
-    validate_migration_sql("00x_ledger.sql", sql_ok, runtime_role=RT)  # no raise
+    validate_migration_sql("00x_no_marker.sql", sql, runtime_role=RT)  # no raise (no marker ⇒ plain rule)
 
 
-def test_ledger_grant_accepts_combined_two_role_block():
-    # A single GRANT naming both roles must satisfy the ledger rule.
-    sql = (
-        "CREATE TABLE erasure_ledger (entry_id TEXT PRIMARY KEY);\n"
-        "GRANT SELECT ON erasure_ledger TO grafomem_rt, grafomem_ledger;"
-    )
-    validate_migration_sql("00x_ledger.sql", sql, runtime_role=RT)  # no raise
-
-
-def test_ledger_grant_accepts_guarded_do_block_grants():
-    # Grants wrapped in a DO $$ … $$ guard (as migration 009 writes them) are detected.
-    sql = (
-        "CREATE TABLE IF NOT EXISTS erasure_ledger (entry_id TEXT PRIMARY KEY);\n"
-        "DO $$ BEGIN\n"
-        "  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='grafomem_ledger') THEN\n"
-        "    GRANT SELECT, INSERT ON erasure_ledger TO grafomem_ledger;\n"
-        "  END IF;\n"
-        "  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='grafomem_rt') THEN\n"
-        "    GRANT SELECT ON erasure_ledger TO grafomem_rt;\n"
-        "  END IF;\n"
-        "END $$;"
-    )
-    validate_migration_sql("009_erasure_ledger.sql", sql, runtime_role=RT)  # no raise
-
-
-def test_real_009_satisfies_two_role_ledger_grant_rule():
+def test_real_009_is_marked_and_grandfathered():
     sql = (_migrations_dir() / "009_erasure_ledger.sql").read_text()
-    validate_migration_sql("009_erasure_ledger.sql", sql, runtime_role=RT)  # no raise
+    assert sql.lstrip().lower().startswith("-- class: ledger")  # header marker present
     assert "backfill" in sql and "entry_type" in sql  # I0 shape + I0c backfill column
+    # 009 predates the REVOKE rule and is applied everywhere we control → grandfathered, so it
+    # validates despite carrying the marker without an explicit rt REVOKE.
+    validate_migration_sql("009_erasure_ledger.sql", sql, runtime_role=RT)  # no raise (grandfathered)
 
 
 def test_grant_rule_is_noop_for_single_role_selfhost():
