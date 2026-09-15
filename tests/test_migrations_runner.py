@@ -95,6 +95,14 @@ def test_ledger_class_is_by_marker_not_name():
     validate_migration_sql("00x_no_marker.sql", sql, runtime_role=RT)  # no raise (no marker ⇒ plain rule)
 
 
+def test_real_010_revoke_migration_valid():
+    sql = (_migrations_dir() / "010_erasure_ledger_revoke.sql").read_text()
+    assert sql.lstrip().lower().startswith("-- class: ledger")
+    assert "REVOKE INSERT, UPDATE, DELETE ON erasure_ledger FROM grafomem_rt" in sql
+    # No CREATE TABLE ⇒ the per-created-table ledger matrix does not apply; validates fine.
+    validate_migration_sql("010_erasure_ledger_revoke.sql", sql, runtime_role=RT)  # no raise
+
+
 def test_real_009_is_marked_and_grandfathered():
     sql = (_migrations_dir() / "009_erasure_ledger.sql").read_text()
     assert sql.lstrip().lower().startswith("-- class: ledger")  # header marker present
