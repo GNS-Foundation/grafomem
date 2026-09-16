@@ -35,6 +35,9 @@ class IssueErasureRequest(BaseModel):
     legal_basis: str = "GDPR Article 17 — Right to Erasure"
     requested_by: str | None = "data_subject"
     signing_key: str | None = None  # hex-encoded Ed25519 seed (overrides service key)
+    # 0014: a client may DECLARE extra subsystems to record, but cannot assert their
+    # status — they land as "unverified". Coverage itself is probed server-side.
+    declared_subsystems: list[str] | None = None
 
 
 class CertificateResponse(BaseModel):
@@ -148,6 +151,7 @@ def create_erasure_router(erasure_service) -> APIRouter:
                 tenant_id=tenant_id,
                 fact_ref=req.fact_ref,
                 fact_content=req.fact_content,
+                declared_subsystems=req.declared_subsystems,
                 legal_basis=req.legal_basis,
                 requested_by=req.requested_by,
                 signing_identity=signing_identity,

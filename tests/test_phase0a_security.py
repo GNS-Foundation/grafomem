@@ -34,6 +34,14 @@ class _NoLedger:  # I0b/0013: issuance requires a ledger; a no-op suffices for s
     def record_tenant_destruction(self, **kw): pass
 
 
+class _ProbeBackend:  # 0014: answers exists(ref) → the coverage probe (absent = erased)
+    def __init__(self, present=False): self._present = present
+    def capabilities(self):
+        from aml.backends.interface import Capability
+        return {Capability.POINT_LOOKUP}
+    def exists(self, ref): return self._present
+
+
 @pytest.fixture
 def erasure_service(temp_db_url):
     ep = ErasureProofService(temp_db_url, erasure_ledger=_NoLedger())
@@ -111,10 +119,11 @@ def test_erasure_positive():
     ep = ErasureProofService(db_url, signing_identity=_MockId(), erasure_ledger=_NoLedger())
     ep.ensure_schema()
     
-    cert = ep.issue_certificate("tenant1", 123)
+    cert = ep.issue_certificate("tenant1", 123, backend=_ProbeBackend(present=False))
     assert cert.certificate_id is not None
     assert cert.signature is not None
     assert cert.public_key is not None
+    assert cert.coverage["primary"] == "absent"  # 0014: verified by probe, not defaulted
     
     # Verify the signature
     verification = ep.verify_certificate(cert.certificate_id)

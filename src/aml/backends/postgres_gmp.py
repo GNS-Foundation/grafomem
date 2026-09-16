@@ -504,6 +504,14 @@ class PostgresGMPBackend:
             cur.execute("DELETE FROM memories WHERE ref = %s", (ref,))
             return cur.rowcount > 0
 
+    def exists(self, ref: Any) -> bool:
+        # POINT_LOOKUP (0014) — side-effect-free existence probe for the erasure
+        # coverage check. Reads the primary `memories` table only; after delete(ref)
+        # this returns False, which the caller records as a verified "absent".
+        with self._tenant_conn("admin") as (conn, cur):
+            cur.execute("SELECT 1 FROM memories WHERE ref = %s LIMIT 1", (ref,))
+            return cur.fetchone() is not None
+
     def retrieve(self, query: str, options: RetrieveOptions) -> list[Memory]:
         # Check if any embeddings exist
         with self._tenant_conn(options.tenant_id) as (conn, cur):

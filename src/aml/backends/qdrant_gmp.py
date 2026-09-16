@@ -225,6 +225,18 @@ class QdrantGMPBackend(MemoryBackend):
         )
         return True
 
+    def exists(self, ref: Any) -> bool:
+        # POINT_LOOKUP (0014) — side-effect-free existence probe for the erasure
+        # coverage check. After delete(ref) this returns False.
+        pts = self._retry_call(
+            self.client.retrieve,
+            collection_name=self.collection_name,
+            ids=[str(ref)],
+            with_payload=False,
+            with_vectors=False,
+        )
+        return bool(pts)
+
     def retrieve(self, query: str, options: RetrieveOptions) -> list[Memory]:
         if options.tenant_id is None:
             # Structurally impossible to issue unscoped query.

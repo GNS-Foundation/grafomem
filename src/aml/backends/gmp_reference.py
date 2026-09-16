@@ -69,6 +69,7 @@ GMP_V01_PROFILE = frozenset({
 GMP_V02_PROFILE = GMP_V01_PROFILE | {
     Capability.PROVENANCE,
     Capability.CRYPTOGRAPHIC_PROVENANCE,
+    Capability.POINT_LOOKUP,  # exists(ref) — the erasure coverage probe (0014)
 }
 
 
@@ -154,6 +155,11 @@ class GMPReferenceBackend:
         self._vfrom.pop(ref, None)
         self._vuntil.pop(ref, None)
         return True
+
+    def exists(self, ref) -> bool:
+        # POINT_LOOKUP (0014) — side-effect-free existence probe for the erasure
+        # coverage check. After delete(ref) returns True this MUST be False.
+        return ref in self._store
 
     def _valid_at(self, ref: int, t: datetime | None) -> bool:
         if t is None:                                     # current: open heads only

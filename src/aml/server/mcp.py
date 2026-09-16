@@ -264,6 +264,7 @@ def create_mcp_server(backend_factory):
                         tenant_id=tenant_id,
                         fact_ref=ref,
                         fact_content=lure_text,
+                        backend=backend,  # 0014: probe coverage, don't default it
                     )
                     cert_dict = {
                         "cert_id": cert.certificate_id,

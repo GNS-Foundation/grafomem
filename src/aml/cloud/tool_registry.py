@@ -697,9 +697,11 @@ class ToolRegistry:
         # Issue erasure certificate if available
         cert_id = None
         if deleted and self._erasure_proof:
+            # 0014: probe coverage from the backend we just deleted from.
             cert = self._erasure_proof.issue_certificate(
                 tenant_id=tenant_id,
                 fact_ref=ref,
+                backend=entry.backend,
             )
             cert_id = cert.certificate_id
 
