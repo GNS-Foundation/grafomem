@@ -134,3 +134,65 @@ def test_ledger_write_failure_refuses_certificate(monkeypatch):
     with pytest.raises(Exception):
         svc.issue_certificate("t1", 123, coverage={"primary": "absent"})
     assert not _cert_inserted(ev), "a failing ledger write must abort before the cert is persisted"
+
+
+# ── Site 2 (tenant destruction) — ledger-before-destroy, fail-closed ─────────
+import asyncio
+from types import SimpleNamespace
+from fastapi import HTTPException
+from aml.cloud.admin_routes import destroy_tenant_key, DestroyKeyRequest
+
+_CONFIRM = "I understand this is irreversible"
+
+
+class _TKM:
+    def __init__(self): self.destroyed = []
+    def destroy_tenant_key(self, tid): self.destroyed.append(tid); return "ok"
+
+
+def _destroy(state):
+    req = SimpleNamespace(app=SimpleNamespace(state=state))
+    return destroy_tenant_key("t1", DestroyKeyRequest(confirmation=_CONFIRM), req, user={"tenant_id": "t1"})
+
+
+def test_site2_ledger_absent_503_before_destruction():
+    tkm = _TKM()
+    state = SimpleNamespace(tenant_key_manager=tkm, erasure_ledger=None, signing_identity=_MockId())
+    with pytest.raises(HTTPException) as e:
+        asyncio.run(_destroy(state))
+    assert e.value.status_code == 503
+    assert tkm.destroyed == [], "DEK must NOT be destroyed when the ledger is absent"
+
+
+def test_site2_ledger_write_exception_keeps_dek():
+    class _FailLedger:
+        def record_tenant_destruction(self, *a, **k): raise RuntimeError("ledger pool down")
+    tkm = _TKM()
+    state = SimpleNamespace(tenant_key_manager=tkm, erasure_ledger=_FailLedger(), signing_identity=_MockId())
+    with pytest.raises(Exception):
+        asyncio.run(_destroy(state))
+    assert tkm.destroyed == [], "a failing ledger write must abort before the DEK is destroyed"
+
+
+# ── route mapping: CertificateNotIssued → 200 "erased, no certificate", not 500 ─
+def test_route_maps_certificate_not_issued_to_200():
+    from fastapi import FastAPI, Request
+    from fastapi.testclient import TestClient
+    from aml.cloud.erasure_routes import create_erasure_router
+
+    class _SvcOptional:
+        def issue_certificate(self, **kw):
+            raise CertificateNotIssued("erased, no certificate issued: ledger not configured")
+
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def _inject(request: Request, call_next):
+        request.state.tenant = SimpleNamespace(tenant_id="t1", role="admin", scopes=["*"])
+        return await call_next(request)
+
+    app.include_router(create_erasure_router(_SvcOptional()))
+    r = TestClient(app).post("/v1/erasure/issue", json={"fact_ref": 1})
+    assert r.status_code == 200, r.text  # NOT 500
+    assert r.json()["detail"] == "erased, no certificate issued: ledger not configured"
+    assert r.json()["certificate_id"] is None
