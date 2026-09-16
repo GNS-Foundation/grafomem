@@ -173,4 +173,16 @@ the claim, the vantage that produced it, and why the corroboration failed.
   affordance* — it reads as authority in `list`/audit output while conferring or restricting nothing at
   the check. *Lesson: presence in the scope vocabulary + a grant on a key is not evidence the scope gates
   anything; grep `require_scope` for the exact string before trusting (or advertising) a scope's authority.*
+- **2026-09-16 — the MCP erasure certificate that was never minted.** The MCP `delete` tool has a
+  "Phase 4: Mint Erasure Certificate" block (`server/mcp.py`) that returned `"certificate": null` on
+  **every** call — it never once minted. Four independent bugs, each caught by a `try/except` that logged
+  a *warning* and continued: `issue_certificate(content=…)` (the kwarg is `fact_content=`),
+  `signing_identity` passed as the 2nd positional (the `decision_trail` slot), and `cert.content_hash` /
+  `cert.signing_key_id` (the fields are `fact_content_hash` / there is no `signing_key_id`); the verify
+  block additionally called `get_certificate_for_fact` (no such method — it is `get_by_fact`). So a
+  confident label ("Mint … Certificate") sat over a path that had never worked, presenting `null` as if
+  minting were merely optional. *Lesson: a `try/except` that logs a warning and continues can hide a
+  feature that has never once succeeded — assert the happy path in a test, or the label lies. (Fixed:
+  correct kwargs/fields/method + wire the ledger; full MCP issuance still needs the MCP server to wire a
+  ledger, tracked separately.)*
 

@@ -255,24 +255,29 @@ def create_mcp_server(backend_factory):
             if hasattr(backend, "db_url") and backend.db_url:
                 from aml.cloud.erasure_proof import ErasureProofService
                 try:
-                    eps = ErasureProofService(backend.db_url, getattr(backend, "signing_identity", None))
+                    eps = ErasureProofService(
+                        backend.db_url,
+                        signing_identity=getattr(backend, "signing_identity", None),
+                        erasure_ledger=getattr(backend, "erasure_ledger", None),
+                    )
                     cert = eps.issue_certificate(
                         tenant_id=tenant_id,
                         fact_ref=ref,
-                        content=lure_text
+                        fact_content=lure_text,
                     )
-                    # Note: We append the sealed probe locally to our return response since ErasureCertificate
-                    # currently doesn't natively serialize it yet.
                     cert_dict = {
                         "cert_id": cert.certificate_id,
-                        "content_hash": cert.content_hash,
-                        "signature": cert.signature,
+                        "content_hash": cert.fact_content_hash,
+                        "signature": cert.signature.hex() if cert.signature else None,
+                        "public_key": cert.public_key.hex() if cert.public_key else None,
                         "algorithm": "Ed25519",
-                        "signing_key_id": cert.signing_key_id,
-                        "issued_at": cert.erasure_completed_at.isoformat()
+                        "issued_at": cert.erasure_completed_at.isoformat(),
                     }
                 except Exception as e:
-                    logger.warning(f"Could not issue erasure certificate: {e}")
+                    # I0b/0013: with no ledger wired into this MCP backend, issuance is
+                    # correctly refused (LedgerRequired) — the fact is still deleted, but no
+                    # certificate is minted. Surface the reason instead of swallowing it.
+                    logger.error("MCP erasure certificate NOT issued (delete still applied): %s", e, exc_info=True)
 
             return [TextContent(
                 type="text",
@@ -303,19 +308,23 @@ def create_mcp_server(backend_factory):
             if hasattr(backend, "db_url") and backend.db_url:
                 from aml.cloud.erasure_proof import ErasureProofService
                 try:
-                    eps = ErasureProofService(backend.db_url, getattr(backend, "signing_identity", None))
-                    cert_obj = eps.get_certificate_for_fact(tenant_id, ref)
+                    eps = ErasureProofService(
+                        backend.db_url,
+                        signing_identity=getattr(backend, "signing_identity", None),
+                        erasure_ledger=getattr(backend, "erasure_ledger", None),
+                    )
+                    cert_obj = eps.get_by_fact(tenant_id, ref)
                     if cert_obj:
                         cert_dict = {
                             "cert_id": cert_obj.certificate_id,
-                            "content_hash": cert_obj.content_hash,
-                            "signature": cert_obj.signature,
+                            "content_hash": cert_obj.fact_content_hash,
+                            "signature": cert_obj.signature.hex() if cert_obj.signature else None,
+                            "public_key": cert_obj.public_key.hex() if cert_obj.public_key else None,
                             "algorithm": "Ed25519",
-                            "signing_key_id": cert_obj.signing_key_id,
-                            "issued_at": cert_obj.erasure_completed_at.isoformat()
+                            "issued_at": cert_obj.erasure_completed_at.isoformat(),
                         }
                 except Exception as e:
-                    logger.warning(f"Could not fetch erasure certificate: {e}")
+                    logger.error("MCP erasure certificate fetch failed: %s", e, exc_info=True)
             # Default verify_url
             verify_url = f"https://cloud.grafomem.com/v1/erasure/{cert_dict['cert_id']}/verify" if cert_dict else ""
             import os

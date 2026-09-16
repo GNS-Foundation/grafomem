@@ -90,12 +90,13 @@ async def test_verify_erasure_honest_pass(mcp_server_honest):
         mock_eps = MockEPS.return_value
         mock_cert = MagicMock()
         mock_cert.certificate_id = "cert-123"
-        mock_cert.content_hash = "abc"
-        mock_cert.signature = "sig"
+        mock_cert.fact_content_hash = "abc"
+        mock_cert.signature = b"sig"
+        mock_cert.public_key = b"pub"
         mock_cert.signing_key_id = "key"
         mock_cert.erasure_completed_at = datetime.now(timezone.utc)
         mock_eps.issue_certificate.return_value = mock_cert
-        mock_eps.get_certificate_for_fact.return_value = mock_cert
+        mock_eps.get_by_fact.return_value = mock_cert
         
         # Delete the record
         res_del = await server._test_call_tool("delete_memory", {"ref": ref})
@@ -125,12 +126,13 @@ async def test_verify_erasure_leak_caught(mcp_server_soft_delete):
         mock_eps = MockEPS.return_value
         mock_cert = MagicMock()
         mock_cert.certificate_id = "cert-123"
-        mock_cert.content_hash = "abc"
-        mock_cert.signature = "sig"
+        mock_cert.fact_content_hash = "abc"
+        mock_cert.signature = b"sig"
+        mock_cert.public_key = b"pub"
         mock_cert.signing_key_id = "key"
         mock_cert.erasure_completed_at = datetime.now(timezone.utc)
         mock_eps.issue_certificate.return_value = mock_cert
-        mock_eps.get_certificate_for_fact.return_value = mock_cert
+        mock_eps.get_by_fact.return_value = mock_cert
         
         # Delete it -> will leak
         res_del = await server._test_call_tool("delete_memory", {"ref": ref})
@@ -159,12 +161,13 @@ async def test_verify_erasure_degraded_verifier(mcp_server_honest):
         mock_eps = MockEPS.return_value
         mock_cert = MagicMock()
         mock_cert.certificate_id = "cert-123"
-        mock_cert.content_hash = "abc"
-        mock_cert.signature = "sig"
+        mock_cert.fact_content_hash = "abc"
+        mock_cert.signature = b"sig"
+        mock_cert.public_key = b"pub"
         mock_cert.signing_key_id = "key"
         mock_cert.erasure_completed_at = datetime.now(timezone.utc)
         mock_eps.issue_certificate.return_value = mock_cert
-        mock_eps.get_certificate_for_fact.return_value = mock_cert
+        mock_eps.get_by_fact.return_value = mock_cert
         
         await server._test_call_tool("delete_memory", {"ref": ref})
         
@@ -185,12 +188,13 @@ async def test_verify_erasure_no_targeted_lure(mcp_server_honest):
         mock_eps = MockEPS.return_value
         mock_cert = MagicMock()
         mock_cert.certificate_id = "cert-123"
-        mock_cert.content_hash = "abc"
-        mock_cert.signature = "sig"
+        mock_cert.fact_content_hash = "abc"
+        mock_cert.signature = b"sig"
+        mock_cert.public_key = b"pub"
         mock_cert.signing_key_id = "key"
         mock_cert.erasure_completed_at = datetime.now(timezone.utc)
         mock_eps.issue_certificate.return_value = mock_cert
-        mock_eps.get_certificate_for_fact.return_value = mock_cert
+        mock_eps.get_by_fact.return_value = mock_cert
         
         await server._test_call_tool("delete_memory", {"ref": ref})
         
@@ -219,12 +223,13 @@ async def test_verify_erasure_tampered_cert(mcp_server_honest):
         mock_eps = MockEPS.return_value
         mock_cert = MagicMock()
         mock_cert.certificate_id = "cert-123"
-        mock_cert.content_hash = "abc"
-        mock_cert.signature = "sig"
+        mock_cert.fact_content_hash = "abc"
+        mock_cert.signature = b"sig"
+        mock_cert.public_key = b"pub"
         mock_cert.signing_key_id = "key"
         mock_cert.erasure_completed_at = datetime.now(timezone.utc)
         mock_eps.issue_certificate.return_value = mock_cert
-        mock_eps.get_certificate_for_fact.return_value = mock_cert
+        mock_eps.get_by_fact.return_value = mock_cert
         
         await server._test_call_tool("delete_memory", {"ref": ref})
         
@@ -252,13 +257,14 @@ async def test_verify_erasure_storage_neq_erasure(mcp_server_soft_delete):
         mock_eps = MockEPS.return_value
         mock_cert = MagicMock()
         mock_cert.certificate_id = "cert-123"
-        mock_cert.content_hash = "abc"
-        mock_cert.signature = "sig"
+        mock_cert.fact_content_hash = "abc"
+        mock_cert.signature = b"sig"
+        mock_cert.public_key = b"pub"
         mock_cert.signing_key_id = "key"
         mock_cert.erasure_completed_at = datetime.now(timezone.utc)
         mock_eps.issue_certificate.return_value = mock_cert
         # Mock that we don't have a valid cert
-        mock_eps.get_certificate_for_fact.return_value = None
+        mock_eps.get_by_fact.return_value = None
         
         await server._test_call_tool("delete_memory", {"ref": ref})
         
