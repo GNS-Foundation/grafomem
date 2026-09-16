@@ -7,7 +7,8 @@ Camilo Ayerbe Posada · GNS Foundation · ULISSY s.r.l. · grafomem.com
 > Memory* (the "paper"): the paper establishes, empirically, the dimensions a
 > memory standard cannot leave unspecified (requirements R1–R5 and findings
 > F1–F13); this document commits to a specification of each. v0.1 specified the
-> five core capabilities (§3–§6); v0.2 adds provenance (§7.5). Every normative
+> five core capabilities (§3–§6); v0.2 adds provenance (§7.5) and an optional
+point-lookup probe (§7.6). Every normative
 > section cites the requirement and the findings it rests on, and Appendix A is the
 > full traceability matrix. Working name; rename at will.
 
@@ -106,6 +107,7 @@ required; the rest are gated on a declared capability.
 | `retrieve(query, opts) → [Memory]` | — | ranked facts within budget (§4); `as_of`→`BI_TEMPORAL`, `tenant_id`→`MULTI_TENANT` |
 | `delete(ref) → bool` | `HARD_DELETE` | hard-delete; unrecoverable on the read path (§6.2); idempotent |
 | `audit() → iter[Memory]` | `AUDIT` | all retrievable facts incl. superseded, **excl.** hard-deleted |
+| `exists(ref) → bool` | `POINT_LOOKUP` | side-effect-free existence probe by ref (§7.6); optional extension |
 | `flush() → none` | — | barrier: block until prior mutations are durable and visible |
 
 **`write`.** MUST persist the fact and return a ref. If `opts.signing_key` is set
@@ -342,12 +344,12 @@ content-only identity.
 
 ### 7.1 The capability set
 
-Ten flags, enumerated and append-only across versions (`interface.py`):
+Eleven flags, enumerated and append-only across versions (`interface.py`):
 
 ```
 BI_TEMPORAL   HARD_DELETE   SUPERSESSION_CHAIN   CROSS_SESSION_PROPAGATION
 MULTI_TENANT  CONFLICT_DETECTION   PROVENANCE   CRYPTOGRAPHIC_PROVENANCE   AUDIT
-CONCURRENCY_CONTROL
+CONCURRENCY_CONTROL   POINT_LOOKUP
 ```
 
 ### 7.2 Declaration discipline
@@ -375,7 +377,10 @@ to sign, but if it claims the flag it MUST honor §7.5. `CONFLICT_DETECTION` and
 (W7 §4.7, W9 §4.9), and a store MAY claim them under conformance. `CONCURRENCY_CONTROL`
 is the sole remaining **reserved-but-being-specified** flag: §10 defines it, and it
 enters the normative subset when §10 is ratified. Until then a store MUST NOT claim it
-under conformance.
+under conformance. `POINT_LOOKUP` is an **optional v0.2 extension** (§7.6), in the same
+class as `CRYPTOGRAPHIC_PROVENANCE`: a store MAY decline it, and its absence MUST NOT be
+penalized; if a store claims it, it MUST honor §7.6. It is **not** part of any mandatory
+subset — nothing in v0.2 requires a store to support point lookup.
 
 ### 7.5 Provenance — `PROVENANCE` (v0.2 normative) and `CRYPTOGRAPHIC_PROVENANCE` (v0.2 optional)
 
@@ -419,6 +424,33 @@ not needed for identity here. This is the content-store binding of the §1.2
 commitment; a structured-fact store signs the §1.2 `fact_id` directly. Either way the
 signed object is the canonical identifier of the unit committed to.
 
+### 7.6 Point lookup — `POINT_LOOKUP` (v0.2 optional)
+
+Point lookup answers a single question about a ref: *is it still in the store?* It exists
+so an erasure-coverage check can **verify** that a hard-deleted fact is gone rather than
+assert it (the erasure certificate's `coverage`, Foundation decision 0014). Like
+`CRYPTOGRAPHIC_PROVENANCE`, it is an **optional extension**: independent of the embedder
+and of the retrieval result, so Proposition 2 holds for it.
+
+**`exists(ref) → bool` — MUST if claimed.** A store declaring `POINT_LOOKUP` MUST expose
+`exists(ref)` with these obligations:
+
+- **Side-effect-free.** `exists` MUST NOT write, delete, re-rank, or otherwise change
+  observable state; two calls with no intervening mutation MUST agree.
+- **Reflects deletes.** After `delete(ref)` returns `True`, `exists(ref)` MUST return
+  `False`; for a ref that was never written it MUST return `False`; for a live
+  (written, not deleted) ref it MUST return `True`. A superseded-but-not-deleted ref
+  still exists (it is `audit`-visible), so `exists` MUST return `True` for it.
+- **Consistent with `delete`.** `exists` is the read-path complement of `delete`'s
+  boolean: a store MUST NOT report a ref absent that `audit()` would still yield, nor
+  present a ref that has been hard-deleted.
+
+A store that does **not** claim `POINT_LOOKUP` need not implement `exists`; a consumer
+that needs it (e.g. the erasure-coverage probe) MUST treat its absence as *unknown* — it
+records the corresponding coverage as `unverified`, never as a fabricated `absent`. This
+keeps the capability honestly optional: declining it costs a consumer a verification, not
+correctness.
+
 ---
 
 ## 8. Conformance (R5 ← §5.2)
@@ -455,6 +487,7 @@ a direction passes only when the interval excludes the failing outcome.
 | `MULTI_TENANT` | no cross-tenant leak **and** no in-tenant over-restriction | **two** | F12, F13 |
 | `PROVENANCE` | every written memory exposes `source` (`write_id` + `written_at`) | one | — |
 | `CRYPTOGRAPHIC_PROVENANCE` | a signed write verifies **and** an altered-content `fact_id` does not | **two** | — |
+| `POINT_LOOKUP` | a live ref's `exists` is `True` **and** a hard-deleted ref's `exists` is `False` | **two** | §7.6 |
 
 The two provenance rows are *constructed* tests (like `AUDIT`): the suite writes its
 own probes — unsigned for `PROVENANCE`, signed with a generated Ed25519 key for
@@ -608,8 +641,9 @@ it, and the reference backend(s) that exercise it (paper Appendix A).
 ## Appendix B — Reference binding
 
 The Python `MemoryBackend` Protocol (`interface.py`, v0.1.1) is the v0.1 reference
-binding. GMP operations map one-to-one onto its seven methods; the nine capability
-flags are the `Capability` `StrEnum`; the core types are `Memory`, `SourceMeta`,
+binding. GMP operations map one-to-one onto its seven core methods (plus the optional
+`exists` extension, §7.6); the eleven capability flags are the `Capability` `StrEnum`;
+the core types are `Memory`, `SourceMeta`,
 `WriteOptions`, `RetrieveOptions`; the error types are `CapabilityNotSupported`
 (undeclared operation, §7.2) and `ConformanceViolation` (declared ≠ observed, §8.1);
 and `verify_provenance` is the canonical Ed25519 check reserved for §7.4. A future
