@@ -22,8 +22,56 @@ from aml.cloud.erasure_proof import (
     probe_coverage,
 )
 
-# Reuse the hermetic harness from the I0b tests.
-from test_erasure_i0b import _MockId, _FakeConn, _FakeDT, _FakeLedger, _cert_inserted
+
+# ── hermetic harness (self-contained; mirrors test_erasure_i0b) ───────────────
+class _MockId:
+    def __init__(self, k=b"0" * 32):
+        self.k = k
+
+    def sign(self, m):
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+        priv = Ed25519PrivateKey.from_private_bytes(self.k)
+        return priv.sign(m), priv.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+
+    def public_key(self):
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+        return Ed25519PrivateKey.from_private_bytes(self.k).public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+
+
+class _Result:
+    def fetchall(self): return []
+    def fetchone(self): return None
+
+
+class _FakeConn:
+    closed = False
+
+    def __init__(self, events):
+        self.events = events
+
+    def execute(self, sql, params=None):
+        if "INSERT INTO" in sql and "erasure_certificates" in sql:
+            self.events.append("cert_insert")
+        return _Result()
+
+
+class _FakeDT:
+    def __init__(self): self.scrubbed = []
+    def scrub_fact(self, fact_ref, tenant_id, **k): self.scrubbed.append(fact_ref); return 0
+
+
+class _FakeLedger:
+    def __init__(self, events, fail=False): self.events, self.fail, self.rows = events, fail, []
+    def record_subject_erasure(self, **kw):
+        if self.fail:
+            raise RuntimeError("ledger pool down")
+        self.events.append("ledger_write")
+        self.rows.append(kw)
+
+
+def _cert_inserted(events): return "cert_insert" in events
 
 
 # ── fake memory backends ─────────────────────────────────────────────────────
