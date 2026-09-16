@@ -32,6 +32,14 @@ issuance and by conformance, distinct from validity:
 > and MUST NOT issue a certificate or destroy the key. The ledger write MUST NOT be skipped for an
 > unsigned or otherwise incomplete erasure.**
 
+**Order clarification (amendment 2026-09-16).** The obligation is "ledger committed **before the
+certificate is persisted**." **In-memory signing MAY precede the ledger write** — computing the Ed25519
+signature has no durable side effect, and signing first lets an unsigned erasure be refused *before* any
+ledger row is written (avoiding an orphan ledger row for an erasure that can never be certified). What is
+forbidden is a *persisted* (durable) certificate, or a destroyed DEK, without a prior committed ledger
+row. The ledger stores the unsigned `cert_data` (it does not need the signature). Reference enforcement
+therefore runs scrub → sign (in memory) → ledger (committed) → persist certificate.
+
 ### Required order
 
 - **Subject erasure** (`issue_certificate`): scrub → **ledger row (committed)** → sign + persist

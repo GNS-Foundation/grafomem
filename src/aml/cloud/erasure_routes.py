@@ -139,6 +139,10 @@ def create_erasure_router(erasure_service) -> APIRouter:
             except Exception as e:
                 raise HTTPException(400, f"Invalid signing key: {e}")
 
+        from aml.cloud.erasure_proof import (
+            CertificateNotIssued, LedgerRequired, EmptyGovernanceCoverage, UnsignedErasure,
+        )
+        from fastapi.responses import JSONResponse
         try:
             cert = erasure_service.issue_certificate(
                 tenant_id=tenant_id,
@@ -148,6 +152,21 @@ def create_erasure_router(erasure_service) -> APIRouter:
                 requested_by=req.requested_by,
                 signing_identity=signing_identity,
             )
+        except CertificateNotIssued:
+            # ERASURE_LEDGER_OPTIONAL (dev/test): the fact was erased, but with no ledger
+            # configured no certificate is issued (0013). NOT a 500 — the erasure succeeded.
+            return JSONResponse(
+                status_code=200,
+                content={"status": "erased_no_certificate", "certificate_id": None,
+                         "detail": "erased, no certificate issued: ledger not configured"},
+            )
+        except LedgerRequired:
+            # Default mode, ledger unavailable: nothing was erased, nothing issued.
+            raise HTTPException(503, "restore-scrub ledger unavailable — erasure not performed, no certificate issued")
+        except EmptyGovernanceCoverage as e:
+            raise HTTPException(400, str(e))
+        except UnsignedErasure:
+            raise HTTPException(503, "unable to sign the erasure certificate — certificate not issued")
         except Exception as e:
             logger.error("Failed to issue erasure certificate: %s", e)
             raise HTTPException(500, f"Failed to issue certificate: {e}")

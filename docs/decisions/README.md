@@ -164,6 +164,15 @@ the claim, the vantage that produced it, and why the corroboration failed.
   which set it belongs to before quoting it, and never present a subset as the total; the choice
   between subsets is the operator's, not one to settle by picking a number. And a correction is a
   claim too: verify it against the same primary source before writing it down.*
+- **2026-09-16 — two granted scopes that enforce nothing.** Mapping the three Meridian prod key
+  scope-sets to endpoints for the rotation-v2 E2E, `require_scope(request, "cgr:read")` and
+  `require_scope(request, "calibration:write")` appear on **zero** cloud routes — both scopes are in the
+  vocabulary and granted to real prod keys, but neither gates any request (`cgr:read` reads are
+  tenant-scoped or gated on `decisions:read`; `calibration:write` may be enforced deeper than the route
+  layer, per its docstring, but not via `require_scope`). A granted scope that gates nothing is a *false
+  affordance* — it reads as authority in `list`/audit output while conferring or restricting nothing at
+  the check. *Lesson: presence in the scope vocabulary + a grant on a key is not evidence the scope gates
+  anything; grep `require_scope` for the exact string before trusting (or advertising) a scope's authority.*
 - **2026-09-16 — the MCP erasure certificate that was never minted.** The MCP `delete` tool has a
   "Phase 4: Mint Erasure Certificate" block (`server/mcp.py`) that returned `"certificate": null` on
   **every** call — it never once minted. Four independent bugs, each caught by a `try/except` that logged
