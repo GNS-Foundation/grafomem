@@ -506,6 +506,7 @@ def create_app(
     stripe_webhook_secret: str | None = None,
     portal_secret_key: str | None = None,
     spec_only: bool = False,
+    ensure_schema_only: bool = False,
 ) -> FastAPI:
     """Create the FastAPI application.
 
@@ -780,6 +781,16 @@ def create_app(
     effective_auth_mode = auth_mode
     if db_url and auth_mode == "none":
         effective_auth_mode = "cloud"
+
+    # A1 (schema-drift audit): whether boot may run DDL (ensure_schema). In cloud the
+    # runtime process must do NO DDL — the runtime role owns nothing and holds no CREATE
+    # on schema public, so ensure_schema only ever logged "permission denied". DDL is a
+    # pre-deploy release step (`python -m aml.cloud.migrations_runner --ensure-schema`,
+    # which calls create_app(ensure_schema_only=True) as the migrate role, then applies
+    # migrations). Self-host keeps self-migrating. `ensure_schema_only` forces the DDL
+    # steps on for that release step regardless of auth_mode.
+    from aml.cloud.migrations_runner import boot_migrations_enabled as _boot_migrations_enabled
+    _do_boot_ddl = ensure_schema_only or _boot_migrations_enabled(effective_auth_mode)
     app.add_middleware(
         TenantAuthMiddleware,
         auth_mode=effective_auth_mode,
@@ -836,7 +847,7 @@ def create_app(
                 # step (executor + timeout + log-and-continue) instead of
                 # running it synchronously here, where a stalled connection
                 # would wedge create_app() before the port could bind.
-                if not spec_only:
+                if not spec_only and _do_boot_ddl:
                     startup_db_steps.append(
                         (f"ensure_schema:{svc.__class__.__name__}", svc.ensure_schema)
                     )
@@ -865,8 +876,7 @@ def create_app(
             # Skip it in cloud (migrations own the table); self-host still ensures it.
             # First of the ensure_schema:* cascade to be gated; the rest follow once
             # the --ensure-schema release step lands.
-            from aml.cloud.migrations_runner import boot_migrations_enabled as _boot_ddl_enabled
-            if _boot_ddl_enabled(effective_auth_mode):
+            if _do_boot_ddl:
                 _init(el)
             else:
                 logger.info(
@@ -1252,7 +1262,7 @@ def create_app(
 
             # Sprint 22: Tenant Admin — member management + RBAC
             from aml.cloud.admin_routes import router as admin_router
-            if not spec_only:
+            if not spec_only and _do_boot_ddl:
                 startup_db_steps.append(
                     ("ensure_schema:TenantManager.members", tm.ensure_members_schema)
                 )
@@ -1444,6 +1454,18 @@ def create_app(
             logger.info("Landing page mounted at /")
     except Exception as e:
         logger.warning("Portal static files not available: %s", e)
+
+    # A1 release step: run the collected ensure_schema steps SYNCHRONOUSLY, here, as the
+    # migrate role (caller passes db_url=GRAFOMEM_MIGRATE_URL), then return without
+    # serving. Unlike the boot lifespan (which logs-and-continues so a stalled DB cannot
+    # wedge the port), this MUST fail loudly: any ensure_schema error raises, so the
+    # pre-deploy command exits non-zero and the deploy is blocked.
+    if ensure_schema_only:
+        logger.info("ensure-schema release step: running %d ensure_schema step(s)", len(startup_db_steps))
+        for _label, _fn in startup_db_steps:
+            logger.info("ensure-schema ▶ %s", _label)
+            _fn()
+        logger.info("ensure-schema release step: complete (%d step(s))", len(startup_db_steps))
 
     return app
 

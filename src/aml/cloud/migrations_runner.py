@@ -368,6 +368,13 @@ def main(argv: list[str] | None = None) -> None:
         default=os.environ.get("GRAFOMEM_MIGRATE_URL") or os.environ.get("GRAFOMEM_DB_URL"),
         help="DB URL for the migrate role (default: $GRAFOMEM_MIGRATE_URL, then $GRAFOMEM_DB_URL).",
     )
+    ap.add_argument(
+        "--ensure-schema",
+        action="store_true",
+        help="A1 release step: run every service's ensure_schema as the migrate role "
+        "(create the ensure_schema-owned base tables), THEN apply pending migrations. "
+        "This is the pre-deploy step; cloud boot itself does no DDL.",
+    )
     args = ap.parse_args(argv)
     if not args.url:
         raise SystemExit("set GRAFOMEM_MIGRATE_URL (the grafomem_migrate role) to run migrations")
@@ -379,8 +386,17 @@ def main(argv: list[str] | None = None) -> None:
     if args.baseline:
         versions = [v.strip() for v in args.baseline.split(",") if v.strip()]
         print(baseline_migrations(args.url, versions))
-    else:
-        print(apply_migrations(args.url))
+        return
+    if args.ensure_schema:
+        # Build the app with ensure_schema forced on, pointed at the migrate role, which
+        # runs every service's ensure_schema synchronously and raises on any failure
+        # (so this command exits non-zero and blocks the deploy). Reuses create_app's
+        # exact service construction — no separate service list to drift.
+        from aml.server.app import create_app
+        logger.info("ensure-schema: building services + running ensure_schema as the migrate role")
+        create_app(db_url=args.url, ensure_schema_only=True)
+        logger.info("ensure-schema: done; applying pending migrations")
+    print(apply_migrations(args.url))
 
 
 if __name__ == "__main__":
