@@ -29,7 +29,10 @@ def test_erasure_bugfix(temp_db_url):
     import os
     ident = _MockId(b"0" * 32)
     
-    svc = ErasureProofService(temp_db_url, signing_identity=ident)
+    class _NoLedger:  # I0b/0013: issuance now requires a ledger; a no-op suffices here
+        def record_subject_erasure(self, **kw): pass
+        def record_tenant_destruction(self, **kw): pass
+    svc = ErasureProofService(temp_db_url, signing_identity=ident, erasure_ledger=_NoLedger())
     
     # Drop table so ensure_schema creates it fresh with all columns
     conn = svc._get_conn()

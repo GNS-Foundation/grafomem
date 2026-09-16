@@ -238,11 +238,16 @@ async def destroy_tenant_key(
     
     import uuid
     entry_id = str(uuid.uuid4())
-    
+
+    # I0b / decision 0013 — ledger BEFORE the irreversible act. The ledger being
+    # absent is already refused above (503, line 213). Here the ledger row is written
+    # FIRST; if record_tenant_destruction raises (unreachable/failing ledger) the
+    # exception propagates and the DEK is NOT destroyed — never a destruction without
+    # a ledger row.
     # 1. Write to ledger
     el.record_tenant_destruction(entry_id, tenant_id, cert_data)
-    
-    # 2. Delete the DEK
+
+    # 2. Delete the DEK (only reached if the ledger write above succeeded)
     tkm.destroy_tenant_key(tenant_id)
 
     # 3. Admin-plane audit row (actor = caller tenant, target = destroyed tenant).
