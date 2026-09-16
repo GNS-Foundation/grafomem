@@ -232,4 +232,17 @@ the claim, the vantage that produced it, and why the corroboration failed.
   column (idempotent, a recorded no-op where present); the durable fix is a catalog-driven drift audit
   (ensure_schema vs migrations vs each live DB) and retiring `ensure_schema` DDL behind a `--ensure-schema`
   release step. Never trust `schema_migrations` as evidence of schema shape — dump the catalog.*
+- **2026-09-16 — the console displayed `tenants.api_key` (a pre-rotation value) as the current key.** After
+  rotation v2, the admin rotation route deleted+re-minted `tenant_api_keys` but never synced the legacy
+  `tenants.api_key` column, while the portal console read the *displayed* key from `tenants.api_key`
+  (`/v1/portal/me` via `_verify_legacy_token`, `portal_routes.py`). So the UI could show a **dead key as
+  current** — a value that no longer authenticated (its `tenant_api_keys` row was gone) presented as the
+  tenant's live credential. It went unnoticed because **no probe ever used the UI**: the rotation tests
+  asserted auth outcomes against the API, never that the string the console displays is the string that
+  authenticates. Compounded by the same column being a *credential* via the `auth.py` legacy fallback
+  (removed, PR #160). *Lesson: a value shown in a UI as "your key" is a claim that must be tested through
+  the UI's own read path — assert display == the authenticating credential, or the console can vouch for a
+  corpse. Two sources of truth for "the current key" (`tenants.api_key` for display, `tenant_api_keys` for
+  auth) with no check binding them is the same disjoint-definitions failure as the coverage column, one
+  layer up. Fix: 014 repoints the display to `tenant_api_keys` and drops the column.*
 

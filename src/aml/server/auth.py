@@ -135,33 +135,15 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
                 (api_key,),
             ).fetchone()
 
-            is_legacy = False
-            # Fallback for legacy schema — ONLY for tenants that have never had a
-            # tenant_api_keys row.
-            #
-            # Unrestricted, this branch is a revocation bypass. The admin rotation
-            # route (cloud/routes.py:203) deletes every tenant_api_keys row and
-            # mints a new key WITHOUT syncing the legacy tenants.api_key column
-            # (the portal route at cloud/portal_routes.py:398 does sync it). The
-            # stale tenants.api_key therefore still resolved here — and this branch
-            # returns role 'admin' with no scopes, no allowed_stores, no
-            # ip_allowlist and no expiry, i.e. a BROADER and non-expiring identity
-            # than the key it replaced.
-            #
-            # NOT EXISTS is the narrow fix: a tenant that has any tenant_api_keys
-            # row is managed by the new path, so its legacy column must never
-            # authenticate. Legacy-only tenants (no rows at all) are unaffected.
-            # The column and this branch are removed entirely in the HMAC work.
-            if not row:
-                row = conn.execute(
-                    "SELECT t.id as tenant_id, 'admin' as role FROM tenants t "
-                    "WHERE t.api_key = %s "
-                    "  AND NOT EXISTS (SELECT 1 FROM tenant_api_keys k "
-                    "                  WHERE k.tenant_id = t.id)",
-                    (api_key,),
-                ).fetchone()
-                is_legacy = True
-
+            # The legacy `tenants.api_key` fallback was REMOVED (2026-09-16, drift-audit
+            # prod addendum §2). A stale plaintext `tenants.api_key` must never
+            # authenticate: it granted role 'admin' with scopes ["*"], no allowed_stores,
+            # no ip_allowlist and no expiry — a broader, non-expiring identity than any
+            # minted key. Only `tenant_api_keys` rows resolve now. (prod & staging
+            # legacy_exposed = 0 at removal, so no tenant lost access.) The
+            # `tenants.api_key` column is still read by the console for DISPLAY
+            # (portal_routes.py /v1/portal/me); dropping it is a separate migration
+            # gated on repointing that display — it is NOT a credential path any more.
             if row:
                 # Check expiry (column may not exist yet)
                 from datetime import datetime, timezone
@@ -186,30 +168,24 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
                 tenant_id = row["tenant_id"]
                 role = row.get("role", "admin")
 
-                if is_legacy:
-                    scopes: list[str] = ["*"]
-                    allowed_stores: list[str] = []
-                    key_id_out: str | None = None
-                    ip_allowlist: list[str] = []
+                # scopes / allowed_stores columns may not exist pre-migration
+                db_scopes = row.get("scopes")
+                if db_scopes:
+                    scopes = db_scopes if isinstance(db_scopes, list) else json.loads(db_scopes)
                 else:
-                    # scopes / allowed_stores columns may not exist pre-migration
-                    db_scopes = row.get("scopes")
-                    if db_scopes:
-                        scopes = db_scopes if isinstance(db_scopes, list) else json.loads(db_scopes)
-                    else:
-                        from aml.server.scopes import ROLE_SCOPES
-                        scopes = ROLE_SCOPES.get(role, ["*"])
-                    db_stores = row.get("allowed_stores")
-                    if db_stores:
-                        allowed_stores = db_stores if isinstance(db_stores, list) else json.loads(db_stores)
-                    else:
-                        allowed_stores = []
-                    key_id_out = row.get("key_id")
-                    db_ip = row.get("ip_allowlist")
-                    if db_ip:
-                        ip_allowlist = db_ip if isinstance(db_ip, list) else json.loads(db_ip)
-                    else:
-                        ip_allowlist = []
+                    from aml.server.scopes import ROLE_SCOPES
+                    scopes = ROLE_SCOPES.get(role, ["*"])
+                db_stores = row.get("allowed_stores")
+                if db_stores:
+                    allowed_stores = db_stores if isinstance(db_stores, list) else json.loads(db_stores)
+                else:
+                    allowed_stores = []
+                key_id_out = row.get("key_id")
+                db_ip = row.get("ip_allowlist")
+                if db_ip:
+                    ip_allowlist = db_ip if isinstance(db_ip, list) else json.loads(db_ip)
+                else:
+                    ip_allowlist = []
 
                 self._api_key_cache[api_key] = (
                     tenant_id, role, scopes, allowed_stores, key_id_out, ip_allowlist, time.monotonic(),
