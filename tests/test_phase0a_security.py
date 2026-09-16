@@ -29,9 +29,14 @@ def temp_db_url():
         pytest.skip("GRAFOMEM_DB_URL not set")
     return url
 
+class _NoLedger:  # I0b/0013: issuance requires a ledger; a no-op suffices for signing/security tests
+    def record_subject_erasure(self, **kw): pass
+    def record_tenant_destruction(self, **kw): pass
+
+
 @pytest.fixture
 def erasure_service(temp_db_url):
-    ep = ErasureProofService(temp_db_url)
+    ep = ErasureProofService(temp_db_url, erasure_ledger=_NoLedger())
     ep.ensure_schema()
     yield ep
     ep.close()
@@ -103,7 +108,7 @@ def test_erasure_positive():
     class _MockId:
         def sign(self, m): priv=Ed25519PrivateKey.from_private_bytes(seed); return priv.sign(m), priv.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
         def public_key(self): return Ed25519PrivateKey.from_private_bytes(seed).public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
-    ep = ErasureProofService(db_url, signing_identity=_MockId())
+    ep = ErasureProofService(db_url, signing_identity=_MockId(), erasure_ledger=_NoLedger())
     ep.ensure_schema()
     
     cert = ep.issue_certificate("tenant1", 123)

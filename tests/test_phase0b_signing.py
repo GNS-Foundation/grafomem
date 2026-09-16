@@ -46,6 +46,11 @@ def clean_tenant(db_url):
                 pass
     return tenant_id
 
+
+class _NoLedger:  # I0b/0013: issuance requires a ledger; a no-op suffices for signing/security tests
+    def record_subject_erasure(self, **kw): pass
+    def record_tenant_destruction(self, **kw): pass
+
 def test_verify_all_four_artifacts_and_rotation(db_url, clean_tenant):
     """
     Test Phase 0b objective:
@@ -70,7 +75,7 @@ def test_verify_all_four_artifacts_and_rotation(db_url, clean_tenant):
     gc = GcrumbsService(db_url, signing_identity=id_a)
     gc.ensure_schema()
     
-    ep = ErasureProofService(db_url, signing_identity=id_a)
+    ep = ErasureProofService(db_url, signing_identity=id_a, erasure_ledger=_NoLedger())
     ep.ensure_schema()
     
     # Generate Artifact 1 (Receipt) with Key A
@@ -108,7 +113,7 @@ def test_verify_all_four_artifacts_and_rotation(db_url, clean_tenant):
     # Setup services with Key B
     ar_b = ArtifactRegistryService(db_url, signing_identity=id_b)
     gc_b = GcrumbsService(db_url, signing_identity=id_b)
-    ep_b = ErasureProofService(db_url, signing_identity=id_b)
+    ep_b = ErasureProofService(db_url, signing_identity=id_b, erasure_ledger=_NoLedger())
     
     # 3. Prove that Key B can verify Artifacts signed by Key A
     # If it was relying on the LIVE identity instead of the STORED public key, this would fail!
