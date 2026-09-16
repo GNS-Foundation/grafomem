@@ -876,12 +876,17 @@ def create_app(
             # Skip it in cloud (migrations own the table); self-host still ensures it.
             # First of the ensure_schema:* cascade to be gated; the rest follow once
             # the --ensure-schema release step lands.
-            if _do_boot_ddl:
+            # erasure_ledger is migration-owned (009) AND ErasureLedger connects via
+            # GRAFOMEM_LEDGER_URL (the ledger role), not the migrate URL — so its
+            # ensure_schema must NOT run in the A1 release step either. Gate on
+            # boot_migrations_enabled ONLY (self-host self-creates; cloud + the
+            # ensure_schema release step both skip it and let migration 009 create it).
+            if _boot_migrations_enabled(effective_auth_mode):
                 _init(el)
             else:
                 logger.info(
-                    "startup ▶ skip ensure_schema:ErasureLedger in cloud "
-                    "(table owned by migration 009; runtime does no DDL)"
+                    "startup ▶ skip ensure_schema:ErasureLedger "
+                    "(table owned by migration 009; runtime/release step does no DDL on it)"
                 )
             app.state.erasure_ledger = el
             
