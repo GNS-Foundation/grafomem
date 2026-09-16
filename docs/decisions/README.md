@@ -245,4 +245,25 @@ the claim, the vantage that produced it, and why the corroboration failed.
   corpse. Two sources of truth for "the current key" (`tenants.api_key` for display, `tenant_api_keys` for
   auth) with no check binding them is the same disjoint-definitions failure as the coverage column, one
   layer up. Fix: 014 repoints the display to `tenant_api_keys` and drops the column.*
+- **2026-09-16 — a local release-step check passed on a superuser fallback.** The A1 `--ensure-schema`
+  release step ran clean locally (27 steps, all migrations) but FAILED on the first staging pre-deploy:
+  `permission denied for schema public` on `CREATE TABLE erasure_ledger`. `ErasureLedger` connects via
+  `GRAFOMEM_LEDGER_URL` (the least-privilege ledger role), and `erasure_ledger` is migration-owned (009) —
+  so its `ensure_schema` must never run in the release step. It slipped through locally because
+  `GRAFOMEM_LEDGER_URL` was **unset**, so `ErasureLedger` fell back to the local DB URL — my own
+  **superuser** — which happily created the table. The local env was more privileged than prod, so the
+  local check could not see the permission boundary the release step exists to respect. *Lesson: a
+  least-privilege change can only be validated under least-privilege; a local run as superuser (or with a
+  privileged env var unset so it falls back to one) proves nothing about a split-role deploy. Set the same
+  role-scoped URLs locally, or treat staging as the first real check. (Fail-closed worked: the pre-deploy
+  error blocked the deploy and staging kept serving the old version.)*
+- **2026-09-16 — the 403 was the CDN, not the app.** A staging auth probe via `urllib` returned 403 for
+  BOTH the authorised key and the legacy key — read naively, a PASS on the "legacy key rejected" leg and a
+  confusing FAIL on the authorised leg. The body was `error code: 1010`: **Cloudflare** banning
+  `Python-urllib`'s user-agent at the edge, before the request reached grafomem. The app's own rejection is
+  `{"detail":"Invalid API key."}` with 403; the CDN's is a different 403 entirely. Asserting on the status
+  code alone would have "confirmed" a security control that was never exercised. *Lesson: behind a CDN, a
+  status code is the CDN's opinion until proven otherwise — assert on the response **body** (the app's
+  distinctive payload), and send a normal User-Agent (curl UA) so the edge doesn't shadow the test. E2E
+  harnesses must check bodies, not just codes.*
 

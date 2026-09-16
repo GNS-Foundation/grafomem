@@ -1046,7 +1046,14 @@ def create_app(
             from aml.cloud.manifold_routes import create_manifold_router
             manifold_svc = ManifoldService(db_url, pool=pool)
             _init(manifold_svc)
-            if not spec_only:
+            # The manifold worker is the ONLY background worker started at create_app
+            # BUILD time, and it WRITES (INSERT/UPDATE manifold_cache). It must not run
+            # in the A1 release step (ensure_schema_only) — the pre-deploy runs as the
+            # migrate role and must never do runtime writes. (Every other worker —
+            # assurance scheduler, usage reporter, free_ceiling, tkm invalidation — starts
+            # in the ASGI lifespan, which the release step never enters, so nothing else
+            # runs.)
+            if not spec_only and not ensure_schema_only:
                 manifold_svc.start_background_worker(interval_seconds=300)
             app.state.manifold_service = manifold_svc
             app.include_router(create_manifold_router(manifold_svc), prefix="/v1/manifold")
