@@ -22,6 +22,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
@@ -144,6 +145,29 @@ CREATE INDEX IF NOT EXISTS idx_ec_tenant
 CREATE INDEX IF NOT EXISTS idx_ec_fact
     ON erasure_certificates(tenant_id, fact_ref);
 """
+
+
+# ============================================================================
+# I0b — issuance obligations (decision 0013). A certificate must never exist
+# without a prior restore-scrub ledger row.
+# ============================================================================
+
+class EmptyGovernanceCoverage(ValueError):
+    """Refuse issuance: governance/coverage is empty (0013 gate 1)."""
+
+
+class UnsignedErasure(RuntimeError):
+    """Refuse issuance: the certificate could not be signed (0013 gate 2)."""
+
+
+class LedgerRequired(RuntimeError):
+    """Refuse: the restore-scrub ledger is unconfigured/unreachable and not
+    optional; nothing is erased and no certificate is issued (0013 gate 3)."""
+
+
+class CertificateNotIssued(RuntimeError):
+    """ERASURE_LEDGER_OPTIONAL (dev/test): the fact was erased but NO certificate
+    was issued because the ledger is not configured. Never an unledgered certificate."""
 
 
 # ============================================================================
@@ -276,7 +300,27 @@ class ErasureProofService:
         -------
         ErasureCertificate
         """
-        self.assert_can_sign(signing_identity)
+        # I0b / decision 0013 — issuance obligations. A certificate must never exist
+        # without a prior restore-scrub ledger row.
+        #
+        # Gate 1 — explicitly-empty coverage → refuse (before any erasure). An omitted
+        # coverage (None) keeps the documented non-empty default {"primary":"absent"};
+        # an explicit {} is the vacuous case 0013 forbids.
+        if coverage is not None and not coverage:
+            raise EmptyGovernanceCoverage(
+                "refuse: empty coverage — a certificate must assert non-empty coverage (0013)."
+            )
+        # Gate 3a — the restore-scrub ledger must be configured. Default: abort before
+        # erasing. ERASURE_LEDGER_OPTIONAL (dev/test) may erase but issues NO certificate.
+        _ledger_optional = os.environ.get("ERASURE_LEDGER_OPTIONAL", "").strip().lower() in ("1", "true", "yes")
+        if self._erasure_ledger is None:
+            if not _ledger_optional:
+                raise LedgerRequired(
+                    "refuse: restore-scrub ledger not configured — no erasure, no certificate (0013). "
+                    "Set ERASURE_LEDGER_OPTIONAL=1 (dev/test) to erase without a certificate."
+                )
+        else:
+            self.assert_can_sign(signing_identity)
 
         requested_at = datetime.now(tz=timezone.utc)
 
@@ -298,6 +342,11 @@ class ErasureProofService:
 
         completed_at = datetime.now(tz=timezone.utc)
 
+        # I0b — ERASURE_LEDGER_OPTIONAL: the fact is now erased, but with no ledger
+        # configured we issue NO certificate. Never an unledgered certificate.
+        if self._erasure_ledger is None:
+            raise CertificateNotIssued("erased, no certificate issued: ledger not configured")
+
         # Step 2: Compute content hash
         content_hash = hash_content(fact_content) if fact_content else None
 
@@ -305,7 +354,7 @@ class ErasureProofService:
         certificate_id = compute_certificate_id(tenant_id, fact_ref, completed_at)
 
         # Step 4: Sign the certificate
-        coverage_dict = coverage or {"primary": "absent"}
+        coverage_dict = coverage or {"primary": "absent"}  # omitted → default; explicit {} refused (gate 1)
         
         governance_record = {
             "declared": {
@@ -363,7 +412,24 @@ class ErasureProofService:
         digest = compute_certificate_digest(cert_data)
         signature, public_key = sign_provenance(key, digest)
 
-        # Step 5: Persist
+        # Gate 2 — unsigned → refuse. A certificate is never persisted (nor ledgered)
+        # without a valid signature (0013).
+        if signature is None:
+            raise UnsignedErasure("refuse: certificate could not be signed (0013).")
+
+        # I0b — ledger BEFORE the certificate (0013). The ledger row is committed first;
+        # if this raises (unreachable/failing), the certificate is never persisted. A
+        # cert/persist failure AFTER this leaves an orphan ledger row — the safe residue
+        # (append-only, idempotent restore-scrub), never a certificate without a ledger.
+        self._erasure_ledger.record_subject_erasure(
+            entry_id=certificate_id,
+            tenant_id=tenant_id,
+            fact_ref=fact_ref,
+            content_hash=content_hash,
+            certificate=cert_data,
+        )
+
+        # Step 5: Persist the certificate
         conn = self._get_conn()
         conn.execute(
             f"INSERT INTO {self._table_prefix}erasure_certificates "
@@ -384,16 +450,7 @@ class ErasureProofService:
                 "Ed25519-signed at issuance" if signature else None,
             ),
         )
-        
-
-        if self._erasure_ledger and signature is not None:
-            self._erasure_ledger.record_subject_erasure(
-                entry_id=certificate_id,
-                tenant_id=tenant_id,
-                fact_ref=fact_ref,
-                content_hash=content_hash,
-                certificate=cert_data
-            )
+        # (ledger row was committed above, before this certificate INSERT — 0013)
 
         logger.info(
             "Erasure certificate issued: cert=%s tenant=%s fact_ref=%s scrubbed=%d",
