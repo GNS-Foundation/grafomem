@@ -107,6 +107,29 @@ def test_probe_discriminates(client):
     assert not _key_authenticates(client, "gm_" + uuid.uuid4().hex * 2)
 
 
+def test_legacy_tenants_api_key_no_longer_authenticates(client, tm):
+    """The legacy tenants.api_key fallback is REMOVED (drift-audit prod addendum §2).
+    A tenant with a tenants.api_key value but NO tenant_api_keys row must NOT
+    authenticate — previously this resolved to a wildcard-scope admin identity."""
+    import psycopg
+    tid = "legacy-" + uuid.uuid4().hex[:12]
+    legacy_key = "gm_legacy_" + uuid.uuid4().hex * 2
+    conn = psycopg.connect(DB_URL, autocommit=True)
+    try:
+        conn.execute(
+            "INSERT INTO tenants (id, name, api_key, plan) VALUES (%s, %s, %s, 'starter')",
+            (tid, "legacy-only", legacy_key),
+        )
+        # No tenant_api_keys row for this tenant — the exact shape the fallback served.
+        assert not _key_authenticates(client, legacy_key), (
+            "REGRESSION: tenants.api_key still authenticates — the legacy fallback "
+            "was supposed to be removed"
+        )
+    finally:
+        conn.execute("DELETE FROM tenants WHERE id = %s", (tid,))
+        conn.close()
+
+
 def test_admin_rotation_revokes_old_key(client, tm):
     info = tm.create_tenant(name=f"rot-admin-{uuid.uuid4().hex[:8]}")
     old_key = info.api_key
