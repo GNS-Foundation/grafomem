@@ -215,4 +215,21 @@ the claim, the vantage that produced it, and why the corroboration failed.
   (or a shared fake built from its actual signature) at least once, or the mock drifts into fan-fiction.
   Corollary to "the certificate that was never minted": the same commit that hid the bug in a swallowed
   warning also had a test blessing it.*
+- **2026-09-16 — a column defined only in `ensure_schema` DDL, with migrations recorded complete.** The
+  `erasure_certificates.coverage` column existed only in `erasure_proof.py`'s `ensure_schema` `_SCHEMA_SQL`
+  and in **no migration file**. On staging — provisioned purely by the migration runner — the table was
+  created by `002_w9_erasure.sql` (which has no `coverage`), and `ensure_schema` could not add it (the
+  runtime role has no DDL on schema `public`: startup logged `permission denied for schema public`). So the
+  column was simply absent, and **erasure issuance 500'd on staging** (`UndefinedColumn: column "coverage"
+  … does not exist`) — while `schema_migrations` cheerfully listed 001–010 as applied. `schema_migrations`
+  tracks *files run*, not *schema shape*: a green migration ledger proved nothing about the actual columns.
+  Prod was unaffected only by luck of history — its `erasure_certificates` was built by `ensure_schema`
+  while the process ran as **postgres** (superuser), so the column is present there; the moment DDL moved
+  behind the split runtime role, every migration-only environment diverged. Surfaced by the 0014 stage-1
+  staging E2E — the first erasure ever issued through the deployed staging service. *Lesson: `ensure_schema`
+  DDL and the migration set are two independent definitions of the schema that were never reconciled;
+  whichever ran first in an environment won, and no check compared them. Fix: migration `011` adds the
+  column (idempotent, a recorded no-op where present); the durable fix is a catalog-driven drift audit
+  (ensure_schema vs migrations vs each live DB) and retiring `ensure_schema` DDL behind a `--ensure-schema`
+  release step. Never trust `schema_migrations` as evidence of schema shape — dump the catalog.*
 
