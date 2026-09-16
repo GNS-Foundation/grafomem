@@ -463,11 +463,12 @@ if __name__ == "__main__":
     assert isinstance(b, MemoryBackend), "trivial backend does not satisfy Protocol"
     print("✓ Implements MemoryBackend Protocol  (runtime_checkable isinstance)")
 
-    # --- Test 2: 10 independent capability flags (v0.2: +CONCURRENCY_CONTROL)
-    assert len(set(Capability)) == 10, f"expected 10 flags, got {len(set(Capability))}"
+    # --- Test 2: 11 independent capability flags (v0.2: +CONCURRENCY_CONTROL, +POINT_LOOKUP)
+    assert len(set(Capability)) == 11, f"expected 11 flags, got {len(set(Capability))}"
     assert Capability("audit") is Capability.AUDIT  # StrEnum value round-trip
     assert Capability("concurrency_control") is Capability.CONCURRENCY_CONTROL
-    print("✓ Capability enum                    (10 flags, StrEnum values stable)")
+    assert Capability("point_lookup") is Capability.POINT_LOOKUP
+    print("✓ Capability enum                    (11 flags, StrEnum values stable)")
 
     # --- Test 3: write + retrieve round-trips content ---------------------
     r1 = b.write("user lives in Rome", WriteOptions())
