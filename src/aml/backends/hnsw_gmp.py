@@ -198,6 +198,13 @@ class HnswGMPBackend:
             self._index.mark_deleted(ref)
         return cur.rowcount > 0
 
+    def exists(self, ref) -> bool:
+        # POINT_LOOKUP (0014) — side-effect-free existence probe for the erasure
+        # coverage check. After delete(ref) this returns False.
+        row = self._conn.execute(
+            "SELECT 1 FROM memories WHERE ref = ? LIMIT 1", (ref,)).fetchone()
+        return row is not None
+
     def retrieve(self, query: str, options: RetrieveOptions) -> list[Memory]:
         n = self._index.element_count
         if n == 0:

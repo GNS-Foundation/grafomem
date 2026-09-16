@@ -62,8 +62,10 @@ class _FakeLedger:
         self.rows.append(kw)
 
 
-def _svc(events, ledger, dt=None):
-    s = ErasureProofService(db_url=None, decision_trail=dt if dt is not None else _FakeDT(),
+def _svc(events, ledger, dt="__default__"):
+    # Faithful: dt=None means NO decision trail; omitted → _FakeDT (verified-absent trail).
+    trail = _FakeDT() if dt == "__default__" else dt
+    s = ErasureProofService(db_url=None, decision_trail=trail,
                             signing_identity=_MockId(), erasure_ledger=ledger)
     s._conn = _FakeConn(events)  # inject fake conn; no real DB
     return s
@@ -72,22 +74,27 @@ def _svc(events, ledger, dt=None):
 def _cert_inserted(events): return "cert_insert" in events
 
 
-# ── gate 1: empty governance/coverage → refuse (no cert) ─────────────────────
+# ── gate 1: zero verified coverage → refuse (no cert) [0014 vacuity] ──────────
+# Coverage is now probed, not passed. With no backend AND no decision trail there is
+# nothing verified → refuse. (The stage-1 probe details live in
+# test_erasure_coverage_stage1.py; this pins that the I0b gate still holds.)
 def test_empty_coverage_refuses():
     ev = []
-    svc = _svc(ev, _FakeLedger(ev))
+    svc = _svc(ev, _FakeLedger(ev), dt=None)  # no trail → no read-after-write
     with pytest.raises(EmptyGovernanceCoverage):
-        svc.issue_certificate("t1", 123, coverage={})
-    assert not _cert_inserted(ev), "no certificate may be persisted for empty coverage"
+        svc.issue_certificate("t1", 123, backend=None)  # no probe → all unverified
+    assert not _cert_inserted(ev), "no certificate may be persisted for zero-verified coverage"
 
 
 # ── gate 2: unsigned → refuse (no cert) ──────────────────────────────────────
+# _FakeDT + _FakeConn (returns []) → decision_trail read-after-write is "absent"
+# (verified), so coverage is non-vacuous and we reach the signing gate.
 def test_unsigned_refuses(monkeypatch):
     monkeypatch.setattr("aml.provenance.sign_provenance", lambda key, digest: (None, None))
     ev = []
     svc = _svc(ev, _FakeLedger(ev))
     with pytest.raises(UnsignedErasure):
-        svc.issue_certificate("t1", 123, coverage={"primary": "absent"})
+        svc.issue_certificate("t1", 123)
     assert not _cert_inserted(ev), "no certificate may be persisted when signing fails"
 
 
@@ -98,7 +105,7 @@ def test_unconfigured_ledger_refuses_and_does_not_erase(monkeypatch):
     dt = _FakeDT()
     svc = _svc(ev, None, dt=dt)  # ledger unconfigured
     with pytest.raises(LedgerRequired):
-        svc.issue_certificate("t1", 123, coverage={"primary": "absent"})
+        svc.issue_certificate("t1", 123)
     assert not _cert_inserted(ev), "no certificate without a ledger"
     assert dt.scrubbed == [], "default mode must NOT erase when the ledger is unavailable"
 
@@ -110,7 +117,7 @@ def test_optional_ledger_erases_without_certificate(monkeypatch):
     dt = _FakeDT()
     svc = _svc(ev, None, dt=dt)
     with pytest.raises(CertificateNotIssued):
-        svc.issue_certificate("t1", 123, coverage={"primary": "absent"})
+        svc.issue_certificate("t1", 123)
     assert dt.scrubbed == [123], "optional mode still erases the fact"
     assert not _cert_inserted(ev), "optional mode issues NO certificate"
 
@@ -121,7 +128,7 @@ def test_ledger_written_before_certificate(monkeypatch):
     ev = []
     ledger = _FakeLedger(ev)
     svc = _svc(ev, ledger)
-    cert = svc.issue_certificate("t1", 123, coverage={"primary": "absent"})
+    cert = svc.issue_certificate("t1", 123)
     assert cert is not None and ledger.rows, "a ledger row must be written"
     assert ev.index("ledger_write") < ev.index("cert_insert"), "ledger must be committed before the cert"
 
@@ -132,7 +139,7 @@ def test_ledger_write_failure_refuses_certificate(monkeypatch):
     ev = []
     svc = _svc(ev, _FakeLedger(ev, fail=True))
     with pytest.raises(Exception):
-        svc.issue_certificate("t1", 123, coverage={"primary": "absent"})
+        svc.issue_certificate("t1", 123)
     assert not _cert_inserted(ev), "a failing ledger write must abort before the cert is persisted"
 
 

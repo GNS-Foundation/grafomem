@@ -202,4 +202,17 @@ the claim, the vantage that produced it, and why the corroboration failed.
   advertising "verified" coverage, grep for the code that actually reads the store, and if there is none,
   say `unverified`. (Spec fix: decision 0014 names `unverified` and forbids the fabricated default;
   enforcement = I0b stage-1 coverage probe.)*
+- **2026-09-16 — the test mocked the API it wished existed.** `test_mcp_governance` was the only
+  coverage over the MCP erasure-minting path, and it PASSED for the whole time that path minted nothing.
+  It passed because its mocks were written to the *broken* code's shape — `content_hash`,
+  `signing_key_id`, a `str` signature, `get_certificate_for_fact` — none of which are the real
+  `ErasureProofService` API (`fact_content_hash`, no `signing_key_id`, `bytes` signature, `get_by_fact`).
+  The test and the code agreed with each other and disagreed with reality: a green suite over an API that
+  did not exist. Fixing the code (#156) *broke the test* (`str.hex()` AttributeError, MagicMock not JSON
+  serializable) — which is how we learned the test had been mocking a fiction. *Lesson: a mock encodes a
+  claim about a real interface; when the mock and the code are edited together to match, the test proves
+  only their mutual consistency, never that either matches the dependency. Assert against the real object
+  (or a shared fake built from its actual signature) at least once, or the mock drifts into fan-fiction.
+  Corollary to "the certificate that was never minted": the same commit that hid the bug in a swallowed
+  warning also had a test blessing it.*
 

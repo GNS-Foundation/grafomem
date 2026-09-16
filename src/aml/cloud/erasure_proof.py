@@ -171,6 +171,75 @@ class CertificateNotIssued(RuntimeError):
 
 
 # ============================================================================
+# I0b stage-1 — coverage verification (decision 0014). Coverage is a MEASUREMENT,
+# not a default: an unprobed subsystem is "unverified", never a fabricated "absent".
+# ============================================================================
+
+# Verified coverage statuses (0014): a real observation of the store.
+VERIFIED_STATUSES = ("present", "absent")
+# Subsystems stage-1 records but does not probe yet (they stay "unverified").
+_UNPROBED_SUBSYSTEMS = ("embedding", "cache")
+
+
+def probe_coverage(
+    backend,
+    fact_ref,
+    *,
+    decision_trail_absent: bool,
+    declared_extra: list[str] | None = None,
+) -> dict[str, str]:
+    """Compute an erasure certificate's coverage by PROBING, per decision 0014.
+
+    - `primary`: read the store back via `backend.exists(ref)` — but only if the
+      backend claims `Capability.POINT_LOOKUP` AND actually exposes `exists`.
+      `absent` if the fact is gone, `present` if it survived the delete (an
+      erasure-incomplete signal). A backend that cannot probe → `unverified`
+      (NEVER a fabricated `absent`).
+    - `decision_trail`: `absent` ONLY when a read-after-write confirmed no records
+      still reference the fact (`decision_trail_absent is True`); otherwise
+      `unverified` (no read performed, or the read did not confirm absence).
+    - `embedding` / `cache` and any client-`declared_extra` subsystems: recorded
+      explicitly as `unverified` (stage-1 does not probe them). No silent omission.
+    """
+    coverage: dict[str, str] = {}
+
+    can_probe_primary = (
+        backend is not None
+        and hasattr(backend, "exists")
+        and _claims_point_lookup(backend)
+    )
+    if can_probe_primary:
+        coverage["primary"] = "present" if backend.exists(fact_ref) else "absent"
+    else:
+        coverage["primary"] = "unverified"
+
+    # 0014 decision (3): absent only from a read-after-write; otherwise unverified.
+    coverage["decision_trail"] = "absent" if decision_trail_absent else "unverified"
+
+    for store in _UNPROBED_SUBSYSTEMS:
+        coverage.setdefault(store, "unverified")
+    for store in (declared_extra or []):
+        coverage.setdefault(store, "unverified")
+
+    return coverage
+
+
+def _claims_point_lookup(backend) -> bool:
+    """True iff the backend claims POINT_LOOKUP. A backend without a capabilities()
+    method, or one that raises, is treated as unable to probe (fail-closed)."""
+    try:
+        from aml.backends.interface import Capability
+        return Capability.POINT_LOOKUP in backend.capabilities()
+    except Exception:
+        return False
+
+
+def _has_verified_entry(coverage: dict[str, str]) -> bool:
+    """Vacuity check (0014 gate 1): at least one subsystem was actually observed."""
+    return any(status in VERIFIED_STATUSES for status in coverage.values())
+
+
+# ============================================================================
 # ErasureProofService
 # ============================================================================
 
@@ -196,6 +265,7 @@ class ErasureProofService:
         pool=None,
         erasure_ledger=None,
         table_prefix: str = "",
+        backend_resolver=None,
     ) -> None:
         self._db_url = db_url
         self._decision_trail = decision_trail
@@ -205,6 +275,9 @@ class ErasureProofService:
         self._erasure_ledger = erasure_ledger
         self._table_prefix = table_prefix
         self._conn: psycopg.Connection[dict[str, Any]] | None = None
+        # 0014 stage-1: resolve a tenant's memory backend for the server-side coverage
+        # probe when a caller (e.g. the REST /issue route) has no backend handle.
+        self._backend_resolver = backend_resolver
 
     # ------------------------------------------------------------------
     # Connection helpers
@@ -266,7 +339,8 @@ class ErasureProofService:
         fact_ref: int,
         *,
         fact_content: str | None = None,
-        coverage: dict[str, str] | None = None,
+        backend=None,
+        declared_subsystems: list[str] | None = None,
         legal_basis: str = "GDPR Article 17 — Right to Erasure",
         requested_by: str | None = "data_subject",
         signing_identity=None,
@@ -275,9 +349,14 @@ class ErasureProofService:
 
         Performs the full erasure workflow:
         1. Scrubs the fact from all decision trail records
-        2. Computes a content hash (retains proof without retaining PII)
-        3. Ed25519-signs the certificate
-        4. Persists to PostgreSQL
+        2. PROBES coverage — reads the primary store back, confirms the trail (0014)
+        3. Computes a content hash (retains proof without retaining PII)
+        4. Ed25519-signs the certificate
+        5. Persists to PostgreSQL
+
+        Coverage is a MEASUREMENT, not a default (decision 0014). This method computes
+        it by probing; callers do NOT pass statuses. A certificate is refused (gate 1)
+        unless at least one subsystem was actually observed.
 
         Parameters
         ----------
@@ -287,8 +366,16 @@ class ErasureProofService:
             The memory ref that was deleted.
         fact_content : str, optional
             The content of the deleted fact (used to compute hash, NOT stored).
-        coverage : dict[str, str], optional
-            Per-subsystem erasure findings (e.g. {"primary": "absent", "embedding": "present"}).
+        backend : MemoryBackend, optional
+            The tenant's memory backend, used to probe whether the fact is really gone
+            from the primary store (`backend.exists(ref)`, gated on POINT_LOOKUP). A
+            caller that just deleted the fact passes its backend here. If omitted, the
+            service resolves one via its `backend_resolver` (server-side probe for the
+            REST route). No probe → primary is recorded "unverified", never "absent".
+        declared_subsystems : list[str], optional
+            Extra subsystem names a client wants recorded. They land as "unverified"
+            (stage-1 probes only the primary store + the decision trail); a client
+            cannot assert a status.
         legal_basis : str
             Legal basis for the erasure (default: GDPR Article 17).
         requested_by : str, optional
@@ -301,15 +388,9 @@ class ErasureProofService:
         ErasureCertificate
         """
         # I0b / decision 0013 — issuance obligations. A certificate must never exist
-        # without a prior restore-scrub ledger row.
+        # without a prior restore-scrub ledger row. Gate 1 (vacuity) is deferred until
+        # AFTER the coverage probe below (0014): coverage is measured, not asserted.
         #
-        # Gate 1 — explicitly-empty coverage → refuse (before any erasure). An omitted
-        # coverage (None) keeps the documented non-empty default {"primary":"absent"};
-        # an explicit {} is the vacuous case 0013 forbids.
-        if coverage is not None and not coverage:
-            raise EmptyGovernanceCoverage(
-                "refuse: empty coverage — a certificate must assert non-empty coverage (0013)."
-            )
         # Gate 3a — the restore-scrub ledger must be configured. Default: abort before
         # erasing. ERASURE_LEDGER_OPTIONAL (dev/test) may erase but issues NO certificate.
         _ledger_optional = os.environ.get("ERASURE_LEDGER_OPTIONAL", "").strip().lower() in ("1", "true", "yes")
@@ -327,6 +408,7 @@ class ErasureProofService:
         # Step 1: Scrub decision trail records
         scrubbed_count = 0
         scrubbed_ids: list[str] = []
+        decision_trail_absent = False  # only True when a read-after-write confirms it
         if self._decision_trail is not None:
             # Find affected decisions before scrubbing
             conn = self._get_conn()
@@ -340,6 +422,15 @@ class ErasureProofService:
 
             scrubbed_count = self._decision_trail.scrub_fact(fact_ref, tenant_id)
 
+            # 0014 decision (3): decision_trail is "absent" only from a read that
+            # confirms the fact is not in the trail. The only such read stage-1 can
+            # trust is "there were no decisions referencing the fact" — scrub_fact
+            # redacts CONTENT but KEEPS retrieved_refs (for audit), so a post-scrub
+            # refs re-query is NOT an absence signal. When references DID exist we
+            # scrub them but leave decision_trail "unverified": confirming redaction of
+            # (encrypted) content is a stage-2 probe. Never a fabricated "absent".
+            decision_trail_absent = len(scrubbed_ids) == 0
+
         completed_at = datetime.now(tz=timezone.utc)
 
         # I0b — ERASURE_LEDGER_OPTIONAL: the fact is now erased, but with no ledger
@@ -347,15 +438,35 @@ class ErasureProofService:
         if self._erasure_ledger is None:
             raise CertificateNotIssued("erased, no certificate issued: ledger not configured")
 
-        # Step 2: Compute content hash
+        # Step 2: PROBE coverage (0014). Coverage is measured, not defaulted. When no
+        # backend was supplied, resolve one server-side for the probe if we can.
+        probe_backend = backend
+        if probe_backend is None and self._backend_resolver is not None:
+            try:
+                probe_backend = self._backend_resolver(tenant_id)
+            except Exception:  # a resolver failure must not fabricate coverage
+                probe_backend = None
+        coverage_dict = probe_coverage(
+            probe_backend, fact_ref,
+            decision_trail_absent=decision_trail_absent,
+            declared_extra=declared_subsystems,
+        )
+
+        # Gate 1 (0014 vacuity) — a certificate must carry at least one VERIFIED entry.
+        # Refuse zero-verified coverage: no fabricated default, no all-"unverified" cert.
+        # Ordered before the ledger write so a refusal leaves no orphan ledger row.
+        if not _has_verified_entry(coverage_dict):
+            raise EmptyGovernanceCoverage(
+                "refuse: no verified coverage — a certificate must record at least one "
+                "probed subsystem (present/absent), not an unverified default (0014)."
+            )
+
+        # Step 3: Compute content hash
         content_hash = hash_content(fact_content) if fact_content else None
 
-        # Step 3: Compute certificate ID
+        # Step 4: Compute certificate ID
         certificate_id = compute_certificate_id(tenant_id, fact_ref, completed_at)
 
-        # Step 4: Sign the certificate
-        coverage_dict = coverage or {"primary": "absent"}  # omitted → default; explicit {} refused (gate 1)
-        
         governance_record = {
             "declared": {
                 "obligation": "deletion",

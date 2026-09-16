@@ -25,6 +25,16 @@ class _MockId:
         from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
         return Ed25519PrivateKey.from_private_bytes(self.k).public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
 
+
+class _ProbeBackend:
+    """0014: a backend that answers exists(ref) → the coverage probe. absent here."""
+    def __init__(self, present=False): self._present = present
+    def capabilities(self):
+        from aml.backends.interface import Capability
+        return {Capability.POINT_LOOKUP}
+    def exists(self, ref): return self._present
+
+
 def test_erasure_bugfix(temp_db_url):
     import os
     ident = _MockId(b"0" * 32)
@@ -41,7 +51,7 @@ def test_erasure_bugfix(temp_db_url):
     svc.ensure_schema()
     
     # 1. Test Issue then Verify
-    cert = svc.issue_certificate("tenant1", 123, coverage={"primary": "absent"})
+    cert = svc.issue_certificate("tenant1", 123, backend=_ProbeBackend(present=False))
     print("Cert issued:", cert.certificate_id)
     
     v = svc.verify_certificate(cert.certificate_id)

@@ -235,6 +235,29 @@ def _test_provenance(factory: StoreFactory, seeds, budget) -> CapabilityResult:
                             [_recall_dir("provenance round-trip", ok, floor=1.0 - EPS)])
 
 
+def _test_point_lookup(factory: StoreFactory, seeds, budget) -> CapabilityResult:
+    """POINT_LOOKUP two-sided (0014): a written fact's exists(ref) is True (recall),
+    and a deleted fact's exists(ref) is False (leakage=0). This is the invariant the
+    erasure coverage probe relies on — a store that declares POINT_LOOKUP but reports
+    a deleted fact as still present would fabricate 'present' (or hide 'absent')."""
+    found, leak = [], []
+    for s in seeds:
+        store = factory()
+        live = store.write(f"point-lookup live (seed {s})", WriteOptions())
+        gone = store.write(f"point-lookup gone (seed {s})", WriteOptions())
+        store.flush()
+        found.append(1.0 if store.exists(live) else 0.0)
+        if Capability.HARD_DELETE in set(store.capabilities()):
+            store.delete(gone)
+            store.flush()
+            leak.append(1.0 if store.exists(gone) else 0.0)  # still present = leak
+        else:
+            leak.append(0.0)
+    return CapabilityResult(Capability.POINT_LOOKUP, "constructed",
+                            [_recall_dir("existing-fact lookup", found, floor=1.0 - EPS),
+                             _leak_dir("deleted-fact still present", leak)])
+
+
 def _test_crypto_provenance(factory, seeds, budget):
     """CRYPTOGRAPHIC_PROVENANCE two-sided: a signed write verifies against its content
     fact_id (validity), and a fact_id for ALTERED content does NOT (tamper rejection —
@@ -444,6 +467,9 @@ def run_conformance(
 
     if Capability.PROVENANCE in declared:
         results.append(_test_provenance(store_factory, seeds, budget))
+
+    if Capability.POINT_LOOKUP in declared:
+        results.append(_test_point_lookup(store_factory, seeds, budget))
 
     if Capability.CRYPTOGRAPHIC_PROVENANCE in declared:
         valid, tamper = _test_crypto_provenance(store_factory, seeds, budget)

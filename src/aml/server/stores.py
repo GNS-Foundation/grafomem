@@ -110,6 +110,23 @@ class StoreManager:
                     return None
         return None
 
+    def probe_backend(self):
+        """Return any registered backend that can answer exists(ref) — for the
+        server-side erasure coverage probe (0014). Stores share one physical facts
+        table, so any POINT_LOOKUP-capable backend probes the primary store correctly.
+        Returns None when none can probe (→ primary coverage is "unverified")."""
+        from aml.backends.interface import Capability
+        with self._lock:
+            entries = list(self._stores.values())
+        for e in entries:
+            b = e.backend
+            try:
+                if hasattr(b, "exists") and Capability.POINT_LOOKUP in b.capabilities():
+                    return b
+            except Exception:
+                continue
+        return None
+
     @property
     def count(self) -> int:
         with self._lock:

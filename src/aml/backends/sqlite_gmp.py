@@ -387,6 +387,13 @@ class SQLiteGMPBackend:
         self._conn.execute("DELETE FROM vec_memories WHERE rowid = ?", (ref,))
         return cur.rowcount > 0
 
+    def exists(self, ref) -> bool:
+        # POINT_LOOKUP (0014) — side-effect-free existence probe for the erasure
+        # coverage check. After delete(ref) this returns False.
+        row = self._conn.execute(
+            "SELECT 1 FROM memories WHERE ref = ? LIMIT 1", (ref,)).fetchone()
+        return row is not None
+
     def retrieve(self, query: str, options: RetrieveOptions) -> list[Memory]:
         (n,) = self._conn.execute("SELECT COUNT(*) FROM vec_memories").fetchone()
         if not n:

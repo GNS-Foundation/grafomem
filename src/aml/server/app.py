@@ -363,7 +363,9 @@ async def delete_memory(store_id: str, req: DeleteRequest, request: Request):
 
     cert_id = None
     if deleted and ep and tenant:
-        cert = ep.issue_certificate(tenant_id=tenant, fact_ref=req.ref)
+        # 0014: pass the backend so coverage is probed (read-back of the primary
+        # store), not defaulted. issue_certificate raises if nothing verifies.
+        cert = ep.issue_certificate(tenant_id=tenant, fact_ref=req.ref, backend=entry.backend)
         cert_id = cert.certificate_id
 
     try:
@@ -962,7 +964,15 @@ def create_app(
             signing_identity = identity if os.environ.get("ERASURE_SIGNING_KEY") or os.environ.get("GRAFOMEM_SIGNING_KEY") else None
             app.state.signing_identity = signing_identity
 
-            ep = ErasureProofService(db_url, decision_trail=dt, signing_identity=signing_identity, pool=pool, erasure_ledger=el)
+            # 0014: server-side coverage probe for the REST /issue route (no backend
+            # handle in scope there). Stores share one facts table, so any probeable
+            # backend answers exists(ref) for the primary store.
+            _sm = app.state.store_manager
+            ep = ErasureProofService(
+                db_url, decision_trail=dt, signing_identity=signing_identity,
+                pool=pool, erasure_ledger=el,
+                backend_resolver=(lambda _tid: _sm.probe_backend()),
+            )
             _init(ep)
             app.state.erasure_proof = ep
 

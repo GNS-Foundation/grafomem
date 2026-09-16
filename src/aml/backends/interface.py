@@ -51,6 +51,7 @@ class Capability(StrEnum):
     CRYPTOGRAPHIC_PROVENANCE = "cryptographic_provenance"
     AUDIT = "audit"
     CONCURRENCY_CONTROL = "concurrency_control"  # v0.2; gates submit_concurrent (§10)
+    POINT_LOOKUP = "point_lookup"  # v0.2; gates exists(ref) — the erasure coverage probe (0014)
 
 
 # ============================================================================
@@ -287,6 +288,19 @@ class MemoryBackend(Protocol):
         hard-deleted. Requires AUDIT (§6.6)."""
         ...
 
+    # OPTIONAL override (0014) — deliberately NOT a Protocol member, so adding it
+    # does not change runtime_checkable conformance for existing backends:
+    #
+    #     def exists(self, ref: Any) -> bool: ...
+    #
+    # Point existence check by ref — "is this ref still present in the store?" — the
+    # erasure coverage PROBE (decision 0014). A backend implements it ONLY if it also
+    # claims Capability.POINT_LOOKUP; the erasure caller checks the capability AND
+    # hasattr(backend, "exists") before trusting the answer, and records the primary
+    # store as "unverified" (never a fabricated "absent") for any backend that cannot
+    # probe. A conformant exists() MUST be side-effect-free and MUST reflect deletes:
+    # after delete(ref) returns True, exists(ref) MUST be False.
+    #
     # OPTIONAL override (CGR #12) — deliberately NOT a Protocol member, so adding
     # it does not change runtime_checkable conformance for existing backends:
     #

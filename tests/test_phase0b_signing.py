@@ -51,6 +51,14 @@ class _NoLedger:  # I0b/0013: issuance requires a ledger; a no-op suffices for s
     def record_subject_erasure(self, **kw): pass
     def record_tenant_destruction(self, **kw): pass
 
+
+class _ProbeBackend:  # 0014: answers exists(ref) → the coverage probe (absent = erased)
+    def __init__(self, present=False): self._present = present
+    def capabilities(self):
+        from aml.backends.interface import Capability
+        return {Capability.POINT_LOOKUP}
+    def exists(self, ref): return self._present
+
 def test_verify_all_four_artifacts_and_rotation(db_url, clean_tenant):
     """
     Test Phase 0b objective:
@@ -94,7 +102,7 @@ def test_verify_all_four_artifacts_and_rotation(db_url, clean_tenant):
     epoch_a = gc.roll_epoch(tenant_id)
     
     # Generate Erasure Cert with Key A
-    cert_a = ep.issue_certificate(tenant_id, 999)
+    cert_a = ep.issue_certificate(tenant_id, 999, backend=_ProbeBackend(present=False))
     
     # Verify with Key A
     assert ar.verify(tenant_id, receipt_a["artifact_id"])["passed"] is True

@@ -98,19 +98,20 @@ def test_restore_scrub_inert_after_restore(temp_db_url, monkeypatch):
         encryption=tkm,
     )
     
-    # 3. Perform Erasure (issues certificate, deletes from DB, scrubs decision)
+    # 3. Perform Erasure. 0014: issue_certificate PROBES the primary store, so delete
+    # the fact FIRST, then certify — the probe reads back exists(ref)=False → "absent".
+    store.delete(fact_ref)
     cert = ep.issue_certificate(
         tenant_id=tenant_id,
         fact_ref=fact_ref,
         fact_content=content,
         legal_basis="GDPR Article 17",
-        requested_by="admin"
+        requested_by="admin",
+        backend=store,
     )
-    
-    # We must also explicitly delete from the store and scrub decisions!
-    # `issue_certificate` just issues the cert! It doesn't perform the deletion in the code!
-    # Wait, in the test we assumed `issue_certificate` deletes the data. Let's do it manually.
-    store.delete(fact_ref)
+    assert cert.coverage["primary"] == "absent"  # verified by the probe, not defaulted
+
+    # issue_certificate scrubs the decision trail; do it explicitly too (idempotent).
     dt.scrub_fact(fact_ref, tenant_id, encryption=tkm.get_encryptor(tenant_id))
     
     # Verify it is deleted
@@ -249,9 +250,12 @@ def test_subject_erasure_restore(temp_db_url, monkeypatch):
         enc_mem_s = conn.execute("SELECT content FROM memories WHERE ref = %s", (fact_ref_s,)).fetchone()["content"]
         enc_dec_s = conn.execute("SELECT retrieved_contents_enc FROM decision_records WHERE decision_id = %s", (dec_id_s,)).fetchone()["retrieved_contents_enc"]
     
-    # 2. Perform Erasure for S
-    ep.issue_certificate(tenant_id=tenant_id, fact_ref=fact_ref_s, fact_content=content_s)
+    # 2. Perform Erasure for S. 0014: delete first, then certify — issue_certificate
+    #    probes the primary store (exists(ref)=False → verified "absent").
     store.delete(fact_ref_s)
+    cert_s = ep.issue_certificate(tenant_id=tenant_id, fact_ref=fact_ref_s,
+                                  fact_content=content_s, backend=store)
+    assert cert_s.coverage["primary"] == "absent"
     dt.scrub_fact(fact_ref_s, tenant_id, encryption=tkm)
     
     # 3. Simulate a database backup restore (revives fact and decision)
