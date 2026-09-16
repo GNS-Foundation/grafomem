@@ -919,7 +919,9 @@ def create_app(
             app.state.metering_service = ms
 
             from aml.cloud.audit import AuditLogger
-            app.state.audit_logger = AuditLogger(pool) if pool else None
+            # A1: only ensure audit_logs when DDL is allowed (release step); at runtime
+            # boot in cloud the runtime role cannot DDL. The pre-deploy creates it.
+            app.state.audit_logger = AuditLogger(pool, ensure=_do_boot_ddl) if pool else None
 
             app.include_router(cloud_router)
             logger.info("Cloud management layer enabled (/v1/cloud)")
