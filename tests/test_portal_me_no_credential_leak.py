@@ -87,3 +87,38 @@ def test_portal_me_exposes_no_usable_credential(client):
 
     # Cheap secondary check (NOT the acceptance): no flat api_key field.
     assert "api_key" not in me.json(), "/me still has a flat api_key field"
+
+
+def test_login_returns_working_key_from_tenant_api_keys(client):
+    """014 step (a) regression: signup/login still hand the console a USABLE key.
+
+    tenants.api_key is no longer written, so login/auto_provision must source the key
+    from tenant_api_keys — otherwise they return NULL and the console (which persists the
+    login response as its working key) breaks. Also proves the key did NOT come from
+    tenants.api_key: that column must be NULL for a post-014 signup.
+    """
+    email = f"login-key-{uuid.uuid4().hex[:8]}@example.test"
+    password = "correct-horse-battery-staple"
+    r = client.post("/v1/portal/signup",
+                    json={"email": email, "password": password, "name": "login-key"})
+    assert r.status_code == 201, r.text
+    tenant_id = r.json()["tenant_id"]
+
+    # Log in fresh (the path the console uses on every sign-in).
+    lr = client.post("/v1/portal/login", json={"email": email, "password": password})
+    assert lr.status_code == 200, lr.text
+    login_key = lr.json().get("api_key")
+    assert login_key, "login returned no api_key — the console would lose its credential"
+    assert _authenticates(client, login_key), (
+        "login's api_key did not authenticate — login must source the key from tenant_api_keys"
+    )
+
+    # The key must NOT have come from tenants.api_key: that column is NULL post-014.
+    import psycopg
+    with psycopg.connect(DB_URL) as conn:
+        row = conn.execute(
+            "SELECT api_key FROM tenants WHERE id = %s", (tenant_id,)
+        ).fetchone()
+        assert row is not None
+        col = row[0] if isinstance(row, tuple) else row["api_key"]
+        assert col is None, f"tenants.api_key should be NULL post-014, got {col!r}"

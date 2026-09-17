@@ -1,4 +1,4 @@
--- Migration 015: make tenants.api_key nullable (014 step a).
+-- Migration 014: make tenants.api_key nullable (014 step a).
 --
 -- tenants.api_key is no longer a credential (the auth fallback was removed in #160) and
 -- no longer a display source (014 step a: /v1/portal/me shows tenant_api_keys metadata).

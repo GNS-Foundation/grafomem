@@ -90,6 +90,23 @@ def _generate_api_key() -> str:
     return f"gfm_{secrets.token_hex(24)}"
 
 
+def _current_api_key(conn, tenant_id: str) -> str | None:
+    """The tenant's current working key, read from ``tenant_api_keys``.
+
+    014 step (a): ``tenants.api_key`` is no longer a credential store, so the login /
+    auto-provision responses (which the console persists as its working key) must source
+    the key here instead. Prefers the newest admin key, then the newest key of any role.
+    Returns ``None`` only if the tenant has no key row at all (the ensure_schema backfill
+    guaranteed every existing tenant one; new tenants mint one at creation).
+    """
+    row = conn.execute(
+        "SELECT api_key FROM tenant_api_keys WHERE tenant_id = %s "
+        "ORDER BY (role = 'admin') DESC, created_at DESC LIMIT 1",
+        (tenant_id,),
+    ).fetchone()
+    return row["api_key"] if row else None
+
+
 # ============================================================================
 # PortalAuth
 # ============================================================================
@@ -248,23 +265,24 @@ class PortalAuth:
 
         # Look up by supabase_uid first
         row = conn.execute(
-            "SELECT id, name, api_key, plan, email "
+            "SELECT id, name, plan, email "
             "FROM tenants WHERE supabase_uid = %s",
             (supabase_uid,),
         ).fetchone()
 
         if row:
+            # 014 step (a): working key comes from tenant_api_keys, not tenants.api_key.
             return {
                 "tenant_id": row["id"],
                 "name": row["name"],
                 "email": row["email"],
-                "api_key": row["api_key"],
+                "api_key": _current_api_key(conn, row["id"]),
                 "plan": row["plan"],
             }
 
         # Check if there's a tenant with this email (legacy account migration)
         row = conn.execute(
-            "SELECT id, name, api_key, plan, email "
+            "SELECT id, name, plan, email "
             "FROM tenants WHERE email = %s",
             (email,),
         ).fetchone()
@@ -279,11 +297,12 @@ class PortalAuth:
                 "Linked existing tenant %s to Supabase UID %s",
                 row["id"], supabase_uid,
             )
+            # 014 step (a): working key comes from tenant_api_keys, not tenants.api_key.
             return {
                 "tenant_id": row["id"],
                 "name": row["name"],
                 "email": row["email"],
-                "api_key": row["api_key"],
+                "api_key": _current_api_key(conn, row["id"]),
                 "plan": row["plan"],
             }
 
@@ -392,7 +411,7 @@ class PortalAuth:
         conn = self._get_conn()
 
         row = conn.execute(
-            "SELECT id, name, api_key, plan, email, password_hash "
+            "SELECT id, name, plan, email, password_hash "
             "FROM tenants WHERE email = %s",
             (email,),
         ).fetchone()
@@ -410,7 +429,8 @@ class PortalAuth:
             "tenant_id": row["id"],
             "name": row["name"],
             "email": row["email"],
-            "api_key": row["api_key"],
+            # 014 step (a): working key comes from tenant_api_keys, not tenants.api_key.
+            "api_key": _current_api_key(conn, row["id"]),
             "plan": row["plan"],
         }
         token = self._issue_jwt(row["id"], row["email"])

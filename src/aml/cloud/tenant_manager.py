@@ -91,7 +91,11 @@ _SCHEMA_SQL = """\
 CREATE TABLE IF NOT EXISTS tenants (
     id          TEXT        PRIMARY KEY,
     name        TEXT        NOT NULL,
-    api_key     TEXT        NOT NULL UNIQUE,
+    -- 014 step (a): api_key is nullable and no longer written by any tenant writer
+    -- (keys live in tenant_api_keys). Matches migration 014's DROP NOT NULL so a
+    -- fresh ensure_schema DB and a migrated one agree. UNIQUE still holds — Postgres
+    -- treats NULLs as distinct, so multiple NULL api_key rows are allowed.
+    api_key     TEXT        UNIQUE,
     plan        TEXT        NOT NULL DEFAULT 'starter',
     email       TEXT        UNIQUE,
     supabase_uid TEXT       UNIQUE,
@@ -286,13 +290,12 @@ class TenantManager:
                 limits=PLAN_LIMITS.get(plan, PLAN_LIMITS["starter"]),
                 role=row["role"]
             )
-            
-        # Fallback to legacy column if not migrated
-        row = conn.execute(
-            "SELECT id, name, api_key, plan, created_at, home_region FROM tenants WHERE api_key = %s",
-            (api_key,),
-        ).fetchone()
-        return self._row_to_info(row) if row else None
+
+        # 014 step (a): the legacy `WHERE tenants.api_key = %s` fallback is REMOVED.
+        # tenants.api_key must not be a credential-lookup source by ANY path (the auth
+        # fallback was already severed in #160; this method had no remaining callers).
+        # Keys live only in tenant_api_keys — resolve there or not at all.
+        return None
 
     def list_tenants(self) -> list[TenantInfo]:
         """Return every provisioned tenant, ordered by creation time."""
