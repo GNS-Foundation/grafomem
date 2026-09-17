@@ -32,6 +32,8 @@ from typing import Any
 import psycopg
 from psycopg.rows import dict_row
 
+from aml.cloud.portal_auth import _current_api_key  # 014 step (a): key from tenant_api_keys
+
 logger = logging.getLogger("grafomem.cloud.sso")
 
 
@@ -785,16 +787,17 @@ class SSOProvider:
 
         # Try to find by SSO sub
         row = conn.execute(
-            "SELECT id, api_key FROM tenants "
+            "SELECT id FROM tenants "
             "WHERE sso_provider = %s AND sso_sub = %s",
             (sso_provider, sso_sub),
         ).fetchone()
         if row:
-            return row["id"], row["api_key"]
+            # 014 step (a): working key comes from tenant_api_keys, not tenants.api_key.
+            return row["id"], _current_api_key(conn, row["id"])
 
         # Try to find by email
         row = conn.execute(
-            "SELECT id, api_key FROM tenants WHERE email = %s",
+            "SELECT id FROM tenants WHERE email = %s",
             (email,),
         ).fetchone()
         if row:
@@ -803,7 +806,8 @@ class SSOProvider:
                 "UPDATE tenants SET sso_provider = %s, sso_sub = %s WHERE id = %s",
                 (sso_provider, sso_sub, row["id"]),
             )
-            return row["id"], row["api_key"]
+            # 014 step (a): working key comes from tenant_api_keys, not tenants.api_key.
+            return row["id"], _current_api_key(conn, row["id"])
 
         # Create new tenant
         import secrets as sec
