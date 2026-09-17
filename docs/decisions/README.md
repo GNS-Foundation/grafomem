@@ -266,4 +266,16 @@ the claim, the vantage that produced it, and why the corroboration failed.
   status code is the CDN's opinion until proven otherwise — assert on the response **body** (the app's
   distinctive payload), and send a normal User-Agent (curl UA) so the edge doesn't shadow the test. E2E
   harnesses must check bodies, not just codes.*
+- **2026-09-17 — a prod-only lifespan ensure_schema that staging couldn't surface.** A1's staging
+  acceptance was clean, but the first prod boot still logged one `permission denied for schema public` —
+  from `UsageReporter.start()`, which self-migrated `usage_report_cursor` via `ensure_schema` in the ASGI
+  lifespan. Staging never caught it because `UsageReporter` only *starts* when metering is enabled
+  (`metered_enabled()`), which is on in prod and off in staging — so the code path that did the DDL simply
+  did not run on staging. It was fail-open (the table already existed, so the reporter started anyway), but
+  it meant "boot does no DDL" held on staging and not on prod. *Lesson: an acceptance environment only
+  proves the paths it actually executes; a feature that is dark in staging and live in prod hides its boot
+  behaviour from the staging gate. Enumerate the prod-only lifespan starts (metering, schedulers) and gate
+  their DDL the same way, or the first prod boot is the real test. Fix: register `UsageReporter` in the
+  ensure-schema release-step cascade (pre-deploy creates `usage_report_cursor`) and make `start()` verify
+  presence, never migrate.*
 

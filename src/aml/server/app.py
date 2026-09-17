@@ -1378,6 +1378,10 @@ def create_app(
                             tenant_manager=getattr(app.state, "tenant_manager", None),
                             pool=pool,
                         )
+                        # A1: register ensure_schema in the release-step cascade so the
+                        # pre-deploy (migrate role) creates usage_report_cursor. Gated by
+                        # _do_boot_ddl, so cloud boot does no DDL; start() no longer migrates.
+                        _init(app.state.usage_reporter)
                         logger.info("Usage reporter registered (dark unless metered-enabled)")
                 except Exception as e:
                     logger.warning("Usage reporter registration skipped: %s", e)
