@@ -50,6 +50,18 @@ jobs:
       - name: Generate corpus (traces are gitignored)
         run: python scripts/generate_corpus.py
 
+      - name: Provision schema (A1 release step)
+        # A1: cloud boot does NO DDL, so the DB must be provisioned out of band exactly
+        # as prod's pre-deploy does — ensure_schema (base tables) then migrations. This
+        # both sets up the test DB and exercises the release-step path in CI.
+        env:
+          GRAFOMEM_MIGRATE_URL: postgresql://grafomem:dev@localhost:5432/grafomem
+        run: |
+          export PROVIDER_ENCRYPTION_KEY="$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
+          export GRAFOMEM_MASTER_KEY="$(python -c 'import os; print(os.urandom(32).hex())')"
+          export GRAFOMEM_SIGNING_KEY="$(python -c 'print("b"*64)')"
+          python -m aml.cloud.migrations_runner --ensure-schema
+
       - name: Run tests
         env:
           GRAFOMEM_DB_URL: postgresql://grafomem:dev@localhost:5432/grafomem

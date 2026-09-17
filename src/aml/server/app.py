@@ -506,6 +506,7 @@ def create_app(
     stripe_webhook_secret: str | None = None,
     portal_secret_key: str | None = None,
     spec_only: bool = False,
+    ensure_schema_only: bool = False,
 ) -> FastAPI:
     """Create the FastAPI application.
 
@@ -780,6 +781,16 @@ def create_app(
     effective_auth_mode = auth_mode
     if db_url and auth_mode == "none":
         effective_auth_mode = "cloud"
+
+    # A1 (schema-drift audit): whether boot may run DDL (ensure_schema). In cloud the
+    # runtime process must do NO DDL — the runtime role owns nothing and holds no CREATE
+    # on schema public, so ensure_schema only ever logged "permission denied". DDL is a
+    # pre-deploy release step (`python -m aml.cloud.migrations_runner --ensure-schema`,
+    # which calls create_app(ensure_schema_only=True) as the migrate role, then applies
+    # migrations). Self-host keeps self-migrating. `ensure_schema_only` forces the DDL
+    # steps on for that release step regardless of auth_mode.
+    from aml.cloud.migrations_runner import boot_migrations_enabled as _boot_migrations_enabled
+    _do_boot_ddl = ensure_schema_only or _boot_migrations_enabled(effective_auth_mode)
     app.add_middleware(
         TenantAuthMiddleware,
         auth_mode=effective_auth_mode,
@@ -836,7 +847,7 @@ def create_app(
                 # step (executor + timeout + log-and-continue) instead of
                 # running it synchronously here, where a stalled connection
                 # would wedge create_app() before the port could bind.
-                if not spec_only:
+                if not spec_only and _do_boot_ddl:
                     startup_db_steps.append(
                         (f"ensure_schema:{svc.__class__.__name__}", svc.ensure_schema)
                     )
@@ -865,13 +876,17 @@ def create_app(
             # Skip it in cloud (migrations own the table); self-host still ensures it.
             # First of the ensure_schema:* cascade to be gated; the rest follow once
             # the --ensure-schema release step lands.
-            from aml.cloud.migrations_runner import boot_migrations_enabled as _boot_ddl_enabled
-            if _boot_ddl_enabled(effective_auth_mode):
+            # erasure_ledger is migration-owned (009) AND ErasureLedger connects via
+            # GRAFOMEM_LEDGER_URL (the ledger role), not the migrate URL — so its
+            # ensure_schema must NOT run in the A1 release step either. Gate on
+            # boot_migrations_enabled ONLY (self-host self-creates; cloud + the
+            # ensure_schema release step both skip it and let migration 009 create it).
+            if _boot_migrations_enabled(effective_auth_mode):
                 _init(el)
             else:
                 logger.info(
-                    "startup ▶ skip ensure_schema:ErasureLedger in cloud "
-                    "(table owned by migration 009; runtime does no DDL)"
+                    "startup ▶ skip ensure_schema:ErasureLedger "
+                    "(table owned by migration 009; runtime/release step does no DDL on it)"
                 )
             app.state.erasure_ledger = el
             
@@ -904,7 +919,9 @@ def create_app(
             app.state.metering_service = ms
 
             from aml.cloud.audit import AuditLogger
-            app.state.audit_logger = AuditLogger(pool) if pool else None
+            # A1: only ensure audit_logs when DDL is allowed (release step); at runtime
+            # boot in cloud the runtime role cannot DDL. The pre-deploy creates it.
+            app.state.audit_logger = AuditLogger(pool, ensure=_do_boot_ddl) if pool else None
 
             app.include_router(cloud_router)
             logger.info("Cloud management layer enabled (/v1/cloud)")
@@ -1031,7 +1048,14 @@ def create_app(
             from aml.cloud.manifold_routes import create_manifold_router
             manifold_svc = ManifoldService(db_url, pool=pool)
             _init(manifold_svc)
-            if not spec_only:
+            # The manifold worker is the ONLY background worker started at create_app
+            # BUILD time, and it WRITES (INSERT/UPDATE manifold_cache). It must not run
+            # in the A1 release step (ensure_schema_only) — the pre-deploy runs as the
+            # migrate role and must never do runtime writes. (Every other worker —
+            # assurance scheduler, usage reporter, free_ceiling, tkm invalidation — starts
+            # in the ASGI lifespan, which the release step never enters, so nothing else
+            # runs.)
+            if not spec_only and not ensure_schema_only:
                 manifold_svc.start_background_worker(interval_seconds=300)
             app.state.manifold_service = manifold_svc
             app.include_router(create_manifold_router(manifold_svc), prefix="/v1/manifold")
@@ -1252,7 +1276,7 @@ def create_app(
 
             # Sprint 22: Tenant Admin — member management + RBAC
             from aml.cloud.admin_routes import router as admin_router
-            if not spec_only:
+            if not spec_only and _do_boot_ddl:
                 startup_db_steps.append(
                     ("ensure_schema:TenantManager.members", tm.ensure_members_schema)
                 )
@@ -1444,6 +1468,18 @@ def create_app(
             logger.info("Landing page mounted at /")
     except Exception as e:
         logger.warning("Portal static files not available: %s", e)
+
+    # A1 release step: run the collected ensure_schema steps SYNCHRONOUSLY, here, as the
+    # migrate role (caller passes db_url=GRAFOMEM_MIGRATE_URL), then return without
+    # serving. Unlike the boot lifespan (which logs-and-continues so a stalled DB cannot
+    # wedge the port), this MUST fail loudly: any ensure_schema error raises, so the
+    # pre-deploy command exits non-zero and the deploy is blocked.
+    if ensure_schema_only:
+        logger.info("ensure-schema release step: running %d ensure_schema step(s)", len(startup_db_steps))
+        for _label, _fn in startup_db_steps:
+            logger.info("ensure-schema ▶ %s", _label)
+            _fn()
+        logger.info("ensure-schema release step: complete (%d step(s))", len(startup_db_steps))
 
     return app
 

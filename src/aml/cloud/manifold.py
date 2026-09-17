@@ -319,16 +319,13 @@ class ManifoldService:
         
         def worker():
             logger.info("Manifold background worker started.")
-            # The worker is started during app setup, BEFORE the deferred
-            # ensure_schema DB-init step runs. Without ensuring our schema here
-            # first, early cache writes hit a not-yet-migrated manifold_cache
-            # table and raise "column som_version does not exist" until the
-            # deferred step catches up. ensure_schema is idempotent, so call it
-            # once up front to close that race (incl. on a first/fresh deploy).
-            try:
-                self.ensure_schema()
-            except Exception as e:
-                logger.warning(f"Manifold worker pre-flight ensure_schema failed: {e}")
+            # A1 (schema-drift audit): the worker no longer runs ensure_schema. DDL is a
+            # deploy-time concern now — in cloud the pre-deploy release step
+            # (`migrations_runner --ensure-schema`, as the migrate role) creates
+            # manifold_cache BEFORE the app boots; in self-host the lifespan ensure_schema
+            # runs before the first sweep. Calling ensure_schema here made the worker do
+            # DDL under the runtime role, which has no CREATE on schema public — it only
+            # ever logged "permission denied for schema public" every boot.
             import psycopg2
 
             def _borrow():

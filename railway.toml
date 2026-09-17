@@ -32,3 +32,8 @@ healthcheckPath = "/health"
 healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
+# A1 (schema-drift audit): schema DDL is a pre-deploy release step, not boot work.
+# Runs ensure_schema (the base tables) then pending migrations, as the migrate role
+# ($GRAFOMEM_MIGRATE_URL). A non-zero exit BLOCKS the deploy — old version keeps
+# serving. Cloud boot does no DDL (create_app gates ensure_schema off in cloud).
+preDeployCommand = "python -m aml.cloud.migrations_runner --ensure-schema"

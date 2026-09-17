@@ -32,9 +32,14 @@ CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_logs(timestamp);
 class AuditLogger:
     """Immutable audit logging backed by Postgres."""
 
-    def __init__(self, db_pool: RoutingPool):
+    def __init__(self, db_pool: RoutingPool, ensure: bool = True):
         self._db_pool = db_pool
-        self._ensure_schema()
+        # A1: audit_logs DDL runs only when DDL is allowed (the pre-deploy release step,
+        # as the migrate role). At runtime boot in cloud the caller passes ensure=False —
+        # the runtime role has no CREATE on schema public, so this only ever logged
+        # "permission denied for schema public".
+        if ensure:
+            self._ensure_schema()
 
     def _ensure_schema(self) -> None:
         try:
