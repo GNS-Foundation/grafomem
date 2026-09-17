@@ -293,11 +293,12 @@ class PortalAuth:
         now = datetime.now(tz=timezone.utc)
         final_name = name or email.split("@")[0]
 
+        # 014 step (a): key lives only in tenant_api_keys; do not write tenants.api_key.
         conn.execute(
-            "INSERT INTO tenants (id, name, api_key, plan, created_at, "
+            "INSERT INTO tenants (id, name, plan, created_at, "
             "  email, supabase_uid, status) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, 'active')",
-            (tenant_id, final_name, api_key, plan, now, email, supabase_uid),
+            "VALUES (%s, %s, %s, %s, %s, %s, 'active')",
+            (tenant_id, final_name, plan, now, email, supabase_uid),
         )
         conn.execute(
             "INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role, created_at) "
@@ -353,11 +354,12 @@ class PortalAuth:
         api_key = _generate_api_key()
         now = datetime.now(tz=timezone.utc)
 
+        # 014 step (a): key lives only in tenant_api_keys; do not write tenants.api_key.
         conn.execute(
-            "INSERT INTO tenants (id, name, api_key, plan, created_at, "
+            "INSERT INTO tenants (id, name, plan, created_at, "
             "  email, password_hash, status) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, 'active')",
-            (tenant_id, name, api_key, plan, now, email, pw_hash),
+            "VALUES (%s, %s, %s, %s, %s, %s, 'active')",
+            (tenant_id, name, plan, now, email, pw_hash),
         )
         conn.execute(
             "INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role, created_at) "
@@ -533,7 +535,7 @@ class PortalAuth:
 
         conn = self._get_conn()
         row = conn.execute(
-            "SELECT id, name, api_key, plan, email "
+            "SELECT id, name, plan, email "
             "FROM tenants WHERE id = %s",
             (tenant_id,),
         ).fetchone()
@@ -541,11 +543,12 @@ class PortalAuth:
         if not row:
             return None
 
+        # 014 step (a): no api_key here. The portal session does not carry the tenant's
+        # credential — /v1/portal/me shows tenant_api_keys METADATA, never a usable key.
         return {
             "tenant_id": row["id"],
             "name": row["name"],
             "email": row["email"],
-            "api_key": row["api_key"],
             "plan": row["plan"],
         }
 

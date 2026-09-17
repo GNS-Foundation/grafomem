@@ -9,6 +9,7 @@ JWT tokens issued by :class:`PortalAuth` — stored in the client's
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime
 from typing import Any
@@ -84,12 +85,25 @@ class BillingOut(BaseModel):
     current_period_end: datetime | None = None
 
 
+class ApiKeyMeta(BaseModel):
+    """Non-secret metadata for one tenant_api_keys row — NEVER the key itself.
+    014 step (a): the console lists keys by metadata; the full key is shown only at
+    mint/rotate (the create/rotate response bodies), never on /me."""
+    key_id: str
+    name: str | None = None
+    role: str | None = None
+    scopes: list[str] = Field(default_factory=list)
+    created_at: datetime | None = None
+    last_used_at: datetime | None = None
+    expires_at: datetime | None = None
+
+
 class DashboardResponse(BaseModel):
     """Aggregated dashboard data returned by ``GET /v1/portal/me``."""
     tenant_id: str
     name: str
     email: str
-    api_key: str
+    keys: list[ApiKeyMeta] = Field(default_factory=list)  # metadata only — no usable key
     plan: str
     timezone: str | None = None
     usage: UsageSummaryOut
@@ -283,6 +297,28 @@ async def get_dashboard(request: Request):
         except Exception:
             pass
 
+    # API keys — METADATA ONLY (014 step a): key_id/name/role/scopes/timestamps, never
+    # the key. The full key is returned solely at mint (/v1/portal/keys) and rotate
+    # (/v1/portal/rotate-key).
+    keys: list[ApiKeyMeta] = []
+    try:
+        pa = _portal_auth(request)
+        rows = pa._get_conn().execute(
+            "SELECT key_id, name, role, scopes, created_at, last_used_at, expires_at "
+            "FROM tenant_api_keys WHERE tenant_id = %s ORDER BY created_at",
+            (tenant_id,),
+        ).fetchall()
+        for r in rows:
+            sc = r.get("scopes")
+            keys.append(ApiKeyMeta(
+                key_id=r["key_id"], name=r.get("name"), role=r.get("role"),
+                scopes=(sc if isinstance(sc, list) else (json.loads(sc) if sc else [])),
+                created_at=r.get("created_at"), last_used_at=r.get("last_used_at"),
+                expires_at=r.get("expires_at"),
+            ))
+    except Exception:
+        pass
+
     # Billing
     billing = BillingOut(plan=tenant["plan"])
     sb = _stripe_billing(request)
@@ -302,7 +338,7 @@ async def get_dashboard(request: Request):
         tenant_id=tenant_id,
         name=tenant["name"],
         email=tenant["email"],
-        api_key=tenant["api_key"],
+        keys=keys,
         plan=tenant["plan"],
         timezone=timezone,
         usage=usage,
@@ -406,12 +442,9 @@ async def rotate_key(request: Request):
         conn = mgr._get_conn()
         conn.execute("DELETE FROM tenant_api_keys WHERE tenant_id = %s", (tenant_id,))
         new_key = mgr.create_api_key(tenant_id, name="default_admin", role="admin")
-        # Keep the legacy tenants.api_key in sync with the rotated key. /v1/portal/me (and
-        # therefore the console) reads the displayed key from tenants.api_key via
-        # _verify_legacy_token; create_api_key writes ONLY tenant_api_keys. Without this
-        # UPDATE, rotation appears to do nothing in the console ("the key stays the same")
-        # while the genuinely-new key lives only in this response body.
-        conn.execute("UPDATE tenants SET api_key = %s WHERE id = %s", (new_key["api_key"], tenant_id))
+        # 014 step (a): the tenants.api_key sync is REMOVED. /v1/portal/me reads
+        # tenant_api_keys metadata now, not tenants.api_key, so there is nothing to keep
+        # in sync; the new key lives only in tenant_api_keys and this response body.
         # Deleting the rows is not revocation on its own: the auth middleware
         # caches key resolutions for 60s. Evict them or the old key keeps working.
         from aml.server.auth import invalidate_tenant_key_cache

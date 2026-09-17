@@ -180,13 +180,13 @@ class TenantManager:
         conn = self._get_conn()
         conn.execute(_SCHEMA_SQL)
 
-        # Migrate existing API keys to tenant_api_keys
-        conn.execute("""
-            INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role, created_at)
-            SELECT gen_random_uuid()::text, id, api_key, 'Default Admin Key', 'admin', created_at
-            FROM tenants
-            ON CONFLICT (api_key) DO NOTHING;
-        """)
+        # 014 step (a): the legacy tenants.api_key -> tenant_api_keys backfill is REMOVED.
+        # It turned tenants.api_key into a credential (copying it into the auth table), the
+        # exact path 014 closes — tenants.api_key must not be a credential source by ANY
+        # route. Its job is already done: every tenant has a tenant_api_keys row
+        # (legacy_exposed = 0 on prod and staging), legacy tenants were migrated by this
+        # backfill in prior deploys, and SSO now mints its own row (sso_provider.py). No
+        # tenant depends on it any more.
         
         # Add home_region column
         conn.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS home_region TEXT DEFAULT 'global';")
@@ -227,10 +227,13 @@ class TenantManager:
         now = datetime.now(tz=timezone.utc)
 
         conn = self._get_conn()
+        # 014 step (a): do NOT write tenants.api_key — the key lives only in
+        # tenant_api_keys (minted below). tenants.api_key is neither a credential
+        # (#160) nor a display source (/me shows metadata) any more.
         conn.execute(
-            "INSERT INTO tenants (id, name, api_key, plan, created_at, home_region) "
-            "VALUES (%s, %s, %s, %s, %s, %s)",
-            (tenant_id, name, api_key, plan, now, home_region),
+            "INSERT INTO tenants (id, name, plan, created_at, home_region) "
+            "VALUES (%s, %s, %s, %s, %s)",
+            (tenant_id, name, plan, now, home_region),
         )
         # Own-tenant admin, NOT platform: no '*', no admin:platform (P0 2026-09-11).
         # The default key fully operates ITS OWN tenant; platform routes require

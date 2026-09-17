@@ -811,12 +811,20 @@ class SSOProvider:
         api_key = f"gfm_{sec.token_hex(24)}"
         now = datetime.now(timezone.utc)
 
+        # 014 step (a): do NOT write tenants.api_key. Mint the key in tenant_api_keys —
+        # SSO previously wrote only tenants.api_key and no tenant_api_keys row, so after
+        # #160 removed the tenants.api_key auth fallback an SSO tenant's key could not
+        # authenticate at all. Minting the row here is both the decouple and that fix.
         conn.execute(
             "INSERT INTO tenants "
-            "(id, name, api_key, plan, created_at, email, sso_provider, sso_sub) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
-            (tenant_id, name, api_key, "starter", now, email,
-             sso_provider, sso_sub),
+            "(id, name, plan, created_at, email, sso_provider, sso_sub) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+            (tenant_id, name, "starter", now, email, sso_provider, sso_sub),
+        )
+        conn.execute(
+            "INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role, created_at) "
+            "VALUES (gen_random_uuid()::text, %s, %s, 'Default Admin Key', 'admin', %s)",
+            (tenant_id, api_key, now),
         )
         logger.info(
             "New tenant created via SSO: %s (%s via %s)",
