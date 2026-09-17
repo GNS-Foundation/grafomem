@@ -327,7 +327,14 @@ async def get_dashboard(request: Request):
                 expires_at=r.get("expires_at"),
             ))
     except Exception:
-        pass
+        # Do NOT swallow silently: a bare `except: pass` here hid the pooled-connection
+        # proxy bug (empty key list looked normal). Log with the traceback so the next
+        # such failure is visible. Still non-fatal — the dashboard renders without the
+        # (non-secret) key metadata rather than 500ing.
+        logger.warning(
+            "dashboard: failed to load API key metadata for tenant %s", tenant_id,
+            exc_info=True,
+        )
 
     # Billing
     billing = BillingOut(plan=tenant["plan"])
