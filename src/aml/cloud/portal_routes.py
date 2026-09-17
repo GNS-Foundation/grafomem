@@ -260,7 +260,12 @@ async def get_dashboard(request: Request):
     timezone = None
     try:
         pa = _portal_auth(request)
-        row = pa._get_conn().execute(
+        # Bind the pooled connection to a local so the _PooledConnectionProxy stays
+        # alive through fetch. Inlined as pa._get_conn().execute(...).fetchone() the
+        # proxy is GC'd right after execute(), which returns+resets the connection
+        # mid-query and the fetch then fails (see login/signup for the same idiom).
+        conn = pa._get_conn()
+        row = conn.execute(
             "SELECT timezone FROM tenants WHERE id = %s", (tenant_id,)).fetchone()
         if row:
             timezone = row.get("timezone")
@@ -303,7 +308,12 @@ async def get_dashboard(request: Request):
     keys: list[ApiKeyMeta] = []
     try:
         pa = _portal_auth(request)
-        rows = pa._get_conn().execute(
+        # Bind to a local (see the timezone read above): the inline
+        # pa._get_conn().execute(...).fetchall() form GC's the connection proxy right
+        # after execute(), returning+resetting the connection before fetchall() runs,
+        # which silently yields an empty key list.
+        conn = pa._get_conn()
+        rows = conn.execute(
             "SELECT key_id, name, role, scopes, created_at, last_used_at, expires_at "
             "FROM tenant_api_keys WHERE tenant_id = %s ORDER BY created_at",
             (tenant_id,),

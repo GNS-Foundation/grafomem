@@ -89,6 +89,33 @@ def test_portal_me_exposes_no_usable_credential(client):
     assert "api_key" not in me.json(), "/me still has a flat api_key field"
 
 
+def test_portal_me_lists_key_metadata(client):
+    """014 step (a): /me must actually LIST the tenant's key metadata (>=1 row).
+
+    Regression for the pooled-connection proxy bug: the /me reads must bind the
+    _PooledConnectionProxy to a local before fetch. Inlined as
+    pa._get_conn().execute(...).fetchall() the proxy is GC'd right after execute(),
+    returning+resetting the connection mid-query, so fetchall() fails and the silent
+    except yields an empty keys[] even though the tenant has a key. The test harness
+    builds a real RoutingPool, so this path is exercised.
+    """
+    email = f"me-keys-{uuid.uuid4().hex[:8]}@example.test"
+    r = client.post("/v1/portal/signup",
+                    json={"email": email, "password": "correct-horse-battery-staple", "name": "me-keys"})
+    assert r.status_code == 201, r.text
+    auth = {"Authorization": f"Bearer {r.json()['token']}"}
+
+    me = client.get("/v1/portal/me", headers=auth)
+    assert me.status_code == 200, me.text
+    keys = me.json().get("keys")
+    assert isinstance(keys, list) and len(keys) >= 1, (
+        f"/me returned no key metadata (keys={keys!r}) — the pooled read likely GC'd "
+        f"its connection proxy before fetch"
+    )
+    k0 = keys[0]
+    assert k0.get("key_id") and k0.get("role"), f"key metadata incomplete: {k0!r}"
+
+
 def test_login_returns_working_key_from_tenant_api_keys(client):
     """014 step (a) regression: signup/login still hand the console a USABLE key.
 
