@@ -493,25 +493,17 @@ class UsageReporter:
         if not metered_enabled():
             logger.info("usage reporter dark (metered_enabled=False) — not starting")
             return
-        # ensure_schema() self-migrates the cursor table, which requires CREATE on schema
-        # public. Under the least-privilege runtime role (e.g. grafomem_rt) that raises
-        # "permission denied for schema public" — the SAME error every other service's
-        # ensure_schema raises and which the app tolerates at startup. Mirror that tolerance:
-        # if the table is already present (provisioned by a superuser migration), start on it;
-        # only decline when there is genuinely no cursor table to write to.
-        try:
-            self.ensure_schema()
-        except Exception as e:  # noqa: BLE001
-            if self._cursor_table_exists():
-                logger.warning(
-                    "usage reporter: ensure_schema could not run DDL (%s); usage_report_cursor "
-                    "already present — starting on the pre-provisioned table", e)
-            else:
-                logger.error(
-                    "usage reporter: ensure_schema failed and usage_report_cursor is absent (%s) "
-                    "— NOT starting. Provision it via a superuser migration and grant the runtime "
-                    "role DML.", e)
-                return
+        # A1: the runtime process does NO DDL. usage_report_cursor is provisioned by the
+        # pre-deploy ensure-schema release step (UsageReporter.ensure_schema is registered
+        # in that cascade) — start() only verifies the table is present and never migrates.
+        # Calling ensure_schema here ran DDL under the least-privilege runtime role and
+        # logged "permission denied for schema public" on every prod boot.
+        if not self._cursor_table_exists():
+            logger.error(
+                "usage reporter: usage_report_cursor is absent — NOT starting. It is created "
+                "by the ensure-schema release step (python -m aml.cloud.migrations_runner "
+                "--ensure-schema); run the pre-deploy, then restart.")
+            return
         self._running = True
         self._task = asyncio.create_task(self._loop(), name="usage-reporter")
         logger.info("usage reporter started (interval=%dm)", self._interval_min)
