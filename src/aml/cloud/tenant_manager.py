@@ -188,9 +188,13 @@ class TenantManager:
         # It turned tenants.api_key into a credential (copying it into the auth table), the
         # exact path 014 closes — tenants.api_key must not be a credential source by ANY
         # route. Its job is already done: every tenant has a tenant_api_keys row
-        # (legacy_exposed = 0 on prod and staging), legacy tenants were migrated by this
-        # backfill in prior deploys, and SSO now mints its own row (sso_provider.py). No
+        # (tenants_without_any_key = 0 on prod and staging), legacy tenants were migrated by
+        # this backfill in prior deploys, and SSO now mints its own row (sso_provider.py). No
         # tenant depends on it any more.
+        #
+        # Merge note: #165 added `WHERE api_key IS NOT NULL` to this backfill to make main
+        # rollback-compatible with post-014 data. That guard is subsumed here — there is no
+        # backfill left to guard once it is removed.
         
         # Add home_region column
         conn.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS home_region TEXT DEFAULT 'global';")
