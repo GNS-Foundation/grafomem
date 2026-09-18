@@ -180,11 +180,16 @@ class TenantManager:
         conn = self._get_conn()
         conn.execute(_SCHEMA_SQL)
 
-        # Migrate existing API keys to tenant_api_keys
+        # Migrate existing API keys to tenant_api_keys.
+        # Guard against NULL: post-014 tenants have tenants.api_key = NULL (the column is
+        # retired), and tenant_api_keys.api_key is NOT NULL — without this filter the
+        # backfill raises NotNullViolation and the pre-deploy fails. This keeps main
+        # rollback-compatible with a post-014 database.
         conn.execute("""
             INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role, created_at)
             SELECT gen_random_uuid()::text, id, api_key, 'Default Admin Key', 'admin', created_at
             FROM tenants
+            WHERE api_key IS NOT NULL
             ON CONFLICT (api_key) DO NOTHING;
         """)
         
