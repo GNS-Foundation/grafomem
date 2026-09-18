@@ -32,6 +32,8 @@ from typing import Any
 import psycopg
 from psycopg.rows import dict_row
 
+from aml.cloud.portal_auth import _current_api_key  # 014 step (a): key from tenant_api_keys
+
 logger = logging.getLogger("grafomem.cloud.sso")
 
 
@@ -785,16 +787,17 @@ class SSOProvider:
 
         # Try to find by SSO sub
         row = conn.execute(
-            "SELECT id, api_key FROM tenants "
+            "SELECT id FROM tenants "
             "WHERE sso_provider = %s AND sso_sub = %s",
             (sso_provider, sso_sub),
         ).fetchone()
         if row:
-            return row["id"], row["api_key"]
+            # 014 step (a): working key comes from tenant_api_keys, not tenants.api_key.
+            return row["id"], _current_api_key(conn, row["id"])
 
         # Try to find by email
         row = conn.execute(
-            "SELECT id, api_key FROM tenants WHERE email = %s",
+            "SELECT id FROM tenants WHERE email = %s",
             (email,),
         ).fetchone()
         if row:
@@ -803,7 +806,8 @@ class SSOProvider:
                 "UPDATE tenants SET sso_provider = %s, sso_sub = %s WHERE id = %s",
                 (sso_provider, sso_sub, row["id"]),
             )
-            return row["id"], row["api_key"]
+            # 014 step (a): working key comes from tenant_api_keys, not tenants.api_key.
+            return row["id"], _current_api_key(conn, row["id"])
 
         # Create new tenant
         import secrets as sec
@@ -811,12 +815,20 @@ class SSOProvider:
         api_key = f"gfm_{sec.token_hex(24)}"
         now = datetime.now(timezone.utc)
 
+        # 014 step (a): do NOT write tenants.api_key. Mint the key in tenant_api_keys —
+        # SSO previously wrote only tenants.api_key and no tenant_api_keys row, so after
+        # #160 removed the tenants.api_key auth fallback an SSO tenant's key could not
+        # authenticate at all. Minting the row here is both the decouple and that fix.
         conn.execute(
             "INSERT INTO tenants "
-            "(id, name, api_key, plan, created_at, email, sso_provider, sso_sub) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
-            (tenant_id, name, api_key, "starter", now, email,
-             sso_provider, sso_sub),
+            "(id, name, plan, created_at, email, sso_provider, sso_sub) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+            (tenant_id, name, "starter", now, email, sso_provider, sso_sub),
+        )
+        conn.execute(
+            "INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role, created_at) "
+            "VALUES (gen_random_uuid()::text, %s, %s, 'Default Admin Key', 'admin', %s)",
+            (tenant_id, api_key, now),
         )
         logger.info(
             "New tenant created via SSO: %s (%s via %s)",
