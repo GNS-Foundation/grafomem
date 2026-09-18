@@ -289,7 +289,14 @@ the claim, the vantage that produced it, and why the corroboration failed.
   passing/failing test. Proven on staging with a throwaway platform-shaped tenant: a freshly-minted
   `cgr:read` key returns **200** on `/v1/cgr/scores`, is authorized for `/v1/governed/decisions` (422 on an
   empty body, i.e. past auth), and is **denied 403** on `/v1/usage/current` (which needs `decisions:read`) —
-  the wildcard key passes all three, which is exactly the excess authority. *Lesson: "the key works" is not
+  the wildcard key passes all three, which is exactly the excess authority. **Amendment (2026-09-18): the
+  secret was exposed _at rest_ but never _exercised_.** The workflow had **never had a successful run** since
+  it was added — `GRAFOMEM_BASE` was unset, so the "API key present" guard step exited 1 every time. The
+  first green run (`ulissy-weekly-refresh` 35351837445) came only when `GRAFOMEM_BASE` was finally set during
+  this rotation. So the blast radius was a **dormant superuser key sitting in the secret store**, not one CI
+  actively used — smaller in exercise, identical in exposure-at-rest (a leaked secret does not care whether a
+  job ever ran). It also means "the CI job passes" could not have flagged the over-grant either — the job
+  never passed. *Lesson: "the key works" is not
   "the key is scoped right" — a `{*}` key passes every check, so it never signals its own over-grant. Scope
   a credential to the endpoints its holder actually calls (grep the consumer for its API paths, map each to
   its `require_scope`, union them), and put the narrowest key in the most exposed place. Fix (two parts):
@@ -298,5 +305,9 @@ the claim, the vantage that produced it, and why the corroboration failed.
   no longer holds `{*}`; (2) because the wildcard sat in a GitHub secret, rotate the platform key itself —
   `--only-tenant <ulissy>` (1:1 mint-alongside) → cut over the non-CI consumers (ops creds file, operator
   smoke) → `--revoke-key` the old wildcard. The platform key is NOT deleted to fix (1); it is still used
-  outside CI.*
+  outside CI. **Executed 2026-09-18 (operator, prod):** CI now uses `cgr:read` key_id `000b4176`; wildcard
+  key_id `8fcbd99d` revoked (probed 403 `Invalid API key.`); new admin key_id `5571794b` for non-CI use. Two
+  full key values (the old wildcard + a dead pre-rotation key) were found in shell/psql history during the
+  run and scrubbed — never type a key literal on a command line (`~/.*_history`, `ps`, psql history). Detail:
+  grafomem-internal `design/2026-09-16-ulissy-key-rotation.md` §(e).*
 
