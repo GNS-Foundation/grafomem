@@ -278,4 +278,22 @@ the claim, the vantage that produced it, and why the corroboration failed.
   their DDL the same way, or the first prod boot is the real test. Fix: register `UsageReporter` in the
   ensure-schema release-step cascade (pre-deploy creates `usage_report_cursor`) and make `start()` verify
   presence, never migrate.*
+- **2026-09-18 — CI held the wildcard platform key.** `ulissy-weekly-refresh.yml` authenticated with
+  `secrets.ULISSY_API_KEY`, which is ULissy's **platform key — `role=admin`, `scopes={*}` (superuser)**. But
+  the job only needs `cgr:read` (`GET /v1/cgr/scores`) plus the governed-write endpoints
+  (`POST /v1/governed/{decisions,outcomes/bulk,reviews/bulk}`, which carry **no scope gate** — any valid
+  tenant key posts). So a GitHub Actions secret — the most exfiltration-exposed place a key lives (logs,
+  fork PRs, a compromised action) — carried **full platform admin over every tenant** to do work that a
+  read-scoped key covers. It went unexamined because the key "worked": `{*}` satisfies every
+  `require_scope`, so nothing ever failed to reveal the over-grant, and least-privilege was never a
+  passing/failing test. Proven on staging with a throwaway platform-shaped tenant: a freshly-minted
+  `cgr:read` key returns **200** on `/v1/cgr/scores`, is authorized for `/v1/governed/decisions` (422 on an
+  empty body, i.e. past auth), and is **denied 403** on `/v1/usage/current` (which needs `decisions:read`) —
+  the wildcard key passes all three, which is exactly the excess authority. *Lesson: "the key works" is not
+  "the key is scoped right" — a `{*}` key passes every check, so it never signals its own over-grant. Scope
+  a credential to the endpoints its holder actually calls (grep the consumer for its API paths, map each to
+  its `require_scope`, union them), and put the narrowest key in the most exposed place. Fix: mint a
+  `cgr:read` key (`rotate_all_tenant_keys.py --only-tenant <ulissy> --scopes cgr:read --name
+  ci-weekly-refresh --role agent`, mint-alongside), set `ULISSY_API_KEY` to it, then `--revoke-key` the
+  wildcard's CI exposure once the run is green.*
 
