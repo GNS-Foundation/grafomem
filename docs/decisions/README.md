@@ -292,8 +292,11 @@ the claim, the vantage that produced it, and why the corroboration failed.
   the wildcard key passes all three, which is exactly the excess authority. *Lesson: "the key works" is not
   "the key is scoped right" — a `{*}` key passes every check, so it never signals its own over-grant. Scope
   a credential to the endpoints its holder actually calls (grep the consumer for its API paths, map each to
-  its `require_scope`, union them), and put the narrowest key in the most exposed place. Fix: mint a
-  `cgr:read` key (`rotate_all_tenant_keys.py --only-tenant <ulissy> --scopes cgr:read --name
-  ci-weekly-refresh --role agent`, mint-alongside), set `ULISSY_API_KEY` to it, then `--revoke-key` the
-  wildcard's CI exposure once the run is green.*
+  its `require_scope`, union them), and put the narrowest key in the most exposed place. Fix (two parts):
+  (1) descope CI — mint a `cgr:read` key (`rotate_all_tenant_keys.py --only-tenant <ulissy> --scopes
+  cgr:read --name ci-weekly-refresh --role agent`, mint-alongside) and point `ULISSY_API_KEY` at it, so CI
+  no longer holds `{*}`; (2) because the wildcard sat in a GitHub secret, rotate the platform key itself —
+  `--only-tenant <ulissy>` (1:1 mint-alongside) → cut over the non-CI consumers (ops creds file, operator
+  smoke) → `--revoke-key` the old wildcard. The platform key is NOT deleted to fix (1); it is still used
+  outside CI.*
 
