@@ -26,6 +26,7 @@ import json
 import logging
 import uuid
 from datetime import datetime, timezone
+from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -46,6 +47,28 @@ _PROFILE_REGISTRY = {
         "cgr.disposition.v1": {"approval_mode": "bound", "approver_signature": "REQUIRED"},
     }
 }
+
+
+def dbname_of(url: str) -> str | None:
+    """The database name from a libpq URL, or None if absent."""
+    return (urlsplit(url).path.lstrip("/") or None)
+
+
+def ledger_writer_url(ledger_url: str, main_url: str) -> str:
+    """Derive the disposition ledger-writer URL: the ledger role's credentials/host from
+    ``ledger_url`` (GRAFOMEM_LEDGER_URL) pointed at the MAIN database's name (from ``main_url``).
+
+    ``cosign_dispositions`` is a ledger-class table that lives in the MAIN db (migration 016), where
+    the runtime role is SELECT-only and the ledger role holds INSERT. GRAFOMEM_LEDGER_URL, however,
+    may name a separate ledger database (the erasure ledger's default). Swapping only the dbname keeps
+    the ledger role's identity while targeting the db where cosign_dispositions actually is. If the two
+    URLs already share a dbname the swap is a no-op.
+    """
+    main_db = dbname_of(main_url)
+    if not main_db:
+        return ledger_url
+    p = urlsplit(ledger_url)
+    return urlunsplit((p.scheme, p.netloc, "/" + main_db, p.query, p.fragment))
 
 
 class DispositionIn(BaseModel):
