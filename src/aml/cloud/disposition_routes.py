@@ -37,6 +37,16 @@ logger = logging.getLogger("grafomem.cloud.dispositions")
 
 _ENVELOPE_KEYS = ("system_signature", "evidence_ref")
 
+# The ratified cgr.cosign.v1 profile registry, EMBEDDED so it ships with the package — a filesystem
+# path to docs/cgr/ is not reliable in the deployed layout (docs/ is not packaged; __file__ may resolve
+# under site-packages). This MIRRORS the normative docs/cgr/cosign-profile-registry.json; the test
+# test_disposition_registry_matches_normative asserts they stay aligned (like the vendored verifier).
+_PROFILE_REGISTRY = {
+    "profiles": {
+        "cgr.disposition.v1": {"approval_mode": "bound", "approver_signature": "REQUIRED"},
+    }
+}
+
 
 class DispositionIn(BaseModel):
     """The approver-signed inner (Layer 1+2+3a). No system layer — the runtime counter-signs."""
@@ -67,10 +77,7 @@ def create_disposition_router(db_pool, signing_identity, ledger_pool=None,
     _writer = ledger_pool or db_pool  # ledger-role writer; single-role falls back to the main pool
 
     def _load_registry() -> dict:
-        import pathlib
-        # src/aml/cloud/disposition_routes.py → repo root is parents[3]
-        p = pathlib.Path(__file__).resolve().parents[3] / "docs" / "cgr" / "cosign-profile-registry.json"
-        return json.loads(p.read_text())
+        return _PROFILE_REGISTRY
 
     def _issuer_key_id() -> str:
         return "ed25519:" + signing_identity.public_key().hex()

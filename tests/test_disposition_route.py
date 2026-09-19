@@ -88,6 +88,17 @@ def _envelope(approver_sk, approver_hex, *, nonce=None, act="approve"):
 def _hdr(key): return {"X-API-Key": key}
 
 
+def test_disposition_registry_matches_normative():
+    """The embedded runtime registry MUST equal the normative docs/cgr/cosign-profile-registry.json
+    entry (kept aligned like the vendored verifier)."""
+    from aml.cloud.disposition_routes import _PROFILE_REGISTRY
+    normative = json.loads((_ROOT / "docs/cgr/cosign-profile-registry.json").read_text())
+    a = _PROFILE_REGISTRY["profiles"]["cgr.disposition.v1"]
+    b = normative["profiles"]["cgr.disposition.v1"]
+    assert a["approval_mode"] == b["approval_mode"] == "bound"
+    assert a["approver_signature"] == b["approver_signature"] == "REQUIRED"
+
+
 def test_valid_disposition_201_and_offline_verifies(client, setup):
     env = _envelope(setup["approver_sk"], setup["approver_hex"])
     r = client.post("/v1/dispositions", json=env, headers=_hdr(setup["disp_key"]))
