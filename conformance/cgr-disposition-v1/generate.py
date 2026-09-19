@@ -118,8 +118,11 @@ V("D5", "unresolvable required-ness predicate (verifier-only)", "invalid", None,
 # D6 — assurance marker present and SURFACED, never gated. Low assurance is accepted; the read
 #      path surfaces it. content_body carries `assurance: none`.
 _assure_body = {**BODY, "assurance": "none"}
+# D6 is an INDEPENDENT valid record (distinct content), so it MUST carry a distinct record_nonce —
+# reusing D1's disp-0001 is a replay of the (approver_key_id, record_nonce) pair (spec §4), which the
+# runtime correctly rejects with 409. A distinct nonce lets D1 and D6 both persist in one conformance run.
 V("D6", "assurance marker surfaced, never gated", "valid", 201,
-  record(_assure_body), layer="both",
+  record(_assure_body, a=assertion(_assure_body, record_nonce="disp-0006")), layer="both",
   note="assurance=none is accepted (201); GET/verify MUST surface it, never upgrade or gate on it.")
 
 
