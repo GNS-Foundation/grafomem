@@ -123,16 +123,74 @@ def _stmt_privs(sql: str, verb: str, connector: str, table: str, role: str) -> s
     return privs
 
 
+def _strip_sql_comments(sql: str) -> str:
+    """Return `sql` with `--` line and `/* */` block comments removed (PostgreSQL block
+    comments nest), preserving single-quoted string literals and `$tag$` dollar-quoted
+    bodies so real statements inside a DO-block are untouched.
+
+    The grant/revoke/CREATE scans run on the stripped text: grant-shaped PROSE inside a
+    comment (e.g. "the grant only ever runs on a fresh install") must NOT be read as a real
+    `GRANT ... ON ... TO ...`. The `-- class: ledger` marker is a deliberate comment and is
+    matched on the RAW sql by the caller, before this runs.
+    """
+    out: list[str] = []
+    i, n = 0, len(sql)
+    while i < n:
+        c = sql[i]
+        if c == "'":  # single-quoted string literal ('' escapes a quote)
+            out.append(c); i += 1
+            while i < n:
+                out.append(sql[i])
+                if sql[i] == "'":
+                    if i + 1 < n and sql[i + 1] == "'":
+                        out.append(sql[i + 1]); i += 2; continue
+                    i += 1; break
+                i += 1
+            continue
+        if c == "$":  # dollar-quoted string: $tag$ ... $tag$
+            m = re.match(r"\$[A-Za-z_0-9]*\$", sql[i:])
+            if m:
+                tag = m.group(0)
+                end = sql.find(tag, i + len(tag))
+                if end == -1:
+                    out.append(sql[i:]); i = n
+                else:
+                    out.append(sql[i:end + len(tag)]); i = end + len(tag)
+                continue
+        if sql[i:i + 2] == "--":  # line comment → drop to end of line, keep the newline
+            j = sql.find("\n", i)
+            i = n if j == -1 else j
+            continue
+        if sql[i:i + 2] == "/*":  # block comment (nestable) → replace with a space
+            depth, i = 1, i + 2
+            while i < n and depth:
+                if sql[i:i + 2] == "/*":
+                    depth += 1; i += 2
+                elif sql[i:i + 2] == "*/":
+                    depth -= 1; i += 2
+                else:
+                    i += 1
+            out.append(" ")
+            continue
+        out.append(c); i += 1
+    return "".join(out)
+
+
 def validate_migration_sql(
     name: str, sql: str, runtime_role: str | None, ledger_role: str = LEDGER_ROLE
 ) -> None:
     """Enforce the grant rule. No-op when `runtime_role` is None (single-role)."""
     if not runtime_role:
         return
-    created = {m.group(1).lower() for m in _CREATE_TABLE_RE.finditer(sql)}
+    # The `-- class: ledger` marker is a deliberate comment — read it from the RAW sql.
+    is_ledger_class = bool(_LEDGER_CLASS_MARKER.search(sql))
+    # Everything else scans the COMMENT-STRIPPED sql, so grant-shaped prose in a comment
+    # cannot masquerade as a real GRANT/REVOKE (and a commented-out CREATE TABLE is ignored).
+    scan_sql = _strip_sql_comments(sql)
+    created = {m.group(1).lower() for m in _CREATE_TABLE_RE.finditer(scan_sql)}
     if not created:
         return
-    missing = created - _granted_tables(sql, runtime_role)
+    missing = created - _granted_tables(scan_sql, runtime_role)
     if missing:
         raise MigrationError(
             f"{name}: CREATE TABLE {sorted(missing)} without a GRANT to {runtime_role!r} "
@@ -144,11 +202,11 @@ def validate_migration_sql(
     # Append-only: ledger role INSERT+SELECT (it also reads for restore-scrub), no
     # UPDATE/DELETE; runtime role SELECT-only, which requires an explicit REVOKE because
     # ALTER DEFAULT PRIVILEGES grants the runtime role full DML on every migrate-created table.
-    if _LEDGER_CLASS_MARKER.search(sql) and name not in _LEDGER_RULE_GRANDFATHERED:
+    if is_ledger_class and name not in _LEDGER_RULE_GRANDFATHERED:
         for tbl in sorted(created):
-            rt_granted = _stmt_privs(sql, "grant", "to", tbl, runtime_role)
-            rt_revoked = _stmt_privs(sql, "revoke", "from", tbl, runtime_role)
-            led_granted = _stmt_privs(sql, "grant", "to", tbl, ledger_role)
+            rt_granted = _stmt_privs(scan_sql, "grant", "to", tbl, runtime_role)
+            rt_revoked = _stmt_privs(scan_sql, "revoke", "from", tbl, runtime_role)
+            led_granted = _stmt_privs(scan_sql, "grant", "to", tbl, ledger_role)
             if rt_granted & _WRITE_PRIVS:
                 raise MigrationError(
                     f"{name}: ledger-class table {tbl!r} grants "

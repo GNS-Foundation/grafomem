@@ -45,6 +45,55 @@ def test_create_if_not_exists_and_public_schema_are_matched():
         validate_migration_sql("x.sql", "CREATE TABLE IF NOT EXISTS public.foo (id INT);", runtime_role=RT)
 
 
+# ── grant scan ignores comments (validator false-match fix) ──────────────────
+def test_grant_only_in_comment_is_rejected():
+    """MUST-FAIL: a migration whose ONLY grant-shape is inside a comment has no real GRANT,
+    so it must be REJECTED. Before the strip-comments fix the scanner false-matched the
+    comment prose as a real `GRANT ... ON ... TO ...` and wrongly PASSED."""
+    sql = (
+        "CREATE TABLE foo (id INT);\n"
+        "-- GRANT SELECT, INSERT, UPDATE, DELETE ON foo TO grafomem_rt;\n"  # comment only
+    )
+    with pytest.raises(MigrationError):
+        validate_migration_sql("x.sql", sql, runtime_role=RT)
+
+
+def test_grant_shaped_prose_in_comment_does_not_satisfy_rule():
+    """The exact prose that first tripped the bug: a comment containing 'grant … on … to'
+    must not count as granting the runtime role."""
+    sql = (
+        "CREATE TABLE foo (id INT);\n"
+        "-- the grant only ever runs on a fresh split-role install, applied to grafomem_rt\n"
+    )
+    with pytest.raises(MigrationError):
+        validate_migration_sql("x.sql", sql, runtime_role=RT)
+
+
+def test_real_grant_still_detected_positive_control():
+    """POSITIVE CONTROL: a real (non-comment) GRANT is still detected and passes — including
+    when a grant-shaped comment sits right next to it."""
+    sql = (
+        "CREATE TABLE foo (id INT);\n"
+        "-- grant note: on apply this is granted to grafomem_rt\n"
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON foo TO grafomem_rt;\n"
+    )
+    validate_migration_sql("x.sql", sql, runtime_role=RT)  # no raise
+
+
+def test_real_grant_inside_guarded_do_block_passes():
+    """The guarded DO-block form used by 004/005/006 survives comment stripping (the GRANT
+    is inside $$…$$, not a comment)."""
+    sql = (
+        "CREATE TABLE foo (id INT);\n"
+        "-- Runtime role receives DML; guarded no-op in single-role self-host.\n"
+        "DO $$\nBEGIN\n"
+        "  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'grafomem_rt') THEN\n"
+        "    GRANT SELECT, INSERT, UPDATE, DELETE ON foo TO grafomem_rt;\n"
+        "  END IF;\nEND $$;\n"
+    )
+    validate_migration_sql("x.sql", sql, runtime_role=RT)  # no raise
+
+
 # ── ledger-class rule (declared by `-- class: ledger` header marker) ─────────
 _LEDGER_OK = (
     "-- class: ledger\n"
