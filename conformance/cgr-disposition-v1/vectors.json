@@ -1,7 +1,7 @@
 {
   "corpus": "cgr.disposition.v1 runtime conformance",
   "spec": "docs/cgr/cgr-cosign-v1-spec.md (envelope) + decisions 0009/0010/0011",
-  "profile_registry_status": "FIXTURE \u2014 normative entry UNWRITTEN (spec \u00a711 Q3); must be ratified per ADR-0008",
+  "profile_registry_status": "RATIFIED \u2014 docs/cgr/cosign-profile-registry.json (decision: cosign-disposition-v1-profile-registry)",
   "model": "issuer counter-signature (spec \u00a73.2): runtime produces system_signature; pinned issuer = runtime key",
   "keys": {
     "pinned_issuer_pub": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
@@ -145,11 +145,11 @@
     },
     {
       "id": "D5",
-      "title": "unresolvable required-ness predicate",
-      "layer": "both",
+      "title": "unresolvable required-ness predicate (verifier-only)",
+      "layer": "verify",
       "expect_verify": "invalid",
-      "http_expect": 422,
-      "note": "profile with required_when on an absent/non-scalar field -> predicate_unresolved (0010/0011).",
+      "http_expect": null,
+      "note": "cgr.disposition.v1 required-ness is UNCONDITIONAL (ratified). This vector uses a separate verifier-fixture profile cgr.disposition.v1.predicate to exercise predicate_unresolved (0010/0011); it is NOT the disposition contract and has no runtime POST.",
       "record": {
         "schema": "cgr.cosign.v1",
         "profile": "cgr.disposition.v1.predicate",

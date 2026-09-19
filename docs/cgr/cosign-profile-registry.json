@@ -1,0 +1,12 @@
+{
+  "_note": "Normative cgr.cosign.v1 profile registry (partially resolves spec §11 Q3 — registry location + governance). Profile resolution at verify() step 2 (cgr-cosign-v1-spec.md §8) reads this. Each entry declares approval_mode and approver_signature required-ness; the content_body is profile-defined and opaque to the envelope/runtime. Ratified via docs/decisions/cosign-disposition-v1-profile-registry.md (accept-by-merge).",
+  "profiles": {
+    "cgr.disposition.v1": {
+      "approval_mode": "bound",
+      "approver_signature": "REQUIRED",
+      "_required_ness": "unconditional (no predicate)",
+      "_assurance": "assurance tier is SURFACED on read, NEVER gated (a low/none tier is accepted and shown, never rejected or silently upgraded)",
+      "_content_body": "profile-defined and opaque to grafomem; the AML content profile lives downstream in eu-governed-agent B2 (ADR-0008 — nothing AML-specific upstream)"
+    }
+  }
+}

@@ -11,13 +11,7 @@ NOT real keys); production JCS (`rfc8785`); Ed25519-over-JCS, no prehash; BLAKE2
 digest; the real DOMAIN_TAG. **Nothing AML-specific** — `content_body` is a generic opaque
 object (the AML profile of the *content* lives downstream in eu-governed-agent B2, never here).
 
-PROFILE REGISTRY — NORMATIVE GAP (spec §11 Q3). The `cgr.disposition.v1` profile registry
-entry (its `approval_mode` + `approver_signature` required-ness) is **unwritten**. `registry.json`
-here is a **corpus-first TEST FIXTURE**: `approval_mode="bound"`, `approver_signature="REQUIRED"`.
-Per ADR-0008 (a gap the product needs that the ledger cannot express is a Foundation decision, not a
-product workaround), the real profile-registry entry must be **ratified** and either match this
-fixture or every vector retargets. The runtime route MUST resolve the profile from the ratified
-registry, not from this fixture.
+PROFILE REGISTRY — RATIFIED. The cgr.disposition.v1 profile-registry entry (approval_mode=bound, approver_signature=REQUIRED unconditional) is the normative contract at docs/cgr/cosign-profile-registry.json (decision: cosign-disposition-v1-profile-registry). The corpus registry.json mirrors it. A separate cgr.disposition.v1.predicate profile is a VERIFIER-conformance fixture only (exercises predicate_unresolved), not part of the disposition contract.
 
 Model (spec §3.2): the **system signature is the issuer's counter-signature** — the capturing
 runtime (grafomem) produces it with its pinned signing identity, and pins that key id as the sole
@@ -118,9 +112,9 @@ V("D4", "wrong system key (untrusted issuer)", "invalid", None,
 #      profile; documented in the fixture as cgr.disposition.v1.predicate).
 _pred_body = {**BODY, "kind": "disposition-predicate"}
 _pred_rec = record(_pred_body); _pred_rec["profile"] = "cgr.disposition.v1.predicate"
-V("D5", "unresolvable required-ness predicate", "invalid", 422,
-  _pred_rec, layer="both",
-  note="profile with required_when on an absent/non-scalar field -> predicate_unresolved (0010/0011).")
+V("D5", "unresolvable required-ness predicate (verifier-only)", "invalid", None,
+  _pred_rec, layer="verify",
+  note="cgr.disposition.v1 required-ness is UNCONDITIONAL (ratified). This vector uses a separate verifier-fixture profile cgr.disposition.v1.predicate to exercise predicate_unresolved (0010/0011); it is NOT the disposition contract and has no runtime POST.")
 # D6 — assurance marker present and SURFACED, never gated. Low assurance is accepted; the read
 #      path surfaces it. content_body carries `assurance: none`.
 _assure_body = {**BODY, "assurance": "none"}
@@ -133,7 +127,7 @@ def main():
     out = {
         "corpus": "cgr.disposition.v1 runtime conformance",
         "spec": "docs/cgr/cgr-cosign-v1-spec.md (envelope) + decisions 0009/0010/0011",
-        "profile_registry_status": "FIXTURE — normative entry UNWRITTEN (spec §11 Q3); must be ratified per ADR-0008",
+        "profile_registry_status": "RATIFIED — docs/cgr/cosign-profile-registry.json (decision: cosign-disposition-v1-profile-registry)",
         "model": "issuer counter-signature (spec §3.2): runtime produces system_signature; pinned issuer = runtime key",
         "keys": {"pinned_issuer_pub": _pub(ISSUER_SK), "enrolled_approver_pub": _pub(APPROVER_SK),
                  "unenrolled_approver_pub": _pub(UNENROLLED_APPROVER_SK),

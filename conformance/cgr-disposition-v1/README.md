@@ -30,7 +30,7 @@ env-var trusted list.
 | D2 | missing approver signature | invalid | 422 | both |
 | D3 | approver key not in tenant registry | valid (crypto) | 403 (`approver_not_enrolled`) | runtime |
 | D4 | wrong system key (untrusted issuer) | invalid (`issuer_untrusted`) | — | verify-only |
-| D5 | unresolvable required-ness predicate | invalid (`predicate_unresolved`) | 422 | both |
+| D5 | unresolvable predicate (verifier-only) | invalid (`predicate_unresolved`) | — | verify-only |
 | D6 | assurance marker surfaced, never gated | valid | 201 (surfaced on read) | both |
 
 D3 self-verifies cryptographically but the **runtime** rejects it (approver not enrolled) — a
@@ -46,13 +46,14 @@ model the client cannot POST a system key) — it proves the verifier/GET path p
    `disposition:write` key) to POST each vector and assert `http_expect`. **Fails against the current
    runtime** (route absent) — the target the implementation turns green.
 
-## ⚠ Profile registry is a NORMATIVE GAP (spec §11 Q3)
+## Profile registry — RATIFIED
 
-`registry.json` here is a **corpus-first TEST FIXTURE** (`cgr.disposition.v1`: `approval_mode=bound`,
-`approver_signature=REQUIRED`). The real profile-registry entry is **unwritten** and, per ADR-0008, a
-**Foundation decision to ratify**. The runtime route MUST resolve profiles from the ratified
-registry; if it differs from this fixture, every vector retargets. **Do not treat this fixture as the
-normative registry.**
+The `cgr.disposition.v1` entry (`approval_mode=bound`, `approver_signature=REQUIRED`, required-ness
+**unconditional**) is the normative contract at `docs/cgr/cosign-profile-registry.json` (decision:
+`cosign-disposition-v1-profile-registry`, accept-by-merge). `registry.json` here **mirrors** it — it is
+the contract, not a fixture; the runtime resolves profiles from the normative registry. The separate
+`cgr.disposition.v1.predicate` profile is a **verifier-conformance fixture only** (exercises
+`predicate_unresolved`, decisions 0010/0011) and is NOT part of the disposition contract.
 
 ## Regenerate
 

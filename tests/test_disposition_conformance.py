@@ -45,11 +45,16 @@ def test_corpus_wellformed():
             f"{v['id']} ({v['title']}): expected verify valid={want_valid}, got {res}")
 
 
-def test_corpus_pins_the_registry_gap():
+def test_corpus_references_ratified_registry():
     corpus = _load("vectors.json")
-    # Guard that the corpus stays honest about the normative gap until the registry is ratified.
-    assert "FIXTURE" in corpus["profile_registry_status"]
-    assert "§11 Q3" in corpus["profile_registry_status"] or "11 Q3" in corpus["profile_registry_status"]
+    # The registry entry is now RATIFIED (docs/cgr/cosign-profile-registry.json); the corpus must
+    # reference it, not claim to be a fixture.
+    assert "RATIFIED" in corpus["profile_registry_status"]
+    assert "cosign-profile-registry" in corpus["profile_registry_status"]
+    # And the ratified normative registry actually carries the disposition entry as specified.
+    reg = json.loads((_ROOT / "docs" / "cgr" / "cosign-profile-registry.json").read_text())
+    entry = reg["profiles"]["cgr.disposition.v1"]
+    assert entry["approval_mode"] == "bound" and entry["approver_signature"] == "REQUIRED"
 
 
 @pytest.mark.skipif(not os.environ.get("CGR_DISPOSITION_BASE"),

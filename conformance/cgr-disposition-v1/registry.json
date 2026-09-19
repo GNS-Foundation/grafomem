@@ -1,5 +1,5 @@
 {
-  "_WARNING": "CORPUS-FIRST TEST FIXTURE — NOT the ratified profile registry. The cgr.disposition.v1 profile-registry entry is a NORMATIVE gap (cgr-cosign-v1-spec §11 Q3) and, per eu-governed-agent ADR-0008, a Foundation decision to ratify. The runtime MUST resolve profiles from the ratified registry; if that registry differs from this fixture, every vector here retargets.",
+  "_note": "cgr.disposition.v1 MIRRORS the ratified normative registry (docs/cgr/cosign-profile-registry.json; decision: cosign-disposition-v1-profile-registry) — it is the contract, not a fixture. The runtime resolves profiles from the normative registry. cgr.disposition.v1.predicate is a VERIFIER-conformance fixture ONLY (exercises predicate_unresolved, decisions 0010/0011); it is NOT part of the disposition contract, whose required-ness is unconditional.",
   "profiles": {
     "cgr.disposition.v1": {
       "approval_mode": "bound",
