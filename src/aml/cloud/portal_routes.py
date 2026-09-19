@@ -16,7 +16,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
-from aml.server.scopes import require_scope
+from aml.server.scopes import require_scope, TENANT_ADMIN_SCOPES
 
 logger = logging.getLogger("grafomem.cloud.portal")
 
@@ -379,10 +379,16 @@ async def create_api_key(req: CreateApiKeyRequest, request: Request):
     try:
         from datetime import datetime, timezone
         exp_dt = datetime.fromtimestamp(req.expires_at, tz=timezone.utc) if req.expires_at else None
+        # (d) Privilege containment: a portal owner's authority IS TENANT_ADMIN_SCOPES, so a key it
+        # mints is bounded to that — role='admin' mints TENANT_ADMIN_SCOPES, NEVER '*' (no superuser,
+        # no calibration:write, no admin:platform through the portal). agent/read_only resolve to their
+        # bounded role defaults.
+        mint_scopes = list(TENANT_ADMIN_SCOPES) if req.role == "admin" else None
         key_info = mgr.create_api_key(
-            tenant["tenant_id"], 
-            name=req.name, 
+            tenant["tenant_id"],
+            name=req.name,
             role=req.role,
+            scopes=mint_scopes,
             expires_at=exp_dt,
             ip_allowlist=req.ip_allowlist
         )
@@ -458,7 +464,9 @@ async def rotate_key(request: Request):
     try:
         conn = mgr._get_conn()
         conn.execute("DELETE FROM tenant_api_keys WHERE tenant_id = %s", (tenant_id,))
-        new_key = mgr.create_api_key(tenant_id, name="default_admin", role="admin")
+        # Own-tenant admin, bounded — never '*' (P0 2026-09-11 + the *-birth-key fix).
+        new_key = mgr.create_api_key(tenant_id, name="default_admin", role="admin",
+                                     scopes=TENANT_ADMIN_SCOPES)
         # 014 step (a): the tenants.api_key sync is REMOVED. /v1/portal/me reads
         # tenant_api_keys metadata now, not tenants.api_key, so there is nothing to keep
         # in sync; the new key lives only in tenant_api_keys and this response body.

@@ -173,8 +173,16 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
                 if db_scopes:
                     scopes = db_scopes if isinstance(db_scopes, list) else json.loads(db_scopes)
                 else:
-                    from aml.server.scopes import ROLE_SCOPES
-                    scopes = ROLE_SCOPES.get(role, ["*"])
+                    # Empty stored scopes resolve from role but NEVER to the '*' superuser. A legacy
+                    # `{}` admin row (portal/SSO births before the mint fix) resolves to own-tenant
+                    # admin (TENANT_ADMIN_SCOPES), not ROLE_SCOPES['admin']==['*']. '*' is granted only
+                    # to a key that EXPLICITLY stores it. This neutralises every legacy `{}` row with no
+                    # data migration.
+                    from aml.server.scopes import ROLE_SCOPES, TENANT_ADMIN_SCOPES
+                    if role == "admin":
+                        scopes = list(TENANT_ADMIN_SCOPES)
+                    else:
+                        scopes = [s for s in ROLE_SCOPES.get(role, []) if s != "*"]
                 db_stores = row.get("allowed_stores")
                 if db_stores:
                     allowed_stores = db_stores if isinstance(db_stores, list) else json.loads(db_stores)

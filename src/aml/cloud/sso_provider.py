@@ -825,10 +825,11 @@ class SSOProvider:
             "VALUES (%s, %s, %s, %s, %s, %s, %s)",
             (tenant_id, name, "starter", now, email, sso_provider, sso_sub),
         )
+        from aml.server.scopes import TENANT_ADMIN_SCOPES
         conn.execute(
-            "INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role, created_at) "
-            "VALUES (gen_random_uuid()::text, %s, %s, 'Default Admin Key', 'admin', %s)",
-            (tenant_id, api_key, now),
+            "INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role, scopes, created_at) "
+            "VALUES (gen_random_uuid()::text, %s, %s, 'Default Admin Key', 'admin', %s, %s)",
+            (tenant_id, api_key, TENANT_ADMIN_SCOPES, now),
         )
         logger.info(
             "New tenant created via SSO: %s (%s via %s)",
