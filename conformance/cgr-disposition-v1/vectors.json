@@ -1,0 +1,218 @@
+{
+  "corpus": "cgr.disposition.v1 runtime conformance",
+  "spec": "docs/cgr/cgr-cosign-v1-spec.md (envelope) + decisions 0009/0010/0011",
+  "profile_registry_status": "RATIFIED \u2014 docs/cgr/cosign-profile-registry.json (decision: cosign-disposition-v1-profile-registry)",
+  "model": "issuer counter-signature (spec \u00a73.2): runtime produces system_signature; pinned issuer = runtime key",
+  "keys": {
+    "pinned_issuer_pub": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "enrolled_approver_pub": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+    "unenrolled_approver_pub": "d759793bbc13a2819a827c76adb6fba8a49aee007f49f2d0992d99b825ad2c48",
+    "untrusted_issuer_pub": "17cb79fb2b4120f2b1ec65e4198d6e08b28e813feb01e4a400839b85e18080ce"
+  },
+  "domain_tag": "grafomem.hitl.approval.v1:",
+  "vector_count": 6,
+  "vectors": [
+    {
+      "id": "D1",
+      "title": "valid two-signature disposition",
+      "layer": "both",
+      "expect_verify": "valid",
+      "http_expect": 201,
+      "note": "POST body = record minus system_signature/system_metadata (runtime counter-signs).",
+      "record": {
+        "schema": "cgr.cosign.v1",
+        "profile": "cgr.disposition.v1",
+        "approval_mode": "bound",
+        "content_body": {
+          "kind": "disposition",
+          "subject_ref": "hmac:pseudonymous-subject-01",
+          "decision": "approve",
+          "rationale_ref": "case:opaque-01"
+        },
+        "approval_assertion": {
+          "content_digest": "b2-256:11630fd7a49e50f7ffa45f9ee270b590631e00b82df9d66773552b2523b540b5",
+          "approver_id": "did:person:test-mlro",
+          "approver_key_id": "ed25519:a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+          "approver_act": "approve",
+          "decision_date": "2026-09-19T00:00:00Z",
+          "record_nonce": "disp-0001"
+        },
+        "approver_signature": "ed25519-sig:08a4d87d53ff6c0bcfda1ddb9ce4e636d48d2fb6e2cf073809bbdc5df7e939cb25157ed23eff13393d26cdfa93943a0bcbfeda9d079efccc462fdde3c8627e0b",
+        "system_metadata": {
+          "issuer": "grafomem-runtime",
+          "issuer_key_id": "ed25519:d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+          "recorded_at": "2026-09-19"
+        },
+        "system_signature": "ed25519-sig:ac514cb2fb8e1b9fb88daf9987bfe326d76c84268e61fbf01344cba400403756717fdc0e12d7649a86fad500f933edfef5bdf2970e4e28429d593cc151e86500",
+        "evidence_ref": null
+      }
+    },
+    {
+      "id": "D2",
+      "title": "missing approver signature",
+      "layer": "both",
+      "expect_verify": "invalid",
+      "http_expect": 422,
+      "note": "approval_assertion + approver_signature omitted; profile is REQUIRED.",
+      "record": {
+        "schema": "cgr.cosign.v1",
+        "profile": "cgr.disposition.v1",
+        "approval_mode": "bound",
+        "content_body": {
+          "kind": "disposition",
+          "subject_ref": "hmac:pseudonymous-subject-01",
+          "decision": "approve",
+          "rationale_ref": "case:opaque-01"
+        },
+        "system_metadata": {
+          "issuer": "grafomem-runtime",
+          "issuer_key_id": "ed25519:d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+          "recorded_at": "2026-09-19"
+        },
+        "system_signature": "ed25519-sig:ddbffad8017ba9eccf6b205054bb42411a770c49451b80e9d9478abd0da3b11c667bc2e0ac6ae4b949140761a646bb2994fa00cd5bba4f26884100200f5e4b06",
+        "evidence_ref": null
+      }
+    },
+    {
+      "id": "D3",
+      "title": "approver key not in tenant registry",
+      "layer": "runtime",
+      "expect_verify": "valid",
+      "http_expect": 403,
+      "note": "approver_key_id 0x44 is not an enrolled approver; runtime rejects approver_not_enrolled.",
+      "record": {
+        "schema": "cgr.cosign.v1",
+        "profile": "cgr.disposition.v1",
+        "approval_mode": "bound",
+        "content_body": {
+          "kind": "disposition",
+          "subject_ref": "hmac:pseudonymous-subject-01",
+          "decision": "approve",
+          "rationale_ref": "case:opaque-01"
+        },
+        "approval_assertion": {
+          "content_digest": "b2-256:11630fd7a49e50f7ffa45f9ee270b590631e00b82df9d66773552b2523b540b5",
+          "approver_id": "did:person:test-mlro",
+          "approver_key_id": "ed25519:d759793bbc13a2819a827c76adb6fba8a49aee007f49f2d0992d99b825ad2c48",
+          "approver_act": "approve",
+          "decision_date": "2026-09-19T00:00:00Z",
+          "record_nonce": "disp-0001"
+        },
+        "approver_signature": "ed25519-sig:eecf89ae9b902b3df3fc44ae1366a51eeb4c8837cbe6127136602286c7100c8323fe4fb70bba77ac7bfa6e278ef92cd571f599b8e9da4880194cf9d502e8aa05",
+        "system_metadata": {
+          "issuer": "grafomem-runtime",
+          "issuer_key_id": "ed25519:d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+          "recorded_at": "2026-09-19"
+        },
+        "system_signature": "ed25519-sig:ed6c9f15bded6a353c040a330cd4f4c8b76c74f27458be5b012949782aae6d42739af6be625488840451cb23e62375e404e5708aec008236fef889a503311f05",
+        "evidence_ref": null
+      }
+    },
+    {
+      "id": "D4",
+      "title": "wrong system key (untrusted issuer)",
+      "layer": "verify",
+      "expect_verify": "invalid",
+      "http_expect": null,
+      "note": "issuer_key_id 0x33; verify(trusted={0x11}) rejects issuer_untrusted (decision 0011).",
+      "record": {
+        "schema": "cgr.cosign.v1",
+        "profile": "cgr.disposition.v1",
+        "approval_mode": "bound",
+        "content_body": {
+          "kind": "disposition",
+          "subject_ref": "hmac:pseudonymous-subject-01",
+          "decision": "approve",
+          "rationale_ref": "case:opaque-01"
+        },
+        "approval_assertion": {
+          "content_digest": "b2-256:11630fd7a49e50f7ffa45f9ee270b590631e00b82df9d66773552b2523b540b5",
+          "approver_id": "did:person:test-mlro",
+          "approver_key_id": "ed25519:a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+          "approver_act": "approve",
+          "decision_date": "2026-09-19T00:00:00Z",
+          "record_nonce": "disp-0001"
+        },
+        "approver_signature": "ed25519-sig:08a4d87d53ff6c0bcfda1ddb9ce4e636d48d2fb6e2cf073809bbdc5df7e939cb25157ed23eff13393d26cdfa93943a0bcbfeda9d079efccc462fdde3c8627e0b",
+        "system_metadata": {
+          "issuer": "grafomem-runtime",
+          "issuer_key_id": "ed25519:17cb79fb2b4120f2b1ec65e4198d6e08b28e813feb01e4a400839b85e18080ce",
+          "recorded_at": "2026-09-19"
+        },
+        "system_signature": "ed25519-sig:810835cbe6745a9abde0dc9066f2f3933fc990384a6bf14921a73e038fba2f26f7e25dff78bf0f203ee91d32fb940ceafff941fd38aa261ff39f0c4c36d46d06",
+        "evidence_ref": null
+      }
+    },
+    {
+      "id": "D5",
+      "title": "unresolvable required-ness predicate (verifier-only)",
+      "layer": "verify",
+      "expect_verify": "invalid",
+      "http_expect": null,
+      "note": "cgr.disposition.v1 required-ness is UNCONDITIONAL (ratified). This vector uses a separate verifier-fixture profile cgr.disposition.v1.predicate to exercise predicate_unresolved (0010/0011); it is NOT the disposition contract and has no runtime POST.",
+      "record": {
+        "schema": "cgr.cosign.v1",
+        "profile": "cgr.disposition.v1.predicate",
+        "approval_mode": "bound",
+        "content_body": {
+          "kind": "disposition-predicate",
+          "subject_ref": "hmac:pseudonymous-subject-01",
+          "decision": "approve",
+          "rationale_ref": "case:opaque-01"
+        },
+        "approval_assertion": {
+          "content_digest": "b2-256:54c9e949c826ee81f746aa30aeb08ad45da7dbed4a56f940929c292f340970c0",
+          "approver_id": "did:person:test-mlro",
+          "approver_key_id": "ed25519:a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+          "approver_act": "approve",
+          "decision_date": "2026-09-19T00:00:00Z",
+          "record_nonce": "disp-0001"
+        },
+        "approver_signature": "ed25519-sig:cae21f4b6731e1688d44dde1a85609716a351ad9a82d4b672e07f7832f061781b7c9782f8e5ddddc99b24fb2349957fc4ca3162b23535eb6fdcdce8200679c03",
+        "system_metadata": {
+          "issuer": "grafomem-runtime",
+          "issuer_key_id": "ed25519:d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+          "recorded_at": "2026-09-19"
+        },
+        "system_signature": "ed25519-sig:5fba4ca0eb7ebbb09952df4d67f46a69201d164b5ec55d05234bfe2973b99179fed10944233a75defa684bbb744eb7b8b0b7afc803665ea8d26392115e776309",
+        "evidence_ref": null
+      }
+    },
+    {
+      "id": "D6",
+      "title": "assurance marker surfaced, never gated",
+      "layer": "both",
+      "expect_verify": "valid",
+      "http_expect": 201,
+      "note": "assurance=none is accepted (201); GET/verify MUST surface it, never upgrade or gate on it.",
+      "record": {
+        "schema": "cgr.cosign.v1",
+        "profile": "cgr.disposition.v1",
+        "approval_mode": "bound",
+        "content_body": {
+          "kind": "disposition",
+          "subject_ref": "hmac:pseudonymous-subject-01",
+          "decision": "approve",
+          "rationale_ref": "case:opaque-01",
+          "assurance": "none"
+        },
+        "approval_assertion": {
+          "content_digest": "b2-256:d6b28ae72558c42d0fbe99e380afd2b9f01b61abd934b90295b4802b70684a46",
+          "approver_id": "did:person:test-mlro",
+          "approver_key_id": "ed25519:a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+          "approver_act": "approve",
+          "decision_date": "2026-09-19T00:00:00Z",
+          "record_nonce": "disp-0001"
+        },
+        "approver_signature": "ed25519-sig:1cc0750e5703d17bec8f6affb1fc7dd85bc7d50adecc94adcb40c0df3cf683811357fa7781d9cb1492e5d23d2e4a44d3b6cc3e8f886af3df8e5a1636cccf1b0d",
+        "system_metadata": {
+          "issuer": "grafomem-runtime",
+          "issuer_key_id": "ed25519:d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+          "recorded_at": "2026-09-19"
+        },
+        "system_signature": "ed25519-sig:954d6460be7d2b43e7fefc9363f018d052650b5b417c40eb8bf2f9eba5abbdbaf3fb824fcd905ce439904d25ee38b7b5e180b860633bd969f268677ed3c1d60f",
+        "evidence_ref": null
+      }
+    }
+  ]
+}

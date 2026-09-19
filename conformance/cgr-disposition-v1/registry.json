@@ -1,0 +1,15 @@
+{
+  "_note": "cgr.disposition.v1 MIRRORS the ratified normative registry (docs/cgr/cosign-profile-registry.json; decision: cosign-disposition-v1-profile-registry) — it is the contract, not a fixture. The runtime resolves profiles from the normative registry. cgr.disposition.v1.predicate is a VERIFIER-conformance fixture ONLY (exercises predicate_unresolved, decisions 0010/0011); it is NOT part of the disposition contract, whose required-ness is unconditional.",
+  "profiles": {
+    "cgr.disposition.v1": {
+      "approval_mode": "bound",
+      "approver_signature": "REQUIRED"
+    },
+    "cgr.disposition.v1.predicate": {
+      "approval_mode": "bound",
+      "approver_signature": {
+        "required_when": {"field": "content_body.nonexistent_flag", "op": "eq", "value": true}
+      }
+    }
+  }
+}
