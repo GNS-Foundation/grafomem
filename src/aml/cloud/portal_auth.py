@@ -19,6 +19,8 @@ from typing import Any
 import psycopg
 from psycopg.rows import dict_row
 
+from aml.server.scopes import TENANT_ADMIN_SCOPES
+
 logger = logging.getLogger("grafomem.cloud.portal_auth")
 
 # Soft-import bcrypt and jwt
@@ -320,9 +322,9 @@ class PortalAuth:
             (tenant_id, final_name, plan, now, email, supabase_uid),
         )
         conn.execute(
-            "INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role, created_at) "
-            "VALUES (gen_random_uuid()::text, %s, %s, 'Default Admin Key', 'admin', %s)",
-            (tenant_id, api_key, now),
+            "INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role, scopes, created_at) "
+            "VALUES (gen_random_uuid()::text, %s, %s, 'Default Admin Key', 'admin', %s, %s)",
+            (tenant_id, api_key, TENANT_ADMIN_SCOPES, now),
         )
 
         logger.info(
@@ -381,9 +383,9 @@ class PortalAuth:
             (tenant_id, name, plan, now, email, pw_hash),
         )
         conn.execute(
-            "INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role, created_at) "
-            "VALUES (gen_random_uuid()::text, %s, %s, 'Default Admin Key', 'admin', %s)",
-            (tenant_id, api_key, now),
+            "INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role, scopes, created_at) "
+            "VALUES (gen_random_uuid()::text, %s, %s, 'Default Admin Key', 'admin', %s, %s)",
+            (tenant_id, api_key, TENANT_ADMIN_SCOPES, now),
         )
 
         logger.info("Tenant signed up: %s (%s, %s)", tenant_id, name, email)

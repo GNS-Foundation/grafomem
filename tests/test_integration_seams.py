@@ -878,7 +878,7 @@ class TestKeyConstraints:
     def test_revoke_key_by_id(self, tenant_setup, tenant_manager):
         """revoke_key_by_id should delete by key_id + tenant_id."""
         tid = tenant_setup["tenant_id"]
-        key_info = tenant_manager.create_api_key(tid, name="revoke_byid")
+        key_info = tenant_manager.create_api_key(tid, name="revoke_byid", role="agent")
         key_id = key_info["key_id"]
         api_key = key_info["api_key"]
 
