@@ -24,6 +24,11 @@ ROUTES = [
     ("/v1/governed/decisions", {"decision": "certify", "invoice_id": "inv-1"}),
     ("/v1/governed/outcomes/bulk", [{"invoice_ref": "inv-1", "outcome": "paid"}]),
     ("/v1/governed/reviews/bulk", [{"invoice_ref": "inv-1", "reviewer_handle": "r1", "rating": 0.5}]),
+    # Adjacent governed-write routes (siblings of the three above), gated in the same PR:
+    ("/v1/governed/outcomes", {"invoice_ref": "inv-1", "outcome": "paid"}),
+    ("/v1/governed/reviews", {"invoice_ref": "inv-1", "reviewer_handle": "r1", "rating": 0.5}),
+    ("/v1/governed/verify-batch", {"invoices": []}),
+    ("/v1/cgr/rotation", {"prev_key": "a" * 64, "new_key": "b" * 64, "sig": "c" * 128}),
 ]
 
 

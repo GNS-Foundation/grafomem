@@ -436,6 +436,7 @@ def create_governed_router(decision_trail, execution_receipts, signing_identity,
         SERVER-SIDE, and record each result as a signed governed decision
         (verifiability_tag="rule")."""
         tenant_id = _tenant_id(request)
+        require_scope(request, "governed:write")  # admin `*` bypasses (see require_scope)
         _guard()
         from aml.cloud.verification import evaluate_invoice, resolve_policy
 
@@ -476,6 +477,7 @@ def create_governed_router(decision_trail, execution_receipts, signing_identity,
     @router.post("/v1/governed/outcomes")
     async def post_outcome(ev: OutcomeEvent, request: Request):
         tenant_id = _tenant_id(request)
+        require_scope(request, "governed:write")  # admin `*` bypasses (see require_scope)
         if ev.outcome not in _VALID_OUTCOMES:
             raise HTTPException(400, f"outcome must be one of {sorted(_VALID_OUTCOMES)}")
         return _record_outcome(
@@ -513,6 +515,7 @@ def create_governed_router(decision_trail, execution_receipts, signing_identity,
     @router.post("/v1/governed/reviews")
     async def post_review(rv: ReviewRecord, request: Request):
         tenant_id = _tenant_id(request)
+        require_scope(request, "governed:write")  # admin `*` bypasses (see require_scope)
         _validate_rating(rv.rating)
         return _record_review(
             _reviews_backend(), tenant_id=tenant_id, invoice_ref=rv.invoice_ref,
@@ -527,6 +530,7 @@ def create_governed_router(decision_trail, execution_receipts, signing_identity,
         append-only; the signature is verified at scoring time before keyA and keyB
         are folded into one identity."""
         tenant_id = _tenant_id(request)
+        require_scope(request, "governed:write")  # admin `*` bypasses (see require_scope)
         return _record_rotation(_rotations_backend(), tenant_id=tenant_id, p=p)
 
     @router.get("/v1/cgr/rotations")
