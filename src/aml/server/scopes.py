@@ -50,6 +50,9 @@ SCOPE_VOCABULARY: frozenset[str] = frozenset(
         "webhooks:admin",
         # Governed decision/outcome/review writes
         "governed:write",
+        # Two-party HITL dispositions (cgr.disposition.v1): attest (write) + verify (read)
+        "disposition:write",
+        "disposition:read",
         # Key management
         "keys:admin",
         # Platform admin (tenant CRUD, billing)
@@ -196,7 +199,8 @@ TENANT_ADMIN_SCOPES: list[str] = [
     "memory:read", "memory:write", "memory:admin",
     "orchestrator:run", "orchestrator:admin",
     "governance:read", "governance:admin",
-    "decisions:read", "cgr:read", "governed:write", "erasure:execute", "gcrumbs:read",
+    "decisions:read", "cgr:read", "governed:write", "disposition:write", "disposition:read",
+    "erasure:execute", "gcrumbs:read",
     "llm:admin", "webhooks:admin", "keys:admin",
     "compliance:read", "compliance:admin",
     "artifacts:read", "artifacts:admin", "manifold:read", "sso:admin",

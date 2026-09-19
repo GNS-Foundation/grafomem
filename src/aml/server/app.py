@@ -1191,6 +1191,12 @@ def create_app(
                 from aml.cgr.issuance import load_foundation_identity
                 store_mgr = app.state.store_manager
                 app.include_router(create_governed_router(dt, receipt_svc, signing_identity, store_mgr))
+                # cgr.disposition.v1 attest/verify (two-party HITL dispositions). Counter-signs with
+                # the runtime signing identity; ledger-class storage (migration 016). ledger_pool=None
+                # → single-role uses the main pool; split-role prod must supply a ledger-role writer.
+                from aml.cloud.disposition_routes import create_disposition_router
+                app.include_router(create_disposition_router(
+                    app.state.db_pool, signing_identity, ledger_pool=None, decision_trail=dt))
                 app.include_router(create_verify_router(signing_identity))
                 app.include_router(create_cgr_router(dt, store_mgr))
                 app.include_router(create_cgr_scoring_router(dt, store_mgr))
