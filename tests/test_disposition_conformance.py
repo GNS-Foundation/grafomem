@@ -33,6 +33,19 @@ def _load(name):
     return json.loads((_CORPUS / name).read_text())
 
 
+def test_vendored_verifier_matches_package():
+    """Drift guard: the runtime's VENDORED verifier (src/aml/cgr/cosign_verify.py) must stay
+    byte-identical to the reference (packages/grafomem-cgr/.../cosign_verify.py). The runtime
+    vendored a copy because grafomem_cgr is not importable in the deployed runtime; if the package
+    verifier changes and the vendored copy is not re-synced, the route would verify by a different
+    rulebook than the shared conformance corpus. Fail loudly the moment they diverge."""
+    vendored = _ROOT / "src" / "aml" / "cgr" / "cosign_verify.py"
+    reference = _ROOT / "packages" / "grafomem-cgr" / "src" / "grafomem_cgr" / "cosign_verify.py"
+    assert vendored.read_bytes() == reference.read_bytes(), (
+        "vendored src/aml/cgr/cosign_verify.py has drifted from packages/grafomem-cgr; "
+        "re-sync the vendored copy (copy the package file verbatim)")
+
+
 def test_corpus_wellformed():
     corpus = _load("vectors.json")
     registry = _load("registry.json")
