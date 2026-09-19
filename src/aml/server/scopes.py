@@ -79,7 +79,10 @@ SCOPE_VOCABULARY: frozenset[str] = frozenset(
 # ── Role → default scopes ───────────────────────────────────────────────────
 
 ROLE_SCOPES: dict[str, list[str]] = {
-    "admin": ["*"],
+    # NOTE: there is deliberately NO "admin" entry. `admin` used to map to ["*"], which made a
+    # cross-tenant superuser mintable by simply omitting scopes ({} → ROLE_SCOPES["admin"] → *).
+    # An own-tenant admin key now carries TENANT_ADMIN_SCOPES explicitly; a `*` superuser key must be
+    # requested with an explicit scopes=["*"] through validate_scopes. Do NOT re-add "admin": ["*"].
     "agent": [
         "memory:read",
         "memory:write",

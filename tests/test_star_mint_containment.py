@@ -45,6 +45,13 @@ def _insert_key(tenant_id: str, api_key: str, role: str, scopes: list[str]) -> N
             (uuid.uuid4().hex, tenant_id, api_key, role, scopes))
 
 
+def test_role_scopes_has_no_admin_star_entry():
+    """Regression guard: `admin` must not be an implicit `['*']` in ROLE_SCOPES (the source of the
+    `{}`→`*` birth-key class). `*` is reachable only via an explicit scopes=['*']."""
+    from aml.server.scopes import ROLE_SCOPES
+    assert "admin" not in ROLE_SCOPES
+
+
 def test_admin_by_omission_raises(tenant, tm):
     """MUST-FAIL: role='admin' with no scopes is refused (no more `{}`→`*` by omission)."""
     with pytest.raises(ValueError, match="explicit scopes"):
