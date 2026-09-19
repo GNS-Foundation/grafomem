@@ -393,6 +393,7 @@ def _record_rotation(backend, *, tenant_id, p: RotationProofRequest) -> dict:
 
 def create_governed_router(decision_trail, execution_receipts, signing_identity,
                            store_manager=None) -> APIRouter:
+    from aml.server.scopes import require_scope
     router = APIRouter(tags=["Governed Decisions"])
 
     def _guard():
@@ -417,6 +418,7 @@ def create_governed_router(decision_trail, execution_receipts, signing_identity,
     @router.post("/v1/governed/decisions")
     async def governed_decision(req: GovernedDecisionRequest, request: Request):
         tenant_id = _tenant_id(request)
+        require_scope(request, "governed:write")  # admin `*` bypasses (see require_scope)
         _guard()
         return _record_and_sign(
             decision_trail, execution_receipts, signing_identity,
@@ -485,6 +487,7 @@ def create_governed_router(decision_trail, execution_receipts, signing_identity,
     @router.post("/v1/governed/outcomes/bulk")
     async def post_outcomes_bulk(events: list[OutcomeEvent], request: Request):
         tenant_id = _tenant_id(request)
+        require_scope(request, "governed:write")  # admin `*` bypasses (see require_scope)
         backend = _outcomes_backend()
         # Scan the tenant's existing outcomes ONCE for the whole batch (was O(N·memories)).
         existing = _tenant_outcomes(backend, tenant_id)
@@ -571,6 +574,7 @@ def create_governed_router(decision_trail, execution_receipts, signing_identity,
     @router.post("/v1/governed/reviews/bulk")
     async def post_reviews_bulk(reviews: list[ReviewRecord], request: Request):
         tenant_id = _tenant_id(request)
+        require_scope(request, "governed:write")  # admin `*` bypasses (see require_scope)
         backend = _reviews_backend()
         # Scan the tenant's existing reviews ONCE for the whole batch (was O(N·memories),
         # which hung a 200-item bulk).
