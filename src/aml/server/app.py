@@ -669,6 +669,13 @@ def create_app(
                 await invalidation_task
             except asyncio.CancelledError:
                 pass
+        # Close the disposition ledger-role writer pool (if opened)
+        disp_ledger = getattr(app.state, "disposition_ledger_pool", None)
+        if disp_ledger is not None:
+            try:
+                disp_ledger.close()
+            except Exception:
+                pass
         # Close database pool last
         pool = getattr(app.state, "db_pool", None)
         if pool is not None:
@@ -1191,6 +1198,30 @@ def create_app(
                 from aml.cgr.issuance import load_foundation_identity
                 store_mgr = app.state.store_manager
                 app.include_router(create_governed_router(dt, receipt_svc, signing_identity, store_mgr))
+                # cgr.disposition.v1 attest/verify (two-party HITL dispositions). Counter-signs with
+                # the runtime signing identity; ledger-class storage (migration 016). cosign_dispositions
+                # is a ledger-class table in the MAIN db: the runtime role is SELECT-only, so the INSERT
+                # runs via a ledger-role writer. Derive it from GRAFOMEM_LEDGER_URL (the ledger role)
+                # pointed at the main db's name; single-role/self-host (no GRAFOMEM_LEDGER_URL) → None,
+                # and the route falls back to the main pool (the grant rule is a no-op there).
+                from aml.cloud.disposition_routes import create_disposition_router, ledger_writer_url
+                disposition_ledger_pool = None
+                _lurl = os.environ.get("GRAFOMEM_LEDGER_URL")
+                if _lurl and db_url and not spec_only:
+                    try:
+                        from aml.cloud.db_pool import DatabasePool
+                        _wurl = ledger_writer_url(_lurl, db_url)
+                        disposition_ledger_pool = DatabasePool(_wurl, min_size=1, max_size=4)
+                        disposition_ledger_pool.open()
+                        app.state.disposition_ledger_pool = disposition_ledger_pool
+                        logger.info("Disposition ledger-role writer pool opened (ledger role → main db)")
+                    except Exception as e:
+                        logger.warning("Disposition ledger writer pool unavailable: %s "
+                                       "(falling back to main pool — split-role INSERT will fail)", e)
+                        disposition_ledger_pool = None
+                app.include_router(create_disposition_router(
+                    app.state.db_pool, signing_identity,
+                    ledger_pool=disposition_ledger_pool, decision_trail=dt))
                 app.include_router(create_verify_router(signing_identity))
                 app.include_router(create_cgr_router(dt, store_mgr))
                 app.include_router(create_cgr_scoring_router(dt, store_mgr))

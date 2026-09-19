@@ -202,15 +202,15 @@
           "approver_key_id": "ed25519:a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
           "approver_act": "approve",
           "decision_date": "2026-09-19T00:00:00Z",
-          "record_nonce": "disp-0001"
+          "record_nonce": "disp-0006"
         },
-        "approver_signature": "ed25519-sig:1cc0750e5703d17bec8f6affb1fc7dd85bc7d50adecc94adcb40c0df3cf683811357fa7781d9cb1492e5d23d2e4a44d3b6cc3e8f886af3df8e5a1636cccf1b0d",
+        "approver_signature": "ed25519-sig:d5761357cb1ce00048f5d6799c54c339ef41825cf7c5d1c452eaadb76d0fda5151fae93ef4d493e24e1838b225925334a44cdc866197e159c56feff429f8000c",
         "system_metadata": {
           "issuer": "grafomem-runtime",
           "issuer_key_id": "ed25519:d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
           "recorded_at": "2026-09-19"
         },
-        "system_signature": "ed25519-sig:954d6460be7d2b43e7fefc9363f018d052650b5b417c40eb8bf2f9eba5abbdbaf3fb824fcd905ce439904d25ee38b7b5e180b860633bd969f268677ed3c1d60f",
+        "system_signature": "ed25519-sig:de61830ca0cb38f1f23ff730a925c3d4350cd9ec62401d5a5c38a302d09c28ae548d365598d0fb1b15b11afa0afc2c0776ebc178d7fdf91c4b394875109abc0a",
         "evidence_ref": null
       }
     }

@@ -60,3 +60,13 @@ the contract, not a fixture; the runtime resolves profiles from the normative re
 ```
 python3 conformance/cgr-disposition-v1/generate.py   # deterministic; test keys, NOT real keys
 ```
+
+## Corrections
+
+- **2026-09-19 — D6 `record_nonce` `disp-0001` → `disp-0006`.** D6 (the surfaced-assurance vector)
+  is an **independent valid record**, distinct from D1, but the generator's default nonce left both
+  on `disp-0001`. Under the ledger-class replay guard `UNIQUE(approver_key_id, record_nonce)`
+  (spec §4), posting D1 then D6 to one tenant made D6 a replay of D1's `(approver_key_id,
+  record_nonce)` pair. **How found:** the runtime conformance leg returned **HTTP 409** for D6 (it
+  expects 201) — the runtime was correct; the corpus was wrong. Fix: two distinct valid dispositions
+  carry distinct nonces; D6 now uses `disp-0006`. Offline verdicts unchanged; runtime leg green.

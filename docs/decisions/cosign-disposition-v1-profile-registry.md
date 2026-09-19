@@ -51,6 +51,13 @@ writes the registry and its first entry, via the **standard** rather than the pr
 - The runtime route (PR #173) MUST resolve profiles from this registry, not from any corpus fixture.
 - Adding a future profile or changing this entry is a new decision record + a registry edit (per-version,
   supersede-don't-restate).
+- **Scope limit (PR #173 runtime slice) — no unified `decision_trail` entry.** A recorded disposition
+  writes **only** the append-only, tenant-scoped, counter-signed `cosign_dispositions` row (migration
+  016); **that row IS the disposition's governed trail.** The runtime deliberately does **not** also
+  write a `decision_trail` entry for this slice: `DecisionTrail.log` is inference-shaped
+  (query/model_id/raw_output) and mapping a two-party HITL disposition onto it would fabricate
+  misleading fields. A future unified trail entry is a separate decision (it needs a disposition→trail
+  field mapping); until then, read dispositions from `cosign_dispositions` / `GET /v1/dispositions/{id}`.
 
 ## Open sub-questions
 
