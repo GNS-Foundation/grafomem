@@ -86,6 +86,68 @@ jobs:
       - name: W10 concurrency runner smoke
         run: python -m aml.eval.concurrency_runner
 
+  migrations-split-role:
+    # A2 visibility gate — ALLOWED TO FAIL, not gating. Runs the release-step migration path
+    # with GRAFOMEM_RUNTIME_ROLE set, so validate_migration_sql actually exercises the
+    # split-role grant rule (the `test` job above leaves it UNSET → the rule is a no-op, so a
+    # fresh split-role install is never tested — the gap named in the drift-audit A2 notes).
+    # EXPECTED to fail today at migration 004 (CREATE siem_export_cursors with no GRANT to
+    # grafomem_rt); that pre-grant-rule gap is intentionally VISIBLE here until A2 reconciles
+    # it. continue-on-error keeps it off the merge gate (branch protection gates on `test`).
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    services:
+      postgres:
+        image: pgvector/pgvector:pg15
+        env:
+          POSTGRES_USER: grafomem
+          POSTGRES_PASSWORD: dev
+          POSTGRES_DB: grafomem
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[all,dev]"
+
+      - name: Create ledger database
+        env:
+          PGPASSWORD: dev
+        run: psql -h localhost -U grafomem -d grafomem -c 'CREATE DATABASE grafomem_ledger;'
+
+      - name: Create runtime role grafomem_rt
+        env:
+          PGPASSWORD: dev
+        run: |
+          psql -h localhost -U grafomem -d grafomem \
+            -c "CREATE ROLE grafomem_rt NOLOGIN;" \
+            -c "GRANT USAGE ON SCHEMA public TO grafomem_rt;"
+
+      - name: Migration path WITH the split-role grant rule (expected to fail at 004 until reconciled)
+        env:
+          GRAFOMEM_MIGRATE_URL: postgresql://grafomem:dev@localhost:5432/grafomem
+          GRAFOMEM_RUNTIME_ROLE: grafomem_rt
+        run: |
+          export PROVIDER_ENCRYPTION_KEY="$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
+          export GRAFOMEM_MASTER_KEY="$(python -c 'import os; print(os.urandom(32).hex())')"
+          export GRAFOMEM_SIGNING_KEY="$(python -c 'print("b"*64)')"
+          # Expected: ensure_schema creates the base tables, then the runner REJECTS migration
+          # 004 under the grant rule. This step is meant to be RED until A2 reconciles 004/peers.
+          python -m aml.cloud.migrations_runner --ensure-schema
+
   test-runtime:
     runs-on: ubuntu-latest
     # DESCOPED (not gating): the FSL runtime/adapter subsystem has accumulated
