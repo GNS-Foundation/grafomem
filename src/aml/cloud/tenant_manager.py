@@ -322,11 +322,21 @@ class TenantManager:
         if role not in ("admin", "agent", "read_only"):
             raise ValueError(f"Invalid role: {role}")
 
-        # Resolve scopes: explicit list wins, otherwise derive from role
+        # Resolve scopes: explicit list wins, otherwise derive from role.
         if scopes is not None:
             resolved_scopes = validate_scopes(scopes)
+        elif role == "admin":
+            # admin-by-omission is UNREPRESENTABLE. It used to resolve to ROLE_SCOPES['admin']==['*']
+            # — a cross-tenant superuser minted by simply omitting scopes (the '*' birth-key class).
+            # A '*' key must now be requested EXPLICITLY (scopes=['*'], through validate_scopes); an
+            # own-tenant admin key passes scopes=TENANT_ADMIN_SCOPES.
+            raise ValueError(
+                "role='admin' requires explicit scopes: pass scopes=TENANT_ADMIN_SCOPES for an "
+                "own-tenant admin key, or scopes=['*'] for a deliberate superuser. "
+                "Refusing to mint '*' by omission."
+            )
         else:
-            resolved_scopes = list(ROLE_SCOPES.get(role, ROLE_SCOPES["admin"]))
+            resolved_scopes = list(ROLE_SCOPES.get(role, []))
 
         new_key = _generate_api_key(role=role, is_service_account=is_service_account)
         key_id = uuid.uuid4().hex
