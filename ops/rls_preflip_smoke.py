@@ -106,24 +106,30 @@ def main(argv=None):
 
     for t in TABLES:
         print(f"[{t}]")
-        # READS -------------------------------------------------------------
+        # Informational: own-context read on the real --read-tenant (0 just means that tenant
+        # has no rows in THIS table — not a leak; the authoritative proof is the smoke row below).
         _set(conn, A)
-        own = conn.execute(f"SELECT count(*) FROM {t}").fetchone()[0]
-        (_ok if own > 0 else _fail)(f"own-tenant read sees {own} rows (want >0 for a tenant with data)")
-        _set(conn, foreign)
-        fc = conn.execute(f"SELECT count(*) FROM {t}").fetchone()[0]
-        (_ok if fc == 0 else _fail)(f"foreign-tenant read sees {fc} rows (want 0)")
-        _set(conn, None)
-        uc = conn.execute(f"SELECT count(*) FROM {t}").fetchone()[0]
-        (_ok if uc == 0 else _fail)(f"unset-context read sees {uc} rows (want 0 — fail-closed)")
-        # WRITES (own-tenant, non-destructive: smoke tenant, cleaned up) ----
+        real = conn.execute(f"SELECT count(*) FROM {t}").fetchone()[0]
+        _ok(f"real-data read as tenant {A[:8]}…: {real} rows visible")
+        # Authoritative, self-contained isolation proof using the smoke tenant's OWN inserted row
+        # (proves own-read>0 / foreign→0 / unset→0 / writes, independent of pre-existing data):
         try:
             _set(conn, smoke)
-            marker = _minimal_insert(conn, t, smoke)
-            conn.execute(f"UPDATE {t} SET tenant_id=%s WHERE tenant_id=%s", (smoke, smoke))
-            seen = conn.execute(f"SELECT count(*) FROM {t} WHERE tenant_id=%s", (smoke,)).fetchone()[0]
+            _minimal_insert(conn, t, smoke)
+            conn.execute(f"UPDATE {t} SET tenant_id=%s WHERE tenant_id=%s", (smoke, smoke))  # own UPDATE
+            _set(conn, smoke)
+            own = conn.execute(f"SELECT count(*) FROM {t}").fetchone()[0]
+            (_ok if own >= 1 else _fail)(f"own-context read sees {own} rows (want ≥1 — its own inserted row)")
+            _set(conn, foreign)
+            fc = conn.execute(f"SELECT count(*) FROM {t}").fetchone()[0]
+            (_ok if fc == 0 else _fail)(f"foreign-tenant read sees {fc} rows (want 0)")
+            _set(conn, None)
+            uc = conn.execute(f"SELECT count(*) FROM {t}").fetchone()[0]
+            (_ok if uc == 0 else _fail)(f"unset-context read sees {uc} rows (want 0 — fail-closed)")
+            _set(conn, smoke)
             conn.execute(f"DELETE FROM {t} WHERE tenant_id=%s", (smoke,))
-            (_ok if seen >= 1 else _fail)(f"own-tenant INSERT/UPDATE/DELETE succeeded (grants + sequence USAGE OK)")
+            left = conn.execute(f"SELECT count(*) FROM {t}").fetchone()[0]
+            (_ok if left == 0 else _fail)(f"own-tenant INSERT/UPDATE/DELETE succeeded; smoke rows cleaned up (left={left})")
         except Exception as e:
             _fail(f"own-tenant WRITE failed — likely missing GRANT/sequence USAGE: {type(e).__name__}: {str(e)[:120]}")
     conn.close()
