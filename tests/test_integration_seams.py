@@ -497,9 +497,9 @@ class TestScopedKeys:
             validate_scopes(["bogus:scope"])
 
     def test_scope_vocabulary_completeness(self):
-        """Scope vocabulary should have all 23 scopes."""
+        """Scope vocabulary should have all 24 scopes."""
         from aml.server.scopes import SCOPE_VOCABULARY
-        assert len(SCOPE_VOCABULARY) == 23
+        assert len(SCOPE_VOCABULARY) == 24
         assert "*" in SCOPE_VOCABULARY
         assert "memory:read" in SCOPE_VOCABULARY
         assert "orchestrator:run" in SCOPE_VOCABULARY
@@ -513,6 +513,8 @@ class TestScopedKeys:
         assert "calibration:write" in SCOPE_VOCABULARY
         # CGR Ticket #2 — scoring surface scope
         assert "cgr:read" in SCOPE_VOCABULARY
+        # Governed-write gate (POST /v1/governed/{decisions,outcomes/bulk,reviews/bulk})
+        assert "governed:write" in SCOPE_VOCABULARY
 
 
 # ============================================================================
