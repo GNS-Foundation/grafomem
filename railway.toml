@@ -36,4 +36,8 @@ restartPolicyMaxRetries = 3
 # Runs ensure_schema (the base tables) then pending migrations, as the migrate role
 # ($GRAFOMEM_MIGRATE_URL). A non-zero exit BLOCKS the deploy — old version keeps
 # serving. Cloud boot does no DDL (create_app gates ensure_schema off in cloud).
-preDeployCommand = "python -m aml.cloud.migrations_runner --ensure-schema"
+# After schema/migrations, backfill tenant_api_keys.api_key_hash (hash-at-rest, DARK — auth still
+# reads plaintext). Runner-side HMAC; the pepper (GRAFOMEM_API_KEY_PEPPER) is never put in SQL.
+# --skip-if-no-pepper keeps a pepper-less environment dark instead of blocking the deploy; where the
+# pepper IS set (staging/prod), it runs and populates hashes. A hard failure still blocks the deploy.
+preDeployCommand = "python -m aml.cloud.migrations_runner --ensure-schema && python scripts/backfill_api_key_hash.py --skip-if-no-pepper"
