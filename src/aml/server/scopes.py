@@ -168,6 +168,20 @@ def require_platform(request: Request) -> None:
 
         raise HTTPException(403, "Access denied: platform-operator identity required")
 
+    # Defense in depth (2026-09-21): platform IDENTITY is necessary but NOT sufficient — the KEY must
+    # ALSO carry `admin:platform` (or the `*` superuser scope). Before this, gating was identity-only,
+    # so ANY key minted for the platform tenant — including a deliberately narrow one (e.g. `cgr:read`)
+    # — acted as a platform operator regardless of its scopes. A platform key must be explicitly
+    # privileged: `TENANT_ADMIN_SCOPES` (the default admin key) deliberately excludes `admin:platform`,
+    # so a platform operator uses an explicit `["*"]` (or `admin:platform`) key.
+    scopes = getattr(ctx, "scopes", []) or []
+    if "*" in scopes or "admin:platform" in scopes:
+        return
+    from fastapi import HTTPException
+
+    raise HTTPException(
+        403, "Access denied: admin:platform scope required (platform identity alone is not enough)")
+
 
 def require_platform_or_self(request: Request, target_tenant_id: str) -> None:
     """Allow a PLATFORM operator (any tenant) OR a tenant acting on its OWN tenant.
@@ -182,14 +196,11 @@ def require_platform_or_self(request: Request, target_tenant_id: str) -> None:
     if ctx is None or ctx.tenant_id == DEFAULT_NAMESPACE:
         return  # no-auth / single-tenant dev mode
 
-    if ctx.tenant_id in platform_tenant_ids():
-        return  # platform operator — cross-tenant permitted
     if ctx.tenant_id == target_tenant_id:
-        return  # acting on own tenant
-
-    from fastapi import HTTPException
-
-    raise HTTPException(403, "Access denied: platform-operator identity or own-tenant required")
+        return  # acting on OWN tenant — self-service, no platform scope required
+    # Cross-tenant ⇒ must be a platform operator WITH the platform scope (require_platform now enforces
+    # identity AND admin:platform/*), so a narrow platform-tenant key can't reach across tenants either.
+    require_platform(request)
 
 
 # ── Tenant-admin default scope set (NOT platform, NOT superuser) ─────────────

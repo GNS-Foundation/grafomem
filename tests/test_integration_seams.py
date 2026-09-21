@@ -117,31 +117,59 @@ def test_rbac_read_only_can_retrieve(tenant_setup, client):
     assert len(mems) > 0
     assert "Agent was here" in mems[0]["content"]
 
-def test_rbac_admin_cloud_endpoints(tenant_setup, client, monkeypatch):
-    # P0 2026-09-11: /v1/cloud/tenants is a PLATFORM route gated on PLATFORM_TENANT_IDS
-    # IDENTITY — not on role/scope. Deterministic: set the allowlist explicitly rather
-    # than relying on it being empty (CI/other env may set it). require_platform is
-    # per-TENANT, so a tenant's admin AND agent keys behave identically — what decides
-    # access is whether the caller's tenant is in the allowlist.
+def test_rbac_admin_cloud_endpoints(tenant_setup, client, tenant_manager, monkeypatch):
+    # P0 2026-09-11: /v1/cloud/tenants is a PLATFORM route gated on PLATFORM_TENANT_IDS identity.
+    # 2026-09-21 defense-in-depth: identity is NECESSARY but not SUFFICIENT — the key must ALSO carry
+    # admin:platform/*. Deterministic: set the allowlist explicitly.
     admin_key = tenant_setup["admin_key"]
     agent_key = tenant_setup["agent_key"]
     tenant_id = tenant_setup["tenant_id"]
     OTHER = "00000000000000000000000000000000"  # a tenant id that is NOT this tenant
 
-    # This tenant is NOT the platform operator → 403 for its keys (the priv-esc that
-    # used to pass via scopes=['*']). Both the admin and agent key must be denied.
+    # This tenant is NOT the platform operator → 403 for its keys.
     monkeypatch.setenv("PLATFORM_TENANT_IDS", OTHER)
     r = client.get("/v1/cloud/tenants", headers={"Authorization": f"Bearer {admin_key}"})
     assert r.status_code == 403, r.text
     r = client.get("/v1/cloud/tenants", headers={"Authorization": f"Bearer {agent_key}"})
     assert r.status_code == 403, r.text
 
-    # This tenant IS the platform operator → 200, and the list carries no api_key.
+    # This tenant IS the platform operator by identity — but the DEFAULT admin key carries
+    # TENANT_ADMIN_SCOPES, which EXCLUDES admin:platform, so it is now DENIED even here.
     monkeypatch.setenv("PLATFORM_TENANT_IDS", tenant_id)
     r = client.get("/v1/cloud/tenants", headers={"Authorization": f"Bearer {admin_key}"})
+    assert r.status_code == 403, f"default admin key must NOT reach platform routes on identity alone: {r.text}"
+
+    # A key that EXPLICITLY carries the superuser scope (how a platform operator is provisioned) → 200,
+    # and the list carries no api_key.
+    star_key = tenant_manager.create_api_key(
+        tenant_id, name="platform_star", role="admin", scopes=["*"])["api_key"]
+    r = client.get("/v1/cloud/tenants", headers={"Authorization": f"Bearer {star_key}"})
     assert r.status_code == 200, r.text
     for row in r.json():
         assert "api_key" not in row, f"api_key leaked: {row}"
+
+def test_platform_route_requires_scope_not_just_identity(tenant_setup, client, tenant_manager, monkeypatch):
+    """Defense in depth (2026-09-21): a PLATFORM route requires platform identity AND the key carrying
+    admin:platform/*. MUST-FAIL vs current main: a cgr:read key on the platform tenant returns 200 on
+    main (identity-only) — here it must be 403."""
+    tid = tenant_setup["tenant_id"]
+
+    # cgr:read key ON THE PLATFORM TENANT → 403 (narrow key; lacks admin:platform/*).
+    monkeypatch.setenv("PLATFORM_TENANT_IDS", tid)
+    narrow = tenant_manager.create_api_key(tid, name="cgr_ro_plat", role="agent", scopes=["cgr:read"])["api_key"]
+    r = client.get("/v1/cloud/tenants", headers={"Authorization": f"Bearer {narrow}"})
+    assert r.status_code == 403, f"cgr:read key on the platform tenant must be 403 (was 200 on main): {r.text}"
+
+    # POSITIVE CONTROL: a * key on the platform tenant → 200.
+    star = tenant_manager.create_api_key(tid, name="star_plat", role="admin", scopes=["*"])["api_key"]
+    r = client.get("/v1/cloud/tenants", headers={"Authorization": f"Bearer {star}"})
+    assert r.status_code == 200, f"* key on the platform tenant must be 200: {r.text}"
+
+    # A * key on a NON-platform tenant → 403 (identity fails; * alone is not platform).
+    monkeypatch.setenv("PLATFORM_TENANT_IDS", "00000000000000000000000000000000")
+    r = client.get("/v1/cloud/tenants", headers={"Authorization": f"Bearer {star}"})
+    assert r.status_code == 403, f"* key without platform identity must be 403: {r.text}"
+
 
 def test_rbac_delete_memory(tenant_setup, client):
     # Agent can delete memory
