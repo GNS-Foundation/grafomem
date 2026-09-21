@@ -455,6 +455,11 @@ def main(argv: list[str] | None = None) -> None:
         create_app(db_url=args.url, ensure_schema_only=True)
         logger.info("ensure-schema: done; applying pending migrations")
     print(apply_migrations(args.url))
+    # Hash-at-rest (DARK): backfill tenant_api_keys.api_key_hash IN THIS PROCESS — the pre-deploy
+    # runs a single command, so this must not depend on shell chaining. Skip when the pepper is
+    # unset (dark rollout, auth still plaintext); where it is set (staging/prod), populate hashes.
+    from aml.cloud.api_key_hash_backfill import run as _backfill_api_key_hash
+    _backfill_api_key_hash(args.url, skip_if_no_pepper=True)
 
 
 if __name__ == "__main__":
