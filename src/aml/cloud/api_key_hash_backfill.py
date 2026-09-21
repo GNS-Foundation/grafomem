@@ -45,7 +45,12 @@ def run(db_url: str, *, skip_if_no_pepper: bool = False) -> dict:
         pepper = get_pepper()
     except PepperMissing:
         if skip_if_no_pepper:
-            logger.info("api_key_hash backfill: skipped — GRAFOMEM_API_KEY_PEPPER not set (dark rollout)")
+            # WARNING, not INFO: a prod deploy without the pepper must not skip SILENTLY. The line is
+            # explicit so it stands out in the pre-deploy log — hashing is dark until the pepper is set.
+            logger.warning(
+                "api_key_hash backfill: SKIPPED — GRAFOMEM_API_KEY_PEPPER not set; api_key_hash left "
+                "unpopulated (DARK, auth still resolves by plaintext). Set the pepper to enable hashing."
+            )
             return {"skipped": True, "scanned": 0, "updated": 0}
         raise
     with psycopg.connect(db_url, row_factory=dict_row, autocommit=False) as conn:

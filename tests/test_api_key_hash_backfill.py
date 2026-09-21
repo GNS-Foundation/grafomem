@@ -109,6 +109,50 @@ def test_backfilled_hash_verifies_against_plaintext(setup):
         assert bytes(r["api_key_hash"]) == expected, "stored hash != runner-side HMAC of plaintext"
 
 
+def test_skip_logs_a_visible_warning(monkeypatch, caplog):
+    """CONFIRMATION 1: a pepper-less pre-deploy is NOT silent — the skip logs an explicit WARNING."""
+    import logging
+    from aml.cloud import api_key_hash_backfill as mod
+    monkeypatch.delenv(PEPPER_ENV, raising=False)
+    with caplog.at_level(logging.WARNING, logger="grafomem.migrations.apikeyhash"):
+        res = mod.run("postgresql://unused", skip_if_no_pepper=True)
+    assert res.get("skipped") is True
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert any("SKIPPED" in r.getMessage() and PEPPER_ENV in r.getMessage() for r in warnings), \
+        "skip must emit a visible WARNING naming the pepper env var"
+
+
+def test_backfill_is_idempotent(setup):
+    """CONFIRMATION 2: backfill selects only WHERE api_key_hash IS NULL, so a SECOND run updates 0."""
+    kid = uuid.uuid4().hex
+    key = f"gfm_{uuid.uuid4().hex}{uuid.uuid4().hex[:16]}"
+    with psycopg.connect(DB_URL, row_factory=dict_row, autocommit=True) as c:
+        c.execute("INSERT INTO tenant_api_keys (key_id,tenant_id,api_key,name,role,scopes) "
+                  "VALUES (%s,%s,%s,'idem','agent',%s)", (kid, setup["tenant_id"], key, ["cgr:read"]))
+        first = bf.backfill(c, PEPPER)
+        assert first["updated"] >= 1, "first run must populate the new NULL row"
+        second = bf.backfill(c, PEPPER)
+        assert second["updated"] == 0, "second run updates 0 (WHERE api_key_hash IS NULL selects nothing)"
+
+
+def test_api_key_hash_unique_index_enforced(setup):
+    """CONFIRMATION 3 (evidence): the UNIQUE index on api_key_hash is enforced — a duplicate hash is
+    rejected by the DB. (In practice tenant_api_keys.api_key is itself UNIQUE, so distinct plaintexts
+    give distinct HMACs and this never fires; if a dup ever existed the backfill's UPDATE would raise,
+    roll back, and the pre-deploy would exit non-zero → deploy blocked, previous build keeps serving.)"""
+    import psycopg.errors
+    h = compute_api_key_hash("gfm_" + uuid.uuid4().hex, PEPPER)
+    with psycopg.connect(DB_URL, autocommit=True) as c:
+        k1, k2 = uuid.uuid4().hex, uuid.uuid4().hex
+        c.execute("INSERT INTO tenant_api_keys (key_id,tenant_id,api_key,name,role,scopes,api_key_hash) "
+                  "VALUES (%s,%s,%s,'h1','agent',%s,%s)",
+                  (k1, setup["tenant_id"], "gfm_" + uuid.uuid4().hex, ["cgr:read"], h))
+        with pytest.raises(psycopg.errors.UniqueViolation):
+            c.execute("INSERT INTO tenant_api_keys (key_id,tenant_id,api_key,name,role,scopes,api_key_hash) "
+                      "VALUES (%s,%s,%s,'h2','agent',%s,%s)",
+                      (k2, setup["tenant_id"], "gfm_" + uuid.uuid4().hex, ["cgr:read"], h))
+
+
 def test_auth_still_resolves_by_plaintext_after_backfill(setup):
     """POSITIVE CONTROL: the change is DARK — auth still resolves the key by its plaintext after the
     column + backfill (auth does not read api_key_hash yet)."""
