@@ -321,10 +321,13 @@ class PortalAuth:
             "VALUES (%s, %s, %s, %s, %s, %s, 'active')",
             (tenant_id, final_name, plan, now, email, supabase_uid),
         )
+        _bk_id = uuid.uuid4().hex
+        from aml.server.api_key_hash import best_effort_hash
+        _bk_hash = best_effort_hash(api_key, key_id=_bk_id)  # PR 3.5: hash the birth key on mint
         conn.execute(
-            "INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role, scopes, created_at) "
-            "VALUES (gen_random_uuid()::text, %s, %s, 'Default Admin Key', 'admin', %s, %s)",
-            (tenant_id, api_key, TENANT_ADMIN_SCOPES, now),
+            "INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role, scopes, created_at, api_key_hash) "
+            "VALUES (%s, %s, %s, 'Default Admin Key', 'admin', %s, %s, %s)",
+            (_bk_id, tenant_id, api_key, TENANT_ADMIN_SCOPES, now, _bk_hash),
         )
 
         logger.info(
@@ -382,10 +385,13 @@ class PortalAuth:
             "VALUES (%s, %s, %s, %s, %s, %s, 'active')",
             (tenant_id, name, plan, now, email, pw_hash),
         )
+        _bk_id = uuid.uuid4().hex
+        from aml.server.api_key_hash import best_effort_hash
+        _bk_hash = best_effort_hash(api_key, key_id=_bk_id)  # PR 3.5: hash the birth key on mint
         conn.execute(
-            "INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role, scopes, created_at) "
-            "VALUES (gen_random_uuid()::text, %s, %s, 'Default Admin Key', 'admin', %s, %s)",
-            (tenant_id, api_key, TENANT_ADMIN_SCOPES, now),
+            "INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role, scopes, created_at, api_key_hash) "
+            "VALUES (%s, %s, %s, 'Default Admin Key', 'admin', %s, %s, %s)",
+            (_bk_id, tenant_id, api_key, TENANT_ADMIN_SCOPES, now, _bk_hash),
         )
 
         logger.info("Tenant signed up: %s (%s, %s)", tenant_id, name, email)

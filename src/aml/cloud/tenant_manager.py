@@ -117,10 +117,15 @@ CREATE TABLE IF NOT EXISTS tenant_api_keys (
     last_used_at TIMESTAMPTZ,
     ip_allowlist TEXT[]     DEFAULT '{}',
     is_service_account BOOLEAN DEFAULT false,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- Hash-at-rest (PR 2 migration 017): peppered HMAC of the key. Declared here too so a fresh
+    -- ensure_schema DB (CI, local, self-host) has the column — mint-time hashing (PR 3.5) writes it.
+    -- Dual-source with migration 017 (same pattern as the 011 coverage column).
+    api_key_hash BYTEA
 );
 CREATE INDEX IF NOT EXISTS idx_tenant_api_keys_key ON tenant_api_keys (api_key);
 CREATE INDEX IF NOT EXISTS idx_tenant_api_keys_tenant ON tenant_api_keys (tenant_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tenant_api_keys_api_key_hash ON tenant_api_keys (api_key_hash);
 """
 
 
@@ -246,10 +251,13 @@ class TenantManager:
         # Own-tenant admin, NOT platform: no '*', no admin:platform (P0 2026-09-11).
         # The default key fully operates ITS OWN tenant; platform routes require
         # platform-operator identity (PLATFORM_TENANT_IDS), not a scope this key holds.
+        birth_key_id = uuid.uuid4().hex
+        from aml.server.api_key_hash import best_effort_hash
+        birth_hash = best_effort_hash(api_key, key_id=birth_key_id)  # PR 3.5: hash the birth key on mint
         conn.execute(
-            "INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role, scopes, created_at) "
-            "VALUES (gen_random_uuid()::text, %s, %s, 'Default Admin Key', 'admin', %s, %s)",
-            (tenant_id, api_key, TENANT_ADMIN_SCOPES, now),
+            "INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role, scopes, created_at, api_key_hash) "
+            "VALUES (%s, %s, %s, 'Default Admin Key', 'admin', %s, %s, %s)",
+            (birth_key_id, tenant_id, api_key, TENANT_ADMIN_SCOPES, now, birth_hash),
         )
         logger.info("Tenant created: %s (%s, plan=%s)", tenant_id, name, plan)
 
@@ -347,11 +355,15 @@ class TenantManager:
         if not conn.execute("SELECT id FROM tenants WHERE id = %s", (tenant_id,)).fetchone():
             raise KeyError(f"Tenant {tenant_id!r} not found")
 
+        # Hash-at-rest (PR 3.5): populate api_key_hash on mint (best-effort — NULL if the pepper is
+        # unset; re-hashed by the next backfill). Covers rotate + console create-key (both call this).
+        from aml.server.api_key_hash import best_effort_hash
+        api_key_hash = best_effort_hash(new_key, key_id=key_id)
         conn.execute(
             "INSERT INTO tenant_api_keys "
             "(key_id, tenant_id, api_key, name, role, scopes, allowed_stores, "
-            " expires_at, ip_allowlist, is_service_account, created_at) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            " expires_at, ip_allowlist, is_service_account, created_at, api_key_hash) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
             (
                 key_id, tenant_id, new_key, name, role,
                 resolved_scopes,
@@ -360,6 +372,7 @@ class TenantManager:
                 ip_allowlist or [],
                 is_service_account,
                 now,
+                api_key_hash,
             ),
         )
         logger.info("API key created for tenant %s (role=%s)", tenant_id, role)
