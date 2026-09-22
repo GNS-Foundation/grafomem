@@ -12,7 +12,10 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 import os
+
+logger = logging.getLogger("grafomem.auth")
 
 PEPPER_ENV = "GRAFOMEM_API_KEY_PEPPER"
 
@@ -40,3 +43,27 @@ def compute_api_key_hash(api_key: str, pepper: str | None = None) -> bytes:
     if not pepper:
         raise PepperMissing(f"{PEPPER_ENV} empty")
     return hmac.new(pepper.encode("utf-8"), api_key.encode("utf-8"), hashlib.sha256).digest()
+
+
+def best_effort_hash(api_key: str, *, key_id: str | None = None) -> bytes | None:
+    """MINT-time hash: HMAC(pepper, api_key) when the pepper is set, else None (the row's
+    `api_key_hash` stays NULL — resolvable via plaintext under dual-read, and re-hashed by the next
+    pre-deploy backfill).
+
+    Best-effort BY DESIGN: a mint must NOT fail because the pepper is unset — fail-closing here would
+    break tenant/key creation in every pepper-less env (local dev, CI, self-host). That differs from
+    the bulk BACKFILL (fail-closed): a NULL writes no hash at all (the benign "not yet hashed" state),
+    whereas bulk-hashing under an empty pepper would write many identical WRONG hashes. Valid only
+    during the dual-read window — after the plaintext column drops (PR 5) a NULL-hash key cannot
+    authenticate, so the pepper must be present at startup by then.
+
+    The NULL fallback logs a **WARNING** with `key_id` (same visibility as a PLAINTEXT-PATH resolution)
+    so an unset pepper in an env that expects hashing (staging/prod) is never silent.
+    """
+    try:
+        return compute_api_key_hash(api_key)
+    except PepperMissing:
+        logger.warning(
+            "api_key mint: NULL api_key_hash — %s not set; key not hash-resolvable until the next "
+            "backfill (DARK, resolves via plaintext under dual-read). key_id=%s", PEPPER_ENV, key_id)
+        return None
