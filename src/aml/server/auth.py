@@ -75,6 +75,11 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
         # TTL cache for API key lookups: key → (tenant_id, role, scopes, allowed_stores, key_id, ip_allowlist, cached_at)
         self._api_key_cache: dict[str, tuple] = {}
         self._cache_ttl = 60  # seconds
+        # Hash-at-rest dual-read (PR 3): count of resolutions that fell back to the PLAINTEXT path
+        # (hash miss) while GRAFOMEM_API_KEY_DUAL_READ is on. The 7-day zero-plaintext-resolution
+        # window (the exit criterion for dropping the plaintext column) is measured from the log line
+        # each such resolution emits; this counter is the in-process mirror for tests/introspection.
+        self.plaintext_path_resolutions = 0
         if self.auth_mode == "token":
             logger.info("Token auth enabled (%d tokens loaded)", len(self.tokens))
         elif self.auth_mode == "cloud":
@@ -108,6 +113,49 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
             del self._api_key_cache[k]
         return len(stale)
 
+    _KEY_SELECT = ("SELECT key_id, tenant_id, role, scopes, allowed_stores, expires_at, ip_allowlist "
+                   "FROM tenant_api_keys WHERE ")
+
+    @staticmethod
+    def _dual_read_enabled() -> bool:
+        v = os.environ.get("GRAFOMEM_API_KEY_DUAL_READ", "").strip().lower()
+        return v not in ("", "0", "false", "no")
+
+    def _lookup_key_row(self, conn, api_key: str):
+        """Resolve the tenant_api_keys row for `api_key`, returning (row, via).
+
+        Dual-read (GRAFOMEM_API_KEY_DUAL_READ on): look up by `api_key_hash` FIRST —
+        HMAC(current pepper), then HMAC(retiring pepper) on miss — and fall back to the plaintext
+        `api_key` column only if the hash misses. Every plaintext-path resolution is logged + counted
+        (the signal for the 7-day zero-plaintext-resolution window). No writes to the plaintext column.
+        Flag off (default): plaintext lookup only — the legacy path, no dual-read log.
+        """
+        if self._dual_read_enabled():
+            from aml.server.api_key_hash import PepperMissing, compute_api_key_hash
+            hashes: list[bytes] = []
+            for env in ("GRAFOMEM_API_KEY_PEPPER", "GRAFOMEM_API_KEY_PEPPER_RETIRING"):
+                p = os.environ.get(env, "")
+                if p:
+                    try:
+                        hashes.append(compute_api_key_hash(api_key, p))
+                    except PepperMissing:
+                        pass
+            for h in hashes:
+                row = conn.execute(self._KEY_SELECT + "api_key_hash = %s", (h,)).fetchone()
+                if row:
+                    return row, "hash"
+            # Hash missed (wrong/absent api_key_hash, or no pepper) → plaintext fallback, made VISIBLE.
+            row = conn.execute(self._KEY_SELECT + "api_key = %s", (api_key,)).fetchone()
+            if row:
+                self.plaintext_path_resolutions += 1
+                logger.warning(
+                    "api_key auth: PLAINTEXT-PATH resolution (hash miss) key_id=%s — key not "
+                    "hash-resolvable; keeps the zero-plaintext window from closing.", row.get("key_id"))
+            return row, ("plaintext" if row else None)
+        # Dual-read off: plaintext only (legacy).
+        row = conn.execute(self._KEY_SELECT + "api_key = %s", (api_key,)).fetchone()
+        return row, ("plaintext" if row else None)
+
     def _resolve_api_key(self, api_key: str) -> tuple[str, str, list[str], list[str], str | None, list[str]] | None:
         """Resolve an API key to (tenant_id, role, scopes, allowed_stores, key_id, ip_allowlist) using the DB.
 
@@ -129,11 +177,7 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
             from psycopg.rows import dict_row
             conn = psycopg.connect(self._db_url, row_factory=dict_row,
                                    autocommit=True)
-            row = conn.execute(
-                "SELECT key_id, tenant_id, role, scopes, allowed_stores, expires_at, ip_allowlist "
-                "FROM tenant_api_keys WHERE api_key = %s",
-                (api_key,),
-            ).fetchone()
+            row, _via = self._lookup_key_row(conn, api_key)
 
             # The legacy `tenants.api_key` fallback was REMOVED (2026-09-16, drift-audit
             # prod addendum §2). A stale plaintext `tenants.api_key` must never
