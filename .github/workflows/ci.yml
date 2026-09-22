@@ -87,15 +87,18 @@ jobs:
         run: python -m aml.eval.concurrency_runner
 
   migrations-split-role:
-    # A2 visibility gate — ALLOWED TO FAIL, not gating. Runs the release-step migration path
-    # with GRAFOMEM_RUNTIME_ROLE set, so validate_migration_sql actually exercises the
-    # split-role grant rule (the `test` job above leaves it UNSET → the rule is a no-op, so a
-    # fresh split-role install is never tested — the gap named in the drift-audit A2 notes).
-    # EXPECTED to fail today at migration 004 (CREATE siem_export_cursors with no GRANT to
-    # grafomem_rt); that pre-grant-rule gap is intentionally VISIBLE here until A2 reconciles
-    # it. continue-on-error keeps it off the merge gate (branch protection gates on `test`).
+    # A2 GATING check. Runs the release-step migration path with GRAFOMEM_RUNTIME_ROLE set, so
+    # validate_migration_sql actually exercises the split-role grant rule (the `test` job above
+    # leaves it UNSET → the rule is a no-op, so the fresh least-privilege install is never tested
+    # there — the gap named in the drift-audit A2 notes). This job closes that gap.
+    #
+    # It used to be continue-on-error (visibility only), "EXPECTED to fail at 004" — that gap
+    # (CREATE siem_export_cursors with no GRANT to grafomem_rt) was RECONCILED 2026-09-19: 004 now
+    # carries `GRANT ... ON siem_export_cursors TO grafomem_rt` (guarded IF EXISTS grafomem_rt), and
+    # the full path 001→latest applies clean under the runtime role. So the job is flipped to GATING:
+    # any new migration that CREATEs a table without granting the runtime role now turns this RED and
+    # blocks the merge, instead of silently passing (continue-on-error had masked a now-green result).
     runs-on: ubuntu-latest
-    continue-on-error: true
     services:
       postgres:
         image: pgvector/pgvector:pg15
@@ -136,7 +139,7 @@ jobs:
             -c "CREATE ROLE grafomem_rt NOLOGIN;" \
             -c "GRANT USAGE ON SCHEMA public TO grafomem_rt;"
 
-      - name: Migration path WITH the split-role grant rule (expected to fail at 004 until reconciled)
+      - name: Migration path WITH the split-role grant rule (gating — must apply clean under grafomem_rt)
         env:
           GRAFOMEM_MIGRATE_URL: postgresql://grafomem:dev@localhost:5432/grafomem
           GRAFOMEM_RUNTIME_ROLE: grafomem_rt
@@ -144,8 +147,9 @@ jobs:
           export PROVIDER_ENCRYPTION_KEY="$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
           export GRAFOMEM_MASTER_KEY="$(python -c 'import os; print(os.urandom(32).hex())')"
           export GRAFOMEM_SIGNING_KEY="$(python -c 'print("b"*64)')"
-          # Expected: ensure_schema creates the base tables, then the runner REJECTS migration
-          # 004 under the grant rule. This step is meant to be RED until A2 reconciles 004/peers.
+          # ensure_schema creates the base tables, then the runner applies every migration under the
+          # split-role grant rule. A CREATE TABLE without a GRANT to grafomem_rt in the same migration
+          # makes validate_migration_sql exit non-zero → this step fails → the job (now gating) blocks.
           python -m aml.cloud.migrations_runner --ensure-schema
 
   test-runtime:
