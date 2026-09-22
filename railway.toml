@@ -36,4 +36,8 @@ restartPolicyMaxRetries = 3
 # Runs ensure_schema (the base tables) then pending migrations, as the migrate role
 # ($GRAFOMEM_MIGRATE_URL). A non-zero exit BLOCKS the deploy — old version keeps
 # serving. Cloud boot does no DDL (create_app gates ensure_schema off in cloud).
+# Runs ensure_schema + pending migrations, THEN (in the same process) the hash-at-rest api_key_hash
+# backfill (DARK — auth still reads plaintext; runner-side HMAC, pepper never in SQL; skipped where
+# GRAFOMEM_API_KEY_PEPPER is unset). In-process so it needs no shell chaining. Non-zero exit blocks
+# the deploy.
 preDeployCommand = "python -m aml.cloud.migrations_runner --ensure-schema"
