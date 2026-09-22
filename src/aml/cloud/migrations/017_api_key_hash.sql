@@ -8,12 +8,17 @@
 --
 -- No CREATE TABLE, so the split-role grant rule is a no-op; the runtime role's existing table-level
 -- grants on tenant_api_keys already cover the new column (Postgres extends table SELECT/DML to it).
--- Guarded so a prod that already has the column (via ensure_schema) is a recorded no-op.
+-- Guarded so a prod that already has the column (via ensure_schema) is a recorded no-op. The
+-- existence check is schema-qualified to current_schema() so the guard reflects the schema this
+-- migration actually runs against (search_path head) rather than matching a same-named table in any
+-- other schema — otherwise a throwaway/tenant schema whose tenant_api_keys lacks the column would be
+-- skipped because `public` happens to have it (the 011 pattern, corrected here).
 DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.columns
-    WHERE table_name = 'tenant_api_keys' AND column_name = 'api_key_hash'
+    WHERE table_schema = current_schema()
+      AND table_name = 'tenant_api_keys' AND column_name = 'api_key_hash'
   ) THEN
     ALTER TABLE tenant_api_keys ADD COLUMN api_key_hash BYTEA;
   END IF;
