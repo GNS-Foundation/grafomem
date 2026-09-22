@@ -92,6 +92,23 @@ def _generate_api_key() -> str:
     return f"gfm_{secrets.token_hex(24)}"
 
 
+def _login_drop_enabled() -> bool:
+    """PR 4 (hash-at-rest): when GRAFOMEM_API_KEY_LOGIN_DROP is on, authentication of an EXISTING
+    account no longer echoes the plaintext api_key back to the client — /login, and the returning-
+    tenant branches of Supabase link-or-create, drop it. Show-once provisioning (mint via
+    /v1/portal/api-keys, or /v1/portal/rotate-key) becomes the only way to obtain a usable key, so the
+    plaintext key stops flowing through login responses (and the console's localStorage) on every
+    sign-in.
+
+    First-time PROVISIONING is unaffected: signup and the brand-new-tenant branch of link-or-create
+    still return the freshly minted key once — that IS the show-once moment for a new account.
+
+    Default OFF — the legacy behaviour — so the cutover is a reversible env flip on the running
+    service, not a code deploy (mirrors GRAFOMEM_API_KEY_DUAL_READ)."""
+    v = os.environ.get("GRAFOMEM_API_KEY_LOGIN_DROP", "").strip().lower()
+    return v not in ("", "0", "false", "no")
+
+
 def _current_api_key(conn, tenant_id: str) -> str | None:
     """The tenant's current working key, read from ``tenant_api_keys``.
 
@@ -274,13 +291,16 @@ class PortalAuth:
 
         if row:
             # 014 step (a): working key comes from tenant_api_keys, not tenants.api_key.
-            return {
+            # PR 4 login-drop: a returning account gets no plaintext key when the flag is on.
+            out = {
                 "tenant_id": row["id"],
                 "name": row["name"],
                 "email": row["email"],
-                "api_key": _current_api_key(conn, row["id"]),
                 "plan": row["plan"],
             }
+            if not _login_drop_enabled():
+                out["api_key"] = _current_api_key(conn, row["id"])
+            return out
 
         # Check if there's a tenant with this email (legacy account migration)
         row = conn.execute(
@@ -300,13 +320,16 @@ class PortalAuth:
                 row["id"], supabase_uid,
             )
             # 014 step (a): working key comes from tenant_api_keys, not tenants.api_key.
-            return {
+            # PR 4 login-drop: a returning account gets no plaintext key when the flag is on.
+            out = {
                 "tenant_id": row["id"],
                 "name": row["name"],
                 "email": row["email"],
-                "api_key": _current_api_key(conn, row["id"]),
                 "plan": row["plan"],
             }
+            if not _login_drop_enabled():
+                out["api_key"] = _current_api_key(conn, row["id"])
+            return out
 
         # Create a new tenant
         tenant_id = uuid.uuid4().hex
@@ -437,10 +460,14 @@ class PortalAuth:
             "tenant_id": row["id"],
             "name": row["name"],
             "email": row["email"],
-            # 014 step (a): working key comes from tenant_api_keys, not tenants.api_key.
-            "api_key": _current_api_key(conn, row["id"]),
             "plan": row["plan"],
         }
+        # PR 4 login-drop: an existing account authenticating no longer receives its plaintext key.
+        # When the flag is off (default), preserve the legacy behaviour — read the working key from
+        # tenant_api_keys (014 step a: not tenants.api_key). When on, the client must provision a
+        # show-once key instead.
+        if not _login_drop_enabled():
+            info["api_key"] = _current_api_key(conn, row["id"])
         token = self._issue_jwt(row["id"], row["email"])
         return info, token
 
