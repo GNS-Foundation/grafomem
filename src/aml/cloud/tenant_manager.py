@@ -117,10 +117,15 @@ CREATE TABLE IF NOT EXISTS tenant_api_keys (
     last_used_at TIMESTAMPTZ,
     ip_allowlist TEXT[]     DEFAULT '{}',
     is_service_account BOOLEAN DEFAULT false,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- Hash-at-rest (PR 2 migration 017): peppered HMAC of the key. Declared here too so a fresh
+    -- ensure_schema DB (CI, local, self-host) has the column — mint-time hashing (PR 3.5) writes it.
+    -- Dual-source with migration 017 (same pattern as the 011 coverage column).
+    api_key_hash BYTEA
 );
 CREATE INDEX IF NOT EXISTS idx_tenant_api_keys_key ON tenant_api_keys (api_key);
 CREATE INDEX IF NOT EXISTS idx_tenant_api_keys_tenant ON tenant_api_keys (tenant_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tenant_api_keys_api_key_hash ON tenant_api_keys (api_key_hash);
 """
 
 
