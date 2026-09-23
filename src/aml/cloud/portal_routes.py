@@ -408,6 +408,45 @@ async def create_api_key(req: CreateApiKeyRequest, request: Request):
         raise HTTPException(400, str(e))
     return key_info
 
+
+@router.delete("/api-keys/{key_id}")
+async def revoke_api_key(key_id: str, request: Request):
+    """Revoke (delete) a SINGLE API key by key_id — tenant-scoped, non-destructive to other keys.
+
+    The per-key counterpart to /rotate-key (which deletes every key). Scoped by tenant_id, so a key_id
+    belonging to another tenant simply matches no row → 404 (never touches, never reveals it). Evicts
+    the auth cache so the revoked key stops resolving within the 60s TTL, not only in the DB."""
+    tenant = _require_portal_auth(request)
+    mgr = _tenant_manager(request)
+    audit = _audit_logger(request)
+    tenant_id = tenant["tenant_id"]
+    try:
+        conn = mgr._get_conn()
+        # Bind the cursor to a local so the pooled-connection proxy stays alive for rowcount (same
+        # idiom as /me's reads). Tenant-scoped DELETE: another tenant's key_id matches 0 rows → 404.
+        cur = conn.execute(
+            "DELETE FROM tenant_api_keys WHERE tenant_id = %s AND key_id = %s",
+            (tenant_id, key_id),
+        )
+        deleted = cur.rowcount
+    except Exception as e:
+        raise HTTPException(500, f"Error revoking key: {e}")
+    if not deleted:
+        raise HTTPException(404, "API key not found for this tenant")
+    # Deleting the row is not revocation on its own: the auth middleware caches key resolutions for
+    # 60s. Evict them or the revoked key keeps working (same wiring as /rotate-key).
+    from aml.server.auth import invalidate_tenant_key_cache
+    invalidate_tenant_key_cache(request, tenant_id)
+    if audit:
+        audit.log(
+            tenant_id=tenant_id,
+            actor=tenant["email"],
+            action="revoke_api_key",
+            resource="api_keys",
+            metadata={"key_id": key_id},
+        )
+    return {"status": "revoked", "key_id": key_id}
+
 @router.post("/profile")
 async def update_profile(req: UpdateProfileRequest, request: Request):
     """Update the signed-in user's editable profile (display name). Auth: portal
