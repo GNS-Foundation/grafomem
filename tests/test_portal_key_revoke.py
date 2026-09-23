@@ -59,6 +59,17 @@ def _disable_auth_cache(app) -> None:
     mw._cache_ttl = 0
 
 
+@pytest.fixture
+def live_cache(app_instance):
+    """Restore the REAL 60s auth-cache TTL — the cache-on test measures the eviction, not the DB path."""
+    mw = _auth_middleware(app_instance)
+    mw._api_key_cache.clear()
+    mw._cache_ttl = 60
+    yield mw
+    mw._api_key_cache.clear()
+    mw._cache_ttl = 0
+
+
 def _key_authenticates(client, api_key: str) -> bool:
     return client.get("/v1/stores", headers={"X-API-Key": api_key}).status_code == 200
 
@@ -131,3 +142,25 @@ def test_revoke_survivors_intact(client):
     assert {k3["key_id"]} <= after, "the other minted key must survive"
     assert _key_authenticates(client, held) and _key_authenticates(client, k3["api_key"])
     assert not _key_authenticates(client, k2["api_key"])
+
+
+# ── cache-on: revoke must EVICT the live 60s cache, not only the DB row ──
+# Runs with the REAL 60s TTL. Deleting the row is not revocation on its own — a key used once keeps
+# authenticating for up to 60s unless the endpoint calls invalidate_tenant_key_cache. Must-fail =
+# comment out that eviction in revoke_api_key → the revoked key still authenticates here.
+
+def test_revoke_evicts_auth_cache(client, live_cache):
+    acct = _signup(client)
+    second = _mint(client, acct["auth"])
+    assert _key_authenticates(client, second["api_key"]), "precondition: the key must work"
+    assert second["api_key"] in live_cache._api_key_cache, (
+        "precondition: the key must actually be CACHED, or this test proves nothing"
+    )
+
+    r = client.delete(f"/v1/portal/api-keys/{second['key_id']}", headers=acct["auth"])
+    assert r.status_code == 200, r.text
+
+    assert not _key_authenticates(client, second["api_key"]), (
+        "the revoked key still authenticates from the 60s cache — DELETE /api-keys/{id} is not "
+        "evicting the tenant's cached keys (invalidate_tenant_key_cache)"
+    )
