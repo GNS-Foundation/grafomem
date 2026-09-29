@@ -70,7 +70,10 @@ def test_rest_erasure_fail_closed(temp_db_url, monkeypatch):
     monkeypatch.delenv("ERASURE_SIGNING_KEY", raising=False)
     monkeypatch.delenv("GRAFOMEM_SIGNING_KEY", raising=False)
     monkeypatch.delenv("UNSAFE_LOCAL_DEV", raising=False)
-        
+    # With UNSAFE_LOCAL_DEV cleared, create_app requires the API-key pepper at startup (hash-at-rest PR 5
+    # precursor). This test is about the erasure signing identity, so give it a pepper explicitly.
+    monkeypatch.setenv("GRAFOMEM_API_KEY_PEPPER", "test-pepper-for-erasure-fail-closed")
+
     def _test_factory():
         from aml.backends.postgres_gmp import PostgresGMPBackend
         return PostgresGMPBackend(temp_db_url)
