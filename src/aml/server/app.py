@@ -493,6 +493,21 @@ async def _db_preflight(db_url: str, timeout: float) -> bool:
         return False
 
 
+
+def _require_api_key_pepper() -> None:
+    """Fail closed at startup when GRAFOMEM_API_KEY_PEPPER is unset/empty (hash-at-rest, PR 5 gate #3).
+
+    After the plaintext column is dropped (PR 5) a pepper-less process could authenticate no key at all; the
+    requirement is enforced here, before the drop, so that state is unreachable. UNSAFE_LOCAL_DEV bypasses
+    it with a warning, exactly like GRAFOMEM_MASTER_KEY."""
+    if os.environ.get("GRAFOMEM_API_KEY_PEPPER", "").strip():
+        return
+    if os.environ.get("UNSAFE_LOCAL_DEV"):
+        logger.warning("GRAFOMEM_API_KEY_PEPPER is not set — allowed only because UNSAFE_LOCAL_DEV is set")
+        return
+    raise RuntimeError("GRAFOMEM_API_KEY_PEPPER must be set in environment")
+
+
 def create_app(
     backend_factory=None,
     *,
@@ -847,6 +862,13 @@ def create_app(
     # Cloud management layer — only when db_url is provided
     if db_url is not None:
         pool = getattr(app.state, "db_pool", None)
+        # Hash-at-rest precondition (PR 5 open-gate #3): the API-key pepper is REQUIRED at process startup,
+        # fail closed, in the same class as GRAFOMEM_MASTER_KEY. Placed BEFORE the cloud-layer `try` below
+        # on purpose: that block's `except Exception` logs and continues, so a check inside it would let a
+        # pepper-less process boot and serve. Here the RuntimeError aborts create_app → the process never
+        # starts → the deploy fails and the previous version keeps serving. Local/dev escape mirrors the
+        # master key: UNSAFE_LOCAL_DEV set → warn and continue (auth falls back to plaintext until PR 5).
+        _require_api_key_pepper()
         try:
             # In spec_only mode we skip ensure_schema() — routes still mount
             def _init(svc):
