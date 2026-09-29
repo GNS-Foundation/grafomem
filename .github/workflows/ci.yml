@@ -60,6 +60,9 @@ jobs:
           export PROVIDER_ENCRYPTION_KEY="$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
           export GRAFOMEM_MASTER_KEY="$(python -c 'import os; print(os.urandom(32).hex())')"
           export GRAFOMEM_SIGNING_KEY="$(python -c 'print("b"*64)')"
+          # PR 5 precursor: the pepper is required at process startup (fail closed), and the release step runs the
+          # real create_app path — as on Railway, where the service variables (incl. the pepper) are inherited.
+          export GRAFOMEM_API_KEY_PEPPER="$(python -c 'import os; print(os.urandom(32).hex())')"
           python -m aml.cloud.migrations_runner --ensure-schema
 
       - name: Run tests
@@ -147,6 +150,9 @@ jobs:
           export PROVIDER_ENCRYPTION_KEY="$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
           export GRAFOMEM_MASTER_KEY="$(python -c 'import os; print(os.urandom(32).hex())')"
           export GRAFOMEM_SIGNING_KEY="$(python -c 'print("b"*64)')"
+          # PR 5 precursor: the pepper is required at process startup (fail closed), and the release step runs the
+          # real create_app path — as on Railway, where the service variables (incl. the pepper) are inherited.
+          export GRAFOMEM_API_KEY_PEPPER="$(python -c 'import os; print(os.urandom(32).hex())')"
           # ensure_schema creates the base tables, then the runner applies every migration under the
           # split-role grant rule. A CREATE TABLE without a GRANT to grafomem_rt in the same migration
           # makes validate_migration_sql exit non-zero → this step fails → the job (now gating) blocks.
