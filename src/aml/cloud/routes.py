@@ -245,8 +245,11 @@ async def get_tenant(tenant_id: str, request: Request):
     "/tenants/{tenant_id}/rotate-key", response_model=RotateKeyResponse,
 )
 async def rotate_key(tenant_id: str, request: Request):
-    """Revoke the current API key and issue a new one. PLATFORM operator, or the tenant itself."""
+    """Revoke the current API key and issue a new one. PLATFORM operator, or the tenant itself (keys:admin)."""
     require_platform_or_self(request, tenant_id)
+    # Self-access is identity only (scopes.py:199-200). This route deletes EVERY key on the tenant, so an
+    # own-tenant read_only/agent key must not reach it: require keys:admin (in TENANT_ADMIN_SCOPES; `*` passes).
+    require_scope(request, "keys:admin")
     _audit(request, "rotate_key", tenant_id)
     mgr = _tenant_manager(request)
     try:
@@ -412,8 +415,9 @@ async def get_subscription(tenant_id: str, request: Request):
 
 @router.post("/billing/cancel/{tenant_id}")
 async def cancel_subscription(tenant_id: str, request: Request):
-    """Cancel a tenant's Stripe subscription. Own tenant, or platform."""
+    """Cancel a tenant's Stripe subscription. Own tenant (keys:admin), or platform."""
     require_platform_or_self(request, tenant_id)
+    require_scope(request, "keys:admin")   # destructive on the tenant: not for read_only/agent keys
     svc = _stripe_billing(request)
     ok = svc.cancel_subscription(tenant_id)
     if not ok:
