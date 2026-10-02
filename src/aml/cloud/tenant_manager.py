@@ -108,7 +108,10 @@ CREATE TABLE IF NOT EXISTS tenants (
 CREATE TABLE IF NOT EXISTS tenant_api_keys (
     key_id      TEXT        PRIMARY KEY,
     tenant_id   TEXT        NOT NULL,
-    api_key     TEXT        NOT NULL UNIQUE,
+    -- Hash-at-rest PR 5: the plaintext column is NULLABLE (migration 018a) and never written or read
+    -- by the server any more; keys resolve by api_key_hash only. The HELD migration 018b drops it.
+    -- Declared here (nullable) so a fresh ensure_schema DB matches a migrated one before 018b.
+    api_key     TEXT        UNIQUE,
     name        TEXT        NOT NULL,
     role        TEXT        NOT NULL DEFAULT 'admin',
     scopes      TEXT[]      DEFAULT '{}',
@@ -123,7 +126,6 @@ CREATE TABLE IF NOT EXISTS tenant_api_keys (
     -- Dual-source with migration 017 (same pattern as the 011 coverage column).
     api_key_hash BYTEA
 );
-CREATE INDEX IF NOT EXISTS idx_tenant_api_keys_key ON tenant_api_keys (api_key);
 CREATE INDEX IF NOT EXISTS idx_tenant_api_keys_tenant ON tenant_api_keys (tenant_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tenant_api_keys_api_key_hash ON tenant_api_keys (api_key_hash);
 """
@@ -252,12 +254,12 @@ class TenantManager:
         # The default key fully operates ITS OWN tenant; platform routes require
         # platform-operator identity (PLATFORM_TENANT_IDS), not a scope this key holds.
         birth_key_id = uuid.uuid4().hex
-        from aml.server.api_key_hash import best_effort_hash
-        birth_hash = best_effort_hash(api_key, key_id=birth_key_id)  # PR 3.5: hash the birth key on mint
+        from aml.server.api_key_hash import mint_hash
+        birth_hash = mint_hash(api_key, key_id=birth_key_id)  # PR 5: hash only, fail closed; plaintext never stored
         conn.execute(
-            "INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role, scopes, created_at, api_key_hash) "
-            "VALUES (%s, %s, %s, 'Default Admin Key', 'admin', %s, %s, %s)",
-            (birth_key_id, tenant_id, api_key, TENANT_ADMIN_SCOPES, now, birth_hash),
+            "INSERT INTO tenant_api_keys (key_id, tenant_id, name, role, scopes, created_at, api_key_hash) "
+            "VALUES (%s, %s, 'Default Admin Key', 'admin', %s, %s, %s)",
+            (birth_key_id, tenant_id, TENANT_ADMIN_SCOPES, now, birth_hash),
         )
         logger.info("Tenant created: %s (%s, plan=%s)", tenant_id, name, plan)
 
@@ -282,13 +284,16 @@ class TenantManager:
 
     def get_tenant_by_key(self, api_key: str) -> TenantInfo | None:
         """Look up a tenant by its API key.  Returns ``None`` if not found."""
+        # Hash-at-rest PR 5: look up by api_key_hash (the plaintext is not stored); the presented key is
+        # echoed back in the result since the row no longer holds it.
+        from aml.server.api_key_hash import compute_api_key_hash
         conn = self._get_conn()
         row = conn.execute(
-            "SELECT t.id, t.name, k.api_key, t.plan, t.created_at, k.role "
+            "SELECT t.id, t.name, t.plan, t.created_at, k.role "
             "FROM tenants t "
             "JOIN tenant_api_keys k ON t.id = k.tenant_id "
-            "WHERE k.api_key = %s",
-            (api_key,),
+            "WHERE k.api_key_hash = %s",
+            (compute_api_key_hash(api_key),),
         ).fetchone()
         
         if row:
@@ -296,7 +301,7 @@ class TenantManager:
             return TenantInfo(
                 id=row["id"],
                 name=row["name"],
-                api_key=row["api_key"],
+                api_key=api_key,
                 plan=plan,
                 created_at=row["created_at"],
                 limits=PLAN_LIMITS.get(plan, PLAN_LIMITS["starter"]),
@@ -355,17 +360,18 @@ class TenantManager:
         if not conn.execute("SELECT id FROM tenants WHERE id = %s", (tenant_id,)).fetchone():
             raise KeyError(f"Tenant {tenant_id!r} not found")
 
-        # Hash-at-rest (PR 3.5): populate api_key_hash on mint (best-effort — NULL if the pepper is
-        # unset; re-hashed by the next backfill). Covers rotate + console create-key (both call this).
-        from aml.server.api_key_hash import best_effort_hash
-        api_key_hash = best_effort_hash(new_key, key_id=key_id)
+        # Hash-at-rest PR 5: the row holds api_key_hash ONLY (fail closed: no pepper → no mint). The
+        # plaintext is returned once in the response and never stored. Covers rotate + console
+        # create-key (both call this).
+        from aml.server.api_key_hash import mint_hash
+        api_key_hash = mint_hash(new_key, key_id=key_id)
         conn.execute(
             "INSERT INTO tenant_api_keys "
-            "(key_id, tenant_id, api_key, name, role, scopes, allowed_stores, "
+            "(key_id, tenant_id, name, role, scopes, allowed_stores, "
             " expires_at, ip_allowlist, is_service_account, created_at, api_key_hash) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
             (
-                key_id, tenant_id, new_key, name, role,
+                key_id, tenant_id, name, role,
                 resolved_scopes,
                 allowed_stores or [],
                 expires_at,
@@ -385,27 +391,33 @@ class TenantManager:
         }
 
     def revoke_key(self, api_key: str) -> str:
-        """Revoke a specific API key. Returns the deleted key value (for cache invalidation)."""
+        """Revoke a specific API key, matched by its hash (PR 5: the plaintext is not stored).
+        Returns the presented key value (for cache invalidation)."""
+        from aml.server.api_key_hash import compute_api_key_hash
         conn = self._get_conn()
-        cur = conn.execute("DELETE FROM tenant_api_keys WHERE api_key = %s RETURNING api_key", (api_key,))
+        cur = conn.execute("DELETE FROM tenant_api_keys WHERE api_key_hash = %s RETURNING key_id",
+                           (compute_api_key_hash(api_key),))
         row = cur.fetchone()
         if not row:
             raise KeyError("API key not found")
         logger.info("API key revoked")
-        return row[0] if isinstance(row, tuple) else row["api_key"]
+        return api_key
 
     def revoke_key_by_id(self, key_id: str, tenant_id: str) -> str:
-        """Revoke an API key by key_id (for portal/admin use). Returns the deleted api_key value."""
+        """Revoke an API key by key_id (for portal/admin use). Returns the deleted key_id.
+
+        PR 5: `RETURNING api_key` is gone with the plaintext column (the #188 site); callers evict the
+        auth cache per tenant (invalidate_tenant_key_cache), never by plaintext."""
         conn = self._get_conn()
         cur = conn.execute(
-            "DELETE FROM tenant_api_keys WHERE key_id = %s AND tenant_id = %s RETURNING api_key",
+            "DELETE FROM tenant_api_keys WHERE key_id = %s AND tenant_id = %s RETURNING key_id",
             (key_id, tenant_id),
         )
         row = cur.fetchone()
         if not row:
             raise KeyError(f"Key '{key_id}' not found for tenant")
         logger.info("API key revoked by key_id=%s", key_id)
-        return row[0] if isinstance(row, tuple) else row["api_key"]
+        return row[0] if isinstance(row, tuple) else row["key_id"]
 
     def list_api_keys(self, tenant_id: str) -> list[dict[str, Any]]:
         """Return all API keys for a tenant (without the raw key value)."""

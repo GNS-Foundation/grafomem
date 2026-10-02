@@ -93,37 +93,17 @@ def _generate_api_key() -> str:
 
 
 def _login_drop_enabled() -> bool:
-    """PR 4 (hash-at-rest): when GRAFOMEM_API_KEY_LOGIN_DROP is on, authentication of an EXISTING
-    account no longer echoes the plaintext api_key back to the client — /login, and the returning-
-    tenant branches of Supabase link-or-create, drop it. Show-once provisioning (mint via
-    /v1/portal/api-keys, or /v1/portal/rotate-key) becomes the only way to obtain a usable key, so the
-    plaintext key stops flowing through login responses (and the console's localStorage) on every
-    sign-in.
-
-    First-time PROVISIONING is unaffected: signup and the brand-new-tenant branch of link-or-create
-    still return the freshly minted key once — that IS the show-once moment for a new account.
-
-    Default OFF — the legacy behaviour — so the cutover is a reversible env flip on the running
-    service, not a code deploy (mirrors GRAFOMEM_API_KEY_DUAL_READ)."""
-    v = os.environ.get("GRAFOMEM_API_KEY_LOGIN_DROP", "").strip().lower()
-    return v not in ("", "0", "false", "no")
+    """Hash-at-rest PR 5: login-drop is UNCONDITIONAL. The server no longer stores the plaintext key
+    (migration 018a; held 018b drops the column), so a login/returning-tenant response cannot carry
+    one — the console mints its own device key (grafomem-web #52). GRAFOMEM_API_KEY_LOGIN_DROP is
+    no longer read; it is removed from the environments by the flag-cleanup PR."""
+    return True
 
 
-def _current_api_key(conn, tenant_id: str) -> str | None:
-    """The tenant's current working key, read from ``tenant_api_keys``.
-
-    014 step (a): ``tenants.api_key`` is no longer a credential store, so the login /
-    auto-provision responses (which the console persists as its working key) must source
-    the key here instead. Prefers the newest admin key, then the newest key of any role.
-    Returns ``None`` only if the tenant has no key row at all (the ensure_schema backfill
-    guaranteed every existing tenant one; new tenants mint one at creation).
-    """
-    row = conn.execute(
-        "SELECT api_key FROM tenant_api_keys WHERE tenant_id = %s "
-        "ORDER BY (role = 'admin') DESC, created_at DESC LIMIT 1",
-        (tenant_id,),
-    ).fetchone()
-    return row["api_key"] if row else None
+def _current_api_key(conn, tenant_id: str) -> str | None:  # noqa: ARG001
+    """Always None (hash-at-rest PR 5): the stored plaintext is gone, so there is no "current working
+    key" to echo. Kept as a function so the three login-path call sites read as an explicit no-op."""
+    return None
 
 
 # ============================================================================
@@ -345,12 +325,12 @@ class PortalAuth:
             (tenant_id, final_name, plan, now, email, supabase_uid),
         )
         _bk_id = uuid.uuid4().hex
-        from aml.server.api_key_hash import best_effort_hash
-        _bk_hash = best_effort_hash(api_key, key_id=_bk_id)  # PR 3.5: hash the birth key on mint
+        from aml.server.api_key_hash import mint_hash
+        _bk_hash = mint_hash(api_key, key_id=_bk_id)  # PR 5: hash only, fail closed; plaintext never stored
         conn.execute(
-            "INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role, scopes, created_at, api_key_hash) "
-            "VALUES (%s, %s, %s, 'Default Admin Key', 'admin', %s, %s, %s)",
-            (_bk_id, tenant_id, api_key, TENANT_ADMIN_SCOPES, now, _bk_hash),
+            "INSERT INTO tenant_api_keys (key_id, tenant_id, name, role, scopes, created_at, api_key_hash) "
+            "VALUES (%s, %s, 'Default Admin Key', 'admin', %s, %s, %s)",
+            (_bk_id, tenant_id, TENANT_ADMIN_SCOPES, now, _bk_hash),
         )
 
         logger.info(
@@ -409,12 +389,12 @@ class PortalAuth:
             (tenant_id, name, plan, now, email, pw_hash),
         )
         _bk_id = uuid.uuid4().hex
-        from aml.server.api_key_hash import best_effort_hash
-        _bk_hash = best_effort_hash(api_key, key_id=_bk_id)  # PR 3.5: hash the birth key on mint
+        from aml.server.api_key_hash import mint_hash
+        _bk_hash = mint_hash(api_key, key_id=_bk_id)  # PR 5: hash only, fail closed; plaintext never stored
         conn.execute(
-            "INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role, scopes, created_at, api_key_hash) "
-            "VALUES (%s, %s, %s, 'Default Admin Key', 'admin', %s, %s, %s)",
-            (_bk_id, tenant_id, api_key, TENANT_ADMIN_SCOPES, now, _bk_hash),
+            "INSERT INTO tenant_api_keys (key_id, tenant_id, name, role, scopes, created_at, api_key_hash) "
+            "VALUES (%s, %s, 'Default Admin Key', 'admin', %s, %s, %s)",
+            (_bk_id, tenant_id, TENANT_ADMIN_SCOPES, now, _bk_hash),
         )
 
         logger.info("Tenant signed up: %s (%s, %s)", tenant_id, name, email)

@@ -117,12 +117,9 @@ def test_portal_me_lists_key_metadata(client):
 
 
 def test_login_returns_working_key_from_tenant_api_keys(client):
-    """014 step (a) regression: signup/login still hand the console a USABLE key.
-
-    tenants.api_key is no longer written, so login/auto_provision must source the key
-    from tenant_api_keys — otherwise they return NULL and the console (which persists the
-    login response as its working key) breaks. Also proves the key did NOT come from
-    tenants.api_key: that column must be NULL for a post-014 signup.
+    """Hash-at-rest PR 5 (supersedes the 014 step (a) expectation): signup hands the console its
+    birth key ONCE; login returns NO key — the plaintext is not stored any more, and the console
+    mints its own device key (grafomem-web #52). Also proves tenants.api_key stays NULL.
     """
     email = f"login-key-{uuid.uuid4().hex[:8]}@example.test"
     password = "correct-horse-battery-staple"
@@ -135,9 +132,11 @@ def test_login_returns_working_key_from_tenant_api_keys(client):
     lr = client.post("/v1/portal/login", json={"email": email, "password": password})
     assert lr.status_code == 200, lr.text
     login_key = lr.json().get("api_key")
-    assert login_key, "login returned no api_key — the console would lose its credential"
-    assert _authenticates(client, login_key), (
-        "login's api_key did not authenticate — login must source the key from tenant_api_keys"
+    assert not login_key, "login must not return a plaintext key (none is stored since PR 5)"
+    signup_key = r.json().get("api_key")
+    assert signup_key, "signup must still return the birth key once"
+    assert _authenticates(client, signup_key), (
+        "the signup birth key did not authenticate — it must resolve by its hash"
     )
 
     # The key must NOT have come from tenants.api_key: that column is NULL post-014.

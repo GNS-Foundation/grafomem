@@ -42,6 +42,19 @@ from datetime import datetime, timezone
 import psycopg
 from psycopg.rows import dict_row
 
+from aml.server.api_key_hash import compute_api_key_hash
+from aml.server.scopes import validate_scopes
+
+
+def _hash(api_key: str, key_id: str) -> bytes:
+    """Hash-at-rest PR 5: every key this script mints is stored as api_key_hash ONLY. FAIL CLOSED —
+    without GRAFOMEM_API_KEY_PEPPER in this process the mint is refused, since a row without a hash
+    could never authenticate (there is no plaintext column to fall back on)."""
+    try:
+        return compute_api_key_hash(api_key)
+    except Exception as e:  # PepperMissing
+        raise SystemExit(f"refusing to mint key_id={key_id}: {e}") from None
+
 # Non-secret columns carried verbatim from the replaced row (1:1 preserve path).
 _PRESERVED = ("tenant_id", "name", "role", "scopes", "allowed_stores",
               "expires_at", "ip_allowlist", "is_service_account", "created_at")
@@ -135,12 +148,12 @@ def _rotate_all_live(conn, plan, out_path: str) -> int:
             with conn.transaction():
                 conn.execute(
                     "INSERT INTO tenant_api_keys "
-                    "(key_id, tenant_id, api_key, name, role, scopes, allowed_stores, "
-                    " expires_at, ip_allowlist, is_service_account, created_at, last_used_at) "
-                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NULL)",
-                    (new_key_id, r["tenant_id"], new_key, r["name"], r["role"], r["scopes"],
+                    "(key_id, tenant_id, name, role, scopes, allowed_stores, "
+                    " expires_at, ip_allowlist, is_service_account, created_at, last_used_at, api_key_hash) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NULL,%s)",
+                    (new_key_id, r["tenant_id"], r["name"], r["role"], validate_scopes(r["scopes"] or []),
                      r["allowed_stores"], r["expires_at"], r["ip_allowlist"],
-                     r["is_service_account"], r["created_at"]),
+                     r["is_service_account"], r["created_at"], _hash(new_key, new_key_id)),
                 )
                 conn.execute("DELETE FROM tenant_api_keys WHERE key_id = %s", (r["key_id"],))
             out.write(json.dumps({
@@ -201,11 +214,11 @@ def _mint_only_live(conn, only_tenants, rows, override, out_path: str) -> int:
                 new_key_id = uuid.uuid4().hex
                 conn.execute(
                     "INSERT INTO tenant_api_keys "
-                    "(key_id, tenant_id, api_key, name, role, scopes, allowed_stores, "
-                    " expires_at, ip_allowlist, is_service_account, created_at, last_used_at) "
-                    "VALUES (%s,%s,%s,%s,%s,%s,'{}',NULL,'{}',false,%s,NULL)",
-                    (new_key_id, tid, new_key, override["name"], override["role"],
-                     override["scopes"], now),
+                    "(key_id, tenant_id, name, role, scopes, allowed_stores, "
+                    " expires_at, ip_allowlist, is_service_account, created_at, last_used_at, api_key_hash) "
+                    "VALUES (%s,%s,%s,%s,%s,'{}',NULL,'{}',false,%s,NULL,%s)",
+                    (new_key_id, tid, override["name"], override["role"],
+                     validate_scopes(override["scopes"]), now, _hash(new_key, new_key_id)),
                 )
                 out.write(json.dumps({
                     "tenant_id": tid, "tenant_name": tname, "new_key_id": new_key_id,
@@ -221,12 +234,12 @@ def _mint_only_live(conn, only_tenants, rows, override, out_path: str) -> int:
                 new_key_id = uuid.uuid4().hex
                 conn.execute(
                     "INSERT INTO tenant_api_keys "
-                    "(key_id, tenant_id, api_key, name, role, scopes, allowed_stores, "
-                    " expires_at, ip_allowlist, is_service_account, created_at, last_used_at) "
-                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NULL)",
-                    (new_key_id, r["tenant_id"], new_key, r["name"], r["role"], r["scopes"],
+                    "(key_id, tenant_id, name, role, scopes, allowed_stores, "
+                    " expires_at, ip_allowlist, is_service_account, created_at, last_used_at, api_key_hash) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NULL,%s)",
+                    (new_key_id, r["tenant_id"], r["name"], r["role"], validate_scopes(r["scopes"] or []),
                      r["allowed_stores"], r["expires_at"], r["ip_allowlist"],
-                     r["is_service_account"], now),
+                     r["is_service_account"], now, _hash(new_key, new_key_id)),
                 )
                 out.write(json.dumps({
                     "tenant_id": r["tenant_id"], "tenant_name": r["tenant_name"],

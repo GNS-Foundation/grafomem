@@ -17,6 +17,7 @@ import pytest
 from aml.cloud.tenant_manager import TenantManager
 from aml.server.auth import TenantAuthMiddleware
 from aml.server.scopes import TENANT_ADMIN_SCOPES
+from aml.server.api_key_hash import compute_api_key_hash
 
 DB_URL = os.environ.get("GRAFOMEM_DB_URL", "postgresql://grafomem:dev@localhost:5432/grafomem")
 
@@ -40,9 +41,9 @@ def _resolver() -> TenantAuthMiddleware:
 def _insert_key(tenant_id: str, api_key: str, role: str, scopes: list[str]) -> None:
     with psycopg.connect(DB_URL, autocommit=True) as c:
         c.execute(
-            "INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role, scopes) "
+            "INSERT INTO tenant_api_keys (key_id, tenant_id, api_key_hash, name, role, scopes) "
             "VALUES (%s,%s,%s,'t',%s,%s)",
-            (uuid.uuid4().hex, tenant_id, api_key, role, scopes))
+            (uuid.uuid4().hex, tenant_id, compute_api_key_hash(api_key), role, scopes))  # PR 5: stored by hash
 
 
 def test_role_scopes_has_no_admin_star_entry():

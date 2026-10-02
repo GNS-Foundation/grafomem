@@ -30,13 +30,14 @@ def test_015_nulls_residual_tenants_api_key(fresh_tables):
 
     tid = uuid.uuid4().hex
     residual = f"gfm_{uuid.uuid4().hex}"       # a stale plaintext value in tenants.api_key
-    live_key = f"gfm_{uuid.uuid4().hex}"       # the authoritative key in tenant_api_keys
+    live_key_id = uuid.uuid4().hex             # the authoritative key row in tenant_api_keys (hash only, PR 5)
+    live_hash = os.urandom(32)
     with psycopg.connect(DB_URL, autocommit=True) as c:
         c.execute("INSERT INTO tenants (id, name, plan, status, api_key) "
                   "VALUES (%s, %s, 'starter', 'active', %s)", (tid, "residual", residual))
-        c.execute("INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role) "
-                  "VALUES (gen_random_uuid()::text, %s, %s, 'Default Admin Key', 'admin')",
-                  (tid, live_key))
+        c.execute("INSERT INTO tenant_api_keys (key_id, tenant_id, name, role, api_key_hash) "
+                  "VALUES (%s, %s, 'Default Admin Key', 'admin', %s)",
+                  (live_key_id, tid, live_hash))
         pre = c.execute("SELECT count(*) FROM tenants WHERE api_key IS NOT NULL").fetchone()[0]
         assert pre >= 1  # non-vacuity: there IS a residual value to null
 
@@ -46,8 +47,8 @@ def test_015_nulls_residual_tenants_api_key(fresh_tables):
         assert col is None, f"015 must null tenants.api_key, got {col!r}"
         assert c.execute("SELECT count(*) FROM tenants WHERE api_key IS NOT NULL").fetchone()[0] == 0
         # tenant_api_keys is the source of truth and must be UNTOUCHED.
-        row = c.execute("SELECT api_key FROM tenant_api_keys WHERE tenant_id = %s", (tid,)).fetchone()
-        assert row is not None and row[0] == live_key, "015 must not touch tenant_api_keys"
+        row = c.execute("SELECT key_id, api_key_hash FROM tenant_api_keys WHERE tenant_id = %s", (tid,)).fetchone()
+        assert row is not None and row[0] == live_key_id and bytes(row[1]) == live_hash, "015 must not touch tenant_api_keys"
 
         # Idempotent: a second run nulls nothing new and does not error.
         c.execute(MIG_015.read_text())

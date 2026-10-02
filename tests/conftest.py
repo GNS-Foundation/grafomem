@@ -9,6 +9,9 @@ os.environ["GRAFOMEM_DB_URL"] = TEST_DB_URL
 os.environ["GRAFOMEM_LEDGER_URL"] = "postgresql://grafomem:dev@localhost:5432/grafomem_ledger"
 os.environ["GRAFOMEM_MASTER_KEY"] = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 os.environ["UNSAFE_LOCAL_DEV"] = "true"
+# Hash-at-rest PR 5: keys resolve by hash only and a mint refuses without the pepper, so the suite
+# runs with a test pepper by default; tests that exercise the missing-pepper paths delenv it.
+os.environ.setdefault("GRAFOMEM_API_KEY_PEPPER", "test-suite-pepper-" + "0" * 40)
 
 def create_all_test_schema():
     """Create ALL schema on a fresh DB by instantiating the schema-owning services

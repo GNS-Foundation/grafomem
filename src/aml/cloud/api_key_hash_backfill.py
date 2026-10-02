@@ -23,6 +23,14 @@ logger = logging.getLogger("grafomem.migrations.apikeyhash")
 def backfill(conn, pepper: str) -> dict:
     """Populate api_key_hash for every row missing it. The pepper is used only as in-process HMAC
     input; the UPDATE is parameterized on the hash bytes and key_id — never the pepper."""
+    # Hash-at-rest PR 5: after the HELD migration 018b the plaintext column no longer exists and there
+    # is nothing to backfill — this runs in every pre-deploy, so it must be a clean no-op then.
+    if not conn.execute(
+        "SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() "
+        "AND table_name = 'tenant_api_keys' AND column_name = 'api_key'"
+    ).fetchone():
+        logger.info("api_key_hash backfill: plaintext column already dropped (018b) — nothing to do")
+        return {"scanned": 0, "updated": 0, "column_dropped": True}
     rows = conn.execute(
         "SELECT key_id, api_key FROM tenant_api_keys "
         "WHERE api_key_hash IS NULL AND api_key IS NOT NULL"
