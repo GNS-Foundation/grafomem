@@ -826,13 +826,13 @@ class SSOProvider:
             (tenant_id, name, "starter", now, email, sso_provider, sso_sub),
         )
         from aml.server.scopes import TENANT_ADMIN_SCOPES
-        from aml.server.api_key_hash import best_effort_hash
+        from aml.server.api_key_hash import mint_hash
         _bk_id = uuid.uuid4().hex
-        _bk_hash = best_effort_hash(api_key, key_id=_bk_id)  # PR 3.5: hash the birth key on mint
+        _bk_hash = mint_hash(api_key, key_id=_bk_id)  # PR 5: hash only, fail closed; plaintext never stored
         conn.execute(
-            "INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role, scopes, created_at, api_key_hash) "
-            "VALUES (%s, %s, %s, 'Default Admin Key', 'admin', %s, %s, %s)",
-            (_bk_id, tenant_id, api_key, TENANT_ADMIN_SCOPES, now, _bk_hash),
+            "INSERT INTO tenant_api_keys (key_id, tenant_id, name, role, scopes, created_at, api_key_hash) "
+            "VALUES (%s, %s, 'Default Admin Key', 'admin', %s, %s, %s)",
+            (_bk_id, tenant_id, TENANT_ADMIN_SCOPES, now, _bk_hash),
         )
         logger.info(
             "New tenant created via SSO: %s (%s via %s)",

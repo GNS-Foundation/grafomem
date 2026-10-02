@@ -51,6 +51,20 @@ def _migrations_dir() -> Path:
     return Path(__file__).parent / "migrations"
 
 
+HELD_SUBDIR = "held"
+
+
+def _held_dir(migrations_dir: Path | None = None) -> Path:
+    """Migrations the ordinary pass must NEVER apply (e.g. 018b, the irreversible plaintext drop).
+
+    They live in `migrations/held/`, a subdirectory, because `_sql_files` lists only the files directly
+    in the migrations directory — so a held migration cannot be picked up by a deploy's pre-deploy
+    runner pass, a `--ensure-schema` run, or self-host boot-apply, whatever its filename sorts to. It
+    is applied only by `apply_held_migration` (CLI: `--apply-held NAME --confirm-irreversible`).
+    """
+    return (migrations_dir or _migrations_dir()) / HELD_SUBDIR
+
+
 def _sql_files(migrations_dir: Path) -> list[Path]:
     if not migrations_dir.exists():
         return []
@@ -346,6 +360,69 @@ def apply_migrations(
     return result
 
 
+class HeldMigrationRefused(RuntimeError):
+    """A held migration's precondition failed; nothing was written."""
+
+
+def held_preconditions_018b(conn) -> list[str]:
+    """What must hold on the target DB before 018b (drop the plaintext column) may run. Returns the
+    list of failed preconditions (empty = may run)."""
+    failed: list[str] = []
+    applied = {r[0] for r in conn.execute("SELECT version FROM schema_migrations").fetchall()}
+    if "018a_api_key_plaintext_nullable.sql" not in applied:
+        failed.append("018a_api_key_plaintext_nullable.sql is not recorded as applied (the hash-only "
+                      "release must be deployed and its 018a applied first)")
+    col = conn.execute(
+        "SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() "
+        "AND table_name = 'tenant_api_keys' AND column_name = 'api_key'").fetchone()
+    if not col:
+        failed.append("tenant_api_keys.api_key does not exist (already dropped?)")
+    else:
+        n = conn.execute("SELECT count(*) FROM tenant_api_keys WHERE api_key_hash IS NULL").fetchone()[0]
+        if n:
+            failed.append(f"{n} tenant_api_keys row(s) have api_key_hash IS NULL — they could never "
+                          "authenticate after the drop; backfill or re-mint them first")
+    return failed
+
+
+_HELD_PRECONDITIONS = {"018b_drop_api_key_plaintext.sql": held_preconditions_018b}
+
+
+def apply_held_migration(
+    migrate_url: str, name: str, *, confirm_irreversible: bool = False,
+    migrations_dir: Path | None = None, runtime_role: str | None = None,
+) -> dict:
+    """Apply ONE held migration, explicitly. Refuses without `confirm_irreversible`, if the file is not
+    in migrations/held/, if it is already recorded, or if its preconditions fail. Records the ledger row
+    with applied_via='held' so provenance shows it was an operator action, not a deploy."""
+    if runtime_role is None:
+        runtime_role = os.environ.get(RUNTIME_ROLE_ENV) or None
+    _check_ident(runtime_role)
+    if not confirm_irreversible:
+        raise HeldMigrationRefused(f"{name}: refusing without --confirm-irreversible")
+    path = _held_dir(migrations_dir) / name
+    if "/" in name or not path.is_file():
+        raise HeldMigrationRefused(f"{name}: not a held migration (expected a file in {_held_dir(migrations_dir)})")
+    sql = path.read_text()
+    validate_migration_sql(name, sql, runtime_role)
+    with _connect(migrate_url) as conn:
+        conn.autocommit = False
+        _ensure_schema_migrations(conn, runtime_role)
+        conn.commit()
+        applied = {r[0] for r in conn.execute("SELECT version FROM schema_migrations").fetchall()}
+        if name in applied:
+            return {"applied": [], "skipped": [name]}
+        check = _HELD_PRECONDITIONS.get(name)
+        failed = check(conn) if check else []
+        if failed:
+            raise HeldMigrationRefused(f"{name}: preconditions failed: " + "; ".join(failed))
+        with conn.transaction():
+            conn.execute(sql)
+            conn.execute("INSERT INTO schema_migrations (version, applied_via) VALUES (%s, 'held')", (name,))
+        logger.warning("applied HELD migration %s (irreversible)", name)
+    return {"applied": [name], "skipped": []}
+
+
 def baseline_migrations(
     migrate_url: str, versions: list[str], *, migrations_dir: Path | None = None,
     runtime_role: str | None = None,
@@ -427,6 +504,15 @@ def main(argv: list[str] | None = None) -> None:
         help="DB URL for the migrate role (default: $GRAFOMEM_MIGRATE_URL, then $GRAFOMEM_DB_URL).",
     )
     ap.add_argument(
+        "--apply-held",
+        metavar="NAME",
+        help="apply ONE held migration from migrations/held/ (e.g. 018b_drop_api_key_plaintext.sql). "
+        "Never part of the ordinary pass; requires --confirm-irreversible and the migration's "
+        "preconditions on the target DB. Run it only after a staging check and a fresh backup.",
+    )
+    ap.add_argument("--confirm-irreversible", action="store_true",
+                    help="required with --apply-held: acknowledge the migration cannot be reversed in place")
+    ap.add_argument(
         "--ensure-schema",
         action="store_true",
         help="A1 release step: run every service's ensure_schema as the migrate role "
@@ -444,6 +530,9 @@ def main(argv: list[str] | None = None) -> None:
     if args.baseline:
         versions = [v.strip() for v in args.baseline.split(",") if v.strip()]
         print(baseline_migrations(args.url, versions))
+        return
+    if args.apply_held:
+        print(apply_held_migration(args.url, args.apply_held, confirm_irreversible=args.confirm_irreversible))
         return
     if args.ensure_schema:
         # Build the app with ensure_schema forced on, pointed at the migrate role, which

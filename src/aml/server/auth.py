@@ -75,10 +75,9 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
         # TTL cache for API key lookups: key → (tenant_id, role, scopes, allowed_stores, key_id, ip_allowlist, cached_at)
         self._api_key_cache: dict[str, tuple] = {}
         self._cache_ttl = 60  # seconds
-        # Hash-at-rest dual-read (PR 3): count of resolutions that fell back to the PLAINTEXT path
-        # (hash miss) while GRAFOMEM_API_KEY_DUAL_READ is on. The 7-day zero-plaintext-resolution
-        # window (the exit criterion for dropping the plaintext column) is measured from the log line
-        # each such resolution emits; this counter is the in-process mirror for tests/introspection.
+        # Hash-at-rest PR 5: keys resolve by api_key_hash ONLY. The dual-read plaintext fallback (PR 3)
+        # and its PLAINTEXT-PATH counter are gone with the plaintext column; the counter stays as a
+        # constant 0 so introspection that read it keeps working.
         self.plaintext_path_resolutions = 0
         if self.auth_mode == "token":
             logger.info("Token auth enabled (%d tokens loaded)", len(self.tokens))
@@ -116,45 +115,34 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
     _KEY_SELECT = ("SELECT key_id, tenant_id, role, scopes, allowed_stores, expires_at, ip_allowlist "
                    "FROM tenant_api_keys WHERE ")
 
-    @staticmethod
-    def _dual_read_enabled() -> bool:
-        v = os.environ.get("GRAFOMEM_API_KEY_DUAL_READ", "").strip().lower()
-        return v not in ("", "0", "false", "no")
-
     def _lookup_key_row(self, conn, api_key: str):
         """Resolve the tenant_api_keys row for `api_key`, returning (row, via).
 
-        Dual-read (GRAFOMEM_API_KEY_DUAL_READ on): look up by `api_key_hash` FIRST —
-        HMAC(current pepper), then HMAC(retiring pepper) on miss — and fall back to the plaintext
-        `api_key` column only if the hash misses. Every plaintext-path resolution is logged + counted
-        (the signal for the 7-day zero-plaintext-resolution window). No writes to the plaintext column.
-        Flag off (default): plaintext lookup only — the legacy path, no dual-read log.
+        Hash-at-rest PR 5 — HASH ONLY: look up by `api_key_hash` = HMAC(pepper, key) under the
+        current pepper, then the retiring pepper (rotation window). There is no plaintext fallback:
+        a row whose api_key_hash is NULL or wrong does not resolve (→ 403), and the plaintext column
+        is never read (018a makes it nullable, held 018b drops it). With no pepper configured nothing
+        can resolve; the process should not have started (#190), so this is logged as an error.
+        `via` is "hash" on a hit and None on a miss (kept as a tuple for the existing callers/tests).
         """
-        if self._dual_read_enabled():
-            from aml.server.api_key_hash import PepperMissing, compute_api_key_hash
-            hashes: list[bytes] = []
-            for env in ("GRAFOMEM_API_KEY_PEPPER", "GRAFOMEM_API_KEY_PEPPER_RETIRING"):
-                p = os.environ.get(env, "")
-                if p:
-                    try:
-                        hashes.append(compute_api_key_hash(api_key, p))
-                    except PepperMissing:
-                        pass
-            for h in hashes:
-                row = conn.execute(self._KEY_SELECT + "api_key_hash = %s", (h,)).fetchone()
-                if row:
-                    return row, "hash"
-            # Hash missed (wrong/absent api_key_hash, or no pepper) → plaintext fallback, made VISIBLE.
-            row = conn.execute(self._KEY_SELECT + "api_key = %s", (api_key,)).fetchone()
+        from aml.server.api_key_hash import PepperMissing, compute_api_key_hash
+        hashes: list[bytes] = []
+        for env in ("GRAFOMEM_API_KEY_PEPPER", "GRAFOMEM_API_KEY_PEPPER_RETIRING"):
+            p = os.environ.get(env, "")
+            if p:
+                try:
+                    hashes.append(compute_api_key_hash(api_key, p))
+                except PepperMissing:
+                    pass
+        if not hashes:
+            logger.error("api_key auth: no GRAFOMEM_API_KEY_PEPPER configured — no key can resolve "
+                         "(hash-only auth; the pepper is required at startup)")
+            return None, None
+        for h in hashes:
+            row = conn.execute(self._KEY_SELECT + "api_key_hash = %s", (h,)).fetchone()
             if row:
-                self.plaintext_path_resolutions += 1
-                logger.warning(
-                    "api_key auth: PLAINTEXT-PATH resolution (hash miss) key_id=%s — key not "
-                    "hash-resolvable; keeps the zero-plaintext window from closing.", row.get("key_id"))
-            return row, ("plaintext" if row else None)
-        # Dual-read off: plaintext only (legacy).
-        row = conn.execute(self._KEY_SELECT + "api_key = %s", (api_key,)).fetchone()
-        return row, ("plaintext" if row else None)
+                return row, "hash"
+        return None, None
 
     def _resolve_api_key(self, api_key: str) -> tuple[str, str, list[str], list[str], str | None, list[str]] | None:
         """Resolve an API key to (tenant_id, role, scopes, allowed_stores, key_id, ip_allowlist) using the DB.

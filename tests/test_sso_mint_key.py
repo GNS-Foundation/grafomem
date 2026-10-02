@@ -39,17 +39,18 @@ def test_sso_create_mints_key_row_and_never_uses_tenants_api_key(provider):
     tid, key = provider._find_or_create_tenant(email, "SSO User", "google", sub)
     assert key and key.startswith("gfm_"), f"SSO create returned no usable key: {key!r}"
 
-    # A tenant_api_keys row was minted with that exact key.
-    kr = _row("SELECT api_key, role FROM tenant_api_keys WHERE tenant_id = %s", (tid,))
+    # A tenant_api_keys row was minted for that exact key — stored as its hash (PR 5), never plaintext.
+    from aml.server.api_key_hash import compute_api_key_hash
+    kr = _row("SELECT api_key_hash, role FROM tenant_api_keys WHERE tenant_id = %s", (tid,))
     assert kr is not None, "SSO create did not mint a tenant_api_keys row"
-    assert kr[0] == key
+    assert bytes(kr[0]) == compute_api_key_hash(key)
 
     # tenants.api_key was NOT written (014 step a).
     tr = _row("SELECT api_key FROM tenants WHERE id = %s", (tid,))
     assert tr is not None and tr[0] is None, f"tenants.api_key should be NULL, got {tr and tr[0]!r}"
 
-    # Second login (same sub) → existing-tenant branch must return the SAME key,
-    # read from tenant_api_keys (not the NULL tenants.api_key).
+    # Second login (same sub) → existing-tenant branch: SAME tenant, and NO key — the plaintext is
+    # not stored (PR 5), so a returning login cannot echo one; the console mints its own device key.
     tid2, key2 = provider._find_or_create_tenant(email, "SSO User", "google", sub)
     assert tid2 == tid
-    assert key2 == key, "repeat SSO login did not return the working key from tenant_api_keys"
+    assert not key2, "a returning SSO login must not carry a plaintext key"

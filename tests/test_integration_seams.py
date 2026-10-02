@@ -911,7 +911,10 @@ class TestKeyConstraints:
         api_key = key_info["api_key"]
 
         returned = tenant_manager.revoke_key_by_id(key_id, tid)
-        assert returned == api_key
+        # hash-at-rest PR 5: the plaintext is not stored, so the revoke returns the key_id (no
+        # `RETURNING api_key`); the presented key must stop authenticating regardless
+        assert returned == key_id
+        assert api_key.startswith("gfm_")
 
         # Should be gone from list
         keys = tenant_manager.list_api_keys(tid)

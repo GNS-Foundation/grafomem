@@ -1,9 +1,10 @@
-"""Hash-at-rest PR 2 — api_key_hash column + runner-side backfill (DARK, auth still plaintext).
+"""Hash-at-rest PR 2 — api_key_hash column + runner-side backfill. PR 5 update: mints no longer store
+the plaintext, so the backfill tests seed legacy-shaped rows (plaintext present, hash NULL) themselves
+and SKIP once the plaintext column is gone (held migration 018b), when the backfill is a clean no-op.
 
-Must-fails (each fails on the pre-PR behaviour): backfill refuses with the pepper absent/empty; the
-pepper never appears in any SQL the backfill sends; a backfilled row's hash verifies against its
-plaintext with the runner-side HMAC. Positive control: auth still resolves every key by plaintext
-after the migration + backfill (the change is dark).
+Must-fails: backfill refuses with the pepper absent/empty; the pepper never appears in any SQL the
+backfill sends; a backfilled row's hash verifies against its plaintext with the runner-side HMAC.
+Positive control: auth resolves a backfilled key by its hash.
 """
 import importlib.util
 import os
@@ -35,15 +36,38 @@ def _apply_migration_017():
         c.execute(sql)
 
 
+def _plaintext_column_present() -> bool:
+    with psycopg.connect(DB_URL, autocommit=True) as c:
+        return bool(c.execute(
+            "SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() "
+            "AND table_name='tenant_api_keys' AND column_name='api_key'").fetchone())
+
+
+def _seed_legacy_row(tenant_id: str) -> str:
+    """A pre-hash-at-rest row: plaintext present, api_key_hash NULL — what the backfill exists for."""
+    key = f"gfm_{uuid.uuid4().hex}{uuid.uuid4().hex[:16]}"
+    with psycopg.connect(DB_URL, autocommit=True) as c:
+        c.execute("INSERT INTO tenant_api_keys (key_id,tenant_id,api_key,name,role,scopes) "
+                  "VALUES (%s,%s,%s,'legacy','agent',%s)", (uuid.uuid4().hex, tenant_id, key, ["cgr:read"]))
+    return key
+
+
 @pytest.fixture(scope="module")
 def setup():
+    os.environ[PEPPER_ENV] = PEPPER
     tm = TenantManager(DB_URL)
     tm.ensure_schema()
     _apply_migration_017()
     info = tm.create_tenant(name=f"hashbf-{uuid.uuid4().hex[:8]}")
-    # A couple of extra keys so the backfill has real rows to populate.
     tm.create_api_key(info.id, name="agent", role="agent")
-    return {"tenant_id": info.id, "api_key": info.api_key}
+    legacy = _seed_legacy_row(info.id) if _plaintext_column_present() else None
+    return {"tenant_id": info.id, "api_key": info.api_key, "legacy_key": legacy}
+
+
+@pytest.fixture
+def needs_plaintext_column(setup):
+    if not _plaintext_column_present():
+        pytest.skip("plaintext column dropped (018b): the backfill is a no-op, nothing to backfill")
 
 
 class _Recorder:
@@ -83,7 +107,7 @@ def test_backfill_skip_gate_is_dark_when_pepper_absent(monkeypatch):
     assert bf.main(["--skip-if-no-pepper"]) == 0
 
 
-def test_pepper_never_appears_in_sql(setup):
+def test_pepper_never_appears_in_sql(setup, needs_plaintext_column):
     """MUST-FAIL guard: the pepper is HMAC input in-process only — it must not appear in any SQL the
     backfill sends (the pg_stat_statements / query-log leak the design forbids)."""
     with psycopg.connect(DB_URL, row_factory=dict_row, autocommit=True) as raw:
@@ -95,14 +119,14 @@ def test_pepper_never_appears_in_sql(setup):
             assert "hmac" not in sql.lower(), f"SQL computed a hash server-side: {sql!r}"
 
 
-def test_backfilled_hash_verifies_against_plaintext(setup):
-    """A backfilled row's stored api_key_hash equals HMAC_SHA256(pepper, its plaintext api_key)."""
+def test_backfilled_hash_verifies_against_plaintext(setup, needs_plaintext_column):
+    """A backfilled legacy row's stored api_key_hash equals HMAC_SHA256(pepper, its plaintext api_key)."""
     with psycopg.connect(DB_URL, row_factory=dict_row, autocommit=True) as c:
         bf.backfill(c, PEPPER)
         rows = c.execute(
-            "SELECT api_key, api_key_hash FROM tenant_api_keys WHERE tenant_id = %s",
+            "SELECT api_key, api_key_hash FROM tenant_api_keys WHERE tenant_id = %s AND api_key IS NOT NULL",
             (setup["tenant_id"],)).fetchall()
-    assert rows
+    assert rows, "the legacy-shaped row must be present"
     for r in rows:
         assert r["api_key_hash"] is not None, "row not backfilled"
         expected = compute_api_key_hash(r["api_key"], PEPPER)
@@ -122,7 +146,7 @@ def test_skip_logs_a_visible_warning(monkeypatch, caplog):
         "skip must emit a visible WARNING naming the pepper env var"
 
 
-def test_backfill_is_idempotent(setup):
+def test_backfill_is_idempotent(setup, needs_plaintext_column):
     """CONFIRMATION 2: backfill selects only WHERE api_key_hash IS NULL, so a SECOND run updates 0."""
     kid = uuid.uuid4().hex
     key = f"gfm_{uuid.uuid4().hex}{uuid.uuid4().hex[:16]}"
@@ -144,24 +168,26 @@ def test_api_key_hash_unique_index_enforced(setup):
     h = compute_api_key_hash("gfm_" + uuid.uuid4().hex, PEPPER)
     with psycopg.connect(DB_URL, autocommit=True) as c:
         k1, k2 = uuid.uuid4().hex, uuid.uuid4().hex
-        c.execute("INSERT INTO tenant_api_keys (key_id,tenant_id,api_key,name,role,scopes,api_key_hash) "
-                  "VALUES (%s,%s,%s,'h1','agent',%s,%s)",
-                  (k1, setup["tenant_id"], "gfm_" + uuid.uuid4().hex, ["cgr:read"], h))
+        c.execute("INSERT INTO tenant_api_keys (key_id,tenant_id,name,role,scopes,api_key_hash) "
+                  "VALUES (%s,%s,'h1','agent',%s,%s)",
+                  (k1, setup["tenant_id"], ["cgr:read"], h))
         with pytest.raises(psycopg.errors.UniqueViolation):
-            c.execute("INSERT INTO tenant_api_keys (key_id,tenant_id,api_key,name,role,scopes,api_key_hash) "
-                      "VALUES (%s,%s,%s,'h2','agent',%s,%s)",
-                      (k2, setup["tenant_id"], "gfm_" + uuid.uuid4().hex, ["cgr:read"], h))
+            c.execute("INSERT INTO tenant_api_keys (key_id,tenant_id,name,role,scopes,api_key_hash) "
+                      "VALUES (%s,%s,'h2','agent',%s,%s)",
+                      (k2, setup["tenant_id"], ["cgr:read"], h))
 
 
-def test_auth_still_resolves_by_plaintext_after_backfill(setup):
-    """POSITIVE CONTROL: the change is DARK — auth still resolves the key by its plaintext after the
-    column + backfill (auth does not read api_key_hash yet)."""
+def test_auth_resolves_backfilled_legacy_key_by_hash(setup, needs_plaintext_column, monkeypatch):
+    """POSITIVE CONTROL (PR 5): a legacy-shaped row (plaintext, NULL hash) does NOT resolve until the
+    backfill hashes it; afterwards it resolves — by its hash, the only path."""
+    monkeypatch.setenv(PEPPER_ENV, PEPPER)
+    legacy = setup["legacy_key"]
     with psycopg.connect(DB_URL, autocommit=True) as c:
-        c.execute("UPDATE tenant_api_keys SET api_key_hash = NULL WHERE tenant_id = %s", (setup["tenant_id"],))
-    bf_conn_pepper = PEPPER
-    with psycopg.connect(DB_URL, row_factory=dict_row, autocommit=True) as c:
-        bf.backfill(c, bf_conn_pepper)  # populate hashes (dark)
+        c.execute("UPDATE tenant_api_keys SET api_key_hash = NULL WHERE tenant_id = %s AND api_key = %s",
+                  (setup["tenant_id"], legacy))
     mw = TenantAuthMiddleware(app=None, auth_mode="cloud", db_url=DB_URL)
-    resolved = mw._resolve_api_key(setup["api_key"])  # by PLAINTEXT
-    assert resolved is not None, "plaintext auth broke after backfill"
-    assert resolved[0] == setup["tenant_id"]
+    assert mw._resolve_api_key(legacy) is None, "no plaintext fallback: a NULL-hash row must not resolve"
+    with psycopg.connect(DB_URL, row_factory=dict_row, autocommit=True) as c:
+        bf.backfill(c, PEPPER)
+    resolved = mw._resolve_api_key(legacy)
+    assert resolved is not None and resolved[0] == setup["tenant_id"]

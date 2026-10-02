@@ -24,9 +24,14 @@ rot = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(rot)
 
 
+PEPPER = "rotate-modes-pepper-" + "c" * 40
+
+
 @pytest.fixture
 def platform_tenant(monkeypatch):
     from aml.cloud.tenant_manager import TenantManager
+    from aml.server.api_key_hash import compute_api_key_hash
+    monkeypatch.setenv("GRAFOMEM_API_KEY_PEPPER", PEPPER)
     with psycopg.connect(DB_URL, autocommit=True) as c:
         c.execute("DROP TABLE IF EXISTS tenant_api_keys CASCADE")
         c.execute("DROP TABLE IF EXISTS tenants CASCADE")
@@ -36,9 +41,9 @@ def platform_tenant(monkeypatch):
     with psycopg.connect(DB_URL, autocommit=True) as c:
         c.execute("INSERT INTO tenants (id, name, plan, status, api_key) "
                   "VALUES (%s,%s,'enterprise','active',%s)", (tid, "platform-ulissy-like", f"gfm_{uuid.uuid4().hex}"))
-        c.execute("INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role, scopes) "
-                  "VALUES (%s,%s,%s,'Default Admin Key','admin',%s)",
-                  (old_key_id, tid, f"gfm_{uuid.uuid4().hex}", ["*"]))
+        c.execute("INSERT INTO tenant_api_keys (key_id, tenant_id, name, role, scopes, api_key_hash) "
+                  "VALUES (%s,%s,'Default Admin Key','admin',%s,%s)",
+                  (old_key_id, tid, ["*"], compute_api_key_hash(f"gfm_{uuid.uuid4().hex}", PEPPER)))
     monkeypatch.setenv("GRAFOMEM_ROTATE_DB_URL", DB_URL)
     monkeypatch.setenv("PLATFORM_TENANT_IDS", tid)
     monkeypatch.delenv("ROTATE_EXCLUDE_TENANT_IDS", raising=False)

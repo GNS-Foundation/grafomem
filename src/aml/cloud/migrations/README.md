@@ -59,3 +59,22 @@ CREATE'd table:
 The runner rejects a ledger-class migration that violates any of these. `009_erasure_ledger.sql` carries
 the marker for classification but predates the rule and is applied in every environment we control, so it
 is grandfathered (exempt from the REVOKE requirement); new ledger-class migrations are not.
+
+
+## Held migrations (`held/`)
+
+A migration in `migrations/held/` is **never applied by the ordinary pass** (deploy pre-deploy step,
+`--ensure-schema`, self-host boot-apply): the runner lists only the files directly in `migrations/`.
+It is applied once, explicitly, by an operator:
+
+```bash
+python -m aml.cloud.migrations_runner --apply-held 018b_drop_api_key_plaintext.sql --confirm-irreversible
+```
+
+The runner refuses without `--confirm-irreversible`, if the version is already recorded, or if the
+migration's preconditions fail on the target database (for 018b: 018a recorded, the plaintext column
+present, zero `api_key_hash IS NULL` rows). The ledger row is written with `applied_via='held'`.
+
+Hash-at-rest PR 5 ships as two steps: `018a_api_key_plaintext_nullable.sql` (ordinary, reversible,
+with the hash-only code) and `held/018b_drop_api_key_plaintext.sql` (irreversible: the plaintext
+column and its index), run later, after a staging check and a fresh backup.
