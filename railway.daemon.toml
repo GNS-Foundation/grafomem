@@ -1,0 +1,46 @@
+# Railway config for the ERASURE DAEMON service (grafomem-deamon) — NOT the API service.
+#
+# Why this file exists: a Railway service reads railway.toml by default. The daemon service runs
+# `python -m aml.cloud.erasure_daemon` from the same image, but railway.toml carries the API
+# service's preDeployCommand (`aml.cloud.migrations_runner --ensure-schema`), which needs
+# GRAFOMEM_MIGRATE_URL. The daemon has only DATABASE_URL, so every daemon deploy since 2026-09-16
+# failed at pre-deploy ("set GRAFOMEM_MIGRATE_URL ... to run migrations") and production kept the
+# last successful build. Pointing the daemon service's "config file path" at THIS file gives it its
+# own [deploy] with no pre-deploy step.
+#
+# Migrations stay the API service's release step (railway.toml preDeployCommand), run once per
+# deploy as the migrate role. The daemon never runs DDL: it reads DATABASE_URL and sweeps.
+#
+# To activate (Railway service setting, operator action — not done by this PR): service
+# grafomem-deamon → Settings → Config file path = railway.daemon.toml (one setting per environment).
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+# Same inputs as railway.toml (derived from the Dockerfile's COPY lines): the daemon is built from
+# the same image, so the same source changes must rebuild it. This file replaces railway.toml in
+# the list because it is the daemon's build/deploy config; a change to railway.toml alone (the API
+# service's deploy settings) does not change the daemon artefact.
+watchPatterns = [
+    "src/**",
+    "adapter_template/**",
+    "corpus/**",
+    "tests/**",
+    "pyproject.toml",
+    "README.md",
+    "Dockerfile",
+    "railway.daemon.toml",
+]
+
+[deploy]
+# Overrides the image CMD (`grafomem serve …`). Runs in the image's WORKDIR /app with the same
+# interpreter and installed package (/usr/local, copied from the builder stage), so the module
+# resolves exactly as the API's entrypoint does.
+startCommand = "python -m aml.cloud.erasure_daemon"
+# The daemon serves GET /health (and /metrics) on $PORT via uvicorn (erasure_daemon.py), so the
+# healthcheck is real. Railway injects PORT; the Dockerfile's ENV PORT=8642 is the fallback.
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
+# No preDeployCommand on purpose — see the header. No DDL, no migrate role, no pepper needed here.
