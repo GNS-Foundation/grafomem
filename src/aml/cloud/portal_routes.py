@@ -16,7 +16,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
-from aml.server.scopes import require_scope, TENANT_ADMIN_SCOPES
+from aml.server.scopes import require_scope, validate_scopes, TENANT_ADMIN_SCOPES
 
 logger = logging.getLogger("grafomem.cloud.portal")
 
@@ -370,28 +370,64 @@ async def get_dashboard(request: Request):
 
 class CreateApiKeyRequest(BaseModel):
     name: str = "custom_key"
-    role: str = "admin"
+    # Optional since the narrow-key change: resolves to 'agent' when `scopes` is given, 'admin' otherwise.
+    role: str | None = None
     expires_at: int | None = None  # Unix timestamp
     ip_allowlist: list[str] | None = None
+    # Narrow keys (2026-10-03, option (a)): an explicit, non-empty scope list. Validated against the
+    # vocabulary and BOUNDED by TENANT_ADMIN_SCOPES — a request naming anything outside that set
+    # ('*', admin:platform, calibration:write, unknown) is refused WHOLE with 400, never trimmed.
+    # Omit the field for today's role defaults.
+    scopes: list[str] | None = None
+
 
 @router.post("/api-keys")
 async def create_api_key(req: CreateApiKeyRequest, request: Request):
-    """Generate a new scoped API key."""
+    """Mint a scoped API key for the signed-in tenant.
+
+    Two shapes:
+      * `{"name", "role"}` (no `scopes`) — today's behaviour: `admin` mints TENANT_ADMIN_SCOPES, `agent` and
+        `read_only` their bounded role defaults. `role` defaults to `admin`.
+      * `{"name", "scopes": [...]}` — a NARROW key carrying exactly the named scopes (e.g. the analyst's
+        submit key: `["disposition:write", "disposition:read"]`). The list must be non-empty, in the
+        vocabulary, and a subset of TENANT_ADMIN_SCOPES; otherwise 400 naming the refused scopes and
+        nothing is minted. `role` defaults to `agent` (it only sets the key prefix; the stored scopes are
+        the explicit list, which the resolver never widens).
+    The response is unchanged: `{api_key (show-once), key_id, role, scopes, expires_at}`.
+    """
     tenant = _require_portal_auth(request)
     mgr = _tenant_manager(request)
     audit = _audit_logger(request)
-    try:
-        from datetime import datetime, timezone
-        exp_dt = datetime.fromtimestamp(req.expires_at, tz=timezone.utc) if req.expires_at else None
+    role = req.role or ("agent" if req.scopes is not None else "admin")
+    if req.scopes is not None:
+        if not req.scopes:
+            raise HTTPException(400, "scopes must be a non-empty list; omit the field to use the role's default scopes")
+        try:
+            wanted = validate_scopes(req.scopes)  # vocabulary check (also rejects an unknown scope)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        # Bound: a portal session's authority IS TENANT_ADMIN_SCOPES, so a key it mints cannot exceed it.
+        # The set deliberately excludes '*', admin:platform and calibration:write (scopes.py). Refused
+        # whole — a mixed list never yields a key with the allowed subset.
+        refused = sorted(set(wanted) - set(TENANT_ADMIN_SCOPES))
+        if refused:
+            raise HTTPException(
+                400, f"Refused scopes (outside the tenant-admin set): {refused}. "
+                     "The whole request is refused; nothing was minted.")
+        mint_scopes = wanted
+    else:
         # (d) Privilege containment: a portal owner's authority IS TENANT_ADMIN_SCOPES, so a key it
         # mints is bounded to that — role='admin' mints TENANT_ADMIN_SCOPES, NEVER '*' (no superuser,
         # no calibration:write, no admin:platform through the portal). agent/read_only resolve to their
         # bounded role defaults.
-        mint_scopes = list(TENANT_ADMIN_SCOPES) if req.role == "admin" else None
+        mint_scopes = list(TENANT_ADMIN_SCOPES) if role == "admin" else None
+    try:
+        from datetime import datetime, timezone
+        exp_dt = datetime.fromtimestamp(req.expires_at, tz=timezone.utc) if req.expires_at else None
         key_info = mgr.create_api_key(
             tenant["tenant_id"],
             name=req.name,
-            role=req.role,
+            role=role,
             scopes=mint_scopes,
             expires_at=exp_dt,
             ip_allowlist=req.ip_allowlist
@@ -402,7 +438,7 @@ async def create_api_key(req: CreateApiKeyRequest, request: Request):
                 actor=tenant["email"],
                 action="create_api_key",
                 resource="api_keys",
-                metadata={"name": req.name, "role": req.role}
+                metadata={"name": req.name, "role": role, "scopes": key_info.get("scopes")}
             )
     except ValueError as e:
         raise HTTPException(400, str(e))
