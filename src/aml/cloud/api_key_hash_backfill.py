@@ -6,7 +6,8 @@ standalone CLI (scripts/backfill_api_key_hash.py).
 
 Guarantees: the pepper is HMAC input in-process ONLY (never enters SQL — the UPDATE is parameterized
 on the hash bytes + key_id); hashing FAILS CLOSED on an absent/empty pepper (unless the caller opts
-into a dark skip). DARK: auth still resolves by plaintext until the dual-read PR.
+into a dark skip). History: shipped dark while auth still resolved by plaintext; since hash-at-rest
+PR 5 (#192) auth is hash-only and the plaintext column is dropped (held 018b).
 """
 from __future__ import annotations
 

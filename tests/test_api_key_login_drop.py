@@ -1,8 +1,8 @@
-"""Hash-at-rest PR 5: login-drop is UNCONDITIONAL. The server no longer stores the plaintext key, so
-an EXISTING account authenticating (login, or a returning Supabase tenant) never receives one — with
-GRAFOMEM_API_KEY_LOGIN_DROP set or not; the flag is no longer read. Show-once provisioning (signup,
-mint, rotate) is the only path to a usable key, and signup still returns the freshly minted key once.
-(Replaces the PR 4 flag tests: "flag off echoes the key" is no longer possible.)
+"""An EXISTING account authenticating (login, or a returning Supabase tenant) never receives an API
+key: the server stores no plaintext (hash-at-rest; held 018b dropped the column), so there is nothing
+to echo. Show-once provisioning (signup, mint, rotate) is the only path to a usable key, and signup
+still returns the freshly minted key once. (B4: the login-drop environment flag that once gated this
+is gone; the behaviour is unconditional.)
 """
 import os
 import uuid
@@ -29,12 +29,7 @@ def _signup(pa):
     return email, info["tenant_id"], info
 
 
-@pytest.mark.parametrize("flag", [None, "1", "0"])
-def test_login_never_returns_a_key(monkeypatch, flag):
-    if flag is None:
-        monkeypatch.delenv("GRAFOMEM_API_KEY_LOGIN_DROP", raising=False)
-    else:
-        monkeypatch.setenv("GRAFOMEM_API_KEY_LOGIN_DROP", flag)
+def test_login_never_returns_a_key():
     pa = _pa()
     email, _tid, _ = _signup(pa)
     result = pa.login(email=email, password="password123")
@@ -44,8 +39,7 @@ def test_login_never_returns_a_key(monkeypatch, flag):
     assert not info.get("api_key"), "login must NOT carry a plaintext key (none is stored any more)"
 
 
-def test_link_or_create_existing_tenant_never_returns_a_key(monkeypatch):
-    monkeypatch.delenv("GRAFOMEM_API_KEY_LOGIN_DROP", raising=False)
+def test_link_or_create_existing_tenant_never_returns_a_key():
     pa = _pa()
     uid = f"sub-{uuid.uuid4().hex[:12]}"
     email = f"ld-sso-{uuid.uuid4().hex[:8]}@example.com"
@@ -54,6 +48,15 @@ def test_link_or_create_existing_tenant_never_returns_a_key(monkeypatch):
     again = pa.ensure_tenant(supabase_uid=uid, email=email, name="SSO Org")
     assert not again.get("api_key"), "returning-tenant link must NOT carry a key"
     assert again["tenant_id"] == first["tenant_id"]
+
+
+def test_link_existing_tenant_by_email_never_returns_a_key():
+    """Legacy account (email/password) later signing in through Supabase: linked by email, no key."""
+    pa = _pa()
+    email, tid, _ = _signup(pa)
+    linked = pa.ensure_tenant(supabase_uid=f"sub-{uuid.uuid4().hex[:12]}", email=email, name="LD Test")
+    assert linked["tenant_id"] == tid
+    assert not linked.get("api_key"), "email-linked existing tenant must NOT carry a key"
 
 
 def test_signup_returns_key_once():

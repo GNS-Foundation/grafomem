@@ -92,20 +92,6 @@ def _generate_api_key() -> str:
     return f"gfm_{secrets.token_hex(24)}"
 
 
-def _login_drop_enabled() -> bool:
-    """Hash-at-rest PR 5: login-drop is UNCONDITIONAL. The server no longer stores the plaintext key
-    (migration 018a; held 018b drops the column), so a login/returning-tenant response cannot carry
-    one — the console mints its own device key (grafomem-web #52). GRAFOMEM_API_KEY_LOGIN_DROP is
-    no longer read; it is removed from the environments by the flag-cleanup PR."""
-    return True
-
-
-def _current_api_key(conn, tenant_id: str) -> str | None:  # noqa: ARG001
-    """Always None (hash-at-rest PR 5): the stored plaintext is gone, so there is no "current working
-    key" to echo. Kept as a function so the three login-path call sites read as an explicit no-op."""
-    return None
-
-
 # ============================================================================
 # PortalAuth
 # ============================================================================
@@ -270,17 +256,14 @@ class PortalAuth:
         ).fetchone()
 
         if row:
-            # 014 step (a): working key comes from tenant_api_keys, not tenants.api_key.
-            # PR 4 login-drop: a returning account gets no plaintext key when the flag is on.
-            out = {
+            # A returning account gets no key: no plaintext is stored (hash-at-rest, 018b); the
+            # console mints its own device key.
+            return {
                 "tenant_id": row["id"],
                 "name": row["name"],
                 "email": row["email"],
                 "plan": row["plan"],
             }
-            if not _login_drop_enabled():
-                out["api_key"] = _current_api_key(conn, row["id"])
-            return out
 
         # Check if there's a tenant with this email (legacy account migration)
         row = conn.execute(
@@ -299,17 +282,13 @@ class PortalAuth:
                 "Linked existing tenant %s to Supabase UID %s",
                 row["id"], supabase_uid,
             )
-            # 014 step (a): working key comes from tenant_api_keys, not tenants.api_key.
-            # PR 4 login-drop: a returning account gets no plaintext key when the flag is on.
-            out = {
+            # A linked existing account gets no key: no plaintext is stored (hash-at-rest, 018b).
+            return {
                 "tenant_id": row["id"],
                 "name": row["name"],
                 "email": row["email"],
                 "plan": row["plan"],
             }
-            if not _login_drop_enabled():
-                out["api_key"] = _current_api_key(conn, row["id"])
-            return out
 
         # Create a new tenant
         tenant_id = uuid.uuid4().hex
@@ -442,12 +421,8 @@ class PortalAuth:
             "email": row["email"],
             "plan": row["plan"],
         }
-        # PR 4 login-drop: an existing account authenticating no longer receives its plaintext key.
-        # When the flag is off (default), preserve the legacy behaviour — read the working key from
-        # tenant_api_keys (014 step a: not tenants.api_key). When on, the client must provision a
-        # show-once key instead.
-        if not _login_drop_enabled():
-            info["api_key"] = _current_api_key(conn, row["id"])
+        # Login never carries an API key: no plaintext is stored (hash-at-rest, 018b); the client
+        # provisions a show-once key (console device key, /v1/portal/api-keys).
         token = self._issue_jwt(row["id"], row["email"])
         return info, token
 
