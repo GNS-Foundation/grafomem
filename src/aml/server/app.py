@@ -1443,64 +1443,6 @@ def create_app(
         except Exception as e:
             logger.warning("Stripe billing failed to initialize: %s", e)
 
-        if os.environ.get("ENABLE_TAMPER_ENDPOINT") == "1":
-            tamper_router = APIRouter(prefix="/v1/_system", tags=["System"])
-            @tamper_router.post("/run_tamper_proof")
-            async def run_tamper_proof(request: Request):
-                require_scope(request, "admin:platform")
-                import psycopg
-                import uuid
-                import time
-                import os
-                db = os.environ.get("GRAFOMEM_LEDGER_URL")
-                # 1. Create throwaway tenant
-                tenant_id = str(uuid.uuid4())
-                try:
-                    with psycopg.connect(db, autocommit=True) as conn:
-                        conn.execute("INSERT INTO tenants (id, name, email, api_key) VALUES (%s, %s, %s, %s)", (tenant_id, "Tamper Tenant", f"tamper_{tenant_id}@test.com", f"legacy-{tenant_id}"))
-                        conn.execute("INSERT INTO tenant_api_keys (key_id, tenant_id, api_key, name, role) VALUES (%s, %s, %s, %s, %s)", (str(uuid.uuid4()), tenant_id, f"sk-tamper-{tenant_id}", "Tamper Key", "admin"))
-                        
-                        # Create workflow, steps, receipt
-                        wf_id = str(uuid.uuid4())
-                        step_id = str(uuid.uuid4())
-                        from datetime import datetime, timezone
-                        now = datetime.now(timezone.utc)
-                        conn.execute("INSERT INTO orchestrator_workflows (workflow_id, tenant_id, name, mode) VALUES (%s, %s, %s, %s)", (wf_id, tenant_id, "Tamper WF", "sequential"))
-                        conn.execute(
-                            "INSERT INTO execution_receipts (receipt_id, step_id, workflow_id, tenant_id, step_number, input_hash, memory_snapshot_hash, policy_evaluation_hash, model_id, output_hash, started_at, completed_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)", 
-                            (str(uuid.uuid4()), step_id, wf_id, tenant_id, 1, "in", "mem", "pol", "mod", "hash1", now, now)
-                        )
-                        
-                        # 2. Capture baseline hash
-                        row = conn.execute("SELECT output_hash FROM execution_receipts WHERE workflow_id = %s", (wf_id,)).fetchone()
-                        baseline = row[0] if row else None
-                        
-                        # 3. Tamper DB directly
-                        conn.execute("UPDATE execution_receipts SET output_hash = 'tampered' WHERE workflow_id = %s", (wf_id,))
-                        
-                        # 4. Attempt to verify (negative bounds proof)
-                        # We simulate the verification failure that `test_chain_tamper` does
-                        row2 = conn.execute("SELECT output_hash FROM execution_receipts WHERE workflow_id = %s", (wf_id,)).fetchone()
-                        tampered = row2[0] if row2 else None
-                        
-                        # 5. Delete throwaway tenant
-                        conn.execute("DELETE FROM execution_receipts WHERE tenant_id = %s", (tenant_id,))
-                        conn.execute("DELETE FROM orchestrator_workflows WHERE tenant_id = %s", (tenant_id,))
-                        conn.execute("DELETE FROM tenant_api_keys WHERE tenant_id = %s", (tenant_id,))
-                        conn.execute("DELETE FROM tenants WHERE id = %s", (tenant_id,))
-                        
-                        return {
-                            "status": "success",
-                            "baseline_hash": baseline,
-                            "tampered_hash": tampered,
-                            "proof_of_failure": "Tampered hash 'tampered' != baseline hash 'hash1' - Chain broken!"
-                        }
-                except Exception as e:
-                    return {"error": str(e)}
-
-            app.include_router(tamper_router)
-            logger.warning("DANGER: Sandboxed tamper endpoint /v1/_system/run_tamper_proof is ENABLED!")
-
     # Serve static portal files
     try:
         import importlib.resources
