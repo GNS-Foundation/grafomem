@@ -92,6 +92,19 @@ def _generate_api_key() -> str:
     return f"gfm_{secrets.token_hex(24)}"
 
 
+PASSWORD_MAX_BYTES = 72  # bcrypt reads at most 72 bytes of the UTF-8 encoding
+
+
+def _check_password_bytes(password: str) -> None:
+    """GB10: refuse a password over 72 BYTES (UTF-8, not characters: 40 x "é" is 80 bytes) with one
+    clean message before bcrypt sees it. bcrypt >= 4.1 raises its own ValueError on longer input,
+    which login turned into a 500 and signup/change-password echoed verbatim. Raises ValueError, which
+    every portal route maps to HTTP 400."""
+    n = len(password.encode("utf-8"))
+    if n > PASSWORD_MAX_BYTES:
+        raise ValueError(f"Password must be at most {PASSWORD_MAX_BYTES} bytes (UTF-8); yours is {n} bytes")
+
+
 # ============================================================================
 # PortalAuth
 # ============================================================================
@@ -343,6 +356,7 @@ class PortalAuth:
         email = email.strip().lower()
         if len(password) < 8:
             raise ValueError("Password must be at least 8 characters")
+        _check_password_bytes(password)
 
         conn = self._get_conn()
 
@@ -398,6 +412,9 @@ class PortalAuth:
             raise RuntimeError("bcrypt not installed — cannot login")
 
         email = email.strip().lower()
+        # GB10: refuse an over-long password BEFORE the lookup, so a known and an unknown email get
+        # the same 400 and the same detail (no account-existence split), and bcrypt never sees it.
+        _check_password_bytes(password)
         conn = self._get_conn()
 
         row = conn.execute(
@@ -437,6 +454,8 @@ class PortalAuth:
             raise RuntimeError("bcrypt not installed — cannot change password")
         if not new_password or len(new_password) < 8:
             raise ValueError("New password must be at least 8 characters")
+        _check_password_bytes(new_password)
+        _check_password_bytes(current_password)
         if new_password == current_password:
             raise ValueError("New password must differ from the current password")
 

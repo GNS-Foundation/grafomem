@@ -230,11 +230,14 @@ async def login(req: LoginRequest, request: Request):
         return TokenResponse(token=token, **info)
     except HTTPException:
         raise
-    except Exception as exc:
+    except ValueError as exc:
+        # GB10: client error (e.g. password over 72 bytes), same answer for any email.
+        raise HTTPException(400, str(exc))
+    except Exception:
+        # GB10: the exception text stays in the server log; the client gets a generic detail.
         import traceback
-        err = traceback.format_exc()
-        logger.error(f"Login error: {err}")
-        raise HTTPException(500, f"Login crashed: {exc}")
+        logger.error(f"Login error: {traceback.format_exc()}")
+        raise HTTPException(500, "Login failed")
 
 
 @router.post("/sync")
