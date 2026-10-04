@@ -13,10 +13,12 @@ build/
 .env*
 env.txt
 uvicorn.log
+server.log
 
 # local research/scratch exports (never commit)
 scratch/
 clients/cgr-verify/node_modules/
+tests/verifier-ts/node_modules/
 
 # internal working material (design notes, metrics, runbooks, scans) — never commit to this public repo
 claude/
