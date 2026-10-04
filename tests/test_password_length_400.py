@@ -96,6 +96,19 @@ def test_login_internal_error_is_not_echoed(client, app, monkeypatch):
     assert r.json()["detail"] == "Login failed"
 
 
+def test_login_other_valueerror_is_a_500_not_a_400(client, app, monkeypatch):
+    """Cowork (#198 review): only the password-length refusal is a client error. Any other
+    ValueError out of pa.login — e.g. bcrypt.checkpw raising "Invalid salt" on a malformed stored
+    hash — is a server fault: 500, generic detail, internal text not echoed."""
+    def bad_salt(*_a, **_k):
+        raise ValueError("Invalid salt")
+    monkeypatch.setattr(app.state.portal_auth, "login", bad_salt)
+    r = client.post("/v1/portal/login", json={"email": _email(), "password": "password123"})
+    assert r.status_code == 500, f"{r.status_code} {r.text}"
+    assert "Invalid salt" not in r.text
+    assert r.json()["detail"] == "Login failed"
+
+
 # ---------------------------------------------------------------- signup / change-password: clean message
 
 def test_signup_long_password_is_400_with_clean_message(client):
