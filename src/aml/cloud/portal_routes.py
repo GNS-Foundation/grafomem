@@ -16,6 +16,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
+from aml.cloud.portal_auth import PasswordTooLong
 from aml.server.scopes import require_scope, validate_scopes, TENANT_ADMIN_SCOPES
 
 logger = logging.getLogger("grafomem.cloud.portal")
@@ -230,11 +231,16 @@ async def login(req: LoginRequest, request: Request):
         return TokenResponse(token=token, **info)
     except HTTPException:
         raise
-    except Exception as exc:
+    except PasswordTooLong as exc:
+        # GB10: the ONE client error login refuses itself (password over 72 bytes), same answer for
+        # any email. Any other ValueError (e.g. bcrypt "Invalid salt" on a malformed stored hash) is
+        # a server fault and falls through to the generic 500 below.
+        raise HTTPException(400, str(exc))
+    except Exception:
+        # GB10: the exception text stays in the server log; the client gets a generic detail.
         import traceback
-        err = traceback.format_exc()
-        logger.error(f"Login error: {err}")
-        raise HTTPException(500, f"Login crashed: {exc}")
+        logger.error(f"Login error: {traceback.format_exc()}")
+        raise HTTPException(500, "Login failed")
 
 
 @router.post("/sync")
