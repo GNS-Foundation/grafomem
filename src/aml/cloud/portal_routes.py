@@ -54,9 +54,9 @@ class UpdateProfileRequest(BaseModel):
 class TokenResponse(BaseModel):
     """Returned after successful signup or login.
 
-    ``api_key`` is present only on the show-once provisioning responses (signup, and — flag off —
-    legacy login). Under PR 4 login-drop (GRAFOMEM_API_KEY_LOGIN_DROP on) a login response carries
-    no key: the field is null and the client provisions one via /v1/portal/api-keys or /rotate-key."""
+    ``api_key`` is present only on the show-once signup response. A login response carries no key
+    (no plaintext is stored; hash-at-rest): the field is null and the client provisions one via
+    /v1/portal/api-keys or /rotate-key."""
     token: str
     tenant_id: str
     name: str

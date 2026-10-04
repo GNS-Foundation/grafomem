@@ -1,8 +1,8 @@
 """Hash-at-rest PR 5 — auth resolves API keys by api_key_hash ONLY (replaces test_dual_read_auth.py).
 
-No GRAFOMEM_API_KEY_DUAL_READ: the flag is no longer read. A correct hash resolves (current or
-retiring pepper); a wrong or NULL hash does NOT resolve — there is no plaintext fallback and nothing
-is counted as a plaintext-path resolution. With no pepper configured nothing resolves.
+A correct hash resolves (current or retiring pepper); a wrong or NULL hash does NOT resolve — there
+is no plaintext fallback and nothing is counted as a plaintext-path resolution. With no pepper
+configured nothing resolves.
 """
 import os
 import pathlib
@@ -39,7 +39,6 @@ def tm():
 def tenant(tm, monkeypatch):
     monkeypatch.setenv("GRAFOMEM_API_KEY_PEPPER", PEPPER)
     monkeypatch.delenv("GRAFOMEM_API_KEY_PEPPER_RETIRING", raising=False)
-    monkeypatch.delenv("GRAFOMEM_API_KEY_DUAL_READ", raising=False)
     return tm.create_tenant(name=f"ho-{uuid.uuid4().hex[:8]}")  # birth key = TENANT_ADMIN_SCOPES
 
 
@@ -78,14 +77,6 @@ def test_null_hash_does_not_resolve(tenant):
     _set_hash(tenant.id, None)
     mw = _mw()
     assert _lookup(mw, tenant.api_key) == (None, None)
-
-
-def test_dual_read_flag_is_ignored(tenant, monkeypatch):
-    """The flag no longer exists for auth: on or off, the behaviour is hash-only."""
-    _set_hash(tenant.id, os.urandom(32))
-    for v in ("1", "0"):
-        monkeypatch.setenv("GRAFOMEM_API_KEY_DUAL_READ", v)
-        assert _lookup(_mw(), tenant.api_key) == (None, None)
 
 
 def test_retiring_pepper_resolves_via_hash(tenant, monkeypatch):
