@@ -95,14 +95,19 @@ def _generate_api_key() -> str:
 PASSWORD_MAX_BYTES = 72  # bcrypt reads at most 72 bytes of the UTF-8 encoding
 
 
+class PasswordTooLong(ValueError):
+    """A password over PASSWORD_MAX_BYTES: a client error (HTTP 400). Distinct from any other
+    ValueError so the login route can refuse ONLY this one as 400 and treat the rest as faults."""
+
+
 def _check_password_bytes(password: str) -> None:
     """GB10: refuse a password over 72 BYTES (UTF-8, not characters: 40 x "é" is 80 bytes) with one
     clean message before bcrypt sees it. bcrypt >= 4.1 raises its own ValueError on longer input,
-    which login turned into a 500 and signup/change-password echoed verbatim. Raises ValueError, which
-    every portal route maps to HTTP 400."""
+    which login turned into a 500 and signup/change-password echoed verbatim. Raises PasswordTooLong
+    (a ValueError): signup/change-password map ValueError → 400 as before; login maps only this."""
     n = len(password.encode("utf-8"))
     if n > PASSWORD_MAX_BYTES:
-        raise ValueError(f"Password must be at most {PASSWORD_MAX_BYTES} bytes (UTF-8); yours is {n} bytes")
+        raise PasswordTooLong(f"Password must be at most {PASSWORD_MAX_BYTES} bytes (UTF-8); yours is {n} bytes")
 
 
 # ============================================================================
