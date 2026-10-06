@@ -29,6 +29,7 @@ from datetime import datetime, timezone
 from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from aml.server.scopes import require_scope
@@ -194,6 +195,32 @@ def create_disposition_router(db_pool, signing_identity, ledger_pool=None,
         # mapping to avoid writing misleading fields — flagged for the operator (see the PR/report).
         return {"record_id": record_id, "issuer_key_id": rec["system_metadata"]["issuer_key_id"],
                 "assurance": assurance}
+
+    @router.get("/issuer")
+    async def get_issuer(request: Request):  # noqa: ARG001 — declared BEFORE /{record_id} so it wins the match
+        """GB3: the runtime issuer key (roadmap §9.2). Public — an exact entry in the auth skip list — so a
+        verifier can fetch it with no access, like /v1/cgr/issuer. A CONVENIENCE: per GD2 the key and its
+        fingerprint are delivered in the onboarding pack and confirmed out of band, and a verifier must never
+        trust this value on first fetch nor re-fetch it to check a record (decision 0011 §8.2). No separate
+        sha256 fingerprint (operator decision): `key_id_grouped` is the read-aloud form of the key id.
+        `key_history` is null until a key history exists (roadmap §9.4)."""
+        if signing_identity is None:
+            raise HTTPException(503, "disposition issuer unavailable: runtime signing identity not configured")
+        pub = signing_identity.public_key().hex()
+        key_id = "ed25519:" + pub
+        body = {
+            "issuer": "grafomem-runtime",
+            "issuer_key_id": key_id,
+            "public_key": pub,
+            "algorithm": "ed25519",
+            "key_id_grouped": " ".join(pub[i:i + 4] for i in range(0, len(pub), 4)),
+            "trust_note": ("Convenience only. Do not trust this key on first fetch: confirm the key id out of "
+                           "band (onboarding pack, call), pin it in your verifier, and never re-fetch it to "
+                           "check a record. A changed key must fail verification until re-confirmed."),
+            "key_history": None,
+        }
+        return JSONResponse(body, headers={"Cache-Control": "public, max-age=300, must-revalidate",
+                                           "ETag": f'"{key_id}"'})
 
     @router.get("/{record_id}")
     async def get_disposition(record_id: str, request: Request):
