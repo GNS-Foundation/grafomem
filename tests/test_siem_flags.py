@@ -119,9 +119,28 @@ def test_export_sweep_never_deletes(monkeypatch, old_exported_row):
 
 def test_retention_sweep_deletes_only_when_run_explicitly(monkeypatch, old_exported_row):
     """The split-out retention sweep still prunes exported rows past the cutoff (the cursor guard kept)."""
+    monkeypatch.setenv("SIEM_RETENTION_ENABLED", "1")
     monkeypatch.setenv("LOG_RETENTION_DAYS", "180")
     SiemExporter(DB_URL).run_retention_sweep()
     assert not _row_exists()
+
+
+def test_retention_sweep_with_flag_off_never_connects(monkeypatch, old_exported_row):
+    """Defence in depth on the DELETE path (Cowork, #199): with SIEM_RETENTION_ENABLED unset,
+    run_retention_sweep returns before any psycopg.connect — mirroring run_sweep — and the exported
+    200-day-old row is still there afterwards."""
+    monkeypatch.setenv("LOG_RETENTION_DAYS", "180")
+    calls: list = []
+
+    def _connect(*a, **k):
+        calls.append(a)
+        raise RuntimeError("must not be reached")
+
+    monkeypatch.setattr(psycopg, "connect", _connect)
+    SiemExporter(DB_URL).run_retention_sweep()   # swallows errors: count the calls
+    monkeypatch.undo()                            # real connect back for the row check
+    assert calls == [], "run_retention_sweep reached psycopg.connect with SIEM_RETENTION_ENABLED off"
+    assert _row_exists(), "the row must survive a retention sweep that is switched off"
 
 
 # ---------------------------------------------------------------- 4. retention job is its own flag
