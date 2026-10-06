@@ -385,7 +385,32 @@ def held_preconditions_018b(conn) -> list[str]:
     return failed
 
 
-_HELD_PRECONDITIONS = {"018b_drop_api_key_plaintext.sql": held_preconditions_018b}
+def held_preconditions_019(conn) -> list[str]:
+    """What must hold before 019 (drop the legacy tenants.api_key column) may run: 015 recorded as
+    applied, the column present, and zero non-NULL values left in it. Returns the failed
+    preconditions (empty = may run)."""
+    failed: list[str] = []
+    applied = {r[0] for r in conn.execute("SELECT version FROM schema_migrations").fetchall()}
+    if "015_null_tenants_api_key.sql" not in applied:
+        failed.append("015_null_tenants_api_key.sql is not recorded as applied (the residual values must "
+                      "be nulled by the ordinary pass first)")
+    col = conn.execute(
+        "SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() "
+        "AND table_name = 'tenants' AND column_name = 'api_key'").fetchone()
+    if not col:
+        failed.append("tenants.api_key does not exist (already dropped?)")
+    else:
+        n = conn.execute("SELECT count(*) FROM tenants WHERE api_key IS NOT NULL").fetchone()[0]
+        if n:
+            failed.append(f"{n} tenants row(s) still carry a non-NULL api_key — 015 should have nulled "
+                          "them; investigate before dropping the column")
+    return failed
+
+
+_HELD_PRECONDITIONS = {
+    "018b_drop_api_key_plaintext.sql": held_preconditions_018b,
+    "019_drop_tenants_api_key.sql": held_preconditions_019,
+}
 
 
 def apply_held_migration(

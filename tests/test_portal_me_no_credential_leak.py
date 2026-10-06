@@ -139,12 +139,15 @@ def test_login_returns_working_key_from_tenant_api_keys(client):
         "the signup birth key did not authenticate — it must resolve by its hash"
     )
 
-    # The key must NOT have come from tenants.api_key: that column is NULL post-014.
+    # The key must NOT have come from tenants.api_key: since B8 the column is gone (held 019); on a
+    # database that still carries it (pre-019) it must be NULL.
     import psycopg
     with psycopg.connect(DB_URL) as conn:
-        row = conn.execute(
-            "SELECT api_key FROM tenants WHERE id = %s", (tenant_id,)
-        ).fetchone()
-        assert row is not None
-        col = row[0] if isinstance(row, tuple) else row["api_key"]
-        assert col is None, f"tenants.api_key should be NULL post-014, got {col!r}"
+        has_col = conn.execute(
+            "SELECT 1 FROM information_schema.columns WHERE table_name='tenants' AND column_name='api_key'"
+        ).fetchone() is not None
+        if has_col:
+            row = conn.execute("SELECT api_key FROM tenants WHERE id = %s", (tenant_id,)).fetchone()
+            assert row is not None
+            col = row[0] if isinstance(row, tuple) else row["api_key"]
+            assert col is None, f"tenants.api_key should be NULL post-014, got {col!r}"

@@ -7,13 +7,14 @@ closes. This test is the standing guard that the backfill stays gone (it replace
 transitional guard test deleted in the #164 merge, which asserted the *opposite* — that the
 now-removed backfill ran).
 
-A tenant with a populated tenants.api_key and NO tenant_api_keys row must, after
-ensure_schema(), still have ZERO tenant_api_keys rows: nothing may resurrect the column as a
-minting source.
+A tenant with NO tenant_api_keys row must, after ensure_schema(), still have ZERO tenant_api_keys
+rows: nothing may mint a key row from the tenants table. (Since B8 the tenants.api_key column no
+longer exists — held migration 019 — so the guard is structural as well; the test keeps the
+behavioural assertion.)
 
 - Passes on main (backfill removed).
-- Fails on c5de104 (#165's guarded backfill) — a non-NULL tenants.api_key matches
-  `WHERE api_key IS NOT NULL` and gets minted, so the count is 1, not 0.
+- Failed on c5de104 (#165's guarded backfill) — a non-NULL tenants.api_key matched
+  `WHERE api_key IS NOT NULL` and got minted, so the count was 1, not 0.
 """
 import os
 import uuid
@@ -40,11 +41,11 @@ def test_ensure_schema_never_mints_from_tenants_api_key(fresh_tables):
 
     tid = uuid.uuid4().hex
     with psycopg.connect(DB_URL, autocommit=True) as c:
-        # A legacy-shaped tenant: tenants.api_key populated, but NO tenant_api_keys row.
+        # A legacy-shaped tenant: a tenants row but NO tenant_api_keys row (B8: no api_key column).
         c.execute(
-            "INSERT INTO tenants (id, name, plan, status, api_key) "
-            "VALUES (%s, %s, 'starter', 'active', %s)",
-            (tid, "legacy-tenant", f"gfm_{uuid.uuid4().hex}"))
+            "INSERT INTO tenants (id, name, plan, status) "
+            "VALUES (%s, %s, 'starter', 'active')",
+            (tid, "legacy-tenant"))
         pre = c.execute(
             "SELECT count(*) FROM tenant_api_keys WHERE tenant_id = %s", (tid,)).fetchone()[0]
         assert pre == 0  # sanity: no key row yet
@@ -56,6 +57,6 @@ def test_ensure_schema_never_mints_from_tenants_api_key(fresh_tables):
         n = c.execute(
             "SELECT count(*) FROM tenant_api_keys WHERE tenant_id = %s", (tid,)).fetchone()[0]
     assert n == 0, (
-        f"ensure_schema minted {n} tenant_api_keys row(s) from tenants.api_key — the backfill "
-        f"must stay removed; tenants.api_key is not a minting source (014)"
+        f"ensure_schema minted {n} tenant_api_keys row(s) from the tenants table — the backfill "
+        f"must stay removed; tenants is not a minting source (014, B8)"
     )

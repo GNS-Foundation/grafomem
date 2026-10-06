@@ -1,0 +1,22 @@
+-- Migration 019 (HELD): drop the legacy tenants.api_key column — B8.
+--
+-- History: 014 made it nullable and stopped every writer; 015 nulled the residual values; the drop
+-- planned as "016" never shipped (016 became 016_cosign_dispositions.sql). Since 014 nothing reads it:
+-- /v1/portal/me shows tenant_api_keys metadata, /v1/cloud/tenants carries no api_key, and the server's
+-- own SELECTs no longer name the column (B8 code). IRREVERSIBLE: once applied, the column exists only
+-- in backups (every value in it is NULL by precondition, so nothing of value is lost).
+--
+-- This file lives in migrations/held/ ON PURPOSE. The runner's ordinary pass applies only
+-- migrations/*.sql (non-recursive), so this migration can never run as part of a deploy. It is
+-- applied explicitly, once, by an operator:
+--
+--   python -m aml.cloud.migrations_runner --apply-held 019_drop_tenants_api_key.sql --confirm-irreversible
+--
+-- and the runner refuses unless, on the target database: 015 is recorded as applied; the column still
+-- exists; and NO tenants row has a non-NULL api_key. Operational preconditions (not enforced in SQL):
+-- the B8 code release deployed first (it stopped selecting the column), a staging run first, and a
+-- fresh backup of the target database taken immediately before.
+--
+-- Guarded/idempotent: IF EXISTS makes a re-run a no-op. The column's implicit UNIQUE index is dropped
+-- with it. No CREATE TABLE, so the split-role grant rule is a no-op.
+ALTER TABLE tenants DROP COLUMN IF EXISTS api_key;

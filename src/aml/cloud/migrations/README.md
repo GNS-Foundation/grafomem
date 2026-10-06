@@ -78,3 +78,13 @@ present, zero `api_key_hash IS NULL` rows). The ledger row is written with `appl
 Hash-at-rest PR 5 ships as two steps: `018a_api_key_plaintext_nullable.sql` (ordinary, reversible,
 with the hash-only code) and `held/018b_drop_api_key_plaintext.sql` (irreversible: the plaintext
 column and its index), run later, after a staging check and a fresh backup.
+
+`held/019_drop_tenants_api_key.sql` (B8) drops the legacy `tenants.api_key` column, which 014 retired
+and 015 nulled. Preconditions: 015 recorded, the column present, zero non-NULL values. Order: the B8
+code release first (it stopped selecting the column; a fresh `ensure_schema` no longer creates it, and
+014/015 are guarded so they skip on a database that never had the column), then staging, then a
+fresh backup and production:
+
+```bash
+python -m aml.cloud.migrations_runner --apply-held 019_drop_tenants_api_key.sql --confirm-irreversible
+```

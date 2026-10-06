@@ -172,10 +172,9 @@ class TenantAuthMiddleware(BaseHTTPMiddleware):
             # authenticate: it granted role 'admin' with scopes ["*"], no allowed_stores,
             # no ip_allowlist and no expiry — a broader, non-expiring identity than any
             # minted key. Only `tenant_api_keys` rows resolve now. (prod & staging
-            # legacy_exposed = 0 at removal, so no tenant lost access.) The
-            # `tenants.api_key` column is still read by the console for DISPLAY
-            # (portal_routes.py /v1/portal/me); dropping it is a separate migration
-            # gated on repointing that display — it is NOT a credential path any more.
+            # legacy_exposed = 0 at removal, so no tenant lost access.) Nothing reads the
+            # legacy `tenants.api_key` column any more — /v1/portal/me shows tenant_api_keys
+            # metadata (014 step a) — and the held migration 019 drops it (B8).
             if row:
                 # Check expiry (column may not exist yet)
                 from datetime import datetime, timezone

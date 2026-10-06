@@ -64,9 +64,9 @@ def test_no_password_account_rejected():
     conn = pa._get_conn()
     tid = uuid.uuid4().hex
     conn.execute(
-        "INSERT INTO tenants (id, name, api_key, plan, email, password_hash, status) "
-        "VALUES (%s,%s,%s,'starter',%s, NULL, 'active')",
-        (tid, "SSO User", "gfm_" + uuid.uuid4().hex, f"sso-{tid[:8]}@example.com"))
+        "INSERT INTO tenants (id, name, plan, email, password_hash, status) "
+        "VALUES (%s,%s,'starter',%s, NULL, 'active')",
+        (tid, "SSO User", f"sso-{tid[:8]}@example.com"))
     with pytest.raises(ValueError, match="[Nn]o password"):
         pa.change_password(tid, "whatever1", "newpassword2")
 

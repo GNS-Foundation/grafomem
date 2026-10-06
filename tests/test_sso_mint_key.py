@@ -45,9 +45,11 @@ def test_sso_create_mints_key_row_and_never_uses_tenants_api_key(provider):
     assert kr is not None, "SSO create did not mint a tenant_api_keys row"
     assert bytes(kr[0]) == compute_api_key_hash(key)
 
-    # tenants.api_key was NOT written (014 step a).
-    tr = _row("SELECT api_key FROM tenants WHERE id = %s", (tid,))
-    assert tr is not None and tr[0] is None, f"tenants.api_key should be NULL, got {tr and tr[0]!r}"
+    # tenants.api_key was NOT written (014 step a); since B8 the column is gone (held 019), and on a
+    # pre-019 database it must be NULL.
+    if _row("SELECT 1 FROM information_schema.columns WHERE table_name='tenants' AND column_name='api_key'", ()):
+        tr = _row("SELECT api_key FROM tenants WHERE id = %s", (tid,))
+        assert tr is not None and tr[0] is None, f"tenants.api_key should be NULL, got {tr and tr[0]!r}"
 
     # Second login (same sub) → existing-tenant branch: SAME tenant, and NO key — the plaintext is
     # not stored (PR 5), so a returning login cannot echo one; the console mints its own device key.
