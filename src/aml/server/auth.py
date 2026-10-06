@@ -39,6 +39,8 @@ _SKIP_AUTH_PATHS = frozenset({
     "/v1/gcrumbs/verify",       # stateless receipt verification, no DB, no auth
     "/v1/cgr/issuer",           # verifier fetches the Foundation public key with no access
                                 # (exact-match ONLY — the /v1/cgr/attestation(s) endpoints stay authed)
+    "/v1/dispositions/issuer",  # GB3: the runtime issuer key, public, never trusted on first fetch
+                                # (exact-match ONLY — /v1/dispositions and /{record_id} stay authed)
     "/v1/push/register",
 })
 
