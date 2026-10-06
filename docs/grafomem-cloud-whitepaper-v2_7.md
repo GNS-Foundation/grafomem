@@ -67,7 +67,7 @@ The platform is built on **7 governance layers** stacked on top of the open-sour
 >
 > **One open item (tracked, not a release gate):** of the 10 live misses, **7 are production routing/500 errors** on the Railway deployment; 2 are environment-blocked offline tamper tests; 1 is a provider replay defect. The 7 prod 500s need root-cause against the live deployment (reproduce → stack trace → fix).
 >
-> **Roadmap states (honest):** pgvector is the primary prod backend — the Qdrant adapter is built but not the default factory (Phase 6 not yet live); SIEM exporter is **parked** (undeployed, pending read-replica offload to keep the sweep off the writer path); SLO alerting is **Defined-not-Active** (`alertmanager.yml` written, routing keys not yet wired).
+> **Roadmap states (honest):** pgvector is the primary prod backend — the Qdrant adapter is built but not the default factory (Phase 6 not yet live); SIEM exporter is **deployed but inert**: the erasure daemon (`grafomem-deamon`) carries it, and since B6 (2026-10) the export job is not scheduled unless `SIEM_EXPORT_ENABLED` is `1`/`true`; when scheduled, it exports nothing without `SIEM_WEBHOOK_URL` (checked at run time); retention pruning is a separate job under `SIEM_RETENTION_ENABLED`, also off by default (read-replica offload still pending before either is switched on); SLO alerting is **Defined-not-Active** (`alertmanager.yml` written, routing keys not yet wired).
 
 ---
 
@@ -2150,4 +2150,4 @@ To satisfy W9 Erasure without blocking the hot path:
 | **Action extraction** | LIVE | Extracts `action_name` and `params` via strict schema forcing. |
 | **Declarative governance PEP** | LIVE | PEP enforces DB-defined policies (e.g. `require_params`, `sandbox_financial_rules`); resilience mechanisms (failover, tool-deny, timeout, loop) validated two-sided in the sealed run (§17.1). |
 | **Tamper-evident receipts** | LIVE | Ed25519 signatures generated and independently verifiable with bound production keys; tamper detection proven via negative tests. |
-| **Erasure / gcrumbs** | LIVE | Erasure sweeper deployed as independent Railway worker; 60-minute GDPR deletion verified on sample. W6 restore probe **run and passing**. Fail-closed erasure verified (503 + data preserved). SIEM exporter **parked** (undeployed, pending read-replica offload). |
+| **Erasure / gcrumbs** | LIVE | Erasure sweeper deployed as independent Railway worker; 60-minute GDPR deletion verified on sample. W6 restore probe **run and passing**. Fail-closed erasure verified (503 + data preserved). SIEM exporter **deployed but inert** in the daemon: not scheduled unless `SIEM_EXPORT_ENABLED` is `1`/`true`; when scheduled, exports nothing without `SIEM_WEBHOOK_URL`; retention a separate opt-in job (`SIEM_RETENTION_ENABLED`); read-replica offload pending before either is enabled. |

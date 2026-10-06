@@ -123,7 +123,7 @@ The platform is built on **7 governance layers** stacked on top of the open-sour
 >
 > **Open item — RESOLVED (v2.7.1):** the 7 production routing/500s were one cause (connection-pool opened in `lifespan` after synchronous service instantiation → shared corrupted connection). Fixed by moving pool init into `create_app()` (`app.py`, commit `3c2ab09`) and verified on the live Railway deployment — full mock-mode `sandbox_e2e_v2.py` is **52/52** with the previously-500ing endpoints green. Remaining formality: a confirming **live per-provider** re-run (expected ~43/46 — the residual 2 env-blocked offline tests + 1 replay defect are not product defects). Minor watch-item: the `/stream` 405 passed on the live run but the ingress cause is unconfirmed.
 >
-> **Roadmap states (honest):** pgvector is the primary prod backend — the Qdrant adapter is built but not the default factory (Phase 6 not yet live); SIEM exporter is **parked** (undeployed, pending read-replica offload to keep the sweep off the writer path); SLO alerting is **Defined-not-Active** (`alertmanager.yml` written, routing keys not yet wired).
+> **Roadmap states (honest):** pgvector is the primary prod backend — the Qdrant adapter is built but not the default factory (Phase 6 not yet live); SIEM exporter is **deployed but inert**: the erasure daemon (`grafomem-deamon`) carries it, and since B6 (2026-10) the export job is not scheduled unless `SIEM_EXPORT_ENABLED` is `1`/`true`; when scheduled, it exports nothing without `SIEM_WEBHOOK_URL` (checked at run time); retention pruning is a separate job under `SIEM_RETENTION_ENABLED`, also off by default (read-replica offload still pending before either is switched on); SLO alerting is **Defined-not-Active** (`alertmanager.yml` written, routing keys not yet wired).
 
 ---
 
@@ -2210,7 +2210,7 @@ To satisfy W9 Erasure without blocking the hot path:
 | **Action extraction** | LIVE | Extracts `action_name` and `params` via strict schema forcing. |
 | **Declarative governance PEP** | LIVE | PEP enforces DB-defined policies (e.g. `require_params`, `sandbox_financial_rules`); resilience mechanisms (failover, tool-deny, timeout, loop) validated two-sided in the sealed run (§17.1). |
 | **Tamper-evident receipts** | LIVE | Ed25519 signatures generated and independently verifiable with bound production keys; tamper detection proven via negative tests. |
-| **Erasure / gcrumbs** | LIVE | Erasure sweeper deployed as independent Railway worker; 60-minute GDPR deletion verified on sample. W6 restore probe **run and passing**. Fail-closed erasure verified (503 + data preserved). SIEM exporter **parked** (undeployed, pending read-replica offload). |
+| **Erasure / gcrumbs** | LIVE | Erasure sweeper deployed as independent Railway worker; 60-minute GDPR deletion verified on sample. W6 restore probe **run and passing**. Fail-closed erasure verified (503 + data preserved). SIEM exporter **deployed but inert** in the daemon: not scheduled unless `SIEM_EXPORT_ENABLED` is `1`/`true`; when scheduled, exports nothing without `SIEM_WEBHOOK_URL`; retention a separate opt-in job (`SIEM_RETENTION_ENABLED`); read-replica offload pending before either is enabled. |
 
 ---
 
