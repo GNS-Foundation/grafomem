@@ -1,7 +1,9 @@
 """Migration 015 nulls residual tenants.api_key values, leaving tenant_api_keys untouched.
 
-014 retired tenants.api_key (nullable, unread); 015 nulls any residual plaintext before 016
-drops the column. The authoritative key in tenant_api_keys must be untouched.
+014 retired tenants.api_key (nullable, unread); 015 nulls any residual plaintext before the held
+migration 019 drops the column (B8). The authoritative key in tenant_api_keys must be untouched.
+Since B8 a fresh ensure_schema creates no api_key column, so this test recreates it to model a
+migrated (pre-019) database; it also proves 015 is a no-op on a database without the column.
 """
 import os
 import pathlib
@@ -25,8 +27,21 @@ def fresh_tables():
     yield
 
 
+def test_015_is_a_no_op_without_the_column(fresh_tables):
+    """B8: a fresh database never has tenants.api_key; the guarded 015 must skip, not error."""
+    TenantManager(DB_URL).ensure_schema()
+    with psycopg.connect(DB_URL, autocommit=True) as c:
+        assert c.execute("SELECT 1 FROM information_schema.columns WHERE table_name='tenants' "
+                         "AND column_name='api_key'").fetchone() is None
+        c.execute(MIG_015.read_text())   # must not raise
+
+
 def test_015_nulls_residual_tenants_api_key(fresh_tables):
-    TenantManager(DB_URL).ensure_schema()  # tenants.api_key is nullable (post-014 _SCHEMA_SQL)
+    TenantManager(DB_URL).ensure_schema()
+    with psycopg.connect(DB_URL, autocommit=True) as c:
+        # Model a migrated, pre-019 database: the nullable column still exists (B8 removed it from
+        # the fresh schema).
+        c.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS api_key TEXT UNIQUE")
 
     tid = uuid.uuid4().hex
     residual = f"gfm_{uuid.uuid4().hex}"       # a stale plaintext value in tenants.api_key

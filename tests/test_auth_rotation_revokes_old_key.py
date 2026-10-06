@@ -108,22 +108,22 @@ def test_probe_discriminates(client):
 
 
 def test_legacy_tenants_api_key_no_longer_authenticates(client, tm):
-    """The legacy tenants.api_key fallback is REMOVED (drift-audit prod addendum §2).
-    A tenant with a tenants.api_key value but NO tenant_api_keys row must NOT
-    authenticate — previously this resolved to a wildcard-scope admin identity."""
+    """The legacy tenants.api_key fallback is REMOVED (drift-audit prod addendum §2), and since B8 the
+    column itself is gone (held 019). A tenant row with NO tenant_api_keys row must NOT authenticate
+    with any key — previously a tenants.api_key value resolved to a wildcard-scope admin identity."""
     import psycopg
     tid = "legacy-" + uuid.uuid4().hex[:12]
     legacy_key = "gm_legacy_" + uuid.uuid4().hex * 2
     conn = psycopg.connect(DB_URL, autocommit=True)
     try:
         conn.execute(
-            "INSERT INTO tenants (id, name, api_key, plan) VALUES (%s, %s, %s, 'starter')",
-            (tid, "legacy-only", legacy_key),
+            "INSERT INTO tenants (id, name, plan) VALUES (%s, %s, 'starter')",
+            (tid, "legacy-only"),
         )
         # No tenant_api_keys row for this tenant — the exact shape the fallback served.
         assert not _key_authenticates(client, legacy_key), (
-            "REGRESSION: tenants.api_key still authenticates — the legacy fallback "
-            "was supposed to be removed"
+            "REGRESSION: a tenant without a tenant_api_keys row authenticated — the legacy "
+            "tenants.api_key fallback was supposed to be removed"
         )
     finally:
         conn.execute("DELETE FROM tenants WHERE id = %s", (tid,))

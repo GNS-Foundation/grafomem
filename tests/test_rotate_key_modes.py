@@ -39,8 +39,8 @@ def platform_tenant(monkeypatch):
     tid = uuid.uuid4().hex
     old_key_id = uuid.uuid4().hex
     with psycopg.connect(DB_URL, autocommit=True) as c:
-        c.execute("INSERT INTO tenants (id, name, plan, status, api_key) "
-                  "VALUES (%s,%s,'enterprise','active',%s)", (tid, "platform-ulissy-like", f"gfm_{uuid.uuid4().hex}"))
+        c.execute("INSERT INTO tenants (id, name, plan, status) "
+                  "VALUES (%s,%s,'enterprise','active')", (tid, "platform-ulissy-like"))
         c.execute("INSERT INTO tenant_api_keys (key_id, tenant_id, name, role, scopes, api_key_hash) "
                   "VALUES (%s,%s,'Default Admin Key','admin',%s,%s)",
                   (old_key_id, tid, ["*"], compute_api_key_hash(f"gfm_{uuid.uuid4().hex}", PEPPER)))

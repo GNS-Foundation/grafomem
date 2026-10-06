@@ -91,11 +91,9 @@ _SCHEMA_SQL = """\
 CREATE TABLE IF NOT EXISTS tenants (
     id          TEXT        PRIMARY KEY,
     name        TEXT        NOT NULL,
-    -- 014 step (a): api_key is nullable and no longer written by any tenant writer
-    -- (keys live in tenant_api_keys). Matches migration 014's DROP NOT NULL so a
-    -- fresh ensure_schema DB and a migrated one agree. UNIQUE still holds — Postgres
-    -- treats NULLs as distinct, so multiple NULL api_key rows are allowed.
-    api_key     TEXT        UNIQUE,
+    -- B8: no api_key column. Keys live only in tenant_api_keys (014 step a); the legacy
+    -- tenants.api_key was nulled by 015 and is DROPPED by the held migration 019 on migrated
+    -- databases. A fresh ensure_schema database never gets it (014/015 are guarded for that).
     plan        TEXT        NOT NULL DEFAULT 'starter',
     email       TEXT        UNIQUE,
     supabase_uid TEXT       UNIQUE,
@@ -277,7 +275,7 @@ class TenantManager:
         """Look up a tenant by ID.  Returns ``None`` if not found."""
         conn = self._get_conn()
         row = conn.execute(
-            "SELECT id, name, api_key, plan, created_at, home_region FROM tenants WHERE id = %s",
+            "SELECT id, name, plan, created_at, home_region FROM tenants WHERE id = %s",  # B8: no api_key column
             (tenant_id,),
         ).fetchone()
         return self._row_to_info(row) if row else None
@@ -318,7 +316,7 @@ class TenantManager:
         """Return every provisioned tenant, ordered by creation time."""
         conn = self._get_conn()
         rows = conn.execute(
-            "SELECT id, name, api_key, plan, created_at, home_region FROM tenants "
+            "SELECT id, name, plan, created_at, home_region FROM tenants "  # B8: no api_key column
             "ORDER BY created_at",
         ).fetchall()
         return [self._row_to_info(r) for r in rows]

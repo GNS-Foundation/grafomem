@@ -3,10 +3,31 @@ import pytest
 import psycopg
 from aml.server.app import create_app
 
-# We need a shared test database URL
-TEST_DB_URL = "postgresql://grafomem:dev@localhost:5432/grafomem"
-os.environ["GRAFOMEM_DB_URL"] = TEST_DB_URL
-os.environ["GRAFOMEM_LEDGER_URL"] = "postgresql://grafomem:dev@localhost:5432/grafomem_ledger"
+# The shared test database. Overridable (GRAFOMEM_TEST_DB_URL / GRAFOMEM_TEST_LEDGER_URL) so a local
+# run can use a private cluster on another port; the default keeps CI unchanged. The suite drops and
+# truncates tables, so it REFUSES any host that is not the local machine — before any connection.
+_DEFAULT_TEST_DB_URL = "postgresql://grafomem:dev@localhost:5432/grafomem"
+_DEFAULT_TEST_LEDGER_URL = "postgresql://grafomem:dev@localhost:5432/grafomem_ledger"
+_LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
+def _require_local(label: str, url: str) -> str:
+    from urllib.parse import urlsplit
+    host = (urlsplit(url).hostname or "").strip("[]").lower()
+    if host not in _LOCAL_HOSTS:
+        pytest.exit(f"{label}: refusing to run the test suite against a non-local database host "
+                    f"{host!r} (url host must be one of {sorted(_LOCAL_HOSTS)}); the suite drops and "
+                    f"truncates tables. Set GRAFOMEM_TEST_DB_URL / GRAFOMEM_TEST_LEDGER_URL to a local "
+                    f"cluster.", returncode=3)
+    return url
+
+
+TEST_DB_URL = _require_local("GRAFOMEM_TEST_DB_URL",
+                             os.environ.get("GRAFOMEM_TEST_DB_URL") or _DEFAULT_TEST_DB_URL)
+TEST_LEDGER_URL = _require_local("GRAFOMEM_TEST_LEDGER_URL",
+                                 os.environ.get("GRAFOMEM_TEST_LEDGER_URL") or _DEFAULT_TEST_LEDGER_URL)
+os.environ["GRAFOMEM_DB_URL"] = TEST_DB_URL          # only ever the resolved, local URL
+os.environ["GRAFOMEM_LEDGER_URL"] = TEST_LEDGER_URL
 os.environ["GRAFOMEM_MASTER_KEY"] = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 os.environ["UNSAFE_LOCAL_DEV"] = "true"
 # Hash-at-rest PR 5: keys resolve by hash only and a mint refuses without the pepper, so the suite
