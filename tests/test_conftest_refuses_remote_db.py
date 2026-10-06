@@ -24,8 +24,10 @@ def _collect_with(url: str) -> subprocess.CompletedProcess:
     )
 
 
+# URLs without userinfo on purpose: the check is on the host alone, and a user:password@host literal
+# in a test file trips secret scanners (GitGuardian flagged the first version of this test).
 def test_remote_host_makes_conftest_exit():
-    r = _collect_with("postgresql://grafomem:dev@db.example.invalid:5432/grafomem")
+    r = _collect_with("postgresql://db.example.invalid:5432/grafomem")
     out = r.stdout + r.stderr
     assert r.returncode != 0, out
     assert "refusing" in out and "db.example.invalid" in out, out
@@ -33,6 +35,6 @@ def test_remote_host_makes_conftest_exit():
 
 
 def test_local_host_is_accepted():
-    r = _collect_with("postgresql://grafomem:dev@127.0.0.1:5432/grafomem")
+    r = _collect_with("postgresql://127.0.0.1:5432/grafomem")
     out = r.stdout + r.stderr
     assert "refusing" not in out, out
