@@ -13,6 +13,18 @@
 #
 # To activate (Railway service setting, operator action — not done by this PR): service
 # grafomem-deamon → Settings → Config file path = railway.daemon.toml (one setting per environment).
+#
+# Daemon environment (B6). All SIEM switches default OFF; a value is ON only when exactly "1" or "true":
+#   DATABASE_URL                    required — the database the sweeper and exporter read
+#   GRAFOMEM_ERASURE_WINDOW_MINUTES erasure sweep window (default 60)
+#   SIEM_EXPORT_ENABLED             "1"/"true" schedules siem_export_job; otherwise the daemon logs
+#                                   "SIEM export disabled" and schedules nothing, even with a URL set
+#   SIEM_WEBHOOK_URL                the export destination; required for an export to run
+#   SIEM_EXPORT_INTERVAL_MINUTES    export (and retention) interval, default 5
+#   SIEM_BATCH_SIZE                 rows per export batch, default 100
+#   SIEM_RETENTION_ENABLED          "1"/"true" schedules siem_retention_job, the ONLY path that deletes
+#                                   (exported rows older than LOG_RETENTION_DAYS); an export never deletes
+#   LOG_RETENTION_DAYS              retention cutoff for decision_records and audit_logs, default 180
 
 [build]
 builder = "DOCKERFILE"

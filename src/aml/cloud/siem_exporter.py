@@ -7,8 +7,18 @@ from psycopg_pool import ConnectionPool
 
 logger = logging.getLogger("grafomem.cloud.siem_exporter")
 
+
+def flag_on(name: str) -> bool:
+    """B6: an operator switch is ON only when set to exactly "1" or "true" (case-insensitive, trimmed).
+    Anything else — unset, "0", "false", "yes", "on" — is OFF. Same strictness as the UNSAFE_LOCAL_DEV
+    escape (internal #6)."""
+    return (os.environ.get(name) or "").strip().lower() in ("1", "true")
+
+
 class SiemExporter:
-    """Background daemon that exports audit logs to a SIEM and applies retention policies."""
+    """Background daemon that exports audit logs to a SIEM (run_sweep, under SIEM_EXPORT_ENABLED) and,
+    SEPARATELY, prunes exported rows past LOG_RETENTION_DAYS (run_retention_sweep, under
+    SIEM_RETENTION_ENABLED). An export never deletes anything (B6)."""
 
     def __init__(self, db_url: str):
         self.db_url = db_url
@@ -18,24 +28,40 @@ class SiemExporter:
         self.batch_size = int(os.environ.get("SIEM_BATCH_SIZE", "100"))
 
     def run_sweep(self):
-        """Main entrypoint called by the APScheduler."""
+        """Export entrypoint called by the APScheduler. Exports only; never deletes."""
+        # B6: the flag is checked FIRST — before the URL, before any DB connection — so a webhook URL
+        # left in the environment can never start an export on its own.
+        if not flag_on("SIEM_EXPORT_ENABLED"):
+            logger.info("SIEM export disabled (SIEM_EXPORT_ENABLED is not '1'/'true'). Skipping SIEM export.")
+            return
         if not self.webhook_url:
             logger.debug("SIEM_WEBHOOK_URL not configured. Skipping SIEM export.")
             return
 
-        logger.info("Starting SIEM export and retention sweep")
+        logger.info("Starting SIEM export sweep")
         import psycopg
         try:
             with psycopg.connect(self.db_url) as conn:
                 self._export_table(conn, "decision_records")
                 self._export_table(conn, "gcrumbs_breadcrumbs")
                 self._export_table(conn, "audit_logs")
-                
-                # Run the retention sweep (excluding gcrumbs_breadcrumbs as it is an append-only ledger)
+        except Exception as e:
+            logger.error("SIEM export sweep failed: %s", e, exc_info=True)
+
+    def run_retention_sweep(self):
+        """Retention entrypoint (B6: split out of the export sweep; scheduled only under
+        SIEM_RETENTION_ENABLED). Prunes decision_records and audit_logs older than LOG_RETENTION_DAYS,
+        and ONLY rows at or before the table's export cursor — nothing unexported is ever deleted
+        (_apply_retention_policy keeps that guard). gcrumbs_breadcrumbs is an append-only ledger and is
+        never pruned."""
+        logger.info("Starting SIEM retention sweep (retention_days=%s)", self.retention_days)
+        import psycopg
+        try:
+            with psycopg.connect(self.db_url) as conn:
                 self._apply_retention_policy(conn, "decision_records", "created_at")
                 self._apply_retention_policy(conn, "audit_logs", "timestamp")
         except Exception as e:
-            logger.error("SIEM export sweep failed: %s", e, exc_info=True)
+            logger.error("SIEM retention sweep failed: %s", e, exc_info=True)
 
     def _export_table(self, conn, table_name: str):
         """Export new records for a specific table."""

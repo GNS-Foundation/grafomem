@@ -47,6 +47,7 @@ def clean_db(db_url):
     return db_url
 
 def test_at_least_once_idempotent_delivery(clean_db, monkeypatch):
+    monkeypatch.setenv("SIEM_EXPORT_ENABLED", "1")   # B6: a URL alone no longer enables the export
     monkeypatch.setenv("SIEM_WEBHOOK_URL", "http://mock-siem.local")
     monkeypatch.setenv("SIEM_BATCH_SIZE", "5")
     

@@ -52,12 +52,17 @@ def run_sweep_job(db_url: str):
         logger.error(f"Sweep job failed: {e}", exc_info=True)
         grafomem_erasure_sweep_errors_total.inc()
 
-from aml.cloud.siem_exporter import SiemExporter
+from aml.cloud.siem_exporter import SiemExporter, flag_on
 
 def run_siem_export_job(db_url: str):
     logger.info("Starting scheduled SIEM export job...")
     exporter = SiemExporter(db_url)
     exporter.run_sweep()
+
+def run_siem_retention_job(db_url: str):
+    logger.info("Starting scheduled SIEM retention job...")
+    exporter = SiemExporter(db_url)
+    exporter.run_retention_sweep()
 
 def start_daemon(db_url: str, interval_minutes: int = 1):
     """Start the APScheduler daemon."""
@@ -74,18 +79,36 @@ def start_daemon(db_url: str, interval_minutes: int = 1):
         next_run_time=datetime.now()
     )
     
-    # SIEM Exporter: Run every 5 minutes (or configurable)
+    # B6: SIEM export is OFF unless SIEM_EXPORT_ENABLED is exactly "1" or "true" (a webhook URL alone
+    # does not enable it). Retention is a SEPARATE job under SIEM_RETENTION_ENABLED; an export never
+    # deletes anything. Both default off, so the daemon schedules neither unless the operator says so.
     siem_interval = int(os.environ.get("SIEM_EXPORT_INTERVAL_MINUTES", "5"))
-    scheduler.add_job(
-        run_siem_export_job,
-        'interval',
-        minutes=siem_interval,
-        args=[db_url],
-        id='siem_export_job',
-        replace_existing=True,
-        next_run_time=datetime.now()
-    )
-    
+    if flag_on("SIEM_EXPORT_ENABLED"):
+        scheduler.add_job(
+            run_siem_export_job,
+            'interval',
+            minutes=siem_interval,
+            args=[db_url],
+            id='siem_export_job',
+            replace_existing=True,
+            next_run_time=datetime.now()
+        )
+    else:
+        logger.info("SIEM export disabled (SIEM_EXPORT_ENABLED is not '1'/'true'): siem_export_job not scheduled")
+
+    if flag_on("SIEM_RETENTION_ENABLED"):
+        scheduler.add_job(
+            run_siem_retention_job,
+            'interval',
+            minutes=siem_interval,
+            args=[db_url],
+            id='siem_retention_job',
+            replace_existing=True,
+            next_run_time=datetime.now()
+        )
+    else:
+        logger.info("SIEM retention disabled (SIEM_RETENTION_ENABLED is not '1'/'true'): siem_retention_job not scheduled")
+
     scheduler.start()
     
     return scheduler
