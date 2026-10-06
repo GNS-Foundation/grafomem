@@ -54,6 +54,11 @@ class SiemExporter:
         and ONLY rows at or before the table's export cursor — nothing unexported is ever deleted
         (_apply_retention_policy keeps that guard). gcrumbs_breadcrumbs is an append-only ledger and is
         never pruned."""
+        # Defence in depth on the DELETE path: the flag is checked here too, before any DB connection,
+        # so a direct call cannot prune unless the operator switched retention on.
+        if not flag_on("SIEM_RETENTION_ENABLED"):
+            logger.info("SIEM retention disabled (SIEM_RETENTION_ENABLED is not '1'/'true'). Skipping retention sweep.")
+            return
         logger.info("Starting SIEM retention sweep (retention_days=%s)", self.retention_days)
         import psycopg
         try:
