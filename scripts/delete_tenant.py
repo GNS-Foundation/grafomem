@@ -17,9 +17,16 @@ Safety model:
   grouped by custody tier.
 - `--live` REQUIRES an explicit tenant-id argument (positional) and prints the resolved tenant
   name for confirmation — never a fuzzy match, never "delete the tenant called X".
-- PLATFORM_TENANT_IDS are protected: teardown of a platform tenant is refused.
+- PLATFORM_TENANT_IDS are protected: teardown of a platform tenant is refused — and (B7) the script
+  REFUSES TO RUN AT ALL, dry-run included, when PLATFORM_TENANT_IDS is unset or empty in the local
+  environment, so the guard can never be vacuous when run from an operator's machine.
 - Ledger-class rows gate the whole operation: if any exist, nothing is written (the gate runs
   BEFORE any delete, so there is never a partial teardown).
+- Orphan probe (B7): every OTHER tenant-scoped table (any table with a tenant_id column outside
+  the walk — decision_records, audit_logs, gcrumbs_breadcrumbs, execution_receipts, tenant_deks,
+  world_model_*, orchestrator_*, …) is counted per tenant. The dry-run shows the counts; `--live`
+  REFUSES (exit 4, before any write) when any of them is non-zero, so a teardown never leaves
+  orphaned rows behind.
 - All deletes run in ONE transaction (commit once; any error rolls back).
 - NEVER prints an api_key (or any secret/PII column): the plan selects only safe identifier
   columns, never `SELECT *`.
@@ -104,6 +111,19 @@ def _resolve_tenant(conn, tenant_id: str) -> dict | None:
     return conn.execute("SELECT id, name FROM tenants WHERE id = %s", (tenant_id,)).fetchone()
 
 
+TIER_ORPHAN = "orphan-probe"
+_WALK_TABLES = {t for _, t, _, _ in WALK}
+
+
+def orphan_tables(conn) -> list[str]:
+    """B7: every table in the public schema with a tenant_id column that the walk does NOT delete from.
+    Discovered from information_schema, so a new tenant-scoped table is probed without a code change."""
+    rows = conn.execute(
+        "SELECT table_name FROM information_schema.columns "
+        "WHERE table_schema = 'public' AND column_name = 'tenant_id' ORDER BY table_name").fetchall()
+    return [r["table_name"] for r in rows if r["table_name"] not in _WALK_TABLES]
+
+
 def _fmt(v) -> str:
     if isinstance(v, list):
         return "[" + ",".join(str(x) for x in v) + "]"
@@ -131,6 +151,11 @@ def build_plan(conn, tenant_id: str) -> list[dict]:
                 f"SELECT {cols_sql} FROM {table} WHERE {col} = %s ORDER BY 1 LIMIT 25",
                 (tenant_id,)).fetchall()
         plan.append(entry)
+    # B7 orphan probe: counts only (never a sample — these tables may hold content), never deleted here.
+    for table in orphan_tables(conn):
+        n = conn.execute(f"SELECT count(*) AS n FROM {table} WHERE tenant_id = %s", (tenant_id,)).fetchone()["n"]
+        plan.append({"tier": TIER_ORPHAN, "table": table, "col": "tenant_id", "count": n, "rows": [],
+                     "status": "ok", "note": ""})
     return plan
 
 
@@ -139,9 +164,10 @@ def print_plan(plan: list[dict], tenant: dict, live: bool) -> None:
     print(f"  tenant id:   {tenant['id']}")
     print(f"  tenant name: {tenant['name']!r}")
     print("  " + "-" * 92)
-    for tier in (TIER_CACHE, TIER_RUNTIME, TIER_LEDGER, TIER_ROOT):
+    for tier in (TIER_CACHE, TIER_RUNTIME, TIER_LEDGER, TIER_ORPHAN, TIER_ROOT):
         rows = [e for e in plan if e["tier"] == tier]
-        print(f"  [{tier}]")
+        print(f"  [{tier}]" + ("  (other tenant-scoped tables — never deleted here; any non-zero count refuses --live)"
+                              if tier == TIER_ORPHAN else ""))
         for e in rows:
             head = f"    {e['table']:24} rows={e['count']:<5}"
             if e["status"] != "ok":
@@ -162,6 +188,12 @@ def main() -> int:
     args = ap.parse_args()
 
     platform = _platform_ids()
+    if not platform:
+        # B7: run from an operator's machine the variable is usually absent, which made this guard vacuous.
+        print("REFUSED: PLATFORM_TENANT_IDS is not set (or empty) in this environment — export it first "
+              "(the comma-separated platform tenant ids, as on the service) so the platform guard is real. "
+              "Nothing was run.")
+        return 2
     if args.tenant_id in platform:
         print(f"REFUSED: {args.tenant_id} is a PLATFORM_TENANT_IDS tenant — teardown is not permitted.")
         return 2
@@ -184,6 +216,8 @@ def main() -> int:
             print("  This tenant cannot be torn down. Nothing was written.")
             return 3
 
+        orphans = [e for e in plan if e["tier"] == TIER_ORPHAN and e["count"] > 0]
+
         deletable = [e for e in plan if e["tier"] in (TIER_CACHE, TIER_RUNTIME, TIER_ROOT)
                      and e["status"] == "ok"]
         total = sum(e["count"] for e in deletable)
@@ -191,9 +225,23 @@ def main() -> int:
         if not args.live:
             print(f"  DRY-RUN — no rows written. {total} row(s) across "
                   f"{sum(1 for e in deletable if e['count'])} table(s) would be removed.")
+            if orphans:
+                print("  NOTE — rows in other tenant-scoped tables would be left orphaned; --live will REFUSE (exit 4):")
+                for e in orphans:
+                    print(f"      {e['table']}: {e['count']} row(s)")
             print(f"  To execute: python scripts/delete_tenant.py {args.tenant_id} --live")
             conn.rollback()
             return 0
+
+        if orphans:
+            # B7: before any write. These tables are outside the walk; tearing the tenant down would leave
+            # their rows with a dangling tenant_id (and signed rows — gcrumbs, receipts — unaccounted for).
+            print("  REFUSED — rows in other tenant-scoped tables would be orphaned (not deleted by this tool):")
+            for e in orphans:
+                print(f"      {e['table']}: {e['count']} row(s)")
+            print("  Nothing was written.")
+            conn.rollback()
+            return 4
 
         # LIVE: one transaction, walk order, tenants row last.
         print(f"  LIVE — tearing down tenant {tenant['id']} ({tenant['name']!r}) …")
