@@ -94,11 +94,24 @@ def test_tenant_with_a_decision_record_is_refused_on_live_and_nothing_is_written
 
 
 def test_dry_run_lists_the_other_tenant_scoped_tables(env, monkeypatch, capsys):
+    """Every table with a tenant_id column outside the walk is probed. decision_records always exists here
+    (the fixture creates it); the others are asserted when present in this database (the suite creates
+    them in other modules; a lone run of this file may not have them)."""
     tid = _tenant()
     rc, out = _run(monkeypatch, capsys, tid)
     assert rc == 0, out
-    for table in ("decision_records", "audit_logs", "gcrumbs_breadcrumbs", "execution_receipts"):
-        assert table in out, f"{table} missing from the orphan probe: {out}"
+    assert "[orphan-probe]" in out, out
+    with psycopg.connect(DB_URL) as c:
+        present = {r[0] for r in c.execute(
+            "SELECT table_name FROM information_schema.columns WHERE table_schema='public' AND column_name='tenant_id'")}
+    assert "decision_records" in present
+    for table in ("decision_records", "audit_logs", "gcrumbs_breadcrumbs", "execution_receipts", "tenant_deks"):
+        if table in present:
+            assert table in out, f"{table} missing from the orphan probe: {out}"
+    # and none of the walk's own tables is probed twice
+    probe = out.split("[orphan-probe]", 1)[1].split("[root]", 1)[0]
+    for table in ("tenant_api_keys", "memories", "hitl_approvers", "cosign_dispositions"):
+        assert table not in probe, f"{table} is in the walk, not the probe"
 
 
 # ---------------------------------------------------------------- 3. a clean tenant still tears down (control)
