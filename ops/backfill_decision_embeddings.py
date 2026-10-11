@@ -32,10 +32,12 @@ GTM_TENANTS = [
 # Step-0 ground-truth floors (CGR-attributed decisions per tenant, from the substrate export). A
 # per-tenant scan below this ⇒ likely RLS fail-closed under grafomem_rt ⇒ ABORT before any write.
 EXPECTED_DECISIONS = {
-    "5605470cfa8e415ba418c9d8944abf9a": 43,
+    # ground-truth counts of decisions carrying `cgr_schema` (superuser-verified 2026-08-08). NB:
+    # NOT the /v1/cgr/substrate/export "decisions" total, which also counts non-cgr_schema rows.
+    "5605470cfa8e415ba418c9d8944abf9a": 35,
     "600e0890aa9042acaabe4b1c3d4fbdc5": 21,
     "e1c5e0619cdd42c38f59b5079e9d18e4": 6,
-    "1e5d30a0f72d4da7aaad7dd0d68d36e9": 3,   # devtest-track2 (eng-agent)
+    "1e5d30a0f72d4da7aaad7dd0d68d36e9": 11,   # devtest-track2 (eng-agent + graduation/probe decisions)
 }
 
 
