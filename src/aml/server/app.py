@@ -214,11 +214,12 @@ router = APIRouter()
 
 @router.get("/health")
 async def health(request: Request):
+    from aml._version import package_version
     mgr: StoreManager = request.app.state.store_manager
     push_svc = getattr(request.app.state, "push_dispatch", None)
     return {
         "status": "ok",
-        "version": "0.2.0",
+        "version": package_version(),   # the installed grafomem package, never a literal
         "stores": mgr.count,
         "push": "enabled" if push_svc is not None else "disabled",
     }
@@ -733,7 +734,7 @@ def create_app(
     # Metering Phase 3c (DARK) — translate a Free-tier ceiling block into HTTP 402 at the
     # single choke point, uniformly across API / orchestrator / demo. Only ever raised when
     # FREE_CEILING_ENABLED and an over-ceiling free-tier tenant is authoritatively confirmed.
-    from aml.cloud.free_ceiling import FreeCeilingExceeded
+    from aml.cloud.free_ceiling_errors import FreeCeilingExceeded   # psycopg-free: SQLite servers need no postgres extra
 
     @app.exception_handler(FreeCeilingExceeded)
     async def _free_ceiling_handler(request: Request, exc: FreeCeilingExceeded):

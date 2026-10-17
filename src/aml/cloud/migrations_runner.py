@@ -31,8 +31,10 @@ import logging
 import os
 import re
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-import psycopg
+if TYPE_CHECKING:   # psycopg is imported where a connection is opened (_connect): create_app imports this module for
+    import psycopg  # boot_migrations_enabled() on every boot, and an SQLite server must not need the postgres extra
 
 logger = logging.getLogger("grafomem.migrations")
 
@@ -308,6 +310,7 @@ def _ensure_schema_migrations(conn: "psycopg.Connection", runtime_role: str | No
 # ── apply / baseline ─────────────────────────────────────────────────────────
 
 def _connect(url: str) -> "psycopg.Connection":
+    import psycopg
     return psycopg.connect(
         url,
         connect_timeout=int(os.environ.get("GRAFOMEM_DB_CONNECT_TIMEOUT", "5")),
