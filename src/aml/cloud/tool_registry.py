@@ -562,7 +562,7 @@ class ToolRegistry:
         # ── Execute ──
         try:
             if tool.tool_type == ToolType.MEMORY_READ:
-                output = self._exec_memory_read(tool, arguments)
+                output = self._exec_memory_read(tenant_id, tool, arguments)
             elif tool.tool_type == ToolType.MEMORY_WRITE:
                 output = self._exec_memory_write(tenant_id, tool, arguments)
             elif tool.tool_type == ToolType.MEMORY_DELETE:
@@ -619,18 +619,19 @@ class ToolRegistry:
             "note": "interim stub — founder sends out of band; real Gmail send is PR-2b",
         }
 
-    def _exec_memory_read(self, tool: ToolDefinition, args: dict) -> Any:
-        """Execute grafomem_retrieve or grafomem_audit."""
+    def _exec_memory_read(self, tenant_id: str, tool: ToolDefinition, args: dict) -> Any:
+        """Execute grafomem_retrieve or grafomem_audit for the calling tenant (0.4.1: scoped to it)."""
         if self._store_manager is None:
             return "Store manager not available"
 
         store_id = args.get("store_id")
         entry = self._store_manager.get(store_id)
-        if entry is None:
-            return f"Store '{store_id}' not found"
+        if entry is None or (entry.owner_tenant_id is not None and entry.owner_tenant_id != tenant_id):
+            return f"Store '{store_id}' not found"   # another tenant's store answers as an unknown one
 
         if tool.name == "grafomem_audit":
-            memories = list(entry.backend.audit())
+            from aml.backends.audit_scope import scoped_audit
+            memories = scoped_audit(entry.backend, tenant_id, store_id=store_id, include_subnamespaces=True)
             return [
                 {
                     "ref": m.ref,

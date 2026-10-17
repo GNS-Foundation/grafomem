@@ -14,6 +14,8 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
+from aml.backends.audit_scope import bind_store
+
 logger = logging.getLogger("grafomem.stores")
 
 
@@ -46,6 +48,7 @@ class StoreManager:
         from datetime import datetime, timezone
         store_id = uuid.uuid4().hex[:12]
         backend = self._factory()
+        bind_store(backend, store_id)
         entry = StoreEntry(
             store_id=store_id,
             backend=backend,
@@ -140,6 +143,7 @@ class StoreManager:
         # Create it outside the lock (factory may be slow)
         from datetime import datetime, timezone
         backend = self._factory()
+        bind_store(backend, "__default__")
         entry = StoreEntry(
             store_id="__default__",
             backend=backend,
@@ -161,6 +165,7 @@ class StoreManager:
                 return existing
         from datetime import datetime, timezone
         backend = self._factory()
+        bind_store(backend, store_id)
         entry = StoreEntry(
             store_id=store_id,
             backend=backend,

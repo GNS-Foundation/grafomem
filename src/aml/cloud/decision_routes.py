@@ -297,7 +297,9 @@ def create_decision_router(decision_trail, store_manager=None, tenant_auth=None)
             if entry is not None:
                 backend = entry.backend
                 try:
-                    all_memories = list(backend.audit())
+                    from aml.backends.audit_scope import scoped_audit
+                    # 0.4.1: the decision's tenant (= the caller, checked above) in the decision's store only
+                    all_memories = scoped_audit(backend, record.tenant_id, store_id=record.store_id, include_subnamespaces=True)
                     current_refs = {m.ref for m in all_memories}
                     for m in all_memories:
                         memory_state.append({

@@ -214,11 +214,20 @@ class PostgresGMPBackend:
                     # Ignore if the user isn't superuser (assume vector is already created by admin)
                     conn.rollback()
             register_vector(conn)
+        self._store_id = None
         if self._ensure_schema_on:
             self._ensure_schema()
         else:
             logger.info("PostgresGMPBackend: schema-setup skipped "
                         "(GRAFOMEM_DB_ENSURE_SCHEMA off — restricted/runtime role)")
+        # 0.4.1: is memories.store_id provisioned? (migration 020 / ensure_schema). Without it new memories are not
+        # attributed to a store and the scoped audit keeps the tenant filter only, with a warning.
+        self._has_store_col = self._column_exists("memories", "store_id")
+        self._warned_no_store_col = False
+        if not self._has_store_col:
+            logger.warning("PostgresGMPBackend: memories.store_id is not provisioned (run migration 020): the store "
+                           "audit is tenant-scoped but not store-scoped until it is")
+
 
     @contextmanager
     def _tenant_conn(self, tenant_id: str):
@@ -273,11 +282,15 @@ class PostgresGMPBackend:
                 _ddl("ALTER TABLE memory_embeddings ADD COLUMN IF NOT EXISTS tokenizer_id TEXT;",
                      "ALTER memory_embeddings +tokenizer_id")
 
+                # 0.4.1: the store a memory was written through (scoped audit)
+                _ddl("ALTER TABLE memories ADD COLUMN IF NOT EXISTS store_id TEXT;", "ALTER memories +store_id")
+
                 # Indexes (after migrations so columns exist)
                 _ddl("CREATE INDEX IF NOT EXISTS idx_mem_tenant_valid "
                      "ON memories(tenant_id, valid_until, valid_from)", "INDEX idx_mem_tenant_valid")
                 _ddl(_HNSW_INDEX.strip(), "INDEX hnsw")
                 _ddl(_TENANT_FILTER_INDEX.strip(), "INDEX tenant_filter")
+                _ddl("CREATE INDEX IF NOT EXISTS idx_mem_tenant_store ON memories(tenant_id, store_id)", "INDEX idx_mem_tenant_store")
 
                 # Postgres RLS: enable + the tenant-isolation policies. NOTE: we do
                 # NOT FORCE row level security. The restricted runtime role
@@ -368,6 +381,7 @@ class PostgresGMPBackend:
                  enc_content, enc_meta, options.region or 'global'),
             )
             ref = cur.fetchone()[0]
+            self._tag_store(cur, ref)
 
             if not skip_emb:
                 token_count = len(_tokenizer.encode(content))
@@ -426,6 +440,7 @@ class PostgresGMPBackend:
                      enc_content, enc_meta, options.region or 'global'),
                 )
                 ref = cur.fetchone()[0]
+                self._tag_store(cur, ref)
 
                 token_count = len(_tokenizer.encode(content))
                 tokenizer_id = "tiktoken/cl100k_base"
@@ -470,6 +485,7 @@ class PostgresGMPBackend:
                  enc_content, enc_meta, options.region or 'global'),
             )
             new_ref = cur.fetchone()[0]
+            self._tag_store(cur, new_ref)
 
             if not skip_emb:
                 token_count = len(_tokenizer.encode(content))
@@ -591,6 +607,8 @@ class PostgresGMPBackend:
         return out
 
     def audit(self) -> Iterator[Memory]:
+        """UNSCOPED (admin context, every tenant's rows): backend self-tests and the conformance suite only. Request
+        handlers use aml.backends.audit_scope.scoped_audit → scoped_audit() below (0.4.1)."""
         with self._tenant_conn("admin") as (conn, cur):
             cur.execute(
                 """SELECT ref, content, written_at, metadata,
@@ -602,9 +620,9 @@ class PostgresGMPBackend:
             rows = cur.fetchall()
         return iter([self._row_to_memory(r) for r in rows])
 
-    def scoped_audit(self, tenant_id: str) -> Iterator[Memory]:
-        """Tenant-scoped audit (CGR #12/#12a). Filters to `tenant_id` in SQL AND runs
-        under the tenant RLS context (defense-in-depth) — NOT the 'admin' bypass.
+    def scoped_audit(self, tenant_id: str | None, store_id: str | None = None, *, include_subnamespaces: bool = False) -> Iterator[Memory]:
+        """Tenant-scoped audit (CGR #12/#12a; store scope and the untenanted namespace added in 0.4.1). Filters to
+        `tenant_id` in SQL AND runs under the tenant RLS context (defense-in-depth) — NOT the 'admin' bypass.
 
         The SQL `WHERE tenant_id = %s` is load-bearing, not belt-and-suspenders: rows
         are materialized here via `_row_to_memory`, which DECRYPTS each row's content,
@@ -614,18 +632,53 @@ class PostgresGMPBackend:
         the WHERE returned every tenant's rows and decrypting a foreign/legacy row
         raised "Decryption failures are strictly denied" → HTTP 500 on
         /v1/cgr/scores. The WHERE (not RLS, not the caller) is what makes this correct
-        under both bypass and restricted roles. (#12a hotfix.)"""
+        under both bypass and restricted roles. (#12a hotfix.)
+
+        tenant_id None = the untenanted namespace (`tenant_id IS NULL`). include_subnamespaces adds `tenant_id/<sub>`
+        by exact prefix (`left(...) =`, no LIKE pattern); under a restricted role RLS still hides sub-namespace rows.
+        store_id restricts to the memories written through that store; memories written before 0.4.1 carry no
+        store and are therefore not returned by a store-scoped audit."""
+        if tenant_id is None:
+            conds, params = ["tenant_id IS NULL"], []
+        elif include_subnamespaces:
+            conds, params = ["(tenant_id = %s OR left(tenant_id, %s) = %s)"], [tenant_id, len(tenant_id) + 1, tenant_id + "/"]
+        else:
+            conds, params = ["tenant_id = %s"], [tenant_id]
+        if store_id is not None:
+            if self._has_store_col:
+                conds.append("store_id = %s"); params.append(store_id)
+            elif not self._warned_no_store_col:
+                self._warned_no_store_col = True
+                logger.warning("scoped_audit: memories.store_id not provisioned — store filter skipped, tenant filter kept")
         with self._tenant_conn(tenant_id) as (conn, cur):
             cur.execute(
                 """SELECT ref, content, written_at, metadata,
                           valid_from, valid_until, tenant_id,
                           superseded_by, written_by, signature, public_key, region,
                           content_enc, metadata_enc
-                   FROM memories WHERE tenant_id = %s ORDER BY ref""",
-                (tenant_id,),
+                   FROM memories WHERE """ + " AND ".join(conds) + " ORDER BY ref",
+                tuple(params),
             )
             rows = cur.fetchall()
         return iter([self._row_to_memory(r) for r in rows])
+
+    def bind_store(self, store_id: str) -> None:
+        """Record `store_id` on every memory written through this backend from now on (0.4.1)."""
+        self._store_id = store_id
+
+    def _tag_store(self, cur, ref) -> None:
+        if self._store_id is not None and self._has_store_col:
+            cur.execute("UPDATE memories SET store_id = %s WHERE ref = %s", (self._store_id, ref))
+
+    def _column_exists(self, table: str, column: str) -> bool:
+        try:
+            with self._pool.connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT 1 FROM information_schema.columns WHERE table_name = %s AND column_name = %s", (table, column))
+                    return cur.fetchone() is not None
+        except Exception:
+            logger.warning("PostgresGMPBackend: cannot inspect %s.%s", table, column, exc_info=True)
+            return False
 
     def tenant_stats(self, tenant_id: str) -> dict:
         """Per-tenant fact rollup over this backend's `memories` table: current fact

@@ -285,7 +285,8 @@ class MemoryBackend(Protocol):
 
     def audit(self) -> Iterator[Memory]:
         """Iterate all retrievable memories incl. superseded, EXCLUDING
-        hard-deleted. Requires AUDIT (§6.6)."""
+        hard-deleted. Requires AUDIT (§6.6). UNSCOPED: request handlers MUST NOT call it — they use
+        aml.backends.audit_scope.scoped_audit (0.4.1; tests/test_audit_scope.py guards it)."""
         ...
 
     # OPTIONAL override (0014) — deliberately NOT a Protocol member, so adding it

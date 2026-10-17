@@ -245,6 +245,13 @@ class SQLiteGMPBackend:
             "CREATE INDEX IF NOT EXISTS idx_mem_tenant_valid "
             "ON memories(tenant_id, valid_until, valid_from)"
         )
+        # 0.4.1: the store a memory was written through. Every store of a server can share this database file, so
+        # the scoped audit filters on it; NULL for memories written before 0.4.1 (not attributable to a store).
+        self._store_id = None
+        cols = {r[1] for r in self._conn.execute("PRAGMA table_info(memories)").fetchall()}
+        if "store_id" not in cols:
+            self._conn.execute("ALTER TABLE memories ADD COLUMN store_id TEXT")
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_mem_tenant_store ON memories(tenant_id, store_id)")
 
         # vec0 carries the filter predicate as metadata columns alongside the embedding.
         self._conn.execute(
@@ -291,6 +298,7 @@ class SQLiteGMPBackend:
              None, options.tenant_id, None, written_by, signature, public_key),
         )
         ref = cur.lastrowid
+        self._tag_store(ref)
         # New write is current -> open interval (valid_until = OPEN_UNTIL).
         self._conn.execute(
             "INSERT INTO vec_memories(rowid, embedding, tenant_id, valid_from, valid_until) "
@@ -353,6 +361,7 @@ class SQLiteGMPBackend:
                      written_by, signature, public_key),
                 )
                 ref = cur.lastrowid
+                self._tag_store(ref)
                 self._conn.execute(
                     "INSERT INTO vec_memories(rowid, embedding, tenant_id, valid_from, "
                     "valid_until) VALUES (?,?,?,?,?)",
@@ -459,8 +468,35 @@ class SQLiteGMPBackend:
         return out
 
     def audit(self) -> Iterator[Memory]:
+        """UNSCOPED: every memory of the database file, whatever its tenant or store — for self-tests and the
+        conformance suite only. Request handlers use aml.backends.audit_scope.scoped_audit (0.4.1)."""
         rows = self._conn.execute(
             f"SELECT {', '.join(_COLS)} FROM memories ORDER BY ref"
+        ).fetchall()
+        return iter([self._row_to_memory(r) for r in rows])
+
+    def bind_store(self, store_id: str) -> None:
+        """Record `store_id` on every memory written through this backend from now on (0.4.1)."""
+        self._store_id = store_id
+
+    def _tag_store(self, ref) -> None:
+        if self._store_id is not None:
+            self._conn.execute("UPDATE memories SET store_id = ? WHERE ref = ?", (self._store_id, ref))
+
+    def scoped_audit(self, tenant_id, store_id=None, *, include_subnamespaces: bool = False) -> Iterator[Memory]:
+        """Tenant- and store-scoped audit (0.4.1): the filter is in the query, so a memory of another tenant or of
+        another store is never read. tenant_id None = the untenanted namespace; include_subnamespaces adds
+        `tenant_id/<sub>` (exact prefix comparison, no LIKE pattern)."""
+        if tenant_id is None:
+            conds, params = ["tenant_id IS NULL"], []
+        elif include_subnamespaces:
+            conds, params = ["(tenant_id = ? OR substr(tenant_id, 1, ?) = ?)"], [tenant_id, len(tenant_id) + 1, tenant_id + "/"]
+        else:
+            conds, params = ["tenant_id = ?"], [tenant_id]
+        if store_id is not None:
+            conds.append("store_id = ?"); params.append(store_id)
+        rows = self._conn.execute(
+            f"SELECT {', '.join(_COLS)} FROM memories WHERE {' AND '.join(conds)} ORDER BY ref", tuple(params)
         ).fetchall()
         return iter([self._row_to_memory(r) for r in rows])
 
