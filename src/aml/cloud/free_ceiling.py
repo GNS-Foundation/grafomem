@@ -42,20 +42,9 @@ logger = logging.getLogger("grafomem.cloud.free_ceiling")
 CGR_DECISION_SCHEMA = "cgr.decision.v1"
 
 
-class FreeCeilingExceeded(Exception):
-    """Raised when a free-tier tenant is over its governed-decision ceiling.
-
-    Carries an upgrade-oriented message; translated to HTTP 402 by the app's handler.
-    """
-
-    def __init__(self, tenant_id: str, count: int, ceiling: int) -> None:
-        self.tenant_id = tenant_id
-        self.count = count
-        self.ceiling = ceiling
-        super().__init__(
-            f"Free plan governed-decision ceiling reached ({count} ≥ {ceiling} this period). "
-            f"Upgrade to Pro to keep making governed decisions."
-        )
+# Defined in a psycopg-free module so that the app can register its 402 handler without the postgres extra
+# (e.g. `grafomem serve -b sqlite`); re-exported here unchanged for every existing importer.
+from aml.cloud.free_ceiling_errors import FreeCeilingExceeded  # noqa: E402,F401
 
 
 def free_ceiling_enabled() -> bool:
