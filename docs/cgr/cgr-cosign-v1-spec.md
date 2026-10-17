@@ -1,6 +1,13 @@
-# CGR co-signature envelope `cgr.cosign.v1` — specification (PROPOSED)
+# CGR co-signature envelope `cgr.cosign.v1` — specification (ACCEPTED)
 
-- **Status:** **Proposed** — design document, authored against the **accepted** decision in
+- **Status:** **Accepted — implemented in production** (status corrected 2026-10-08; the text below is
+  unchanged). Evidence: runtime `src/aml/cloud/disposition_routes.py` ("Implements the accepted cgr.cosign.v1
+  spec", PR #175, 2026-09-19); profile registry `docs/cgr/cosign-profile-registry.json` ratified by merge
+  (`8fd096c`, 2026-09-19); conformance corpora `conformance/cgr-cosign-v1` (28 vectors) and
+  `conformance/cgr-disposition-v1` (6 vectors) passed by two independent verifiers
+  (`clients/cgr-verify/src/cosign.js`, `src/aml/cgr/cosign_verify.py`); public issuer endpoint
+  `GET /v1/dispositions/issuer` (PR #202, 2026-10-06) serving on api.grafomem.com.
+  Originally: **Proposed** — design document, authored against the **accepted** decision in
   `docs/decisions/0009-standard-expresses-one-actor-approval-needs-two.md` (§ "Decision — the two-party
   co-signature envelope", accepted 2026-09-06). Not implementation; no corpus, no fixtures, no verifier
   code in this document.
