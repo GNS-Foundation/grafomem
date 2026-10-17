@@ -125,10 +125,8 @@ def invalidate_substrate_cache(tenant_id: str | None = None) -> None:
 
 
 def _materialize_scoped_audit(backend, tenant_id: str) -> list:
-    fn = getattr(backend, "scoped_audit", None)
-    if callable(fn):
-        return list(fn(tenant_id))
-    return [m for m in backend.audit() if m.tenant_id == tenant_id]
+    from aml.backends.audit_scope import scoped_audit
+    return scoped_audit(backend, tenant_id)   # exact tenant (no sub-namespaces), every store of the backend
 
 
 def _scoped_audit(backend, tenant_id: str):

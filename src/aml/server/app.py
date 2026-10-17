@@ -406,8 +406,12 @@ async def retrieve_memories(store_id: str, req: RetrieveRequest, request: Reques
 
 @router.get("/v1/stores/{store_id}/audit")
 async def audit_memories(store_id: str, request: Request):
-    entry = _get_store(request, store_id, _tenant_id(request))
-    mems = list(entry.backend.audit())
+    from aml.backends.audit_scope import scoped_audit
+    tenant = _tenant_id(request)
+    entry = _get_store(request, store_id, tenant)
+    # 0.4.1: the caller's tenant (and its sub-namespaces) in THIS store only — never backend.audit(), which lists
+    # every tenant's memories of the shared table.
+    mems = scoped_audit(entry.backend, tenant, store_id=store_id, include_subnamespaces=True)
     return {"memories": [MemoryResponse.from_internal(m).model_dump() for m in mems]}
 
 

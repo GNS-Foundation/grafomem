@@ -471,7 +471,10 @@ def create_mcp_server(backend_factory):
             return [TextContent(type="text", text=json.dumps(res))]
 
         elif name == "list_memories":
-            mems = list(backend.audit())
+            # 0.4.1: the namespace this server writes and retrieves in (untenanted: write_memory / retrieve_memories
+            # carry no tenant), never backend.audit(), which lists every tenant's memories of a shared database.
+            from aml.backends.audit_scope import scoped_audit
+            mems = scoped_audit(backend, None)
             results = [
                 {
                     "ref": m.ref,

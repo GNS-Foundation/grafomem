@@ -38,7 +38,11 @@ class MemorySyncService:
         
         # 2. Fetch memory facts
         store_entry = self._stores.get_or_404(store_id)
-        memories = list(store_entry.backend.audit())
+        if store_entry.owner_tenant_id is not None and store_entry.owner_tenant_id != tenant_id:
+            raise KeyError(f"Store '{store_id}' not found")   # another tenant's store answers as an unknown one
+        from aml.backends.audit_scope import scoped_audit
+        # 0.4.1: the exporting tenant's memories of this store only
+        memories = scoped_audit(store_entry.backend, tenant_id, store_id=store_id, include_subnamespaces=True)
         
         # Serialize memories
         memory_list = []
