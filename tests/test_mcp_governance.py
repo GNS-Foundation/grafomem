@@ -110,11 +110,25 @@ async def test_verify_erasure_honest_pass(mcp_server_honest):
             mock_resp.json.return_value = {"verified": True}
             mock_get.return_value = mock_resp
             
+            # 0016: a certificate alone is NOT a read-path verdict. With no persisted
+            # probe and no reverify, the honest status is ERASED_UNVERIFIED and the
+            # sealed probe is None — never fabricated from the cert's existence.
             res_v = await server._test_call_tool("verify_erasure", {"ref": ref})
             v_data = json.loads(res_v[0].text)
-            
-            assert v_data["status"] == "ERASED_VERIFIED"
-            assert v_data["tamper"] is False
+            assert v_data["status"] == "ERASED_UNVERIFIED"
+            assert v_data["sealed_probe"] is None
+            assert "no targeted probe on record" in v_data["warning"]
+            assert v_data["tamper"] is False  # signature check still ran
+
+            # ERASED_VERIFIED is EARNED by a real read-path probe (reverify + lure):
+            # the honest backend really no longer returns the fact.
+            res_v2 = await server._test_call_tool(
+                "verify_erasure", {"ref": ref, "reverify": True, "probe_query": "secret fact"}
+            )
+            v2 = json.loads(res_v2[0].text)
+            assert v2["status"] == "ERASED_VERIFIED"
+            assert v2["fresh_probe"]["gone_from_retrieval"] is True
+            assert v2["tamper"] is False
 
 @pytest.mark.asyncio
 async def test_verify_erasure_leak_caught(mcp_server_soft_delete):
@@ -204,13 +218,14 @@ async def test_verify_erasure_no_targeted_lure(mcp_server_honest):
             mock_resp.json.return_value = {"verified": True}
             mock_get.return_value = mock_resp
             
-            # We pass reverify=True without probe_query
-            # Since our mock cert sets targeted_gone=True, it will pass as ERASED_VERIFIED
-            # but will attach a warning about returning sealed verdict only.
+            # We pass reverify=True without probe_query. 0016: with no lure there is
+            # no read-path probe, and the certificate's existence does NOT stand in
+            # for one — so the verdict stays ERASED_UNVERIFIED, with the warning.
             res_v = await server._test_call_tool("verify_erasure", {"ref": ref, "reverify": True})
             v_data = json.loads(res_v[0].text)
-            
-            assert v_data["status"] == "ERASED_VERIFIED"
+
+            assert v_data["status"] == "ERASED_UNVERIFIED"
+            assert v_data["sealed_probe"] is None
             assert "returning sealed verdict only" in v_data["warning"]
 
 @pytest.mark.asyncio

@@ -36,26 +36,38 @@ class ErasureService:
         memory_deleted: bool = True,
         requested_by: str = "data_subject",
     ) -> ErasureCertificate:
-        """Issue a signed erasure certificate.
+        """Issue a signed erasure certificate for a fact that was ALREADY deleted.
 
-        This scrubs the fact from decision trail records, computes a
-        content hash, and produces an Ed25519-signed certificate.
+        This call does NOT delete the fact. Delete it first with
+        ``client.memories.delete(store_id, ref)`` — in Cloud mode that call also
+        issues a certificate whose content hash the server observed itself, so
+        it is usually all you need. Use this method only to certify a fact that
+        was deleted by other means.
+
+        The server probes its stores before issuing. If the fact is still
+        present it REFUSES (HTTP 409) — no erasure certificate is minted for a
+        fact that was not erased.
 
         Args:
-            fact_ref: The fact reference to erase (integer).
+            fact_ref: The fact reference that was erased (integer).
             store_id: (Unused by API, kept for SDK convenience).
             reason: Legal basis for erasure.
-            fact_content: Content to hash (not stored in certificate).
-            memory_deleted: Whether the memory was deleted.
+            fact_content: Content to hash (not stored in certificate). Because the
+                fact is already gone, this hash is caller-asserted: the server
+                cannot check it against the stored record.
+            memory_deleted: Deprecated and ignored by the server; kept so existing
+                callers do not break.
             requested_by: Who requested the erasure.
 
         Returns:
             An :class:`ErasureCertificate` with signature and hash.
+
+        Raises:
+            An HTTP 409 error from the API if the fact is still present.
         """
         body: dict[str, Any] = {
             "fact_ref": int(fact_ref),
             "legal_basis": reason,
-            "memory_deleted": memory_deleted,
             "requested_by": requested_by,
         }
         if fact_content:

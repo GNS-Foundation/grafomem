@@ -205,6 +205,15 @@ class HnswGMPBackend:
             "SELECT 1 FROM memories WHERE ref = ? LIMIT 1", (ref,)).fetchone()
         return row is not None
 
+    def get(self, ref) -> Memory | None:
+        # POINT_LOOKUP (0016) — side-effect-free point read by ref, the sibling of
+        # exists(). Lets the erasure path observe the content BEFORE deleting so the
+        # certificate binds a server-observed digest.
+        row = self._conn.execute(
+            f"SELECT {', '.join(_COLS)} FROM memories WHERE ref = ? LIMIT 1", (ref,)
+        ).fetchone()
+        return self._row_to_memory(row) if row is not None else None
+
     def retrieve(self, query: str, options: RetrieveOptions) -> list[Memory]:
         n = self._index.element_count
         if n == 0:

@@ -170,6 +170,17 @@ class CertificateNotIssued(RuntimeError):
     was issued because the ledger is not configured. Never an unledgered certificate."""
 
 
+class FactStillPresent(ValueError):
+    """Refuse issuance: the primary store still holds the fact (0016 gate 1b).
+
+    An *erasure* certificate attests that an erasure happened. When the coverage
+    probe observes ``primary == "present"`` the fact was not erased, so no
+    certificate is minted — a signed "Article 17" artifact for data that still
+    exists is exactly the fabrication these gates exist to prevent. Raised before
+    the ledger write, so a refusal leaves no orphan ledger row.
+    """
+
+
 # ============================================================================
 # I0b stage-1 — coverage verification (decision 0014). Coverage is a MEASUREMENT,
 # not a default: an unprobed subsystem is "unverified", never a fabricated "absent".
@@ -461,8 +472,26 @@ class ErasureProofService:
                 "probed subsystem (present/absent), not an unverified default (0014)."
             )
 
+        # Gate 1b (0016 factual certificate) — the primary store must NOT still hold the
+        # fact. "present" is a verified observation (0014), but it is the observation of a
+        # non-erasure: an erasure certificate is not issued for it. Ordered before the
+        # ledger write for the same no-orphan-row reason as gate 1.
+        if coverage_dict.get("primary") == "present":
+            raise FactStillPresent(
+                f"refuse: primary store still holds memory_ref:{fact_ref} — no erasure "
+                "certificate is issued for a fact that was not erased (0016). Delete the "
+                "fact first, then issue."
+            )
+
         # Step 3: Compute content hash
         content_hash = hash_content(fact_content) if fact_content else None
+
+        # Coverage gaps are DERIVED from the probe (0016), never asserted: every
+        # subsystem that was recorded but not verified (present/absent) is a gap.
+        coverage_gaps = sorted(
+            store for store, status in coverage_dict.items()
+            if status not in VERIFIED_STATUSES
+        )
 
         # Step 4: Compute certificate ID
         certificate_id = compute_certificate_id(tenant_id, fact_ref, completed_at)
@@ -483,7 +512,7 @@ class ErasureProofService:
             ],
             "coverage": list(coverage_dict.keys()),
             "non_claims": {
-                "coverage_gaps": [],  # Verified offline
+                "coverage_gaps": coverage_gaps,
                 "scope": {
                     "tenant": tenant_id,
                     "covers": list(coverage_dict.keys()),

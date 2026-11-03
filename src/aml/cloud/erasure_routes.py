@@ -30,11 +30,16 @@ logger = logging.getLogger("grafomem.cloud.erasure_routes")
 class IssueErasureRequest(BaseModel):
     """Request body for POST /v1/erasure/issue."""
     fact_ref: int
-    fact_content: str | None = None  # Content to hash (NOT stored)
-    memory_deleted: bool = True
+    # Content to hash (NOT stored). 0016: on this endpoint the fact is already gone, so
+    # the server cannot observe it — this hash is CALLER-ASSERTED. The delete endpoint
+    # (`POST /v1/stores/{id}/delete`) observes the content itself before deleting.
+    fact_content: str | None = None
     legal_basis: str = "GDPR Article 17 — Right to Erasure"
     requested_by: str | None = "data_subject"
-    signing_key: str | None = None  # hex-encoded Ed25519 seed (overrides service key)
+    # 0016: no caller-supplied signing key. A platform certificate is signed by the
+    # platform's key only; `signing_key` was removed (it let a caller mint a
+    # "platform-signed" certificate under a key of their choosing). `memory_deleted`
+    # was removed too: it was accepted and ignored — this endpoint never deleted.
     # 0014: a client may DECLARE extra subsystems to record, but cannot assert their
     # status — they land as "unverified". Coverage itself is probed server-side.
     declared_subsystems: list[str] | None = None
@@ -117,33 +122,25 @@ def create_erasure_router(erasure_service) -> APIRouter:
 
     @router.post("/issue", response_model=CertificateResponse)
     async def issue_certificate(req: IssueErasureRequest, request: Request):
-        """Issue a signed erasure certificate for a deleted fact.
+        """Issue a signed erasure certificate for a fact that was ALREADY deleted.
 
-        Performs the full GDPR erasure workflow:
-        1. Scrubs the fact from all decision trail records
-        2. Computes a content hash (proof without retaining PII)
-        3. Ed25519-signs the certificate
-        4. Persists the certificate to the database
+        This endpoint does not delete anything. It:
+        1. Probes coverage server-side (0014) — and REFUSES with 409 if the primary
+           store still holds the fact (0016): no erasure certificate for a non-erasure.
+        2. Scrubs the fact's content from decision trail records
+        3. Records the caller-asserted content hash, if `fact_content` was supplied
+        4. Ed25519-signs the certificate with the platform key
+        5. Persists the certificate to the database
 
-        Returns the signed erasure certificate.
+        To delete AND certify in one step, with a server-observed content digest, use
+        `POST /v1/stores/{store_id}/delete`.
         """
         tenant_id = _get_tenant_id(request)
         require_scope(request, "erasure:execute")
 
-        signing_identity = None
-        if req.signing_key:
-            try:
-                key_bytes = bytes.fromhex(req.signing_key)
-            except ValueError:
-                raise HTTPException(400, "signing_key must be hex-encoded")
-            try:
-                from aml.provenance import SigningIdentity
-                signing_identity = SigningIdentity(key_bytes)
-            except Exception as e:
-                raise HTTPException(400, f"Invalid signing key: {e}")
-
         from aml.cloud.erasure_proof import (
             CertificateNotIssued, LedgerRequired, EmptyGovernanceCoverage, UnsignedErasure,
+            FactStillPresent,
         )
         from fastapi.responses import JSONResponse
         try:
@@ -154,8 +151,15 @@ def create_erasure_router(erasure_service) -> APIRouter:
                 declared_subsystems=req.declared_subsystems,
                 legal_basis=req.legal_basis,
                 requested_by=req.requested_by,
-                signing_identity=signing_identity,
             )
+        except FactStillPresent as e:
+            # 0016: the fact is still in the primary store. Nothing issued, nothing ledgered.
+            raise HTTPException(409, {
+                "status": "not_issued",
+                "reason": "fact_still_present",
+                "fact_ref": req.fact_ref,
+                "detail": str(e),
+            })
         except CertificateNotIssued:
             # ERASURE_LEDGER_OPTIONAL (dev/test): the fact was erased, but with no ledger
             # configured no certificate is issued (0013). NOT a 500 — the erasure succeeded.

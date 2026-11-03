@@ -344,18 +344,14 @@ def create_mcp_server(backend_factory):
                 except Exception:
                     tamper = None
             
-            # Sealed probe (mocking retrieval of sealed probe from DB for now as legacy)
-            sealed_probe = None 
+            # Sealed probe (0016): no read-path probe is persisted at issuance yet, so
+            # there is nothing to retrieve. It is reported as None — NEVER fabricated
+            # from the mere existence of a certificate. A real read-path verdict comes
+            # only from `reverify=true` + `probe_query` (fresh_probe below); without one
+            # the status falls through to ERASED_UNVERIFIED with an explicit warning.
+            sealed_probe = None
             targeted_gone = None
-            if cert_dict:
-                sealed_probe = {
-                    "gone_from_retrieval": True,
-                    "ops_until_gone": 1,
-                    "probed_at": cert_dict["issued_at"],
-                    "targeted": True
-                }
-                targeted_gone = True
-                
+
             fresh_probe = None
             if reverify and probe_query:
                 opts = RetrieveOptions(budget_tokens=512, tenant_id=tenant_id if Capability.MULTI_TENANT in backend.capabilities() else None)
