@@ -16,6 +16,15 @@ from grafomem_checkpoint.receipt_log import (
     FileReceiptLog,
     verify_log,
 )
+from grafomem_checkpoint.thread_keys import (
+    ThreadKeyManager,
+    InMemoryKeyStore,
+    ThreadKeyDestroyed,
+    ThreadContextMissing,
+    current_thread_id,
+)
+
+MASTER_KEY_HEX = "ab" * 32  # 64 hex chars = 32 bytes
 
 
 class State(TypedDict):
@@ -301,3 +310,139 @@ def test_serialization_overhead():
     
     overhead = grafomem_time - base_time
     print(f"\n[Overhead Report] Base serialization: {base_time*1000:.2f}ms, Grafomem serialization: {grafomem_time*1000:.2f}ms. Overhead: {overhead*1000:.2f}ms per step.")
+
+
+# ============================================================================
+# v1.2.0 — per-thread crypto-erasure
+# ============================================================================
+
+def _mk_enc_saver(priv, km, receipt_log):
+    serde = GrafomemSerializer(private_key=priv, key_manager=km)
+    inner = MemorySaver(serde=serde)
+    return GrafomemCheckpointSaver(inner, receipt_log=receipt_log), serde
+
+
+def test_encryption_ciphertext_at_rest_and_roundtrip():
+    """With a key_manager, the serialized blob is ciphertext (the plaintext marker is absent),
+    and it round-trips. Without a key_manager it is plaintext (marker present) — so the
+    non-encrypted path is non-vacuous."""
+    priv = ed25519.Ed25519PrivateKey.generate()
+    km = ThreadKeyManager(MASTER_KEY_HEX, key_store=InMemoryKeyStore())
+    enc = GrafomemSerializer(private_key=priv, key_manager=km)
+    plain = GrafomemSerializer(private_key=priv)  # no key_manager
+
+    marker = {"secret": "SENSITIVE_MARKER_123"}
+
+    # plaintext path: marker IS present in the bytes
+    _, plain_bytes = plain.dumps_typed(marker)
+    assert b"SENSITIVE_MARKER_123" in plain_bytes
+
+    # encrypted path (thread in scope): marker is NOT present, but round-trips
+    tok = current_thread_id.set("t-enc")
+    try:
+        type_, enc_bytes = enc.dumps_typed(marker)
+        assert b"SENSITIVE_MARKER_123" not in enc_bytes
+        assert enc.loads_typed((type_, enc_bytes)) == marker
+    finally:
+        current_thread_id.reset(tok)
+
+
+def test_crypto_erasure_makes_retained_ciphertext_undecryptable():
+    """Headline + non-vacuity: a retained copy of a thread's ciphertext decrypts BEFORE the
+    key is destroyed and FAILS after — proving delete_thread destroyed the key, not just the
+    row."""
+    priv = ed25519.Ed25519PrivateKey.generate()
+    km = ThreadKeyManager(MASTER_KEY_HEX, key_store=InMemoryKeyStore())
+    saver, serde = _mk_enc_saver(priv, km, InMemoryReceiptLog())
+
+    g = build_graph(saver)
+    g.invoke({"messages": ["private"], "count": 0}, {"configurable": {"thread_id": "t-secret"}})
+
+    # Retain a ciphertext copy of some thread state, as a backup/replica/WAL page would.
+    tok = current_thread_id.set("t-secret")
+    try:
+        retained = serde.dumps_typed({"payload": "KEEP_ME"})
+        # Non-vacuity: it decrypts while the key is alive.
+        assert serde.loads_typed(retained) == {"payload": "KEEP_ME"}
+    finally:
+        current_thread_id.reset(tok)
+
+    # Crypto-erase the thread.
+    saver.delete_thread("t-secret")
+
+    # The retained ciphertext can no longer be decrypted — the key is gone.
+    tok = current_thread_id.set("t-secret")
+    try:
+        with pytest.raises(ThreadKeyDestroyed):
+            serde.loads_typed(retained)
+    finally:
+        current_thread_id.reset(tok)
+
+
+def test_receipt_commits_to_key_destruction():
+    priv = ed25519.Ed25519PrivateKey.generate()
+    store = InMemoryKeyStore()
+    km = ThreadKeyManager(MASTER_KEY_HEX, key_store=store)
+    saver, _ = _mk_enc_saver(priv, km, InMemoryReceiptLog())
+
+    g = build_graph(saver)
+    g.invoke({"messages": ["x"], "count": 0}, {"configurable": {"thread_id": "t-k"}})
+
+    # fingerprint recorded for the live key, before destruction
+    fp_before = km.fingerprint("t-k")
+    assert fp_before and fp_before != "none"
+
+    saver.delete_thread("t-k")
+    rcpt = saver.last_receipt("t-k")
+    assert rcpt.after == f"key_destroyed:{fp_before}"
+    assert rcpt.before != "thread_data" and len(rcpt.before) == 64
+    assert rcpt.verify(priv.public_key()) is True
+    assert rcpt.verify(ed25519.Ed25519PrivateKey.generate().public_key()) is False
+    # key is tombstoned: re-access raises
+    with pytest.raises(ThreadKeyDestroyed):
+        km.get_key("t-k")
+
+
+def test_plaintext_checkpoints_still_load_under_key_manager():
+    """A v1.1.0 plaintext checkpoint loads under a v1.2.0 key-manager serde (meta has no
+    enc flag -> plaintext path)."""
+    priv = ed25519.Ed25519PrivateKey.generate()
+    plain = GrafomemSerializer(private_key=priv)                      # wrote it (no encryption)
+    km = ThreadKeyManager(MASTER_KEY_HEX, key_store=InMemoryKeyStore())
+    enc = GrafomemSerializer(private_key=priv, key_manager=km)        # reads it
+
+    obj = {"legacy": "data", "n": 7}
+    blob = plain.dumps_typed(obj)
+    # No thread in scope, but the blob isn't encrypted, so it still loads.
+    assert enc.loads_typed(blob) == obj
+
+
+def test_cross_thread_read_without_thread_id_errors():
+    """Reading an encrypted checkpoint with no thread_id in scope raises ThreadContextMissing;
+    with the thread in scope it loads (non-vacuous)."""
+    priv = ed25519.Ed25519PrivateKey.generate()
+    km = ThreadKeyManager(MASTER_KEY_HEX, key_store=InMemoryKeyStore())
+    enc = GrafomemSerializer(private_key=priv, key_manager=km)
+
+    tok = current_thread_id.set("t1")
+    try:
+        gfm = enc.dumps_typed({"a": 1})
+    finally:
+        current_thread_id.reset(tok)
+
+    # no thread in scope -> clear error, not a silent wrong read
+    assert current_thread_id.get() is None
+    with pytest.raises(ThreadContextMissing):
+        enc.loads_typed(gfm)
+
+    # with the thread in scope -> loads fine
+    tok = current_thread_id.set("t1")
+    try:
+        assert enc.loads_typed(gfm) == {"a": 1}
+    finally:
+        current_thread_id.reset(tok)
+
+
+def test_master_key_required_for_key_manager():
+    with pytest.raises(ValueError):
+        ThreadKeyManager("tooshort", key_store=InMemoryKeyStore())

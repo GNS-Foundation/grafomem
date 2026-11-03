@@ -2,6 +2,36 @@
 
 All notable changes to `langgraph-checkpoint-grafomem` are documented here.
 
+## [1.2.0] — 2026-11-03
+
+### Added
+- **Per-thread crypto-erasure (opt-in).** Pass a `ThreadKeyManager` to `GrafomemSerializer` and
+  each thread's checkpoint payloads are encrypted under a per-thread Data Encryption Key (DEK),
+  wrapped under a master KEK (`GRAFOMEM_MASTER_KEY`). `delete_thread` destroys the thread's DEK,
+  so residual ciphertext outside the wrapper — SQLite freelist/WAL, Postgres dead tuples,
+  replicas, snapshots, backups — becomes undecryptable. The erasure receipt's `after` field then
+  carries `key_destroyed:<fingerprint>`, so the signed receipt commits to the key destruction.
+  Keys live in a pluggable `KeyStore` (default `FileKeyStore` at `GRAFOMEM_THREAD_KEYS` or
+  `grafomem_thread_keys.json`; `InMemoryKeyStore` for tests). New exports: `ThreadKeyManager`,
+  `KeyStore`, `FileKeyStore`, `InMemoryKeyStore`, `ThreadKeyDestroyed`, `ThreadContextMissing`.
+
+### Changed
+- **Opt-in and backward compatible.** Without a `ThreadKeyManager`, behavior is unchanged
+  (signed, not encrypted; `after="erased"`), and checkpoints written by 1.0/1.1 still load. The
+  content hash is computed over plaintext, so the receipt's content binding is unchanged by
+  encryption.
+
+### Known limitation
+- With encryption on, a **cross-thread `list()`** (no `thread_id` in scope) raises
+  `ThreadContextMissing` — list per thread. This is deliberate: one decryption context cannot
+  span threads with per-thread keys.
+
+### Scope (unchanged honesty)
+- Key-destruction crypto-erasure, not a guarantee the physical ciphertext bytes were overwritten.
+  Assumes the KEK and key store are managed correctly; losing the KEK makes threads unrecoverable.
+- Encryption stays inside the adapter (the signed `.gfm` blob); the core `grafomem` CSO wire
+  format is unchanged. See ADR 0015.
+
 ## [1.1.0] — 2026-11-03
 
 ### Added

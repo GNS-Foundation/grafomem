@@ -1,5 +1,6 @@
 from typing import Any, AsyncIterator, Dict, Iterator, Mapping, Sequence, Collection
 from datetime import datetime, timezone
+from contextlib import contextmanager
 import hashlib
 import os
 import copy
@@ -14,6 +15,7 @@ from langgraph.checkpoint.base import (
 from grafomem.runtime import Receipt
 from .serializer import GrafomemSerializer
 from .receipt_log import ReceiptLog, FileReceiptLog
+from .thread_keys import current_thread_id
 
 # Sentinel used in a receipt's `before` field when a delete_thread targets a thread that
 # had no checkpoints — the receipt still records that an erase was requested, but there is
@@ -21,22 +23,35 @@ from .receipt_log import ReceiptLog, FileReceiptLog
 EMPTY_THREAD_DIGEST = "sha256:empty"
 
 
+def _thread_id_of(config: RunnableConfig | None) -> str | None:
+    if not config:
+        return None
+    return (config.get("configurable") or {}).get("thread_id")
+
+
+@contextmanager
+def _thread_ctx(thread_id: str | None):
+    token = current_thread_id.set(thread_id)
+    try:
+        yield
+    finally:
+        current_thread_id.reset(token)
+
+
 class GrafomemCheckpointSaver(BaseCheckpointSaver):
     """
     Layer 2: LangGraph Checkpoint Saver Decorator for Lethe.
     Delegates all storage operations to an inner saver.
 
-    On delete_thread it emits a signed erasure Receipt whose `before` field binds a
-    SHA-256 digest of the thread's entire checkpoint history *as it stood immediately
-    before deletion* — so the receipt commits to the specific data that was erased, not
-    just to the fact that an erase happened. Each receipt is also appended to an
-    append-only, hash-chained ReceiptLog, so an auditor can distinguish a real deletion
-    from a delete_thread that was never called.
+    On delete_thread it emits a signed erasure Receipt whose `before` field binds a SHA-256
+    digest of the thread's entire checkpoint history before deletion, and appends it to an
+    append-only, hash-chained ReceiptLog.
 
-    What the receipt does and does not prove (stated plainly): it is tamper-evidence and
-    non-repudiation for the erase *transition*, bound to a key and timestamp. It is not a
-    claim of media-level unrecoverability — the inner store's WAL, dead tuples, replicas,
-    snapshots and backups are outside this wrapper's control.
+    If the inner serde is configured with a per-thread key_manager (crypto-erasure, opt-in),
+    delete_thread also destroys the thread's encryption key and the receipt's `after` field
+    carries `key_destroyed:<fingerprint>`, committing to that destruction — so residual
+    ciphertext outside this wrapper (WAL, dead tuples, replicas, snapshots, backups) becomes
+    undecryptable. Without a key_manager, behavior is unchanged (`after="erased"`).
     """
 
     def __init__(self, inner: BaseCheckpointSaver, receipt_log: ReceiptLog | None = None):
@@ -45,13 +60,15 @@ class GrafomemCheckpointSaver(BaseCheckpointSaver):
         if not isinstance(self.inner.serde, GrafomemSerializer):
             raise ValueError("Inner saver must use GrafomemSerializer as its serde")
         self._receipts: Dict[str, Receipt] = {}
-        # Durable, append-only audit log of erasures. Defaults to a JSONL file; the path
-        # may be set with GRAFOMEM_RECEIPT_LOG (default: ./grafomem_receipts.jsonl).
         if receipt_log is None:
             receipt_log = FileReceiptLog(
                 os.environ.get("GRAFOMEM_RECEIPT_LOG", "grafomem_receipts.jsonl")
             )
         self._log = receipt_log
+
+    @property
+    def _key_manager(self):
+        return getattr(self.inner.serde, "key_manager", None)
 
     def last_receipt(self, thread_id: str) -> Receipt | None:
         return self._receipts.get(thread_id)
@@ -63,12 +80,6 @@ class GrafomemCheckpointSaver(BaseCheckpointSaver):
     # --- Erasure receipt construction ---
 
     def _thread_digest(self, tuples: list[CheckpointTuple]) -> str:
-        """Deterministic SHA-256 over a thread's checkpoint history.
-
-        Each checkpoint contributes `"<checkpoint_id>:<content_hash>"`; entries are sorted
-        by checkpoint id (UUID7 — lexicographic order is chronological) so the digest does
-        not depend on listing order. An empty thread yields EMPTY_THREAD_DIGEST.
-        """
         parts: list[str] = []
         for t in tuples:
             cid = t.checkpoint.get("id", "")
@@ -81,13 +92,10 @@ class GrafomemCheckpointSaver(BaseCheckpointSaver):
         parts.sort()
         return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
 
-    def _create_receipt(self, thread_id: str, before_digest: str) -> Receipt:
+    def _create_receipt(self, thread_id: str, before_digest: str, after: str = "erased") -> Receipt:
         timestamp = datetime.now(timezone.utc).isoformat()
         before = before_digest
-        after = "erased"
         key_id = self.inner.serde.key_id
-        # Payload matches Receipt.verify(): before|after|scope|key_id|timestamp — so the
-        # signature commits to `before` (the content digest).
         payload = f"{before}|{after}|{thread_id}|{key_id}|{timestamp}".encode("utf-8")
         signature = self.inner.serde.private_key.sign(payload)
         return Receipt(
@@ -99,8 +107,8 @@ class GrafomemCheckpointSaver(BaseCheckpointSaver):
             signature=signature,
         )
 
-    def _record(self, thread_id: str, before_digest: str) -> Receipt:
-        rcpt = self._create_receipt(thread_id, before_digest)
+    def _record(self, thread_id: str, before_digest: str, after: str = "erased") -> Receipt:
+        rcpt = self._create_receipt(thread_id, before_digest, after)
         self._receipts[thread_id] = rcpt
         self._log.append(rcpt)
         return rcpt
@@ -108,7 +116,8 @@ class GrafomemCheckpointSaver(BaseCheckpointSaver):
     # --- Delegated Methods ---
 
     def get_tuple(self, config: RunnableConfig) -> CheckpointTuple | None:
-        return self.inner.get_tuple(config)
+        with _thread_ctx(_thread_id_of(config)):
+            return self.inner.get_tuple(config)
 
     def list(
         self,
@@ -118,7 +127,9 @@ class GrafomemCheckpointSaver(BaseCheckpointSaver):
         before: RunnableConfig | None = None,
         limit: int | None = None,
     ) -> Iterator[CheckpointTuple]:
-        return self.inner.list(config, filter=filter, before=before, limit=limit)
+        # Keep the thread-id in scope for the whole lazy iteration (loads_typed runs per item).
+        with _thread_ctx(_thread_id_of(config)):
+            yield from self.inner.list(config, filter=filter, before=before, limit=limit)
 
     def put(
         self,
@@ -128,12 +139,10 @@ class GrafomemCheckpointSaver(BaseCheckpointSaver):
         new_versions: ChannelVersions,
     ) -> RunnableConfig:
         content_hash = self.inner.serde.compute_content_hash(checkpoint)
-
-        # Inject content_hash into metadata to retain UUID7 keying for LangGraph
         new_metadata = dict(metadata) if metadata else {}
         new_metadata["grafomem_content_hash"] = content_hash
-
-        return self.inner.put(config, checkpoint, new_metadata, new_versions)
+        with _thread_ctx(_thread_id_of(config)):
+            return self.inner.put(config, checkpoint, new_metadata, new_versions)
 
     def put_writes(
         self,
@@ -142,18 +151,26 @@ class GrafomemCheckpointSaver(BaseCheckpointSaver):
         task_id: str,
         task_path: str = "",
     ) -> None:
-        return self.inner.put_writes(config, writes, task_id, task_path)
+        with _thread_ctx(_thread_id_of(config)):
+            return self.inner.put_writes(config, writes, task_id, task_path)
 
     def delete_thread(self, thread_id: str) -> None:
-        # Bind the pre-image BEFORE the data is gone, then delete, then record.
-        tuples = list(self.inner.list({"configurable": {"thread_id": thread_id}}))
-        before_digest = self._thread_digest(tuples)
+        # Bind the pre-image BEFORE the data is gone (needs the key alive to read it), then
+        # destroy the key, then record.
+        with _thread_ctx(thread_id):
+            tuples = list(self.inner.list({"configurable": {"thread_id": thread_id}}))
+            before_digest = self._thread_digest(tuples)
         self.inner.delete_thread(thread_id)
-        self._record(thread_id, before_digest)
+        after = "erased"
+        if self._key_manager is not None:
+            fp = self._key_manager.destroy_key(thread_id)
+            after = f"key_destroyed:{fp}"
+        self._record(thread_id, before_digest, after)
 
     # --- Async Delegated Methods ---
     async def aget_tuple(self, config: RunnableConfig) -> CheckpointTuple | None:
-        return await self.inner.aget_tuple(config)
+        with _thread_ctx(_thread_id_of(config)):
+            return await self.inner.aget_tuple(config)
 
     async def alist(
         self,
@@ -163,8 +180,9 @@ class GrafomemCheckpointSaver(BaseCheckpointSaver):
         before: RunnableConfig | None = None,
         limit: int | None = None,
     ) -> AsyncIterator[CheckpointTuple]:
-        async for t in self.inner.alist(config, filter=filter, before=before, limit=limit):
-            yield t
+        with _thread_ctx(_thread_id_of(config)):
+            async for t in self.inner.alist(config, filter=filter, before=before, limit=limit):
+                yield t
 
     async def aput(
         self,
@@ -176,7 +194,8 @@ class GrafomemCheckpointSaver(BaseCheckpointSaver):
         content_hash = self.inner.serde.compute_content_hash(checkpoint)
         new_metadata = dict(metadata) if metadata else {}
         new_metadata["grafomem_content_hash"] = content_hash
-        return await self.inner.aput(config, checkpoint, new_metadata, new_versions)
+        with _thread_ctx(_thread_id_of(config)):
+            return await self.inner.aput(config, checkpoint, new_metadata, new_versions)
 
     async def aput_writes(
         self,
@@ -185,12 +204,18 @@ class GrafomemCheckpointSaver(BaseCheckpointSaver):
         task_id: str,
         task_path: str = "",
     ) -> None:
-        return await self.inner.aput_writes(config, writes, task_id, task_path)
+        with _thread_ctx(_thread_id_of(config)):
+            return await self.inner.aput_writes(config, writes, task_id, task_path)
 
     async def adelete_thread(self, thread_id: str) -> None:
-        tuples = [
-            t async for t in self.inner.alist({"configurable": {"thread_id": thread_id}})
-        ]
-        before_digest = self._thread_digest(tuples)
+        with _thread_ctx(thread_id):
+            tuples = [
+                t async for t in self.inner.alist({"configurable": {"thread_id": thread_id}})
+            ]
+            before_digest = self._thread_digest(tuples)
         await self.inner.adelete_thread(thread_id)
-        self._record(thread_id, before_digest)
+        after = "erased"
+        if self._key_manager is not None:
+            fp = self._key_manager.destroy_key(thread_id)
+            after = f"key_destroyed:{fp}"
+        self._record(thread_id, before_digest, after)

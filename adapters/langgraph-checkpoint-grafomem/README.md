@@ -61,6 +61,33 @@ The default log is a `FileReceiptLog` at `grafomem_receipts.jsonl` (override wit
 `GRAFOMEM_RECEIPT_LOG` env var, or pass your own `ReceiptLog`). The file is created on the first
 erasure. Pass `InMemoryReceiptLog()` to opt out of disk entirely.
 
+## Per-thread crypto-erasure (opt-in)
+
+The receipt and log above prove an erasure *happened*, but the inner store's residual copies
+(WAL, dead tuples, replicas, backups) are outside the wrapper. To cover those, turn on per-thread
+encryption: each thread's checkpoints are encrypted under a per-thread key, and `delete_thread`
+**destroys that key** — so residual ciphertext becomes undecryptable, and the receipt commits to
+the key destruction.
+
+```python
+from grafomem_checkpoint import GrafomemSerializer, GrafomemCheckpointSaver, ThreadKeyManager
+
+# master key (KEK) wraps the per-thread keys; keep it safe, losing it makes threads unrecoverable
+km = ThreadKeyManager()  # reads GRAFOMEM_MASTER_KEY (32-byte hex); keys in GRAFOMEM_THREAD_KEYS
+serde = GrafomemSerializer(private_key, key_id=key_id, trusted_keys=trusted_keys, key_manager=km)
+inner = SqliteSaver(conn, serde=serde)
+saver = GrafomemCheckpointSaver(inner)
+
+saver.delete_thread("user-123")
+receipt = saver.last_receipt("user-123")
+assert receipt.after.startswith("key_destroyed:")   # signed commitment to the destroyed key
+```
+
+Encryption is opt-in (no `key_manager` → unchanged signed-but-plaintext behavior), backward
+compatible (1.0/1.1 checkpoints still load), and stays inside the adapter — the core `.gfm` wire
+format is untouched. One constraint: with encryption on, a cross-thread `list()` raises
+`ThreadContextMissing`; list per `thread_id`.
+
 ## What it proves — and what it doesn't
 
 The receipt is **tamper-evidence and non-repudiation for the erase transition**, bound to a key
@@ -68,11 +95,11 @@ and a timestamp, with the thread's pre-deletion content bound in. The honest sta
 prove this thread was erased on this date, bound to what was there, signed and independently
 verifiable."*
 
-It is **not** a claim of media-level unrecoverability. The inner store's WAL, freelist pages, dead
-tuples before VACUUM, replicas, snapshots and backups are outside this wrapper's control.
-Per-thread crypto-erasure — a per-thread encryption key destroyed on delete, with the receipt
-committing to that destruction so residual ciphertext becomes undecryptable — is the planned next
-step to cover those residual copies.
+On its own it is **not** a claim of media-level unrecoverability: the inner store's WAL, freelist
+pages, dead tuples before VACUUM, replicas, snapshots and backups are outside this wrapper's
+control. Turning on per-thread crypto-erasure (above) covers those residual copies by destroying
+the thread's key on delete — but that is still key-destruction, not a guarantee the physical
+ciphertext bytes were overwritten, and it depends on the KEK and key store being managed correctly.
 
 ## License
 
