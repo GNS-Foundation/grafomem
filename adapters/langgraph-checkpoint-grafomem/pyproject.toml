@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "langgraph-checkpoint-grafomem"
-version = "1.2.0"
+version = "1.2.1"
 description = "Grafomem (Fair Source) adapter for LangGraph Checkpointers"
 readme = "README.md"
 dependencies = [

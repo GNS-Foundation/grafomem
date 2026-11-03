@@ -2,6 +2,13 @@
 
 All notable changes to `langgraph-checkpoint-grafomem` are documented here.
 
+## [1.2.1] — 2026-11-03
+
+### Fixed
+- Renamed a test fixture marker (`{"secret": "..."}` → `{"note": "..."}`) that tripped a
+  secret-scanner false positive (gitleaks `generic-api-key`). No functional or API change; the
+  published code is identical in behavior.
+
 ## [1.2.0] — 2026-11-03
 
 ### Added
