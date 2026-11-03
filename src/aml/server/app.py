@@ -353,6 +353,21 @@ async def delete_memory(store_id: str, req: DeleteRequest, request: Request):
         except RuntimeError as e:
             raise HTTPException(503, detail=str(e))
 
+    # 0016 (factual certificate): observe the content BEFORE deleting so the
+    # certificate can bind a digest of what was actually erased, server-side.
+    # Never caller-asserted, never null-by-default. Only the hash is retained.
+    pre_content: str | None = None
+    if ep and tenant and hasattr(entry.backend, "get"):  # POINT_LOOKUP point read (0016)
+        try:
+            pre = entry.backend.get(req.ref)
+            pre_content = getattr(pre, "content", None) if pre is not None else None
+        except Exception as e:
+            # A read failure must not fabricate a digest — but it must not be silent
+            # either, or the certificate quietly loses its content binding.
+            logger.warning("pre-delete read of ref=%s failed; certificate will carry no "
+                           "content hash: %s", req.ref, e)
+            pre_content = None
+
     try:
         deleted = entry.backend.delete(req.ref)
     except CapabilityNotSupported as e:
@@ -366,7 +381,18 @@ async def delete_memory(store_id: str, req: DeleteRequest, request: Request):
     if deleted and ep and tenant:
         # 0014: pass the backend so coverage is probed (read-back of the primary
         # store), not defaulted. issue_certificate raises if nothing verifies.
-        cert = ep.issue_certificate(tenant_id=tenant, fact_ref=req.ref, backend=entry.backend)
+        # 0016: pass the pre-delete content so fact_content_hash is server-observed.
+        from aml.cloud.erasure_proof import FactStillPresent
+        try:
+            cert = ep.issue_certificate(
+                tenant_id=tenant, fact_ref=req.ref, backend=entry.backend,
+                fact_content=pre_content,
+            )
+        except FactStillPresent as e:
+            # The backend reported deleted=True but the read-back still finds the fact.
+            # That is a store inconsistency, not a client error: surface it, issue nothing.
+            raise HTTPException(500, detail=f"delete reported but fact still present; "
+                                            f"no certificate issued: {e}")
         cert_id = cert.certificate_id
 
     try:

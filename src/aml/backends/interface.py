@@ -302,6 +302,17 @@ class MemoryBackend(Protocol):
     # probe. A conformant exists() MUST be side-effect-free and MUST reflect deletes:
     # after delete(ref) returns True, exists(ref) MUST be False.
     #
+    # OPTIONAL override (0016) — the sibling of exists(), under the same gate:
+    #
+    #     def get(self, ref: Any) -> Memory | None: ...
+    #
+    # Side-effect-free point READ by ref, returning the Memory (content decrypted
+    # exactly as retrieve()/audit() return it) or None. The erasure path calls it
+    # BEFORE delete(ref) so the certificate's fact_content_hash is a digest the
+    # server observed itself — never caller-asserted, never null-by-default. A
+    # backend without get() yields a certificate with no content hash; the caller
+    # must not fabricate one. Implemented only alongside Capability.POINT_LOOKUP.
+    #
     # OPTIONAL override (CGR #12) — deliberately NOT a Protocol member, so adding
     # it does not change runtime_checkable conformance for existing backends:
     #

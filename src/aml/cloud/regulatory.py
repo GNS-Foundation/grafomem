@@ -312,22 +312,43 @@ class RegulatoryReportService:
         }
 
         # Article 17 — Right to Erasure
+        # 0016: the finding is COMPUTED from the erasure-proof service's own stats,
+        # never asserted. No service → PARTIAL; no certificates in the period →
+        # INSUFFICIENT_DATA; unsigned certificates → PARTIAL; else COMPLIANT.
         ep_stats = self._safe_ep_stats(tenant_id)
+        ep_active = self._ep is not None
+        certs_total = ep_stats.get("total", 0) or 0
+        certs_signed = ep_stats.get("signed_count", 0) or 0
+        if not ep_active:
+            a17_finding = "PARTIAL"
+        elif certs_total == 0:
+            a17_finding = "INSUFFICIENT_DATA"
+        elif certs_signed < certs_total:
+            a17_finding = "PARTIAL"
+        else:
+            a17_finding = "COMPLIANT"
         report["sections"]["article_17_erasure"] = {
             "title": "Article 17 — Right to Erasure",
             "requirement": "Data subjects have the right to obtain erasure of personal "
                           "data without undue delay.",
             "compliance_evidence": {
-                "erasure_proof_active": ep_stats.get("total", 0) > 0 or True,
-                "certificates_issued": ep_stats.get("total", 0),
+                "erasure_proof_active": ep_active,
+                "certificates_issued": certs_total,
                 "decisions_scrubbed": ep_stats.get("total_scrubbed", 0),
-                "signed_certificates": ep_stats.get("signed_count", 0),
+                "signed_certificates": certs_signed,
                 "signature_algorithm": "Ed25519",
-                "content_hash_algorithm": "BLAKE2b-128 (proof without PII retention)",
+                "content_hash_algorithm": "BLAKE2b-128 of the pre-delete content "
+                                          "(server-observed on the delete endpoint; "
+                                          "caller-asserted on /v1/erasure/issue)",
                 "first_erasure": ep_stats.get("first_erasure"),
                 "last_erasure": ep_stats.get("last_erasure"),
             },
-            "finding": "COMPLIANT",
+            "evidence_basis": {
+                "observed": ["erasure_proof_active", "certificates_issued",
+                             "signed_certificates", "decisions_scrubbed"],
+                "declared": ["signature_algorithm", "content_hash_algorithm"],
+            },
+            "finding": a17_finding,
         }
 
         # Article 30 — Records of Processing Activities
@@ -347,18 +368,35 @@ class RegulatoryReportService:
         }
 
         # Article 25 — Data Protection by Design
+        # 0016: computed from what is actually configured for this deployment/tenant.
+        # Design facts that cannot be measured at runtime are labelled "declared".
+        signing_ok = self._signing_configured()
+        active_types = self._active_policy_types(tenant_id)
         report["sections"]["article_25_by_design"] = {
             "title": "Article 25 — Data Protection by Design and by Default",
             "requirement": "Implement appropriate technical measures for data protection.",
             "compliance_evidence": {
                 "content_addressing": "BLAKE2b-128 for facts, BLAKE2b-256 for corpus",
                 "cryptographic_signing": "Ed25519 for decisions and erasure certificates",
-                "tenant_isolation": "Per-tenant data partitioning at database level",
-                "pii_guard_available": True,
+                "cryptographic_signing_configured": signing_ok,
+                # Logical residency: rows are tenant-scoped in shared storage. This is
+                # NOT physical segregation and is not described as such.
+                "tenant_isolation": "Logical per-tenant residency (tenant-scoped storage); "
+                                    "not physical segregation",
+                "pii_guard_available": "pii_guard" in active_types,
                 "gdpr_scrub_endpoint": "DELETE /v1/decisions/scrub/{fact_ref}",
-                "erasure_certificates": "POST /v1/erasure/issue",
+                "erasure_certificates": "POST /v1/stores/{store_id}/delete (observed digest); "
+                                        "POST /v1/erasure/issue (already-deleted facts)",
+                "erasure_certificates_available": ep_active,
             },
-            "finding": "COMPLIANT",
+            "evidence_basis": {
+                "observed": ["cryptographic_signing_configured", "pii_guard_available",
+                             "erasure_certificates_available"],
+                "declared": ["content_addressing", "cryptographic_signing",
+                             "tenant_isolation", "gdpr_scrub_endpoint",
+                             "erasure_certificates"],
+            },
+            "finding": "COMPLIANT" if (signing_ok and ep_active) else "PARTIAL",
         }
 
         report["overall_finding"] = self._overall(report["sections"])
@@ -398,18 +436,39 @@ class RegulatoryReportService:
         }
 
         # Article 9 — Protection and Prevention
+        # 0016: rate limiting, PII detection and content filtering exist as governance
+        # POLICY TYPES. The evidence is whether a policy of each type is ACTIVE for this
+        # tenant — and the scope note states where those policies are applied. They are
+        # never asserted True by default.
+        active_types = self._active_policy_types(tenant_id)
+        signing_ok = self._signing_configured()
+        rate_ok = "rate_limit" in active_types
+        pii_ok = "pii_guard" in active_types
+        filter_ok = "content_filter" in active_types
         report["sections"]["article_9_protection"] = {
             "title": "Article 9 — Protection and Prevention",
             "requirement": "Implement policies, procedures, and tools for ICT security.",
             "compliance_evidence": {
                 "content_integrity": "BLAKE2b content addressing",
                 "signature_verification": "Ed25519 for decisions and certificates",
-                "rate_limiting": True,
-                "pii_detection": True,
-                "content_filtering": True,
-                "access_control": "API key + tenant isolation",
+                "signature_verification_configured": signing_ok,
+                "rate_limiting": rate_ok,
+                "pii_detection": pii_ok,
+                "content_filtering": filter_ok,
+                "policy_enforcement_scope": "governance policies are evaluated on requests "
+                                            "submitted to /v1/governance/evaluate and by the "
+                                            "orchestrator; they are not applied inline to "
+                                            "memory operations",
+                "access_control": "API key scopes + logical per-tenant residency",
             },
-            "finding": "COMPLIANT",
+            "evidence_basis": {
+                "observed": ["signature_verification_configured", "rate_limiting",
+                             "pii_detection", "content_filtering"],
+                "declared": ["content_integrity", "signature_verification",
+                             "policy_enforcement_scope", "access_control"],
+            },
+            "finding": "COMPLIANT" if (signing_ok and rate_ok and pii_ok and filter_ok)
+                       else "PARTIAL",
         }
 
         # Article 11 — Audit Trail
@@ -488,6 +547,37 @@ class RegulatoryReportService:
             return self._gov.get_stats(tenant_id)
         except Exception:
             return {}
+
+    def _active_policy_types(self, tenant_id: str) -> set[str]:
+        """Policy types with at least one ENABLED policy for the tenant (0016).
+
+        Observed, not declared: read from the governance gateway. No gateway, or a
+        read failure, yields the empty set — never a default of "everything on".
+        """
+        if self._gov is None:
+            return set()
+        try:
+            policies = self._gov.list_policies(tenant_id, enabled_only=True)
+        except Exception:
+            return set()
+        types: set[str] = set()
+        for p in policies:
+            pt = getattr(p, "policy_type", None)
+            if pt is None and isinstance(p, dict):
+                pt = p.get("policy_type")
+            if pt is not None:
+                types.add(getattr(pt, "value", pt))
+        return types
+
+    def _signing_configured(self) -> bool:
+        """True only if the erasure-proof service exists AND can sign right now (0016)."""
+        if self._ep is None:
+            return False
+        try:
+            self._ep.assert_can_sign()
+            return True
+        except Exception:
+            return False
 
     def _safe_comp_data(self, tenant_id: str) -> dict:
         if self._comp is None:

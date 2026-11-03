@@ -19,6 +19,7 @@ from aml.backends.interface import Capability
 from aml.cloud.erasure_proof import (
     ErasureProofService,
     EmptyGovernanceCoverage,
+    FactStillPresent,
     probe_coverage,
 )
 
@@ -175,14 +176,21 @@ def test_backend_without_exists_yields_unverified_not_absent_end_to_end():
     assert not _cert_inserted(ev)
 
 
-def test_probe_present_issues_certificate_saying_present():
-    """exists→True: the fact survived the delete. present is a verified status, so a
-    certificate IS issued, and it must honestly record present (an erasure-incomplete signal)."""
+def test_probe_present_refuses_certificate():
+    """exists→True: the fact survived the delete. `present` is still a VERIFIED status
+    (0014) — it passes the vacuity gate — but it is the observation of a non-erasure, so
+    0016 gate 1b REFUSES: no erasure certificate for a fact that is still there. The
+    observation is surfaced in the refusal, and nothing is ledgered or persisted.
+
+    (Pre-0016 this test asserted the opposite — a certificate issued with
+    coverage.primary == "present" tucked inside a signed Article 17 artifact.)"""
     ev = []
     svc = _svc(ev, _FakeLedger(ev))
-    cert = svc.issue_certificate("t1", 123, backend=_ProbeBackend(present=True))
-    assert cert is not None
-    assert cert.coverage["primary"] == "present", "certificate must record the probed present"
+    with pytest.raises(FactStillPresent) as exc:
+        svc.issue_certificate("t1", 123, backend=_ProbeBackend(present=True))
+    assert "memory_ref:123" in str(exc.value)
+    assert "ledger_write" not in ev, "refusal must precede the ledger write (no orphan row)"
+    assert not _cert_inserted(ev)
 
 
 def test_probe_absent_issues_certificate_saying_absent():

@@ -528,6 +528,24 @@ class PostgresGMPBackend:
             cur.execute("SELECT 1 FROM memories WHERE ref = %s LIMIT 1", (ref,))
             return cur.fetchone() is not None
 
+    def get(self, ref: Any) -> Memory | None:
+        # POINT_LOOKUP (0016) — side-effect-free point read by ref, the sibling of
+        # exists(). Lets the erasure path observe the content BEFORE deleting so the
+        # certificate binds a server-observed digest. Same column list as audit(), so
+        # _row_to_memory decrypts content_enc under the row's tenant key exactly as
+        # retrieve()/audit() do.
+        with self._tenant_conn("admin") as (conn, cur):
+            cur.execute(
+                """SELECT ref, content, written_at, metadata,
+                          valid_from, valid_until, tenant_id,
+                          superseded_by, written_by, signature, public_key, region,
+                          content_enc, metadata_enc
+                   FROM memories WHERE ref = %s LIMIT 1""",
+                (ref,),
+            )
+            row = cur.fetchone()
+        return self._row_to_memory(row) if row is not None else None
+
     def retrieve(self, query: str, options: RetrieveOptions) -> list[Memory]:
         # Check if any embeddings exist
         with self._tenant_conn(options.tenant_id) as (conn, cur):
