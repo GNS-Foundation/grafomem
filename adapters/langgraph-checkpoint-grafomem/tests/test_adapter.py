@@ -331,17 +331,17 @@ def test_encryption_ciphertext_at_rest_and_roundtrip():
     enc = GrafomemSerializer(private_key=priv, key_manager=km)
     plain = GrafomemSerializer(private_key=priv)  # no key_manager
 
-    marker = {"secret": "SENSITIVE_MARKER_123"}
+    marker = {"note": "plaintext-canary-value"}
 
     # plaintext path: marker IS present in the bytes
     _, plain_bytes = plain.dumps_typed(marker)
-    assert b"SENSITIVE_MARKER_123" in plain_bytes
+    assert b"plaintext-canary-value" in plain_bytes
 
     # encrypted path (thread in scope): marker is NOT present, but round-trips
     tok = current_thread_id.set("t-enc")
     try:
         type_, enc_bytes = enc.dumps_typed(marker)
-        assert b"SENSITIVE_MARKER_123" not in enc_bytes
+        assert b"plaintext-canary-value" not in enc_bytes
         assert enc.loads_typed((type_, enc_bytes)) == marker
     finally:
         current_thread_id.reset(tok)
