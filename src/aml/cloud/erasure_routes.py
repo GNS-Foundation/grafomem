@@ -193,6 +193,30 @@ def create_erasure_router(erasure_service) -> APIRouter:
         return erasure_service.get_stats(tenant_id)
 
     # ------------------------------------------------------------------
+    # GET /v1/erasure/ledger/verify — verify the ledger hash chain (0017)
+    # Declared BEFORE the /{certificate_id} routes so "ledger" is never captured
+    # as a certificate id. Scope: erasure:execute — the only erasure scope that
+    # exists today (every erasure read uses it); a read-only scope is a separate
+    # decision. The ledger is global (all tenants), so the verdict is too: it
+    # reports chain integrity, never another tenant's content.
+    # ------------------------------------------------------------------
+
+    @router.get("/ledger/verify")
+    async def verify_ledger_chain(request: Request):
+        """Verify the erasure ledger's hash chain end to end.
+
+        Returns ``{"ok": bool, "rows": n, "problems": [...]}``. ``problems`` names
+        each break with its ``seq`` so an auditor can localise it. A ledger that
+        was never sealed (migration 021 not applied) is reported as not ok.
+        """
+        require_scope(request, "erasure:execute")
+        try:
+            ok, problems, rows = erasure_service.verify_ledger()
+        except RuntimeError as e:
+            raise HTTPException(503, str(e))
+        return {"ok": ok, "rows": rows, "problems": problems}
+
+    # ------------------------------------------------------------------
     # GET /v1/erasure/{certificate_id} — get a certificate
     # ------------------------------------------------------------------
 

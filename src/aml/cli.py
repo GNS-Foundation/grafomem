@@ -519,6 +519,50 @@ def verify():
 # grafomem serve
 # ============================================================================
 
+def _build_mcp_erasure_service(is_postgres: bool, db_url: str, auth: str):
+    """Build the ErasureProofService for `serve --mcp` (decision 0017), or None.
+
+    Mirrors app.py: Postgres backend + a signing key (ERASURE_SIGNING_KEY /
+    GRAFOMEM_SIGNING_KEY) + the ledger at GRAFOMEM_LEDGER_URL (same fallback as the
+    HTTP server). Schema is ensured only where the HTTP server would do it (self-host;
+    cloud is migration-owned and the runtime never does DDL). Any gap → None, and the
+    MCP tools report "not issued" instead of fabricating a certificate.
+    """
+    import os
+    if not is_postgres:
+        click.echo("  erasure certificates: off (requires -b postgres)")
+        return None
+    if not (os.environ.get("ERASURE_SIGNING_KEY") or os.environ.get("GRAFOMEM_SIGNING_KEY")):
+        click.echo("  erasure certificates: off (no ERASURE_SIGNING_KEY / GRAFOMEM_SIGNING_KEY)")
+        return None
+    try:
+        from aml.cloud.erasure_ledger import ErasureLedger
+        from aml.cloud.erasure_proof import ErasureProofService
+        from aml.cloud.identity import EnvIdentity
+        from aml.cloud.migrations_runner import boot_migrations_enabled
+
+        ledger_url = os.environ.get("GRAFOMEM_LEDGER_URL")
+        if not ledger_url:
+            ledger_url = "postgresql://grafomem:dev@localhost:5432/grafomem_ledger"
+            click.echo(f"  GRAFOMEM_LEDGER_URL not set — defaulting to local {ledger_url}")
+        auth_mode = os.environ.get("AUTH_MODE") or auth
+        do_ddl = boot_migrations_enabled(auth_mode)
+
+        ledger = ErasureLedger(ledger_url)
+        if do_ddl:
+            ledger.ensure_schema()
+        service = ErasureProofService(
+            db_url, decision_trail=None, signing_identity=EnvIdentity(), erasure_ledger=ledger,
+        )
+        if do_ddl:
+            service.ensure_schema()
+        click.echo("  erasure certificates: on (signed, ledgered; verified in-process)")
+        return service
+    except Exception as e:
+        click.echo(f"  erasure certificates: off ({type(e).__name__}: {e})")
+        return None
+
+
 @main.command()
 @click.option("--host", default="0.0.0.0", help="Bind address")
 @click.option("--port", "-p", default=8642, type=int, help="Port")
@@ -612,12 +656,20 @@ def serve(host, port, backend, db, embedder, mcp, mcp_port, auth, batch, batch_s
         import asyncio
         click.echo(f"GRAFOMEM MCP server (transport={mcp})")
 
+        # 0017: give the MCP process a REAL erasure service, built from the same
+        # configuration the HTTP server uses, so delete_memory can issue factual
+        # certificates (0016) and verify_erasure can verify in-process. Requires
+        # Postgres + a signing key; the ledger URL falls back like app.py does.
+        # Anything missing → None, and the tools say "not issued" instead of faking.
+        erasure_service = _build_mcp_erasure_service(is_postgres, db, auth)
+
         if mcp == "stdio":
             from aml.server.mcp import run_mcp_stdio
-            asyncio.run(run_mcp_stdio(_factory))
+            asyncio.run(run_mcp_stdio(_factory, erasure_service=erasure_service))
         else:
             from aml.server.mcp import run_mcp_sse
-            asyncio.run(run_mcp_sse(_factory, host=host, port=mcp_port))
+            asyncio.run(run_mcp_sse(_factory, host=host, port=mcp_port,
+                                    erasure_service=erasure_service))
         return
 
     # HTTP mode: FastAPI server
