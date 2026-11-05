@@ -23,11 +23,17 @@ from typing import Any
 logger = logging.getLogger("grafomem.mcp")
 
 
-def create_mcp_server(backend_factory):
+def create_mcp_server(backend_factory, erasure_service=None):
     """Create an MCP server wrapping a MemoryBackend.
 
     Returns the mcp Server object. The caller is responsible for running it
     with the appropriate transport (stdio or sse).
+
+    `erasure_service` (0017): an `ErasureProofService` built by the entrypoint from
+    the same configuration `grafomem serve` uses (Postgres + ledger + signing key).
+    With it, `delete_memory` issues a real, factual certificate (0016) and
+    `verify_erasure` verifies signatures in-process. Without it — OSS SQLite mode,
+    or no ledger/key configured — both tools say so explicitly; nothing is faked.
 
     Requires: pip install mcp>=1.0
     """
@@ -250,17 +256,17 @@ def create_mcp_server(backend_factory):
             else:
                 ops_until_gone = 1
                 
-            # Phase 4: Mint Erasure Certificate
+            # Phase 4: Mint Erasure Certificate (0017 — through the wired service; the
+            # previous `backend.db_url` branch could never run outside tests).
+            # `lure_text` is the content observed in Phase 1, BEFORE the delete, so the
+            # certificate's content hash is server-observed (0016), not asserted.
             cert_dict = None
-            if hasattr(backend, "db_url") and backend.db_url:
-                from aml.cloud.erasure_proof import ErasureProofService
+            if erasure_service is None:
+                cert_status = "not_issued: no erasure service in this MCP process"
+            else:
+                from aml.cloud.erasure_proof import FactStillPresent
                 try:
-                    eps = ErasureProofService(
-                        backend.db_url,
-                        signing_identity=getattr(backend, "signing_identity", None),
-                        erasure_ledger=getattr(backend, "erasure_ledger", None),
-                    )
-                    cert = eps.issue_certificate(
+                    cert = erasure_service.issue_certificate(
                         tenant_id=tenant_id,
                         fact_ref=ref,
                         fact_content=lure_text,
@@ -274,16 +280,24 @@ def create_mcp_server(backend_factory):
                         "algorithm": "Ed25519",
                         "issued_at": cert.erasure_completed_at.isoformat(),
                     }
+                    cert_status = "issued"
+                except FactStillPresent as e:
+                    # delete() reported success but the read-back still finds the fact:
+                    # a store inconsistency. No certificate (0016); say so.
+                    cert_status = "not_issued: fact_still_present"
+                    logger.error("MCP erasure certificate NOT issued — fact still present "
+                                 "after delete: %s", e)
                 except Exception as e:
-                    # I0b/0013: with no ledger wired into this MCP backend, issuance is
-                    # correctly refused (LedgerRequired) — the fact is still deleted, but no
-                    # certificate is minted. Surface the reason instead of swallowing it.
-                    logger.error("MCP erasure certificate NOT issued (delete still applied): %s", e, exc_info=True)
+                    # 0013: the fact is deleted, no certificate is minted (e.g. ledger
+                    # unavailable → LedgerRequired). Surface the reason, never swallow it.
+                    cert_status = f"not_issued: {type(e).__name__}"
+                    logger.error("MCP erasure certificate NOT issued (delete still applied): %s",
+                                 e, exc_info=True)
 
             return [TextContent(
                 type="text",
                 text=json.dumps({
-                    "deleted": deleted, 
+                    "deleted": deleted,
                     "ref": ref,
                     "sealed_probe": {
                         "gone_from_retrieval": gone_from_retrieval,
@@ -291,7 +305,8 @@ def create_mcp_server(backend_factory):
                         "probed_at": datetime.now(timezone.utc).isoformat(),
                         "targeted": True
                     },
-                    "certificate": cert_dict
+                    "certificate": cert_dict,
+                    "certificate_status": cert_status,
                 }),
             )]
 
@@ -304,17 +319,10 @@ def create_mcp_server(backend_factory):
             storage_check = {"row_present": backend.get(ref) is not None}
             
             cert_dict = None
-            eps = None
             cert_obj = None
-            if hasattr(backend, "db_url") and backend.db_url:
-                from aml.cloud.erasure_proof import ErasureProofService
+            if erasure_service is not None:
                 try:
-                    eps = ErasureProofService(
-                        backend.db_url,
-                        signing_identity=getattr(backend, "signing_identity", None),
-                        erasure_ledger=getattr(backend, "erasure_ledger", None),
-                    )
-                    cert_obj = eps.get_by_fact(tenant_id, ref)
+                    cert_obj = erasure_service.get_by_fact(tenant_id, ref)
                     if cert_obj:
                         cert_dict = {
                             "cert_id": cert_obj.certificate_id,
@@ -326,24 +334,36 @@ def create_mcp_server(backend_factory):
                         }
                 except Exception as e:
                     logger.error("MCP erasure certificate fetch failed: %s", e, exc_info=True)
-            # Default verify_url
-            verify_url = f"https://cloud.grafomem.com/v1/erasure/{cert_dict['cert_id']}/verify" if cert_dict else ""
+
+            # Signature check (0017): IN-PROCESS, with the same key material that issued
+            # the certificate. The previous implementation GETed a hard-coded
+            # https://cloud.grafomem.com/... URL without credentials, so it could never
+            # return a verdict and every answer was ERASED_UNVERIFIED. An optional
+            # GRAFOMEM_VERIFY_URL still adds an independent remote check on top; it can
+            # only make the verdict worse (tamper=True), never better.
             import os
-            verify_url = os.environ.get("GRAFOMEM_VERIFY_URL", verify_url)
-            
             tamper = None
+            verify_url = ""
             if cert_dict:
-                import httpx
                 try:
-                    with httpx.Client(timeout=3.0) as client:
-                        resp = client.get(verify_url)
-                        if resp.status_code == 200:
-                            tamper = not resp.json().get("verified", False)
-                        else:
-                            tamper = None
-                except Exception:
+                    local = erasure_service.verify_certificate(cert_dict["cert_id"])
+                    tamper = not bool(local.get("valid", False))
+                    verify_url = "in-process"
+                except Exception as e:
+                    logger.error("MCP in-process certificate verification failed: %s", e)
                     tamper = None
-            
+                remote = os.environ.get("GRAFOMEM_VERIFY_URL")
+                if remote:
+                    verify_url = remote
+                    try:
+                        import httpx
+                        with httpx.Client(timeout=3.0) as client:
+                            resp = client.get(remote)
+                            if resp.status_code == 200 and not resp.json().get("verified", False):
+                                tamper = True
+                    except Exception:
+                        pass  # remote unreachable: the in-process verdict stands
+
             # Sealed probe (0016): no read-path probe is persisted at issuance yet, so
             # there is nothing to retrieve. It is reported as None — NEVER fabricated
             # from the mere existence of a certificate. A real read-path verdict comes
@@ -570,22 +590,23 @@ def create_mcp_server(backend_factory):
     return server
 
 
-async def run_mcp_stdio(backend_factory):
+async def run_mcp_stdio(backend_factory, erasure_service=None):
     """Run the MCP server over stdio (for local agent integration)."""
     from mcp.server.stdio import stdio_server
 
-    server = create_mcp_server(backend_factory)
+    server = create_mcp_server(backend_factory, erasure_service=erasure_service)
     async with stdio_server() as (read_stream, write_stream):
         await server.run(read_stream, write_stream, server.create_initialization_options())
 
 
-async def run_mcp_sse(backend_factory, *, host: str = "0.0.0.0", port: int = 8643):
+async def run_mcp_sse(backend_factory, *, host: str = "0.0.0.0", port: int = 8643,
+                      erasure_service=None):
     """Run the MCP server over HTTP+SSE (for remote agent integration)."""
     from mcp.server.sse import SseServerTransport
     from starlette.applications import Starlette
     from starlette.routing import Route
 
-    server = create_mcp_server(backend_factory)
+    server = create_mcp_server(backend_factory, erasure_service=erasure_service)
     sse = SseServerTransport("/messages")
 
     async def handle_sse(request):

@@ -12,7 +12,7 @@ def reapply_ledger(
     store_manager: Any,
     tenant_key_manager: TenantKeyManager,
     decision_trail: DecisionTrailService,
-) -> dict[str, int]:
+) -> dict[str, Any]:
     """
     Reapply the external Erasure Ledger to an active database.
     This ensures that any data subjects or tenant keys that were legally 
@@ -22,13 +22,31 @@ def reapply_ledger(
     """
     logger.info("Starting restore-scrub runbook...")
     
-    stats = {
+    stats: dict[str, Any] = {
         "tenant_keys_destroyed": 0,
         "subject_memories_deleted": 0,
         "decision_records_scrubbed": 0,
+        # 0017: the chain is verified BEFORE replay and the verdict travels with the
+        # stats. A broken chain is reported loudly but replay still proceeds — refusing
+        # would leave revived data un-scrubbed, which is worse than replaying a ledger
+        # known to be incomplete. Operators act on `ledger_chain_problems`.
+        "ledger_chain_ok": None,
+        "ledger_chain_problems": [],
     }
-    
-    erasures = erasure_ledger.get_all_erasures()
+
+    try:
+        ok, problems = erasure_ledger.verify()
+    except Exception as e:  # a verifier failure must not block the scrub
+        ok, problems = False, [f"verification failed to run: {e}"]
+    stats["ledger_chain_ok"] = ok
+    stats["ledger_chain_problems"] = problems
+    if ok:
+        logger.info("Erasure ledger chain verified OK")
+    else:
+        logger.error("Erasure ledger chain FAILED verification (%d problem(s)); replaying what "
+                     "is present anyway: %s", len(problems), problems)
+
+    erasures = erasure_ledger.get_all_erasures()  # excludes the chain_genesis row
     
     for entry in erasures:
         tenant_id = entry["tenant_id"]
@@ -65,6 +83,9 @@ def reapply_ledger(
             except Exception as e:
                 logger.warning("Failed to re-scrub decision records for fact_ref=%s: %s", fact_ref, e)
                 
+        elif entry_type == "chain_genesis":
+            # 0017 sealing row — chain metadata, nothing to replay.
+            continue
         else:
             logger.warning("Unknown erasure ledger entry_type=%s, ignoring", entry_type)
 

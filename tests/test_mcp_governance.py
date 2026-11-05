@@ -75,60 +75,71 @@ def mcp_server_soft_delete():
         return MockBackend([Capability.HARD_DELETE, Capability.MULTI_TENANT], behavior="soft_delete")
     return create_mcp_server(factory)
 
+
+# ── 0017: the MCP server is handed an erasure service explicitly ────────────
+class _FakeEPS:
+    """Stands in for ErasureProofService. `valid` is the in-process signature verdict;
+    `verify_raises` simulates a verifier that cannot run (degraded)."""
+    def __init__(self, valid=True, verify_raises=False):
+        self.valid, self.verify_raises, self.cert, self.issued_with = valid, verify_raises, None, []
+
+    def issue_certificate(self, **kw):
+        self.issued_with.append(kw)
+        c = MagicMock()
+        c.certificate_id = "cert-123"; c.fact_content_hash = "abc"
+        c.signature = b"sig"; c.public_key = b"pub"
+        c.erasure_completed_at = datetime.now(timezone.utc)
+        self.cert = c
+        return c
+
+    def get_by_fact(self, tenant_id, ref):
+        return self.cert
+
+    def verify_certificate(self, cert_id):
+        if self.verify_raises:
+            raise RuntimeError("verifier unavailable")
+        return {"valid": self.valid, "certificate_id": cert_id}
+
+
+def _server_with(eps, behavior="honest"):
+    def factory():
+        return MockBackend([Capability.HARD_DELETE, Capability.MULTI_TENANT], behavior=behavior)
+    return create_mcp_server(factory, erasure_service=eps)
+
 @pytest.mark.asyncio
-async def test_verify_erasure_honest_pass(mcp_server_honest):
-    # Setup
-    backend = mcp_server_honest._get_backend = lambda: MockBackend([Capability.HARD_DELETE], behavior="honest")
-    
-    server = create_mcp_server(backend)
-    # Write a record
+async def test_verify_erasure_honest_pass():
+    eps = _FakeEPS(valid=True)
+    server = _server_with(eps)
     res_w = await server._test_call_tool("write_memory", {"content": "secret fact"})
     ref = json.loads(res_w[0].text)["ref"]
-    
-    # Mock ErasureProofService to return a valid certificate
-    with patch("aml.cloud.erasure_proof.ErasureProofService") as MockEPS:
-        mock_eps = MockEPS.return_value
-        mock_cert = MagicMock()
-        mock_cert.certificate_id = "cert-123"
-        mock_cert.fact_content_hash = "abc"
-        mock_cert.signature = b"sig"
-        mock_cert.public_key = b"pub"
-        mock_cert.signing_key_id = "key"
-        mock_cert.erasure_completed_at = datetime.now(timezone.utc)
-        mock_eps.issue_certificate.return_value = mock_cert
-        mock_eps.get_by_fact.return_value = mock_cert
-        
-        # Delete the record
-        res_del = await server._test_call_tool("delete_memory", {"ref": ref})
-        del_data = json.loads(res_del[0].text)
-        assert del_data["sealed_probe"]["gone_from_retrieval"] is True
-        
-        # Verify the record with httpx patched to return true
-        with patch("httpx.Client.get") as mock_get:
-            mock_resp = MagicMock()
-            mock_resp.status_code = 200
-            mock_resp.json.return_value = {"verified": True}
-            mock_get.return_value = mock_resp
-            
-            # 0016: a certificate alone is NOT a read-path verdict. With no persisted
-            # probe and no reverify, the honest status is ERASED_UNVERIFIED and the
-            # sealed probe is None — never fabricated from the cert's existence.
-            res_v = await server._test_call_tool("verify_erasure", {"ref": ref})
-            v_data = json.loads(res_v[0].text)
-            assert v_data["status"] == "ERASED_UNVERIFIED"
-            assert v_data["sealed_probe"] is None
-            assert "no targeted probe on record" in v_data["warning"]
-            assert v_data["tamper"] is False  # signature check still ran
 
-            # ERASED_VERIFIED is EARNED by a real read-path probe (reverify + lure):
-            # the honest backend really no longer returns the fact.
-            res_v2 = await server._test_call_tool(
-                "verify_erasure", {"ref": ref, "reverify": True, "probe_query": "secret fact"}
-            )
-            v2 = json.loads(res_v2[0].text)
-            assert v2["status"] == "ERASED_VERIFIED"
-            assert v2["fresh_probe"]["gone_from_retrieval"] is True
-            assert v2["tamper"] is False
+    res_del = await server._test_call_tool("delete_memory", {"ref": ref})
+    del_data = json.loads(res_del[0].text)
+    assert del_data["sealed_probe"]["gone_from_retrieval"] is True
+    assert del_data["certificate"]["cert_id"] == "cert-123"
+    assert del_data["certificate_status"] == "issued"
+    # 0016/0017: the certificate's content was observed BEFORE the delete.
+    assert eps.issued_with[0]["fact_content"] == "secret fact"
+
+    # 0016: a certificate alone is NOT a read-path verdict. No persisted probe, no
+    # reverify → ERASED_UNVERIFIED, sealed_probe None; the signature check still ran
+    # (in-process, 0017) and passed.
+    res_v = await server._test_call_tool("verify_erasure", {"ref": ref})
+    v_data = json.loads(res_v[0].text)
+    assert v_data["status"] == "ERASED_UNVERIFIED"
+    assert v_data["sealed_probe"] is None
+    assert "no targeted probe on record" in v_data["warning"]
+    assert v_data["tamper"] is False
+    assert v_data["verify_url"] == "in-process"
+
+    # ERASED_VERIFIED is EARNED by a real read-path probe (reverify + lure).
+    res_v2 = await server._test_call_tool(
+        "verify_erasure", {"ref": ref, "reverify": True, "probe_query": "secret fact"}
+    )
+    v2 = json.loads(res_v2[0].text)
+    assert v2["status"] == "ERASED_VERIFIED"
+    assert v2["fresh_probe"]["gone_from_retrieval"] is True
+    assert v2["tamper"] is False
 
 @pytest.mark.asyncio
 async def test_verify_erasure_leak_caught(mcp_server_soft_delete):
@@ -166,100 +177,74 @@ async def test_verify_erasure_leak_caught(mcp_server_soft_delete):
             assert v_data["status"] == "NOT_ERASED"
 
 @pytest.mark.asyncio
-async def test_verify_erasure_degraded_verifier(mcp_server_honest):
-    server = mcp_server_honest
+async def test_verify_erasure_degraded_verifier():
+    # The in-process verifier cannot run → tamper is None (unknown), never False.
+    server = _server_with(_FakeEPS(valid=True, verify_raises=True))
     res_w = await server._test_call_tool("write_memory", {"content": "secret fact"})
     ref = json.loads(res_w[0].text)["ref"]
-    
-    with patch("aml.cloud.erasure_proof.ErasureProofService") as MockEPS:
-        mock_eps = MockEPS.return_value
-        mock_cert = MagicMock()
-        mock_cert.certificate_id = "cert-123"
-        mock_cert.fact_content_hash = "abc"
-        mock_cert.signature = b"sig"
-        mock_cert.public_key = b"pub"
-        mock_cert.signing_key_id = "key"
-        mock_cert.erasure_completed_at = datetime.now(timezone.utc)
-        mock_eps.issue_certificate.return_value = mock_cert
-        mock_eps.get_by_fact.return_value = mock_cert
-        
-        await server._test_call_tool("delete_memory", {"ref": ref})
-        
-        with patch("httpx.Client.get", side_effect=httpx.ConnectError("timeout")):
-            res_v = await server._test_call_tool("verify_erasure", {"ref": ref, "reverify": True, "probe_query": "secret"})
-            v_data = json.loads(res_v[0].text)
-            
-            assert v_data["status"] == "ERASED_UNVERIFIED"
-            assert v_data["tamper"] is None
+    await server._test_call_tool("delete_memory", {"ref": ref})
+
+    res_v = await server._test_call_tool(
+        "verify_erasure", {"ref": ref, "reverify": True, "probe_query": "secret"}
+    )
+    v_data = json.loads(res_v[0].text)
+    assert v_data["status"] == "ERASED_UNVERIFIED"
+    assert v_data["tamper"] is None
+    assert "unreachable" in v_data["warning"]
 
 @pytest.mark.asyncio
-async def test_verify_erasure_no_targeted_lure(mcp_server_honest):
-    server = mcp_server_honest
+async def test_verify_erasure_no_targeted_lure():
+    server = _server_with(_FakeEPS(valid=True))
     res_w = await server._test_call_tool("write_memory", {"content": "secret fact"})
     ref = json.loads(res_w[0].text)["ref"]
-    
-    with patch("aml.cloud.erasure_proof.ErasureProofService") as MockEPS:
-        mock_eps = MockEPS.return_value
-        mock_cert = MagicMock()
-        mock_cert.certificate_id = "cert-123"
-        mock_cert.fact_content_hash = "abc"
-        mock_cert.signature = b"sig"
-        mock_cert.public_key = b"pub"
-        mock_cert.signing_key_id = "key"
-        mock_cert.erasure_completed_at = datetime.now(timezone.utc)
-        mock_eps.issue_certificate.return_value = mock_cert
-        mock_eps.get_by_fact.return_value = mock_cert
-        
-        await server._test_call_tool("delete_memory", {"ref": ref})
-        
-        with patch("httpx.Client.get") as mock_get:
-            mock_resp = MagicMock()
-            mock_resp.status_code = 200
-            mock_resp.json.return_value = {"verified": True}
-            mock_get.return_value = mock_resp
-            
-            # We pass reverify=True without probe_query. 0016: with no lure there is
-            # no read-path probe, and the certificate's existence does NOT stand in
-            # for one — so the verdict stays ERASED_UNVERIFIED, with the warning.
-            res_v = await server._test_call_tool("verify_erasure", {"ref": ref, "reverify": True})
-            v_data = json.loads(res_v[0].text)
+    await server._test_call_tool("delete_memory", {"ref": ref})
 
-            assert v_data["status"] == "ERASED_UNVERIFIED"
-            assert v_data["sealed_probe"] is None
-            assert "returning sealed verdict only" in v_data["warning"]
+    # reverify=True without probe_query. 0016: with no lure there is no read-path
+    # probe, and the certificate's existence does NOT stand in for one.
+    res_v = await server._test_call_tool("verify_erasure", {"ref": ref, "reverify": True})
+    v_data = json.loads(res_v[0].text)
+    assert v_data["status"] == "ERASED_UNVERIFIED"
+    assert v_data["sealed_probe"] is None
+    assert "returning sealed verdict only" in v_data["warning"]
 
 @pytest.mark.asyncio
-async def test_verify_erasure_tampered_cert(mcp_server_honest):
-    server = mcp_server_honest
+async def test_verify_erasure_tampered_cert():
+    # The in-process signature check fails → tamper True, status stays UNVERIFIED.
+    server = _server_with(_FakeEPS(valid=False))
     res_w = await server._test_call_tool("write_memory", {"content": "secret fact"})
     ref = json.loads(res_w[0].text)["ref"]
-    
-    with patch("aml.cloud.erasure_proof.ErasureProofService") as MockEPS:
-        mock_eps = MockEPS.return_value
-        mock_cert = MagicMock()
-        mock_cert.certificate_id = "cert-123"
-        mock_cert.fact_content_hash = "abc"
-        mock_cert.signature = b"sig"
-        mock_cert.public_key = b"pub"
-        mock_cert.signing_key_id = "key"
-        mock_cert.erasure_completed_at = datetime.now(timezone.utc)
-        mock_eps.issue_certificate.return_value = mock_cert
-        mock_eps.get_by_fact.return_value = mock_cert
-        
-        await server._test_call_tool("delete_memory", {"ref": ref})
-        
-        with patch("httpx.Client.get") as mock_get:
-            mock_resp = MagicMock()
-            mock_resp.status_code = 200
-            # Simulating tamper
-            mock_resp.json.return_value = {"verified": False}
-            mock_get.return_value = mock_resp
-            
-            res_v = await server._test_call_tool("verify_erasure", {"ref": ref})
-            v_data = json.loads(res_v[0].text)
-            
-            assert v_data["status"] == "ERASED_UNVERIFIED"
-            assert v_data["tamper"] is True
+    await server._test_call_tool("delete_memory", {"ref": ref})
+
+    res_v = await server._test_call_tool(
+        "verify_erasure", {"ref": ref, "reverify": True, "probe_query": "secret fact"}
+    )
+    v_data = json.loads(res_v[0].text)
+    assert v_data["status"] == "ERASED_UNVERIFIED"
+    assert v_data["tamper"] is True
+    assert "tamper" in v_data["warning"].lower()
+
+
+@pytest.mark.asyncio
+async def test_verify_erasure_remote_check_can_only_worsen(monkeypatch):
+    # Local verdict valid; an optional GRAFOMEM_VERIFY_URL that says "not verified"
+    # flips tamper to True. The reverse (remote says fine, local says tampered) must
+    # NOT rescue the certificate — covered by the tampered test above with no remote.
+    monkeypatch.setenv("GRAFOMEM_VERIFY_URL", "https://verifier.example/v1/erasure/cert-123/verify")
+    server = _server_with(_FakeEPS(valid=True))
+    res_w = await server._test_call_tool("write_memory", {"content": "secret fact"})
+    ref = json.loads(res_w[0].text)["ref"]
+    await server._test_call_tool("delete_memory", {"ref": ref})
+
+    with patch("httpx.Client.get") as mock_get:
+        mock_resp = MagicMock(); mock_resp.status_code = 200
+        mock_resp.json.return_value = {"verified": False}
+        mock_get.return_value = mock_resp
+        res_v = await server._test_call_tool(
+            "verify_erasure", {"ref": ref, "reverify": True, "probe_query": "secret fact"}
+        )
+    v_data = json.loads(res_v[0].text)
+    assert v_data["tamper"] is True
+    assert v_data["verify_url"].startswith("https://verifier.example")
 
 @pytest.mark.asyncio
 async def test_verify_erasure_storage_neq_erasure(mcp_server_soft_delete):

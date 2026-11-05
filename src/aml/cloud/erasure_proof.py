@@ -677,6 +677,19 @@ class ErasureProofService:
         ).fetchall()
         return [self._row_to_cert(r) for r in rows]
 
+    def verify_ledger(self) -> tuple[bool, list[str], int]:
+        """Verify the erasure ledger's hash chain (0017). Returns (ok, problems, rows).
+
+        Raises RuntimeError when no ledger is wired (ERASURE_LEDGER_OPTIONAL dev/test
+        mode): there is nothing to verify, and that must not read as "verified".
+        """
+        if self._erasure_ledger is None:
+            raise RuntimeError("no erasure ledger configured — nothing to verify")
+        rows = self._erasure_ledger.get_chain_rows()
+        from aml.cloud.erasure_ledger import verify_ledger
+        ok, problems = verify_ledger(rows)
+        return ok, problems, len(rows)
+
     def get_stats(self, tenant_id: str) -> dict[str, Any]:
         """Summary stats for erasure certificates."""
         conn = self._get_conn()
