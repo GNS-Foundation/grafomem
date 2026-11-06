@@ -67,13 +67,13 @@ class MockBackend:
 def mcp_server_honest():
     def factory():
         return MockBackend([Capability.HARD_DELETE, Capability.MULTI_TENANT], behavior="honest")
-    return create_mcp_server(factory)
+    return create_mcp_server(factory, tenant_id="t1")
 
 @pytest.fixture
 def mcp_server_soft_delete():
     def factory():
         return MockBackend([Capability.HARD_DELETE, Capability.MULTI_TENANT], behavior="soft_delete")
-    return create_mcp_server(factory)
+    return create_mcp_server(factory, tenant_id="t1")
 
 
 # ── 0017: the MCP server is handed an erasure service explicitly ────────────
@@ -104,7 +104,7 @@ class _FakeEPS:
 def _server_with(eps, behavior="honest"):
     def factory():
         return MockBackend([Capability.HARD_DELETE, Capability.MULTI_TENANT], behavior=behavior)
-    return create_mcp_server(factory, erasure_service=eps)
+    return create_mcp_server(factory, erasure_service=eps, tenant_id="t1")
 
 @pytest.mark.asyncio
 async def test_verify_erasure_honest_pass():
@@ -276,83 +276,48 @@ async def test_verify_erasure_storage_neq_erasure(mcp_server_soft_delete):
         assert v_data["storage_check"]["row_present"] is False
         assert v_data["status"] == "NOT_ERASED"
 
-@pytest.mark.asyncio
-async def test_run_conformance_leaks():
-    def factory():
-        return MockBackend([Capability.HARD_DELETE], behavior="soft_delete")
-    server = create_mcp_server(factory)
-    
-    with patch("aml.eval.conformance.run_conformance") as mock_rc:
-        prof = MagicMock()
-        res = MagicMock()
-        res.capability.name = "HARD_DELETE"
-        
-        m_leak = MagicMock()
-        m_leak.name = "leakage"
-        m_leak.value = 1.0
-        
-        m_rec = MagicMock()
-        m_rec.name = "recall"
-        m_rec.value = 1.0
-        
-        res.metrics = [m_leak, m_rec]
-        prof.results = [res]
-        mock_rc.return_value = prof
-        
-        res_rc = await server._test_call_tool("run_conformance", {"capability": "HARD_DELETE"})
-        rc_data = json.loads(res_rc[0].text)
-        assert rc_data["verdict"] == "LEAKS"
+
+# ── run_conformance through MCP, against the REAL engine (finding 11) ────────
+# The previous tests here mocked run_conformance to return `.metrics`/`.value`
+# objects — a shape the engine never had, which is how the crash shipped. These
+# use the engine's own reference backends (the ones that prove the engine sound).
+
+def _ref_server(cls, tenant=None):
+    from aml.backends.vector_only import _stub_embedder
+    batch = _stub_embedder()
+    emb = lambda t: batch([t])[0] if isinstance(t, str) else batch(t)
+    factory = lambda: cls(embed_fn=emb)
+    return create_mcp_server(factory, tenant_id=tenant, scratch_factory=factory)
+
 
 @pytest.mark.asyncio
-async def test_run_conformance_leaky_tenant():
-    def factory():
-        return MockBackend([Capability.MULTI_TENANT], behavior="leaky_tenant")
-    server = create_mcp_server(factory)
-    
-    with patch("aml.eval.conformance.run_conformance") as mock_rc:
-        prof = MagicMock()
-        res = MagicMock()
-        res.capability.name = "MULTI_TENANT"
-        
-        m_leak = MagicMock()
-        m_leak.name = "leakage"
-        m_leak.value = 1.0
-        
-        m_rec = MagicMock()
-        m_rec.name = "recall"
-        m_rec.value = 1.0
-        
-        res.metrics = [m_leak, m_rec]
-        prof.results = [res]
-        mock_rc.return_value = prof
-        
-        res_rc = await server._test_call_tool("run_conformance", {"capability": "MULTI_TENANT"})
-        rc_data = json.loads(res_rc[0].text)
-        assert rc_data["verdict"] == "LEAKS"
+async def test_run_conformance_soft_delete_is_a_violation():
+    from aml.backends.delete_backends import SoftDeleteBackend
+    r = json.loads((await _ref_server(SoftDeleteBackend)._test_call_tool(
+        "run_conformance", {"capability": "HARD_DELETE"}))[0].text)
+    assert r["verdict"] == "VIOLATION" and r["enforced"] is False
+    assert any(d["name"].startswith("deleted-fact leakage") and not d["passed"] for d in r["directions"])
+
 
 @pytest.mark.asyncio
-async def test_run_conformance_over_restricts():
-    def factory():
-        return MockBackend([Capability.MULTI_TENANT], behavior="over_isolating")
-    server = create_mcp_server(factory)
-    
-    with patch("aml.eval.conformance.run_conformance") as mock_rc:
-        prof = MagicMock()
-        res = MagicMock()
-        res.capability.name = "MULTI_TENANT"
-        
-        m_leak = MagicMock()
-        m_leak.name = "leakage"
-        m_leak.value = 0.0
-        
-        m_rec = MagicMock()
-        m_rec.name = "recall"
-        m_rec.value = 0.0
-        
-        res.metrics = [m_leak, m_rec]
-        prof.results = [res]
-        mock_rc.return_value = prof
-        
-        res_rc = await server._test_call_tool("run_conformance", {"capability": "MULTI_TENANT"})
-        rc_data = json.loads(res_rc[0].text)
-        assert rc_data["verdict"] == "OVER_RESTRICTS"
+async def test_run_conformance_honest_delete_passes():
+    from aml.backends.delete_backends import HonestDeleteBackend
+    r = json.loads((await _ref_server(HonestDeleteBackend)._test_call_tool(
+        "run_conformance", {"capability": "HARD_DELETE"}))[0].text)
+    assert r["verdict"] == "PASS" and r["claim_matches_behavior"] is True
+
+
+@pytest.mark.asyncio
+async def test_run_conformance_leaky_tenant_is_a_violation():
+    from aml.backends.tenant_backends import LeakyTenant
+    r = json.loads((await _ref_server(LeakyTenant, tenant="t1")._test_call_tool(
+        "run_conformance", {"capability": "MULTI_TENANT"}))[0].text)
+    assert r["verdict"] == "VIOLATION"
+
+
+@pytest.mark.asyncio
+async def test_run_conformance_scoped_tenant_passes():
+    from aml.backends.tenant_backends import TenantScoped
+    r = json.loads((await _ref_server(TenantScoped, tenant="t1")._test_call_tool(
+        "run_conformance", {"capability": "MULTI_TENANT"}))[0].text)
+    assert r["verdict"] == "PASS"

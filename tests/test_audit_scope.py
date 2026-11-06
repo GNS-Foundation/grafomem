@@ -130,7 +130,10 @@ def test_mcp_list_memories_never_returns_a_tenants_memories(factory):
     c = _client(factory)
     sa = _store(c, "tok-a")
     _write(c, "tok-a", sa, SECRET_A)
-    server = create_mcp_server(factory)
+    # 0018: an MCP process is bound to ONE tenant (a MULTI_TENANT backend refuses to
+    # serve unbound). The property under test — another tenant's rows never appear —
+    # now holds by construction, not only by avoiding the unscoped audit().
+    server = create_mcp_server(factory, tenant_id="mcp-tenant")
     _mcp(server, "write_memory", {"content": "mcp-own-fact"})
     listed = [m["content"] for m in _mcp(server, "list_memories", {})["memories"]]
     assert SECRET_A not in listed, listed
