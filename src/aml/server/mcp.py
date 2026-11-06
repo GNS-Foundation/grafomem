@@ -23,11 +23,26 @@ from typing import Any
 logger = logging.getLogger("grafomem.mcp")
 
 
-def create_mcp_server(backend_factory, erasure_service=None):
+def create_mcp_server(backend_factory, erasure_service=None, tenant_id=None,
+                      scratch_factory=None):
     """Create an MCP server wrapping a MemoryBackend.
 
     Returns the mcp Server object. The caller is responsible for running it
     with the appropriate transport (stdio or sse).
+
+    `tenant_id` (process-per-tenant, MCP audit finding 9): the ONE tenant this
+    server process acts for. Every write, retrieve, list, delete and verify is
+    scoped to it; a caller-supplied `tenant` argument is rejected if it differs.
+    A backend that declares MULTI_TENANT refuses to serve without a bound tenant
+    (fail closed) — the alternative, trusting a per-call argument, is how one
+    caller read another tenant's memory in the audit. Only a backend that does
+    NOT declare MULTI_TENANT may run unbound — today both shipped backends
+    (SQLite and Postgres) declare it, so both require a bound tenant.
+
+    `scratch_factory` (finding 10): a factory for an ISOLATED store of the same
+    backend kind, used by `run_conformance` / `get_capabilities(verify=true)`.
+    The conformance suite writes ~1,170 synthetic facts; with no scratch factory
+    those tools refuse rather than write into the serving store.
 
     `erasure_service` (0017): an `ErasureProofService` built by the entrypoint from
     the same configuration `grafomem serve` uses (Postgres + ledger + signing key).
@@ -61,8 +76,46 @@ def create_mcp_server(backend_factory, erasure_service=None):
     def _get_backend():
         nonlocal _backend
         if _backend is None:
-            _backend = backend_factory()
+            b = backend_factory()
+            if Capability.MULTI_TENANT in b.capabilities() and not tenant_id:
+                raise RuntimeError(
+                    "this backend declares MULTI_TENANT but no tenant is bound to this MCP "
+                    "process — refusing to serve an untenanted multi-tenant store (audit "
+                    "finding 9). Start with `grafomem serve --mcp ... --tenant <id>` or set "
+                    "GRAFOMEM_MCP_TENANT."
+                )
+            _backend = b
         return _backend
+
+    def _tenant_for(backend):
+        """The tenant to scope operations to: the bound one on MULTI_TENANT backends."""
+        return tenant_id if Capability.MULTI_TENANT in backend.capabilities() else None
+
+    def _fact_tenant(fact):
+        t = getattr(fact, "tenant_id", None)
+        if t is None and isinstance(getattr(fact, "metadata", None), dict):
+            t = fact.metadata.get("tenant_id")
+        return t
+
+    def _visible(backend, fact) -> bool:
+        """A fact is visible to this process only if it belongs to the bound tenant
+        (or the backend is single-tenant). Cross-tenant refs read as NOT FOUND."""
+        if fact is None:
+            return False
+        scope = _tenant_for(backend)
+        if scope is None:
+            return True
+        ft = _fact_tenant(fact)
+        return ft is None or ft == scope
+
+    def _reject_foreign_tenant(arguments):
+        """A caller-supplied `tenant` is accepted only if it names the bound tenant."""
+        asked = arguments.get("tenant")
+        if asked and tenant_id and asked != tenant_id:
+            return {"error": "tenant_mismatch",
+                    "detail": f"this MCP process is bound to tenant {tenant_id!r}; "
+                              f"it does not act for {asked!r}"}
+        return None
 
     @server.list_tools()
     async def list_tools() -> list[Tool]:
@@ -191,6 +244,57 @@ def create_mcp_server(backend_factory, erasure_service=None):
     # Global cache for capabilities to map flag -> verdict
     _capability_cache = {}
 
+    def _conformance_verdicts(seed: int, budget: int):
+        """Run the conformance suite on the SCRATCH store and read its results as the
+        engine reports them (findings 10, 11, 12, 13).
+
+        Returns (verdicts, evidence, error). `verdicts[cap] = {verdict, directions,
+        workload}` where verdict is PASS or VIOLATION straight from
+        `CapabilityResult.passed` — never re-derived from metric names, and never
+        defaulted. `evidence.rollup_hash` is a digest over the actual results;
+        `corpus_hash` is the corpus lock's hash when the lock file is present, else
+        null — never a hash of the seed dressed up as one.
+        """
+        if scratch_factory is None:
+            return None, None, (
+                "conformance over MCP needs an isolated scratch store of the same backend "
+                "kind, and none is configured for this backend (it would write ~1,170 "
+                "synthetic facts into the serving store). Run "
+                "`grafomem conformance -b <backend> --db <scratch>` instead."
+            )
+        import hashlib
+        from aml.eval.conformance import run_conformance
+        prof = run_conformance(scratch_factory, seeds=[seed], budget=budget)
+        verdicts = {}
+        for r in prof.results:
+            verdicts[r.capability.name] = {
+                "verdict": "PASS" if r.passed else "VIOLATION",
+                "workload": r.workload,
+                "directions": [
+                    {"name": d.name, "objective": d.objective, "point": d.point,
+                     "ci": list(d.ci), "passed": d.passed}
+                    for d in r.directions
+                ],
+            }
+        corpus_hash = None
+        try:
+            from pathlib import Path
+            lock = Path("corpus/corpus.lock")
+            if lock.exists():
+                corpus_hash = json.loads(lock.read_text()).get("corpus_hash")
+        except Exception:
+            corpus_hash = None
+        canonical = json.dumps(verdicts, sort_keys=True, separators=(",", ":"))
+        evidence = {
+            "store": f"scratch:{prof.store}",
+            "corpus_hash": corpus_hash,
+            "rollup_hash": hashlib.blake2b(canonical.encode("utf-8"), digest_size=32).hexdigest(),
+            "seed": seed,
+            "budget": budget,
+            "reproduce_cmd": f"grafomem conformance -b <backend> --db <scratch> --seeds {seed} --budget {budget}",
+        }
+        return verdicts, evidence, None
+
     @server.call_tool()
     async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         """Dispatch a tool call to the backend."""
@@ -199,7 +303,7 @@ def create_mcp_server(backend_factory, erasure_service=None):
         if name == "write_memory":
             content = arguments["content"]
             metadata = arguments.get("metadata", {})
-            opts = WriteOptions(metadata=metadata)
+            opts = WriteOptions(metadata=metadata, tenant_id=_tenant_for(backend))
             ref = backend.write(content, opts)
             return [TextContent(
                 type="text",
@@ -209,7 +313,7 @@ def create_mcp_server(backend_factory, erasure_service=None):
         elif name == "retrieve_memories":
             query = arguments["query"]
             budget = arguments.get("budget", 512)
-            opts = RetrieveOptions(budget_tokens=budget)
+            opts = RetrieveOptions(budget_tokens=budget, tenant_id=_tenant_for(backend))
             backend.flush()
             mems = backend.retrieve(query, opts)
             results = [
@@ -228,13 +332,18 @@ def create_mcp_server(backend_factory, erasure_service=None):
         elif name == "delete_memory":
             ref = arguments["ref"]
             
-            # Phase 1: Pre-delete inspection
+            mismatch = _reject_foreign_tenant(arguments)
+            if mismatch:
+                return [TextContent(type="text", text=json.dumps(mismatch))]
+
+            # Phase 1: Pre-delete inspection — scoped: a ref owned by another tenant is
+            # NOT FOUND to this process (never deleted, never acknowledged).
             fact = backend.get(ref)
-            if not fact:
+            if not _visible(backend, fact):
                 return [TextContent(type="text", text=json.dumps({"error": f"Ref {ref} not found"}))]
             
             lure_text = fact.content
-            tenant_id = fact.metadata.get("tenant_id", "default")
+            tenant_id_eff = _tenant_for(backend) or "default"
             
             # Phase 2: Execute delete
             try:
@@ -243,7 +352,7 @@ def create_mcp_server(backend_factory, erasure_service=None):
                 return [TextContent(type="text", text=json.dumps({"error": str(e)}))]
             
             # Phase 3: Read-path probe
-            opts = RetrieveOptions(budget_tokens=512, tenant_id=tenant_id if Capability.MULTI_TENANT in backend.capabilities() else None)
+            opts = RetrieveOptions(budget_tokens=512, tenant_id=_tenant_for(backend))
             backend.flush()
             post_mems = backend.retrieve(lure_text, opts)
             
@@ -267,7 +376,7 @@ def create_mcp_server(backend_factory, erasure_service=None):
                 from aml.cloud.erasure_proof import FactStillPresent
                 try:
                     cert = erasure_service.issue_certificate(
-                        tenant_id=tenant_id,
+                        tenant_id=tenant_id_eff,
                         fact_ref=ref,
                         fact_content=lure_text,
                         backend=backend,  # 0014: probe coverage, don't default it
@@ -312,17 +421,21 @@ def create_mcp_server(backend_factory, erasure_service=None):
 
         elif name == "verify_erasure":
             ref = arguments["ref"]
-            tenant_id = arguments.get("tenant", "default")
+            mismatch = _reject_foreign_tenant(arguments)
+            if mismatch:
+                return [TextContent(type="text", text=json.dumps(mismatch))]
+            tenant_id_eff = _tenant_for(backend) or "default"
             reverify = arguments.get("reverify", False)
             probe_query = arguments.get("probe_query")
             
-            storage_check = {"row_present": backend.get(ref) is not None}
+            # Storage presence, scoped: another tenant's row is not "present" to us.
+            storage_check = {"row_present": _visible(backend, backend.get(ref))}
             
             cert_dict = None
             cert_obj = None
             if erasure_service is not None:
                 try:
-                    cert_obj = erasure_service.get_by_fact(tenant_id, ref)
+                    cert_obj = erasure_service.get_by_fact(tenant_id_eff, ref)
                     if cert_obj:
                         cert_dict = {
                             "cert_id": cert_obj.certificate_id,
@@ -374,7 +487,7 @@ def create_mcp_server(backend_factory, erasure_service=None):
 
             fresh_probe = None
             if reverify and probe_query:
-                opts = RetrieveOptions(budget_tokens=512, tenant_id=tenant_id if Capability.MULTI_TENANT in backend.capabilities() else None)
+                opts = RetrieveOptions(budget_tokens=512, tenant_id=_tenant_for(backend))
                 backend.flush()
                 mems = backend.retrieve(probe_query, opts)
                 gone = not any(m.ref == ref for m in mems)
@@ -393,7 +506,7 @@ def create_mcp_server(backend_factory, erasure_service=None):
                 # If it's not found in retrieve (targeted_gone was True or None), 
                 # and no cert or row exists, it's simply NOT_FOUND
                 return [TextContent(type="text", text=json.dumps({
-                    "ref": ref, "tenant": tenant_id, "status": "NOT_FOUND",
+                    "ref": ref, "tenant": tenant_id_eff, "status": "NOT_FOUND",
                     "storage_check": storage_check
                 }))]
             elif targeted_gone is True and tamper is False:
@@ -413,7 +526,7 @@ def create_mcp_server(backend_factory, erasure_service=None):
 
             res = {
                 "ref": ref,
-                "tenant": tenant_id,
+                "tenant": tenant_id_eff,
                 "status": status,
                 "certificate": cert_dict,
                 "sealed_probe": sealed_probe,
@@ -430,67 +543,52 @@ def create_mcp_server(backend_factory, erasure_service=None):
             cap_str = arguments["capability"]
             seed = arguments.get("seed", 1729)
             budget = arguments.get("budget", 512)
-            
-            import hashlib
-            from aml.eval.conformance import run_conformance
-            try:
-                prof = run_conformance(backend_factory, seeds=[seed], budget=budget)
-            except Exception as e:
-                return [TextContent(type="text", text=json.dumps({"error": str(e)}))]
-                
+
+            # Declared by the SERVING backend; tested on the SCRATCH store of the same kind.
             declared = any(c.name == cap_str for c in backend.capabilities())
-            
-            target_res = next((r for r in prof.results if r.capability.name == cap_str), None)
-            
-            leakage = 0.0
-            recall = 1.0
-            ops_until_gone = None
-            if target_res:
-                for metric in target_res.metrics:
-                    if "leakage" in metric.name.lower():
-                        leakage = metric.value
-                    if "recall" in metric.name.lower():
-                        recall = metric.value
-                        
-            if leakage > 0:
-                verdict = "LEAKS"
-            elif leakage == 0 and recall == 0:
-                verdict = "OVER_RESTRICTS"
-            elif leakage == 0 and recall >= 0.999:
-                verdict = "PASS"
-            else:
-                verdict = "PARTIAL"
-                
-            enforced = verdict == "PASS"
-            
-            res = {
+            if not declared:
+                # Finding 12: not declared → not tested → never PASS by default.
+                return [TextContent(type="text", text=json.dumps({
+                    "capability": cap_str, "verdict": "NOT_DECLARED", "declared": False,
+                    "enforced": False, "claim_matches_behavior": None,
+                    "metrics": None, "evidence": None,
+                    "note": "the backend does not declare this capability, so it was not tested",
+                }))]
+
+            try:
+                verdicts, evidence, err = _conformance_verdicts(seed, budget)
+            except Exception as e:
+                return [TextContent(type="text", text=json.dumps({"error": f"{type(e).__name__}: {e}"}))]
+            if err:
+                return [TextContent(type="text", text=json.dumps({"error": err}))]
+
+            target = verdicts.get(cap_str)
+            if target is None:
+                return [TextContent(type="text", text=json.dumps({
+                    "capability": cap_str, "verdict": "UNTESTED", "declared": True,
+                    "enforced": False, "claim_matches_behavior": None,
+                    "metrics": None, "evidence": evidence,
+                    "note": "declared, but the suite produced no result for it in this run",
+                }))]
+
+            enforced = target["verdict"] == "PASS"
+            return [TextContent(type="text", text=json.dumps({
                 "capability": cap_str,
-                "verdict": verdict,
-                "declared": declared,
+                "verdict": target["verdict"],
+                "declared": True,
                 "enforced": enforced,
-                "claim_matches_behavior": declared and enforced,
-                "metrics": {
-                    "leakage": leakage,
-                    "recall": recall,
-                    "ops_until_gone": 1 if leakage == 0 else None,
-                    "isolation_conformance": None
-                },
-                "bootstrap_ci": None,
-                "evidence": {
-                    "corpus_hash": hashlib.blake2b(str(seed).encode()).hexdigest(),
-                    "rollup_hash": hashlib.blake2b(f"{cap_str}{seed}".encode()).hexdigest(),
-                    "seed": seed,
-                    "embedder": "reference",
-                    "reproduce_cmd": f"python -m aml.eval.conformance --seeds {seed} --budget {budget}"
-                }
-            }
-            return [TextContent(type="text", text=json.dumps(res))]
+                "claim_matches_behavior": enforced,
+                "metrics": {d["name"]: d["point"] for d in target["directions"]},
+                "directions": target["directions"],
+                "workload": target["workload"],
+                "evidence": evidence,
+            }))]
 
         elif name == "list_memories":
             # 0.4.1: the namespace this server writes and retrieves in (untenanted: write_memory / retrieve_memories
             # carry no tenant), never backend.audit(), which lists every tenant's memories of a shared database.
             from aml.backends.audit_scope import scoped_audit
-            mems = scoped_audit(backend, None)
+            mems = scoped_audit(backend, _tenant_for(backend))
             results = [
                 {
                     "ref": m.ref,
@@ -515,41 +613,31 @@ def create_mcp_server(backend_factory, erasure_service=None):
             results = []
             claims_unverified = []
             
+            verify_error = None
             if do_verify:
-                from aml.eval.conformance import run_conformance
+                # Findings 10/11/14: scratch store, engine verdicts, no swallowed errors.
                 try:
-                    prof = run_conformance(backend_factory, seeds=[1729])
-                    for r in prof.results:
-                        leakage = 0.0
-                        recall = 1.0
-                        for metric in r.metrics:
-                            if "leakage" in metric.name.lower():
-                                leakage = metric.value
-                            if "recall" in metric.name.lower():
-                                recall = metric.value
-                        
-                        if leakage > 0:
-                            v = "LEAKS"
-                        elif leakage == 0 and recall == 0:
-                            v = "OVER_RESTRICTS"
-                        elif leakage == 0 and recall >= 0.999:
-                            v = "PASS"
-                        else:
-                            v = "PARTIAL"
-                            
-                        _capability_cache[r.capability.name] = {
-                            "verdict": v,
-                            "last_verified_at": datetime.now(timezone.utc).isoformat()
-                        }
+                    verdicts, _evidence, err = _conformance_verdicts(seed=1729, budget=512)
                 except Exception as e:
-                    logger.warning(f"run_conformance failed during get_capabilities verify: {e}")
-            
+                    verdicts, err = None, f"{type(e).__name__}: {e}"
+                if err:
+                    verify_error = err
+                    logger.error("get_capabilities verify failed: %s", err)
+                else:
+                    now = datetime.now(timezone.utc).isoformat()
+                    for cap_name, v in verdicts.items():
+                        _capability_cache[cap_name] = {"verdict": v["verdict"], "last_verified_at": now}
+
             for c in caps:
                 cached = _capability_cache.get(c.name)
                 if cached:
                     verdict = cached["verdict"]
                     verified = verdict == "PASS"
                     lva = cached["last_verified_at"]
+                elif verify_error:
+                    verdict = f"ERROR: {verify_error}"
+                    verified = None
+                    lva = None
                 else:
                     verdict = "UNTESTED"
                     verified = None
@@ -590,23 +678,25 @@ def create_mcp_server(backend_factory, erasure_service=None):
     return server
 
 
-async def run_mcp_stdio(backend_factory, erasure_service=None):
+async def run_mcp_stdio(backend_factory, erasure_service=None, tenant_id=None, scratch_factory=None):
     """Run the MCP server over stdio (for local agent integration)."""
     from mcp.server.stdio import stdio_server
 
-    server = create_mcp_server(backend_factory, erasure_service=erasure_service)
+    server = create_mcp_server(backend_factory, erasure_service=erasure_service,
+                               tenant_id=tenant_id, scratch_factory=scratch_factory)
     async with stdio_server() as (read_stream, write_stream):
         await server.run(read_stream, write_stream, server.create_initialization_options())
 
 
 async def run_mcp_sse(backend_factory, *, host: str = "0.0.0.0", port: int = 8643,
-                      erasure_service=None):
+                      erasure_service=None, tenant_id=None, scratch_factory=None):
     """Run the MCP server over HTTP+SSE (for remote agent integration)."""
     from mcp.server.sse import SseServerTransport
     from starlette.applications import Starlette
     from starlette.routing import Route
 
-    server = create_mcp_server(backend_factory, erasure_service=erasure_service)
+    server = create_mcp_server(backend_factory, erasure_service=erasure_service,
+                               tenant_id=tenant_id, scratch_factory=scratch_factory)
     sse = SseServerTransport("/messages")
 
     async def handle_sse(request):

@@ -522,6 +522,8 @@ def verify():
 def _build_mcp_erasure_service(is_postgres: bool, db_url: str, auth: str):
     """Build the ErasureProofService for `serve --mcp` (decision 0017), or None.
 
+    All output goes to STDERR: in stdio mode stdout is the JSON-RPC channel (finding 4).
+
     Mirrors app.py: Postgres backend + a signing key (ERASURE_SIGNING_KEY /
     GRAFOMEM_SIGNING_KEY) + the ledger at GRAFOMEM_LEDGER_URL (same fallback as the
     HTTP server). Schema is ensured only where the HTTP server would do it (self-host;
@@ -530,10 +532,10 @@ def _build_mcp_erasure_service(is_postgres: bool, db_url: str, auth: str):
     """
     import os
     if not is_postgres:
-        click.echo("  erasure certificates: off (requires -b postgres)")
+        click.echo("  erasure certificates: off (requires -b postgres)", err=True)
         return None
     if not (os.environ.get("ERASURE_SIGNING_KEY") or os.environ.get("GRAFOMEM_SIGNING_KEY")):
-        click.echo("  erasure certificates: off (no ERASURE_SIGNING_KEY / GRAFOMEM_SIGNING_KEY)")
+        click.echo("  erasure certificates: off (no ERASURE_SIGNING_KEY / GRAFOMEM_SIGNING_KEY)", err=True)
         return None
     try:
         from aml.cloud.erasure_ledger import ErasureLedger
@@ -544,7 +546,7 @@ def _build_mcp_erasure_service(is_postgres: bool, db_url: str, auth: str):
         ledger_url = os.environ.get("GRAFOMEM_LEDGER_URL")
         if not ledger_url:
             ledger_url = "postgresql://grafomem:dev@localhost:5432/grafomem_ledger"
-            click.echo(f"  GRAFOMEM_LEDGER_URL not set — defaulting to local {ledger_url}")
+            click.echo(f"  GRAFOMEM_LEDGER_URL not set — defaulting to local {ledger_url}", err=True)
         auth_mode = os.environ.get("AUTH_MODE") or auth
         do_ddl = boot_migrations_enabled(auth_mode)
 
@@ -556,10 +558,10 @@ def _build_mcp_erasure_service(is_postgres: bool, db_url: str, auth: str):
         )
         if do_ddl:
             service.ensure_schema()
-        click.echo("  erasure certificates: on (signed, ledgered; verified in-process)")
+        click.echo("  erasure certificates: on (signed, ledgered; verified in-process)", err=True)
         return service
     except Exception as e:
-        click.echo(f"  erasure certificates: off ({type(e).__name__}: {e})")
+        click.echo(f"  erasure certificates: off ({type(e).__name__}: {e})", err=True)
         return None
 
 
@@ -573,6 +575,9 @@ def _build_mcp_erasure_service(is_postgres: bool, db_url: str, auth: str):
               help="Database path (SQLite) or connection URL (PostgreSQL)")
 @click.option("--embedder", "-e", type=click.Choice(["stub", "bge"]),
               default="bge", help="Embedder for vector backends")
+@click.option("--tenant", default=None, envvar="GRAFOMEM_MCP_TENANT",
+              help="MCP mode: the ONE tenant this process acts for (process-per-tenant). "
+                   "Required for backends that declare MULTI_TENANT (Postgres); env GRAFOMEM_MCP_TENANT.")
 @click.option("--mcp", type=click.Choice(["none", "stdio", "sse"]),
               default="none", help="MCP transport mode")
 @click.option("--mcp-port", default=8643, type=int, help="Port for MCP SSE transport")
@@ -582,7 +587,7 @@ def _build_mcp_erasure_service(is_postgres: bool, db_url: str, auth: str):
               help="Enable batched ingestion for writes")
 @click.option("--batch-size", default=64, type=int,
               help="Batch size for ingestion queue")
-def serve(host, port, backend, db, embedder, mcp, mcp_port, auth, batch, batch_size):
+def serve(host, port, backend, db, embedder, mcp, mcp_port, auth, batch, batch_size, tenant):
     """Start the GRAFOMEM memory server.
 
     \b
@@ -618,7 +623,8 @@ def serve(host, port, backend, db, embedder, mcp, mcp_port, auth, batch, batch_s
     cls = _load_backend_class(backend_spec)
     sig = inspect.signature(cls.__init__)
 
-    def _factory():
+    def _make_factory(db_target):
+      def _factory():
         kwargs = {}
         if "embed_fn" in sig.parameters:
             if embedder == "bge":
@@ -635,9 +641,9 @@ def serve(host, port, backend, db, embedder, mcp, mcp_port, auth, batch, batch_s
                 kwargs["embed_fn"] = _single_str_stub
         # Wire the database connection
         if "db_url" in sig.parameters:
-            kwargs["db_url"] = db
+            kwargs["db_url"] = db_target
         elif "db_path" in sig.parameters:
-            kwargs["db_path"] = db
+            kwargs["db_path"] = db_target
         # Wire signing identity if accepted
         if "signing_identity" in sig.parameters:
             from aml.cloud.identity import EnvIdentity
@@ -650,11 +656,54 @@ def serve(host, port, backend, db, embedder, mcp, mcp_port, auth, batch, batch_s
             from aml.cloud.identity import EnvIdentity
             kwargs["encryption"] = EnvIdentity() if os.environ.get("PROVIDER_ENCRYPTION_KEY") else None
         return cls(**kwargs)
+      return _factory
+
+    _factory = _make_factory(db)
 
     # MCP mode: run the MCP server directly (no FastAPI)
     if mcp in ("stdio", "sse"):
         import asyncio
-        click.echo(f"GRAFOMEM MCP server (transport={mcp})")
+        # Finding 4: in stdio mode stdout IS the JSON-RPC channel. Everything human-
+        # readable goes to stderr, in both transports, so the two never differ.
+        click.echo(f"GRAFOMEM MCP server (transport={mcp})", err=True)
+
+        # Finding 9 (process-per-tenant): a backend that declares MULTI_TENANT must be
+        # bound to one tenant. Ask the backend itself (both shipped backends — SQLite
+        # and Postgres — declare it) and fail fast with a usable message rather than
+        # at the first tool call (create_mcp_server fails closed as well).
+        if not tenant:
+            from aml.backends.interface import Capability
+            _probe = _factory()
+            try:
+                _multi = Capability.MULTI_TENANT in _probe.capabilities()
+            finally:
+                close = getattr(_probe, "close", None)
+                if callable(close):
+                    try:
+                        close()
+                    except Exception:
+                        pass
+            if _multi:
+                raise click.UsageError(
+                    "--tenant (or GRAFOMEM_MCP_TENANT) is required: this backend declares "
+                    "MULTI_TENANT and an MCP process serves exactly one tenant."
+                )
+        if tenant:
+            click.echo(f"  tenant: bound to {tenant!r} (process-per-tenant)", err=True)
+
+        # Finding 10: conformance runs ~1,170 synthetic writes. Give the server an
+        # ISOLATED scratch store of the same kind, never the serving store. SQLite →
+        # a temp file; Postgres → none (needs DDL for a scratch schema, which the
+        # runtime role does not have), and the tools refuse with a pointer to the CLI.
+        scratch_factory = None
+        if "db_path" in sig.parameters:
+            import tempfile
+            _scratch_path = os.path.join(tempfile.mkdtemp(prefix="grafomem-conformance-"), "scratch.db")
+            scratch_factory = _make_factory(_scratch_path)
+            click.echo(f"  conformance scratch store: {_scratch_path}", err=True)
+        else:
+            click.echo("  conformance over MCP: unavailable on this backend (no scratch store); "
+                       "use `grafomem conformance` against a scratch database", err=True)
 
         # 0017: give the MCP process a REAL erasure service, built from the same
         # configuration the HTTP server uses, so delete_memory can issue factual
@@ -665,11 +714,13 @@ def serve(host, port, backend, db, embedder, mcp, mcp_port, auth, batch, batch_s
 
         if mcp == "stdio":
             from aml.server.mcp import run_mcp_stdio
-            asyncio.run(run_mcp_stdio(_factory, erasure_service=erasure_service))
+            asyncio.run(run_mcp_stdio(_factory, erasure_service=erasure_service,
+                                      tenant_id=tenant, scratch_factory=scratch_factory))
         else:
             from aml.server.mcp import run_mcp_sse
             asyncio.run(run_mcp_sse(_factory, host=host, port=mcp_port,
-                                    erasure_service=erasure_service))
+                                    erasure_service=erasure_service,
+                                    tenant_id=tenant, scratch_factory=scratch_factory))
         return
 
     # HTTP mode: FastAPI server

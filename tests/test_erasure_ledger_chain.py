@@ -249,7 +249,7 @@ from tests.test_mcp_governance import MockBackend, _FakeEPS  # noqa: E402
 def _server(eps):
     def factory():
         return MockBackend([Capability.HARD_DELETE, Capability.MULTI_TENANT], behavior="honest")
-    return create_mcp_server(factory, erasure_service=eps)
+    return create_mcp_server(factory, erasure_service=eps, tenant_id="t1")
 
 
 @pytest.mark.asyncio
