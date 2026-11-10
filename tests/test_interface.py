@@ -94,7 +94,7 @@ def test_protocol_isinstance(trivial_backend):
 
 
 def test_capability_enum_stability():
-    assert len(Capability) == 11  # +POINT_LOOKUP (0014 erasure coverage probe)
+    assert len(Capability) == 12  # +POINT_LOOKUP (0014), +DATA_SUBJECT (0019)
     # StrEnum values must be stable across versions
     assert Capability.AUDIT.value == "audit"
     assert Capability.CONCURRENCY_CONTROL.value == "concurrency_control"

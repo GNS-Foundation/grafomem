@@ -52,6 +52,7 @@ class Capability(StrEnum):
     AUDIT = "audit"
     CONCURRENCY_CONTROL = "concurrency_control"  # v0.2; gates submit_concurrent (§10)
     POINT_LOOKUP = "point_lookup"  # v0.2; gates exists(ref) — the erasure coverage probe (0014)
+    DATA_SUBJECT = "data_subject"  # v0.2 optional; gates WriteOptions.data_subject_id + erase_data_subject (§7.7, 0019)
 
 
 # ============================================================================
@@ -94,6 +95,7 @@ class Memory:
     region: str | None = None               # if DATA_RESIDENCY
     token_count: int | None = None          # Sprint 27 Context packing optimization
     tokenizer_id: str | None = None         # Sprint 27 Context packing optimization
+    data_subject_id: str | None = None      # if DATA_SUBJECT (§7.7): the person this fact is about; None = unscoped
 
 from aml.cloud.identity import SigningIdentity
 
@@ -102,6 +104,7 @@ class WriteOptions:
     valid_from: datetime | None = None      # honored if BI_TEMPORAL
     tenant_id: str | None = None            # honored if MULTI_TENANT
     region: str | None = None               # honored if DATA_RESIDENCY
+    data_subject_id: str | None = None      # honored if DATA_SUBJECT (§7.7); else CapabilityNotSupported when set
     signing_identity: SigningIdentity | None = None  # if set, backend MUST sign (§4.1)
     metadata: dict = field(default_factory=dict)
     # Perf: skip the vector-embedding side of a write. For fact-shaped records that are
@@ -324,6 +327,19 @@ class MemoryBackend(Protocol):
     # it, so every backend keeps working. The Postgres backend IMPLEMENTS it to run
     # under the real tenant RLS context, so the DATABASE enforces isolation (defense
     # in depth) rather than trusting an admin dump + a Python filter.
+    #
+    # OPTIONAL override (0019) — gated on Capability.DATA_SUBJECT (spec §7.7):
+    #
+    #     def erase_data_subject(self, data_subject_id: str, opts: WriteOptions) -> list[Any]: ...
+    #
+    # Hard-delete EVERY fact written with that data_subject_id inside opts.tenant_id and
+    # return their refs. Two-sided on the read path: afterwards none of them is
+    # retrievable, auditable or exists(); no fact of another data subject (or of none)
+    # is touched. Idempotent (second call → []). A backend that claims DATA_SUBJECT
+    # MUST also honour WriteOptions.data_subject_id and expose Memory.data_subject_id;
+    # one that does not claim it MUST raise CapabilityNotSupported when the option is
+    # set. HOW storage makes the content unrecoverable (row delete vs per-data-subject
+    # key destruction) is the certificate layer's concern (0019), not this contract's.
 
     def flush(self) -> None:
         """Block until preceding mutations are durable + visible. Always
@@ -475,8 +491,8 @@ if __name__ == "__main__":
     assert isinstance(b, MemoryBackend), "trivial backend does not satisfy Protocol"
     print("✓ Implements MemoryBackend Protocol  (runtime_checkable isinstance)")
 
-    # --- Test 2: 11 independent capability flags (v0.2: +CONCURRENCY_CONTROL, +POINT_LOOKUP)
-    assert len(set(Capability)) == 11, f"expected 11 flags, got {len(set(Capability))}"
+    # --- Test 2: 12 independent capability flags (v0.2: +CONCURRENCY_CONTROL, +POINT_LOOKUP, +DATA_SUBJECT)
+    assert len(set(Capability)) == 12, f"expected 12 flags, got {len(set(Capability))}"
     assert Capability("audit") is Capability.AUDIT  # StrEnum value round-trip
     assert Capability("concurrency_control") is Capability.CONCURRENCY_CONTROL
     assert Capability("point_lookup") is Capability.POINT_LOOKUP
