@@ -76,6 +76,31 @@ def test_sqlite_reference_backend_is_two_sided(tmp_path):
     _two_sided(s, "t", lambda ref, c, o: s.supersede(ref, c, o))
 
 
+def test_sqlite_erase_is_atomic_on_both_connection_paths(tmp_path):
+    """A failure in the middle of erase_data_subject must leave NOTHING half-erased. The
+    first version used `with self._conn:` — a no-op transaction on the stdlib autocommit
+    path and a TypeError on the apsw path (operator review of PR #216). This injects a
+    failure on the last statement and checks the earlier deletes were rolled back."""
+    s = _sqlite(str(tmp_path / "a.db"))
+    o = lambda ds=None: WriteOptions(tenant_id="t", data_subject_id=ds)
+    a1 = s.write("alice one", o("alice")); a2 = s.write("alice two", o("alice")); b1 = s.write("bob", o("bob"))
+    real = s._conn
+    class Flaky:   # a connection proxy that fails on the LAST statement of the erase
+        def __getattr__(self, n): return getattr(real, n)
+        def execute(self, sql, params=None):
+            if sql.startswith("DELETE FROM vec_memories"):
+                raise RuntimeError("disk full (injected)")
+            return real.execute(sql, params) if params is not None else real.execute(sql)
+    s._conn = Flaky()
+    with pytest.raises(RuntimeError, match="injected"):
+        s.erase_data_subject("alice", WriteOptions(tenant_id="t"))
+    s._conn = real
+    assert s.exists(a1) and s.exists(a2) and s.exists(b1)          # rolled back: nothing half-erased
+    assert s._conn.execute("SELECT count(*) FROM vec_memories").fetchone()[0] == 3
+    assert sorted(s.erase_data_subject("alice", WriteOptions(tenant_id="t"))) == [a1, a2]   # and it still works
+    assert not s.exists(a1) and s.exists(b1)
+
+
 def test_postgres_backend_is_two_sided_and_deletes_embeddings_synchronously():
     import psycopg
     s = _pg()

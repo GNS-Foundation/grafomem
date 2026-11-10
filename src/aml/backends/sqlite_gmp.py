@@ -425,13 +425,23 @@ class SQLiteGMPBackend:
         if not refs:
             return []
         marks = ",".join("?" * len(refs))
-        with self._conn:  # one transaction: no half-erased subject
+        # One transaction: no half-erased subject. Explicit BEGIN/COMMIT/ROLLBACK, the
+        # idiom supersede() uses — NOT `with self._conn:`, which (a) the apsw adapter does
+        # not support (TypeError, erase does nothing) and (b) on the stdlib path opens no
+        # transaction at all because the connection is autocommit (isolation_level=None).
+        # Found by the operator's review of PR #216; the first version shipped (a) and (b).
+        self._conn.execute("BEGIN")
+        try:
             # a surviving fact that pointed at an erased one keeps its own row; the pointer
             # is cleared (the target no longer exists on the read path)
             self._conn.execute(
                 f"UPDATE memories SET superseded_by = NULL WHERE superseded_by IN ({marks})", refs)
             self._conn.execute(f"DELETE FROM memories WHERE ref IN ({marks})", refs)
             self._conn.execute(f"DELETE FROM vec_memories WHERE rowid IN ({marks})", refs)
+            self._conn.execute("COMMIT")
+        except Exception:
+            self._conn.execute("ROLLBACK")
+            raise
         return refs
 
     def exists(self, ref) -> bool:
