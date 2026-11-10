@@ -96,7 +96,8 @@ capabilities once (§7.2); an operation requiring an undeclared capability MUST 
 
 ## 2. Operations
 
-Seven operations. `capabilities`, `write`, `retrieve`, and `flush` are always
+Nine operations (the table said "seven" after `exists` was added in 0014 — corrected here with
+`erase_data_subject`). `capabilities`, `write`, `retrieve`, and `flush` are always
 required; the rest are gated on a declared capability.
 
 | operation | requires | summary |
@@ -108,10 +109,13 @@ required; the rest are gated on a declared capability.
 | `delete(ref) → bool` | `HARD_DELETE` | hard-delete; unrecoverable on the read path (§6.2); idempotent |
 | `audit() → iter[Memory]` | `AUDIT` | all retrievable facts incl. superseded, **excl.** hard-deleted |
 | `exists(ref) → bool` | `POINT_LOOKUP` | side-effect-free existence probe by ref (§7.6); optional extension |
+| `erase_data_subject(data_subject_id, opts) → [ref]` | `DATA_SUBJECT` | hard-delete every fact of one data subject (§7.7); optional extension |
 | `flush() → none` | — | barrier: block until prior mutations are durable and visible |
 
 **`write`.** MUST persist the fact and return a ref. If `opts.signing_key` is set
-the store MUST sign per §7.4 and MUST declare `CRYPTOGRAPHIC_PROVENANCE`.
+the store MUST sign per §7.4 and MUST declare `CRYPTOGRAPHIC_PROVENANCE`. If
+`opts.data_subject_id` is set the store MUST declare `DATA_SUBJECT` (§7.7) or raise
+`CapabilityNotSupported`.
 
 **`retrieve`.** MUST return facts relevant to `query` within `opts.budget` (§4).
 `as_of` without `BI_TEMPORAL`, or `tenant_id` without `MULTI_TENANT`, MUST raise
@@ -344,12 +348,12 @@ content-only identity.
 
 ### 7.1 The capability set
 
-Eleven flags, enumerated and append-only across versions (`interface.py`):
+Twelve flags, enumerated and append-only across versions (`interface.py`):
 
 ```
 BI_TEMPORAL   HARD_DELETE   SUPERSESSION_CHAIN   CROSS_SESSION_PROPAGATION
 MULTI_TENANT  CONFLICT_DETECTION   PROVENANCE   CRYPTOGRAPHIC_PROVENANCE   AUDIT
-CONCURRENCY_CONTROL   POINT_LOOKUP
+CONCURRENCY_CONTROL   POINT_LOOKUP   DATA_SUBJECT
 ```
 
 ### 7.2 Declaration discipline
@@ -366,6 +370,7 @@ the suite adapts to the declaration (paper §3.7, anchor B1).
   operation; the reference `bi_temporal` backend declares both).
 - `CRYPTOGRAPHIC_PROVENANCE` implies `PROVENANCE`.
 - `AUDIT` is the floor for `audit()`.
+- `DATA_SUBJECT` implies `HARD_DELETE` (subject erasure is a scoped hard-delete, §7.7).
 
 ### 7.4 Normative subsets
 
@@ -380,7 +385,8 @@ enters the normative subset when §10 is ratified. Until then a store MUST NOT c
 under conformance. `POINT_LOOKUP` is an **optional v0.2 extension** (§7.6), in the same
 class as `CRYPTOGRAPHIC_PROVENANCE`: a store MAY decline it, and its absence MUST NOT be
 penalized; if a store claims it, it MUST honor §7.6. It is **not** part of any mandatory
-subset — nothing in v0.2 requires a store to support point lookup.
+subset — nothing in v0.2 requires a store to support point lookup. `DATA_SUBJECT` (§7.7) is an
+optional extension of the same class: a store MAY decline it; if it claims it, it MUST honor §7.7.
 
 ### 7.5 Provenance — `PROVENANCE` (v0.2 normative) and `CRYPTOGRAPHIC_PROVENANCE` (v0.2 optional)
 
@@ -451,6 +457,43 @@ records the corresponding coverage as `unverified`, never as a fabricated `absen
 keeps the capability honestly optional: declining it costs a consumer a verification, not
 correctness.
 
+### 7.7 Data-subject scope — `DATA_SUBJECT` (v0.2 optional)
+
+A **data subject** is the natural person a fact is about, in the GDPR sense — distinct from
+the triple's `subject` in §1.1, which is a term of the fact. The scope exists so that a
+right-to-erasure request ("delete everything you hold about this person") is one operation
+with a two-sided read-path guarantee, rather than a caller-side scan over metadata. Like
+`POINT_LOOKUP`, it is an **optional extension**: independent of the embedder and of ranking,
+so Proposition 2 holds for it.
+
+**Declaration.** A store claiming `DATA_SUBJECT` MUST honor `opts.data_subject_id` on
+`write` (an opaque, caller-chosen string) and MUST expose it on every `Memory` it returns
+(`Memory.data_subject_id`, `None` when the fact was written without one). A store that does
+not claim the flag MUST raise `CapabilityNotSupported` when `data_subject_id` is set, so a
+caller can never believe a scope was recorded that was not.
+
+**`erase_data_subject(data_subject_id, opts) → [ref]` — MUST if claimed.** Within
+`opts.tenant_id` (required if `MULTI_TENANT`), hard-delete every fact whose
+`data_subject_id` equals the argument and return their refs. Obligations:
+
+- **Two-sided, on the read path.** After it returns, no fact of that data subject is
+  recoverable via `retrieve()`, `audit()` or `exists()` (no leak), **and** no fact of any
+  other data subject or of no data subject is affected (no over-erasure). This is §6.2
+  applied to the scope.
+- **Idempotent.** A second call for the same `data_subject_id` returns `[]` and MUST NOT raise.
+- **Scope is the write-time value.** The scope of a fact is the `data_subject_id` it was
+  written with. The spec defines no re-scoping operation; a store MAY offer one outside
+  the protocol.
+- **Supersession.** A superseded version of a data subject's fact is still that data
+  subject's fact and MUST be erased with the head.
+
+**What the spec does not say.** How a store makes erased content unrecoverable in storage
+below the read path — row deletion, overwriting, or destroying a per-data-subject key
+(crypto-erasure) — is a storage concern, declared and evidenced by the erasure-certificate
+layer (Foundation decisions 0014, 0016, 0019), not by this protocol. The guarantee here is
+the read-path one (§6.4). `data_subject_id` is not a retrieval filter; `retrieve` ranks
+across data subjects within the tenant as before.
+
 ---
 
 ## 8. Conformance (R5 ← §5.2)
@@ -488,6 +531,7 @@ a direction passes only when the interval excludes the failing outcome.
 | `PROVENANCE` | every written memory exposes `source` (`write_id` + `written_at`) | one | — |
 | `CRYPTOGRAPHIC_PROVENANCE` | a signed write verifies **and** an altered-content `fact_id` does not | **two** | — |
 | `POINT_LOOKUP` | a live ref's `exists` is `True` **and** a hard-deleted ref's `exists` is `False` | **two** | §7.6 |
+| `DATA_SUBJECT` | after `erase_data_subject(s)`, no fact of `s` is retrievable, auditable or `exists` **and** every fact of other data subjects (and of none) is unaffected | **two** | §7.7 |
 
 The two provenance rows are *constructed* tests (like `AUDIT`): the suite writes its
 own probes — unsigned for `PROVENANCE`, signed with a generated Ed25519 key for
@@ -642,7 +686,7 @@ it, and the reference backend(s) that exercise it (paper Appendix A).
 
 The Python `MemoryBackend` Protocol (`interface.py`, v0.1.1) is the v0.1 reference
 binding. GMP operations map one-to-one onto its seven core methods (plus the optional
-`exists` extension, §7.6); the eleven capability flags are the `Capability` `StrEnum`;
+`exists` and `erase_data_subject` extensions, §7.6–§7.7); the twelve capability flags are the `Capability` `StrEnum`;
 the core types are `Memory`, `SourceMeta`,
 `WriteOptions`, `RetrieveOptions`; the error types are `CapabilityNotSupported`
 (undeclared operation, §7.2) and `ConformanceViolation` (declared ≠ observed, §8.1);
