@@ -53,6 +53,11 @@ from aml.provenance import fact_id_for_content, sign_provenance
 # Canonical JSON — deterministic key order + compact separators (matches the
 # _CANON used in decision_trail.py / orchestrator.py). Used to serialize metadata
 # consistently before it is stored/encrypted.
+# 0019: ciphertext under a data-subject key is prefixed so a reader can pick the key
+# from the row itself (a tenant-keyed row has no prefix). Fernet tokens start with "gAAAA".
+_DS_PREFIX = "gfm.ds1:"
+
+
 def _CANON(obj) -> str:
     return json.dumps(obj, sort_keys=True, separators=(",", ":"), default=str)
 
@@ -284,6 +289,8 @@ class PostgresGMPBackend:
 
                 # 0.4.1: the store a memory was written through (scoped audit)
                 _ddl("ALTER TABLE memories ADD COLUMN IF NOT EXISTS store_id TEXT;", "ALTER memories +store_id")
+                # 0019 / §7.7: the data subject a fact is about (migration 022 in cloud)
+                _ddl("ALTER TABLE memories ADD COLUMN IF NOT EXISTS data_subject_id TEXT;", "ALTER memories +data_subject_id")
 
                 # Indexes (after migrations so columns exist)
                 _ddl("CREATE INDEX IF NOT EXISTS idx_mem_tenant_valid "
@@ -291,6 +298,8 @@ class PostgresGMPBackend:
                 _ddl(_HNSW_INDEX.strip(), "INDEX hnsw")
                 _ddl(_TENANT_FILTER_INDEX.strip(), "INDEX tenant_filter")
                 _ddl("CREATE INDEX IF NOT EXISTS idx_mem_tenant_store ON memories(tenant_id, store_id)", "INDEX idx_mem_tenant_store")
+                _ddl("CREATE INDEX IF NOT EXISTS idx_mem_tenant_data_subject ON memories(tenant_id, data_subject_id)",
+                     "INDEX idx_mem_tenant_data_subject")
 
                 # Postgres RLS: enable + the tenant-isolation policies. NOTE: we do
                 # NOT FORCE row level security. The restricted runtime role
@@ -338,15 +347,35 @@ class PostgresGMPBackend:
     # -- GMP operations ---------------------------------------------------
 
     def capabilities(self) -> set[Capability]:
-        return set(GMP_V02_PROFILE)
+        # DATA_SUBJECT (§7.7, 0019): data_subject_id column, write option, erase_data_subject.
+        return set(GMP_V02_PROFILE) | {Capability.DATA_SUBJECT}
 
-    def _encrypt_memory(self, content: str, metadata: dict | None, tenant_id: str | None) -> tuple[str, str | None, str, str | None]:
+    def _encryptor_for(self, tenant_id: str | None, data_subject_id: str | None, ciphertext: str | None = None):
+        """The encryptor for one row. 0019: a fact with a data_subject_id is encrypted under
+        that data subject's key when the key manager offers one (`get_data_subject_encryptor`
+        returns non-None: the tenant opted in); otherwise under the tenant key as before. On
+        READ the choice is made from the ciphertext itself: a data-subject-keyed ciphertext
+        carries the `gfm.ds1:` prefix, a tenant-keyed one does not — so rows written before
+        the feature was enabled keep decrypting under the tenant key (F7)."""
+        km = self._encryption
+        if tenant_id and data_subject_id and hasattr(km, "get_data_subject_encryptor"):
+            if ciphertext is None:
+                enc = km.get_data_subject_encryptor(tenant_id, data_subject_id)
+                if enc is not None:
+                    return enc
+            elif ciphertext.startswith(_DS_PREFIX):
+                enc = km.get_data_subject_encryptor(tenant_id, data_subject_id, require=True)
+                return enc
+        if tenant_id and hasattr(km, "get_encryptor"):
+            return km.get_encryptor(tenant_id)
+        return km
+
+    def _encrypt_memory(self, content: str, metadata: dict | None, tenant_id: str | None,
+                        data_subject_id: str | None = None) -> tuple[str, str | None, str, str | None]:
         """Return (db_content, enc_content, db_metadata, enc_metadata)"""
         meta_canon = _CANON(metadata) if metadata else "{}"
         if self._encryption:
-            encryptor = self._encryption
-            if tenant_id and hasattr(encryptor, "get_encryptor"):
-                encryptor = encryptor.get_encryptor(tenant_id)
+            encryptor = self._encryptor_for(tenant_id, data_subject_id)
             enc_content = encryptor.encrypt(content)
             db_content = "[ENCRYPTED]"
             enc_meta = encryptor.encrypt(meta_canon)
@@ -364,21 +393,22 @@ class PostgresGMPBackend:
 
         written_by, signature, public_key = self._provenance(content, options)
         
-        db_content, enc_content, db_meta, enc_meta = self._encrypt_memory(content, options.metadata, options.tenant_id)
+        db_content, enc_content, db_meta, enc_meta = self._encrypt_memory(
+            content, options.metadata, options.tenant_id, options.data_subject_id)
 
         with self._tenant_conn(options.tenant_id) as (conn, cur):
             cur.execute(
                 """INSERT INTO memories
                    (content, written_at, metadata, valid_from, valid_until,
                     tenant_id, superseded_by, written_by, signature, public_key,
-                    content_enc, metadata_enc, region)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    content_enc, metadata_enc, region, data_subject_id)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                    RETURNING ref""",
                 (db_content, datetime.now(timezone.utc), db_meta,
                  options.valid_from, None,
                  options.tenant_id, None,
                  written_by, signature, public_key,
-                 enc_content, enc_meta, options.region or 'global'),
+                 enc_content, enc_meta, options.region or 'global', options.data_subject_id),
             )
             ref = cur.fetchone()[0]
             self._tag_store(cur, ref)
@@ -423,21 +453,22 @@ class PostgresGMPBackend:
         for (content, options), row in zip(items, embs):
             emb = _normalize(row)
             written_by, signature, public_key = self._provenance(content, options)
-            db_content, enc_content, db_meta, enc_meta = self._encrypt_memory(content, options.metadata, options.tenant_id)
+            db_content, enc_content, db_meta, enc_meta = self._encrypt_memory(
+            content, options.metadata, options.tenant_id, options.data_subject_id)
 
             with self._tenant_conn(options.tenant_id) as (conn, cur):
                 cur.execute(
                     """INSERT INTO memories
                        (content, written_at, metadata, valid_from, valid_until,
                         tenant_id, superseded_by, written_by, signature, public_key,
-                        content_enc, metadata_enc, region)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        content_enc, metadata_enc, region, data_subject_id)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                        RETURNING ref""",
                     (db_content, now, db_meta,
                      options.valid_from, None,
                      options.tenant_id, None,
                      written_by, signature, public_key,
-                     enc_content, enc_meta, options.region or 'global'),
+                     enc_content, enc_meta, options.region or 'global', options.data_subject_id),
                 )
                 ref = cur.fetchone()[0]
                 self._tag_store(cur, ref)
@@ -460,7 +491,8 @@ class PostgresGMPBackend:
         return refs
 
     def supersede(self, ref: int, content: str, metadata: dict | None, options: WriteOptions) -> int:
-        db_content, enc_content, db_meta, enc_meta = self._encrypt_memory(content, metadata, options.tenant_id)
+        db_content, enc_content, db_meta, enc_meta = self._encrypt_memory(
+            content, metadata, options.tenant_id, options.data_subject_id)
 
         close_at = options.valid_from or datetime.now(timezone.utc)
 
@@ -475,14 +507,14 @@ class PostgresGMPBackend:
                 """INSERT INTO memories
                    (content, written_at, metadata, valid_from, valid_until,
                     tenant_id, superseded_by, written_by, signature, public_key,
-                    content_enc, metadata_enc, region)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    content_enc, metadata_enc, region, data_subject_id)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                    RETURNING ref""",
                 (db_content, datetime.now(timezone.utc), db_meta,
                  options.valid_from, None,
                  options.tenant_id, None,
                  written_by, signature, public_key,
-                 enc_content, enc_meta, options.region or 'global'),
+                 enc_content, enc_meta, options.region or 'global', options.data_subject_id),
             )
             new_ref = cur.fetchone()[0]
             self._tag_store(cur, new_ref)
@@ -520,6 +552,44 @@ class PostgresGMPBackend:
             cur.execute("DELETE FROM memories WHERE ref = %s", (ref,))
             return cur.rowcount > 0
 
+    def data_subject_refs(self, data_subject_id: str, tenant_id: str | None) -> list[int]:
+        """Refs of every fact of one data subject in the tenant (superseded included).
+        Not a protocol method — the Cloud erasure service reads these BEFORE erasing so
+        each certificate can bind a server-observed content hash (0016)."""
+        if not data_subject_id:
+            raise ValueError("data_subject_id is required")
+        with self._tenant_conn("admin") as (conn, cur):
+            if tenant_id is None:
+                cur.execute("SELECT ref FROM memories WHERE data_subject_id = %s AND tenant_id IS NULL ORDER BY ref",
+                            (data_subject_id,))
+            else:
+                cur.execute("SELECT ref FROM memories WHERE data_subject_id = %s AND tenant_id = %s ORDER BY ref",
+                            (data_subject_id, tenant_id))
+            return [r[0] for r in cur.fetchall()]
+
+    def row_is_data_subject_keyed(self, ref: int) -> bool:
+        """0019: was this row encrypted under a data-subject key? Read from the stored
+        ciphertext's prefix, never from the tenant's current opt-in flag."""
+        with self._tenant_conn("admin") as (conn, cur):
+            cur.execute("SELECT content_enc FROM memories WHERE ref = %s", (ref,))
+            row = cur.fetchone()
+        return bool(row and row[0] and row[0].startswith(_DS_PREFIX))
+
+    def erase_data_subject(self, data_subject_id: str, opts: WriteOptions) -> list[int]:
+        """DATA_SUBJECT (§7.7, 0019): hard-delete every fact of one data subject inside
+        opts.tenant_id, superseded versions included; return their refs. Two-sided on the
+        read path; idempotent. The subject's EMBEDDING rows are deleted synchronously
+        (F3) — no erasure_pending window for a data-subject erasure — because the vector
+        cannot be covered by a destroyed key; deletion is all it gets."""
+        refs = self.data_subject_refs(data_subject_id, opts.tenant_id)
+        if not refs:
+            return []
+        with self._tenant_conn("admin") as (conn, cur):
+            cur.execute("UPDATE memories SET superseded_by = NULL WHERE superseded_by = ANY(%s)", (refs,))
+            cur.execute("DELETE FROM memory_embeddings WHERE ref = ANY(%s)", (refs,))
+            cur.execute("DELETE FROM memories WHERE ref = ANY(%s)", (refs,))
+        return refs
+
     def exists(self, ref: Any) -> bool:
         # POINT_LOOKUP (0014) — side-effect-free existence probe for the erasure
         # coverage check. Reads the primary `memories` table only; after delete(ref)
@@ -539,7 +609,7 @@ class PostgresGMPBackend:
                 """SELECT ref, content, written_at, metadata,
                           valid_from, valid_until, tenant_id,
                           superseded_by, written_by, signature, public_key, region,
-                          content_enc, metadata_enc
+                          content_enc, metadata_enc, data_subject_id
                    FROM memories WHERE ref = %s LIMIT 1""",
                 (ref,),
             )
@@ -609,7 +679,7 @@ class PostgresGMPBackend:
                     """SELECT ref, content, written_at, metadata,
                               valid_from, valid_until, tenant_id,
                               superseded_by, written_by, signature, public_key, region,
-                              content_enc, metadata_enc
+                              content_enc, metadata_enc, data_subject_id
                        FROM memories WHERE ref = %s""",
                     (ref,),
                 )
@@ -632,7 +702,7 @@ class PostgresGMPBackend:
                 """SELECT ref, content, written_at, metadata,
                           valid_from, valid_until, tenant_id,
                           superseded_by, written_by, signature, public_key, region,
-                          content_enc, metadata_enc
+                          content_enc, metadata_enc, data_subject_id
                    FROM memories ORDER BY ref"""
             )
             rows = cur.fetchall()
@@ -673,7 +743,7 @@ class PostgresGMPBackend:
                 """SELECT ref, content, written_at, metadata,
                           valid_from, valid_until, tenant_id,
                           superseded_by, written_by, signature, public_key, region,
-                          content_enc, metadata_enc
+                          content_enc, metadata_enc, data_subject_id
                    FROM memories WHERE """ + " AND ".join(conds) + " ORDER BY ref",
                 tuple(params),
             )
@@ -735,14 +805,12 @@ class PostgresGMPBackend:
     def _row_to_memory(self, row, content_override: str | None = None, token_count: int | None = None, tokenizer_id: str | None = None) -> Memory:
         (ref, content, written_at, metadata,
          vf, vu, tenant, sby, written_by, sig, pub, region,
-         content_enc, metadata_enc) = row
+         content_enc, metadata_enc, dsid) = row
 
         if content_override is not None:
             content = content_override
         elif self._encryption and content_enc:
-            encryptor = self._encryption
-            if tenant and hasattr(encryptor, "get_encryptor"):
-                encryptor = encryptor.get_encryptor(tenant)
+            encryptor = self._encryptor_for(tenant, dsid, content_enc)
             content = encryptor.decrypt(content_enc)
 
         # Handle metadata. When encryption is on, the real payload lives in
@@ -753,9 +821,7 @@ class PostgresGMPBackend:
         # the str form silently dropped all encrypted metadata on Postgres (cgr_schema,
         # subject, …), making every CGR outcome/review invisible to the scorer.
         if self._encryption and metadata_enc:
-            encryptor = self._encryption
-            if tenant and hasattr(encryptor, "get_encryptor"):
-                encryptor = encryptor.get_encryptor(tenant)
+            encryptor = self._encryptor_for(tenant, dsid, metadata_enc)
             metadata = json.loads(encryptor.decrypt(metadata_enc))
         elif isinstance(metadata, str):
             metadata = json.loads(metadata)
@@ -777,6 +843,7 @@ class PostgresGMPBackend:
             region=region,
             token_count=token_count,
             tokenizer_id=tokenizer_id,
+            data_subject_id=dsid,
         )
 
 

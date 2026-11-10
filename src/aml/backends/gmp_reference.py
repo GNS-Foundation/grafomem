@@ -41,6 +41,7 @@ import numpy as np
 
 from aml.backends.interface import (
     Capability,
+    CapabilityNotSupported,
     Memory,
     RetrieveOptions,
     SourceMeta,
@@ -106,6 +107,8 @@ class GMPReferenceBackend:
         return set(GMP_V02_PROFILE)
 
     def write(self, content: str, options: WriteOptions) -> int:
+        if options.data_subject_id is not None:
+            raise CapabilityNotSupported(Capability.DATA_SUBJECT, "write(data_subject_id=...)")
         # All v0.2 caps are claimed: tenant_id / valid_from are honored, and every
         # write carries provenance (source). A signing_key additionally signs the
         # content fact_id (CRYPTOGRAPHIC_PROVENANCE).

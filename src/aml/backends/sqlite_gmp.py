@@ -56,6 +56,7 @@ import numpy as np
 
 from aml.backends.gmp_reference import GMP_V02_PROFILE
 from aml.backends.interface import (
+    CapabilityNotSupported,
     Capability, Memory, RetrieveOptions, SourceMeta, WriteOptions,
 )
 from aml.backends.vector_only import _default_embedder
@@ -89,13 +90,14 @@ CREATE TABLE IF NOT EXISTS memories (
     superseded_by INTEGER,
     written_by    TEXT,
     signature     BLOB,
-    public_key    BLOB
+    public_key    BLOB,
+    data_subject_id TEXT
 );
 """
 
 _COLS = ("ref", "content", "written_at", "metadata",
          "valid_from", "valid_until", "tenant_id", "superseded_by",
-         "written_by", "signature", "public_key")
+         "written_by", "signature", "public_key", "data_subject_id")
 
 # sqlite-vec caps a KNN query's k at 4096. With the metadata filter applied in-engine,
 # the query returns the filtered top-k by similarity. We bound k by the char budget
@@ -252,6 +254,12 @@ class SQLiteGMPBackend:
         if "store_id" not in cols:
             self._conn.execute("ALTER TABLE memories ADD COLUMN store_id TEXT")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_mem_tenant_store ON memories(tenant_id, store_id)")
+        # 0019 / spec §7.7: the data subject (GDPR sense) a fact is about; NULL = unscoped.
+        if "data_subject_id" not in cols:
+            self._conn.execute("ALTER TABLE memories ADD COLUMN data_subject_id TEXT")
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mem_tenant_data_subject ON memories(tenant_id, data_subject_id)"
+        )
 
         # vec0 carries the filter predicate as metadata columns alongside the embedding.
         self._conn.execute(
@@ -276,7 +284,9 @@ class SQLiteGMPBackend:
 
     # -- GMP operations ---------------------------------------------------
     def capabilities(self) -> set[Capability]:
-        return set(GMP_V02_PROFILE)
+        # DATA_SUBJECT (§7.7, 0019): this backend is the reference implementation of the
+        # optional data-subject scope — column, write option, erase_data_subject.
+        return set(GMP_V02_PROFILE) | {Capability.DATA_SUBJECT}
 
     def write(self, content: str, options: WriteOptions):
         emb = _normalize(self._embed(content))
@@ -291,11 +301,12 @@ class SQLiteGMPBackend:
 
         cur = self._conn.execute(
             "INSERT INTO memories(content, written_at, metadata, valid_from, valid_until, "
-            "tenant_id, superseded_by, written_by, signature, public_key) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?)",
+            "tenant_id, superseded_by, written_by, signature, public_key, data_subject_id) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             (enc_content, datetime.now(timezone.utc).isoformat(),
              json.dumps(options.metadata or {}), _to_ts(options.valid_from),
-             None, options.tenant_id, None, written_by, signature, public_key),
+             None, options.tenant_id, None, written_by, signature, public_key,
+             options.data_subject_id),
         )
         ref = cur.lastrowid
         self._tag_store(ref)
@@ -354,11 +365,11 @@ class SQLiteGMPBackend:
                 
                 cur = self._conn.execute(
                     "INSERT INTO memories(content, written_at, metadata, valid_from, valid_until, "
-                    "tenant_id, superseded_by, written_by, signature, public_key) "
-                    "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                    "tenant_id, superseded_by, written_by, signature, public_key, data_subject_id) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                     (enc_content, now, db_meta,
                      _to_ts(options.valid_from), None, options.tenant_id, None,
-                     written_by, signature, public_key),
+                     written_by, signature, public_key, options.data_subject_id),
                 )
                 ref = cur.lastrowid
                 self._tag_store(ref)
@@ -395,6 +406,33 @@ class SQLiteGMPBackend:
         cur = self._conn.execute("DELETE FROM memories WHERE ref = ?", (ref,))
         self._conn.execute("DELETE FROM vec_memories WHERE rowid = ?", (ref,))
         return cur.rowcount > 0
+
+    def erase_data_subject(self, data_subject_id: str, opts: WriteOptions) -> list:
+        """DATA_SUBJECT (§7.7, 0019): hard-delete every fact of one data subject inside
+        opts.tenant_id, superseded versions included, and return their refs. Two-sided on
+        the read path: afterwards none of them is retrievable/auditable/exists(); nothing
+        of any other data subject (or of none) is touched. Idempotent (second call → [])."""
+        if not data_subject_id:
+            raise ValueError("data_subject_id is required")
+        conds, params = ["data_subject_id = ?"], [data_subject_id]
+        if opts.tenant_id is not None:
+            conds.append("tenant_id = ?"); params.append(opts.tenant_id)
+        else:
+            conds.append("tenant_id IS NULL")
+        refs = [r[0] for r in self._conn.execute(
+            f"SELECT ref FROM memories WHERE {' AND '.join(conds)} ORDER BY ref", tuple(params)
+        ).fetchall()]
+        if not refs:
+            return []
+        marks = ",".join("?" * len(refs))
+        with self._conn:  # one transaction: no half-erased subject
+            # a surviving fact that pointed at an erased one keeps its own row; the pointer
+            # is cleared (the target no longer exists on the read path)
+            self._conn.execute(
+                f"UPDATE memories SET superseded_by = NULL WHERE superseded_by IN ({marks})", refs)
+            self._conn.execute(f"DELETE FROM memories WHERE ref IN ({marks})", refs)
+            self._conn.execute(f"DELETE FROM vec_memories WHERE rowid IN ({marks})", refs)
+        return refs
 
     def exists(self, ref) -> bool:
         # POINT_LOOKUP (0014) — side-effect-free existence probe for the erasure
@@ -517,7 +555,7 @@ class SQLiteGMPBackend:
 
     # -- internals --------------------------------------------------------
     def _row_to_memory(self, row, content_override: str | None = None) -> Memory:
-        ref, content, written_at, metadata, vf, vu, tenant, sby, written_by, sig, pub = row
+        ref, content, written_at, metadata, vf, vu, tenant, sby, written_by, sig, pub, dsid = row
         
         if content_override is not None:
             content = content_override
@@ -537,6 +575,7 @@ class SQLiteGMPBackend:
                 signature=bytes(sig) if sig is not None else None,
                 public_key=bytes(pub) if pub is not None else None,
             ),
+            data_subject_id=dsid,
         )
 
 

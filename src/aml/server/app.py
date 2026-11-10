@@ -47,6 +47,7 @@ class WriteOptionsModel(BaseModel):
     tenant_id: str | None = None
     signing_key: str | None = None  # hex-encoded Ed25519 private seed
     metadata: dict[str, Any] = Field(default_factory=dict)
+    data_subject_id: str | None = None  # §7.7 DATA_SUBJECT (0019): the person this fact is about
 
     def to_internal(self, tenant_override: str | None = None) -> WriteOptions:
         sid = None
@@ -74,6 +75,7 @@ class WriteOptionsModel(BaseModel):
             tenant_id=tid,
             signing_identity=sid,
             metadata=self.metadata,
+            data_subject_id=self.data_subject_id,
         )
 
 
@@ -151,10 +153,12 @@ class MemoryResponse(BaseModel):
     tenant_id: str | None = None
     superseded_by: Any | None = None
     source: SourceMetaResponse | None = None
+    data_subject_id: str | None = None
 
     @classmethod
     def from_internal(cls, m: Memory):
         return cls(
+            data_subject_id=getattr(m, "data_subject_id", None),
             ref=m.ref,
             content=m.content,
             written_at=m.written_at,
@@ -956,8 +960,15 @@ def create_app(
                     master_key_hex = os.urandom(32).hex()
                 else:
                     raise RuntimeError("GRAFOMEM_MASTER_KEY must be set in environment")
-            tkm = TenantKeyManager(master_key_hex, db_url, open=not spec_only)
+            # 0019 F4: wrapped DEKs live on the key-store URL = the ledger role, not the
+            # primary db_url, so a restore of the primary database does not bring destroyed
+            # keys back with the data (logical separation; same instance today). Migration
+            # 022 grants the ledger role its DML on tenant_deks / data_subject_deks.
+            tkm = TenantKeyManager(master_key_hex, ledger_url, open=not spec_only)
             _init(tkm)
+            if not spec_only and _do_boot_ddl:  # same gate as ensure_schema: no runtime DDL in cloud
+                startup_db_steps.append(("ensure_schema:data_subject_deks", tkm.ensure_data_subject_schema))
+            tkm.configure_data_subject_keys(tm.data_subject_encryption_enabled)
             app.state.tenant_key_manager = tkm
             app.state.encryption = tkm
             
@@ -1051,6 +1062,7 @@ def create_app(
                 backend_resolver=(lambda _tid: _sm.probe_backend()),
             )
             _init(ep)
+            ep.attach_key_manager(tkm)  # 0019: verify key claims against the key store
             app.state.erasure_proof = ep
 
             erasure_router = create_erasure_router(ep)

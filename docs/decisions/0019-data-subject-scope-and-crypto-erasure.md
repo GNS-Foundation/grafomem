@@ -1,6 +1,6 @@
 # 0019 — Data-subject scope in GMP; per-data-subject crypto-erasure in Cloud
 
-**Status:** proposed 2026-11-06 (spec-first: this record and spec §7.7 land before any code) ·
+**Status:** proposed 2026-11-06; spec landed first (PR A); build 2026-11-10 (PR B) ·
 **Relates to:** [0014](0014-erasure-coverage-status-vocabulary.md) (coverage vocabulary),
 [0015](0015-checkpointer-crypto-erasure-stays-adapter-local.md) (the LangGraph adapter's per-thread
 crypto-erasure — the design this transplants), [0016](0016-erasure-certificates-are-factual.md),
@@ -69,6 +69,31 @@ commits to the key fingerprint and the ledger records the destruction; a restore
 from the ledger. Not covered: embedding vectors in dead tuples and backups (deletion, not key
 destruction); facts written before the feature was enabled (deletion only); the KEK and key store
 being managed correctly.* Tamper-evident, never tamper-proof.
+
+## What the build changed against the decision above (recorded, not hidden)
+
+- **F5 wording.** The memo proposed `coverage["data_subject_key"] = "destroyed:<fp>"`. That is
+  outside the 0014 coverage vocabulary (`present` / `absent` / `unverified`), which `verify` and the
+  vacuity gate rely on. Built instead: `coverage.data_subject_key = "absent"` — a verified observation
+  of the key store's tombstone — with the key fingerprint and the data-subject fingerprint bound under
+  `governance_record.addressing`. A fact that was never key-covered (written before the opt-in, or in
+  a process without a key manager) gets `unverified`: no claim. `verify_certificate` checks an
+  `absent` claim against the key store by fingerprint; a restored key, a missing key, or a
+  certificate with no key manager to check against all FAIL verification even with a good signature.
+- **SQLite declares `DATA_SUBJECT` without per-data-subject keys.** The reference backend honours
+  the scope and erases two-sided (the protocol obligation); its at-rest encryption, when a key
+  manager is attached, stays tenant-keyed. Its certificates therefore say `unverified` for the key
+  — deletion only. Per-data-subject keys are a Postgres/Cloud property.
+- **`tenant_deks` stays writable by the runtime role for now.** 022 grants the ledger role its DML
+  (the key manager now connects as that role) but does not revoke `grafomem_rt`: the pre-deploy runner
+  applies 022 before the new process is live, and the 0.5.0 process still reaches `tenant_deks` as
+  `grafomem_rt` until cutover. A held migration revokes it afterwards.
+- **Found on the way:** `PostgresGMPBackend.supersede(ref, content, metadata, options)` deviates from
+  the protocol's `supersede(old_ref, content, options)` (`interface.py:272`); the constructed
+  conformance test therefore does not exercise supersession (the backends' own tests do). And
+  `create_app(db_url=…)` without a `backend_factory` serves memories from an **in-memory SQLite**
+  store even in cloud mode — the Cloud services are on Postgres, the facts are not; `serve -b
+  postgres` passes a Postgres factory. The e2e test does the same. Neither is changed here.
 
 ## Consequences
 

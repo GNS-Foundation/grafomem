@@ -27,7 +27,7 @@ except ImportError:
 
 from aml.backends.gmp_reference import GMP_V02_PROFILE
 from aml.backends.interface import (
-    Capability, Memory, RetrieveOptions, SourceMeta, WriteOptions,
+    Capability, CapabilityNotSupported, Memory, RetrieveOptions, SourceMeta, WriteOptions,
 )
 from aml.backends.vector_only import REFERENCE_MODEL, _default_embedder
 from aml.provenance import fact_id_for_content, sign_provenance
@@ -63,6 +63,11 @@ class HnswGMPBackend:
 
         self._dim = int(np.asarray(self._embed(["probe"])).shape[1])
         self._conn.executescript(_SCHEMA)
+        # shared SQLite schema gained data_subject_id (0019); older files need the column
+        # to read rows through the shared _COLS, even though this backend never sets it
+        cols = {r[1] for r in self._conn.execute("PRAGMA table_info(memories)").fetchall()}
+        if "data_subject_id" not in cols:
+            self._conn.execute("ALTER TABLE memories ADD COLUMN data_subject_id TEXT")
         
         self._conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_mem_tenant_valid "
@@ -104,6 +109,8 @@ class HnswGMPBackend:
         return set(GMP_V02_PROFILE)
 
     def write(self, content: str, options: WriteOptions):
+        if options.data_subject_id is not None:
+            raise CapabilityNotSupported(Capability.DATA_SUBJECT, "write(data_subject_id=...)")
         emb = self._embed([content])[0]
         if emb.shape[0] != self._dim:
             raise ValueError(f"embedding dim {emb.shape[0]} != store dim {self._dim}")
@@ -303,7 +310,7 @@ class HnswGMPBackend:
         self._conn.close()
 
     def _row_to_memory(self, row) -> Memory:
-        ref, content, written_at, metadata, vf, vu, tenant, sby, written_by, sig, pub = row
+        ref, content, written_at, metadata, vf, vu, tenant, sby, written_by, sig, pub, dsid = row
         wat = datetime.fromisoformat(written_at)
         return Memory(
             ref=ref, content=content, written_at=wat,
