@@ -361,3 +361,21 @@ async def test_mcp_erase_data_subject_without_service_is_honest(tmp_path):
     assert (await call("verify_erasure", {"ref": a, "reverify": True}))["storage_check"]["row_present"] is False
     assert (await call("list_memories", {}))["count"] == 1
     assert (await call("erase_data_subject", {"data_subject_id": "bob", "tenant": "other"}))["error"] == "tenant_mismatch"
+
+
+def test_key_store_url_is_migrate_role_in_release_step_and_ledger_role_at_runtime(monkeypatch):
+    """Regression for the failed 0019 deploy (Railway 514d69b0, 2026-11-10): the pre-deploy
+    `--ensure-schema` step builds the app with ensure_schema_only=True and db_url = the
+    migrate role; the key manager's CREATE TABLE must run as that role. At runtime the key
+    store is the ledger URL (F4). Both URLs are distinct here so the assertion is not vacuous."""
+    if not DB_URL:
+        pytest.skip("GRAFOMEM_DB_URL not set")
+    from aml.server.app import create_app
+    monkeypatch.setenv("AUTH_MODE", "cloud")
+    monkeypatch.setenv("GRAFOMEM_LEDGER_URL", LEDGER_URL or DB_URL)
+    monkeypatch.setenv("GRAFOMEM_MASTER_KEY", "a" * 64)
+    assert DB_URL != os.environ["GRAFOMEM_LEDGER_URL"], "test needs two distinct URLs"
+    app = create_app(db_url=DB_URL, ensure_schema_only=True)
+    assert app.state.tenant_key_manager._key_store_url == DB_URL          # migrate role: DDL
+    app = create_app(db_url=DB_URL)
+    assert app.state.tenant_key_manager._key_store_url == os.environ["GRAFOMEM_LEDGER_URL"]   # runtime: ledger role

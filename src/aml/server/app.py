@@ -964,7 +964,14 @@ def create_app(
             # primary db_url, so a restore of the primary database does not bring destroyed
             # keys back with the data (logical separation; same instance today). Migration
             # 022 grants the ledger role its DML on tenant_deks / data_subject_deks.
-            tkm = TenantKeyManager(master_key_hex, ledger_url, open=not spec_only)
+            #
+            # EXCEPT in the pre-deploy release step (ensure_schema_only): there db_url IS the
+            # migrate role and the key manager's ensure_schema must run as it — the ledger
+            # role has no DDL on public. The first 0019 deploy (2026-11-10, Railway
+            # 514d69b0) failed exactly here with "permission denied for schema public";
+            # the runner stops before applying migrations, so nothing changed in production.
+            key_store_url = db_url if ensure_schema_only else ledger_url
+            tkm = TenantKeyManager(master_key_hex, key_store_url, open=not spec_only)
             _init(tkm)
             if not spec_only and _do_boot_ddl:  # same gate as ensure_schema: no runtime DDL in cloud
                 startup_db_steps.append(("ensure_schema:data_subject_deks", tkm.ensure_data_subject_schema))
