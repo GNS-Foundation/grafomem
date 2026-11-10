@@ -57,6 +57,7 @@ from statistics import mean
 from aml.backends.interface import (
     Capability,
     ConformanceViolation,
+    RetrieveOptions,
     WriteOptions,
     verify_provenance,
 )
@@ -256,6 +257,41 @@ def _test_point_lookup(factory: StoreFactory, seeds, budget) -> CapabilityResult
     return CapabilityResult(Capability.POINT_LOOKUP, "constructed",
                             [_recall_dir("existing-fact lookup", found, floor=1.0 - EPS),
                              _leak_dir("deleted-fact still present", leak)])
+
+
+def _test_data_subject(factory: StoreFactory, seeds, budget) -> CapabilityResult:
+    """DATA_SUBJECT two-sided (§7.7, 0019): after erase_data_subject(s), no fact of s is
+    retrievable, auditable or exists() (leak = 0), AND every fact of other data subjects
+    and of no data subject is unaffected (recall = 1). Superseded versions of s's facts
+    count as s's facts (covered by the backends' own tests: the Postgres backend's
+    supersede() signature deviates from the protocol, so the constructed test does not
+    call it). Constructed: two subjects + one unscoped fact per seed."""
+    leak, kept = [], []
+    for s in seeds:
+        store = factory()
+        opts = lambda ds=None: WriteOptions(data_subject_id=ds)
+        a1 = store.write(f"alice fact one (seed {s})", opts("alice"))
+        a2 = store.write(f"alice fact two (seed {s})", opts("alice"))
+        b1 = store.write(f"bob fact one (seed {s})", opts("bob"))
+        n1 = store.write(f"nobody's fact (seed {s})", opts(None))
+        store.flush()
+        erased = set(store.erase_data_subject("alice", WriteOptions()))
+        store.flush()
+        alice = [a1, a2]
+        # leak: any alice ref still visible on ANY read surface
+        visible = set(m.ref for m in store.audit())
+        visible |= set(m.ref for m in store.retrieve("alice fact one", RetrieveOptions(budget_tokens=4096)))
+        visible |= {r for r in alice if store.exists(r)}
+        leak.append(1.0 if (visible & set(alice)) or not set(alice) <= erased else 0.0)
+        # over-erasure: bob and the unscoped fact must still be there on every surface
+        others = {b1, n1}
+        ok = others <= set(m.ref for m in store.audit()) and all(store.exists(r) for r in others) \
+            and b1 in set(m.ref for m in store.retrieve("bob fact one", RetrieveOptions(budget_tokens=4096))) \
+            and store.erase_data_subject("alice", WriteOptions()) == []   # idempotent
+        kept.append(1.0 if ok else 0.0)
+    return CapabilityResult(Capability.DATA_SUBJECT, "constructed",
+                            [_leak_dir("erased data subject still visible", leak),
+                             _recall_dir("other facts untouched", kept, floor=1.0 - EPS)])
 
 
 def _test_crypto_provenance(factory, seeds, budget):
@@ -470,6 +506,9 @@ def run_conformance(
 
     if Capability.POINT_LOOKUP in declared:
         results.append(_test_point_lookup(store_factory, seeds, budget))
+
+    if Capability.DATA_SUBJECT in declared:
+        results.append(_test_data_subject(store_factory, seeds, budget))
 
     if Capability.CRYPTOGRAPHIC_PROVENANCE in declared:
         valid, tamper = _test_crypto_provenance(store_factory, seeds, budget)

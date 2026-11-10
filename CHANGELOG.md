@@ -6,6 +6,49 @@ released separately and has its own changelog under `adapters/`.
 
 Decision records referenced below live in `docs/decisions/`.
 
+## [Unreleased]
+
+Data-subject scope and per-data-subject crypto-erasure (ADR-0019; GMP v0.2 §7.7). Additive on
+the protocol (a twelfth, optional capability); the Cloud part needs migration 022 and is
+opt-in per tenant. A minor bump is warranted when released.
+
+### Added
+- **`DATA_SUBJECT` capability** (GMP §7.7): `WriteOptions.data_subject_id`,
+  `Memory.data_subject_id`, `erase_data_subject(id, opts) -> [ref]` — two-sided on the read
+  path, idempotent, superseded versions erased with the head. SQLite (reference) and Postgres
+  claim it; HNSW and the GMP reference backend raise `CapabilityNotSupported` when the option is
+  set. Conformance gains a two-direction `DATA_SUBJECT` row (leak / over-erasure).
+- **Per-data-subject keys (Cloud, Postgres):** random DEK per data subject wrapped under the
+  tenant DEK (`data_subject_deks`), ciphertext prefixed `gfm.ds1:`; opt-in per tenant
+  (`POST /v1/erasure/data-subject-encryption`). Rows written before the opt-in stay
+  tenant-keyed.
+- **`POST /v1/erasure/data-subject`**: erases every fact of a data subject, deletes their
+  embeddings synchronously (no sweeper window), destroys their key, issues one certificate
+  per fact with `coverage.data_subject_key = absent` and the key fingerprint bound (or
+  `unverified` for facts that were never key-covered), and appends a
+  `data_subject_key_destroyed` ledger entry. The response and the ledger carry fingerprints,
+  never the identifier.
+- **`GET /v1/erasure/{id}/verify`** checks a data-subject-key claim against the key store's
+  tombstone: a restored key fails verification even with a valid signature; the response
+  gains `data_subject_key`.
+- **Restore-scrub** replays `data_subject_key_destroyed` entries and re-destroys keys a
+  restore revived (`data_subject_keys_redestroyed` in its stats).
+- **MCP:** `erase_data_subject` tool; `write_memory` accepts `data_subject_id`.
+- **REST:** `options.data_subject_id` on write; `data_subject_id` on memory responses.
+
+### Changed
+- **Wrapped DEKs are read and written on the ledger URL** (`GRAFOMEM_LEDGER_URL`), not the
+  primary `db_url` — the key manager's docstring had claimed a separate store that was not
+  the case. Migration 022 grants `grafomem_ledger` its DML on `tenant_deks` /
+  `data_subject_deks`; the runtime role keeps its `tenant_deks` DML until a later held
+  migration (deploy-window safety).
+
+### Migration
+- **022** (additive, idempotent): `memories.data_subject_id` + index, `data_subject_deks`,
+  `tenants.data_subject_encryption` (default false), role grants. Applied by the pre-deploy
+  runner; needs operator approval before it runs on a deployed verifier. `ensure_schema()` in
+  self-host executes the same file.
+
 ## [0.5.0] — 2026-11-06
 
 Three honesty fixes to the erasure path and the MCP surface, each with a decision record.

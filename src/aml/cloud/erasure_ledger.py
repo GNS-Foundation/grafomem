@@ -34,6 +34,7 @@ GENESIS_HASH = "0" * 64
 GENESIS_ENTRY_ID = "chain_genesis"
 GENESIS_ENTRY_TYPE = "chain_genesis"
 GENESIS_TENANT_ID = "__ledger__"
+DATA_SUBJECT_KEY_DESTROYED = "data_subject_key_destroyed"  # 0019
 
 # Columns that make up the hashed payload of a chained row, in no particular order
 # (canonicalisation sorts keys). `seq`, `prev_hash`, `entry_hash` are chain metadata and
@@ -266,6 +267,25 @@ class ErasureLedger:
         return self._append(entry_id=entry_id, tenant_id=tenant_id,
                             entry_type="subject_erasure", fact_ref=fact_ref,
                             content_hash=content_hash, certificate=certificate)
+
+    def record_data_subject_key_destroyed(self, *, tenant_id: str, data_subject_fingerprint: str,
+                                          key_fingerprint: Optional[str], key_destroyed: bool,
+                                          fact_refs: list, certificate_ids: list) -> str:
+        """0019: one chained entry per data-subject erasure. Carries fingerprints, never
+        the data subject's identifier. The restore-scrub replays these to re-destroy a key
+        a database restore brought back (F4)."""
+        import uuid as _uuid
+        entry_id = _uuid.uuid4().hex
+        payload = {
+            "data_subject_fingerprint": data_subject_fingerprint,
+            "key_fingerprint": key_fingerprint,
+            "key_destroyed": bool(key_destroyed),
+            "fact_refs": [int(r) for r in fact_refs],
+            "certificate_ids": list(certificate_ids),
+        }
+        return self._append(entry_id=entry_id, tenant_id=tenant_id,
+                            entry_type=DATA_SUBJECT_KEY_DESTROYED, fact_ref=None,
+                            content_hash=None, certificate=payload)
 
     def record_tenant_destruction(self, entry_id: str, tenant_id: str, certificate: dict) -> str:
         """Append a tenant key destruction event (chained)."""

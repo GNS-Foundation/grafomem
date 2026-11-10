@@ -45,6 +45,17 @@ class IssueErasureRequest(BaseModel):
     declared_subsystems: list[str] | None = None
 
 
+class EraseDataSubjectRequest(BaseModel):
+    """0019 F6 — erase everything held about one data subject (GMP §7.7)."""
+    data_subject_id: str
+    legal_basis: str = "GDPR Article 17 — Right to Erasure"
+    requested_by: str | None = "data_subject"
+
+
+class DataSubjectEncryptionRequest(BaseModel):
+    enabled: bool
+
+
 class CertificateResponse(BaseModel):
     """Response model for an erasure certificate."""
     certificate_id: str
@@ -68,6 +79,9 @@ class VerifyResponse(BaseModel):
     valid: bool
     certificate_id: str
     detail: str
+    # 0019 F5: present when the certificate claims the data subject's key was destroyed —
+    # the claim is checked against the key store's tombstone, not taken from the signature
+    data_subject_key: dict | None = None
 
 
 # ============================================================================
@@ -119,6 +133,45 @@ def create_erasure_router(erasure_service) -> APIRouter:
     # ------------------------------------------------------------------
     # POST /v1/erasure/issue — issue an erasure certificate
     # ------------------------------------------------------------------
+
+    @router.post("/data-subject")
+    async def erase_data_subject(req: EraseDataSubjectRequest, request: Request):
+        """0019 — Erase one data subject: every fact written with this `data_subject_id`
+        in the tenant (superseded versions included), its embeddings (synchronously), and
+        its encryption key when the tenant has data-subject encryption on. One certificate
+        per fact; per fact the certificate says whether the key covered it
+        (`coverage.data_subject_key`: `absent` + key fingerprint bound) or not
+        (`unverified`: written before the tenant opted in — deletion only). The key
+        destruction is a chained ledger entry. Idempotent: a second call reports 0 facts.
+        """
+        tenant_id = _get_tenant_id(request)
+        require_scope(request, "erasure:execute")
+        from aml.cloud.erasure_proof import CertificateNotIssued
+        resolver = getattr(erasure_service, "_backend_resolver", None)
+        if resolver is None:
+            raise HTTPException(503, "no memory backend reachable from the erasure service")
+        try:
+            backend = resolver(tenant_id)
+            result = erasure_service.erase_data_subject(
+                tenant_id, req.data_subject_id, backend=backend,
+                requested_by=req.requested_by, legal_basis=req.legal_basis,
+            )
+        except CertificateNotIssued as e:
+            raise HTTPException(409, {"status": "not_erased", "detail": str(e)})
+        return result
+
+    @router.post("/data-subject-encryption")
+    async def set_data_subject_encryption(req: DataSubjectEncryptionRequest, request: Request):
+        """0019 F7 — opt this tenant in (or out) of per-data-subject keys. Applies to facts
+        written with a `data_subject_id` from now on; earlier facts stay tenant-keyed and
+        are deletion-only on erasure (their certificates say so)."""
+        tenant_id = _get_tenant_id(request)
+        require_scope(request, "erasure:execute")
+        tm = getattr(request.app.state, "tenant_manager", None)
+        if tm is None or not hasattr(tm, "set_data_subject_encryption"):
+            raise HTTPException(503, "tenant manager unavailable")
+        enabled = tm.set_data_subject_encryption(tenant_id, req.enabled)
+        return {"tenant_id": tenant_id, "data_subject_encryption": enabled}
 
     @router.post("/issue", response_model=CertificateResponse)
     async def issue_certificate(req: IssueErasureRequest, request: Request):

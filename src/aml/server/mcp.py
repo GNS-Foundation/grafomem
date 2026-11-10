@@ -134,6 +134,10 @@ def create_mcp_server(backend_factory, erasure_service=None, tenant_id=None,
                             "type": "string",
                             "description": "The text content to store as a memory.",
                         },
+                        "data_subject_id": {
+                            "type": "string",
+                            "description": "Optional: the data subject (GDPR sense) this memory is about (§7.7); enables erase_data_subject.",
+                        },
                         "metadata": {
                             "type": "object",
                             "description": "Optional key-value metadata.",
@@ -196,6 +200,25 @@ def create_mcp_server(backend_factory, erasure_service=None, tenant_id=None,
                         "probe_query": { "type": "string" }
                     },
                     "required": ["ref"],
+                },
+            ),
+            Tool(
+                name="erase_data_subject",
+                description=(
+                    "Erase everything held about one data subject (GMP §7.7 DATA_SUBJECT): every "
+                    "memory written with this data_subject_id in the bound tenant, superseded versions "
+                    "included. With an erasure service in this process the data subject's encryption "
+                    "key is destroyed and one certificate per fact is issued; without one the facts are "
+                    "deleted on the read path and the response says no certificate was issued."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "data_subject_id": {"type": "string"},
+                        "tenant": {"type": "string"},
+                        "requested_by": {"type": "string", "default": "data_subject"},
+                    },
+                    "required": ["data_subject_id"],
                 },
             ),
             Tool(
@@ -303,7 +326,11 @@ def create_mcp_server(backend_factory, erasure_service=None, tenant_id=None,
         if name == "write_memory":
             content = arguments["content"]
             metadata = arguments.get("metadata", {})
-            opts = WriteOptions(metadata=metadata, tenant_id=_tenant_for(backend))
+            dsid = arguments.get("data_subject_id") or None
+            if dsid and Capability.DATA_SUBJECT not in backend.capabilities():
+                return [TextContent(type="text", text=json.dumps(
+                    {"error": "backend does not declare DATA_SUBJECT: data_subject_id not accepted (§7.7)"}))]
+            opts = WriteOptions(metadata=metadata, tenant_id=_tenant_for(backend), data_subject_id=dsid)
             ref = backend.write(content, opts)
             return [TextContent(
                 type="text",
@@ -328,6 +355,32 @@ def create_mcp_server(backend_factory, erasure_service=None, tenant_id=None,
                 type="text",
                 text=json.dumps({"memories": results, "count": len(results)}),
             )]
+
+        elif name == "erase_data_subject":
+            mismatch = _reject_foreign_tenant(arguments)
+            if mismatch:
+                return [TextContent(type="text", text=json.dumps(mismatch))]
+            dsid = arguments["data_subject_id"]
+            if Capability.DATA_SUBJECT not in backend.capabilities():
+                return [TextContent(type="text", text=json.dumps(
+                    {"error": "backend does not declare DATA_SUBJECT (§7.7)"}))]
+            scope = _tenant_for(backend)
+            if erasure_service is not None and hasattr(erasure_service, "erase_data_subject"):
+                try:
+                    result = erasure_service.erase_data_subject(
+                        scope or "default", dsid, backend=backend,
+                        requested_by=arguments.get("requested_by", "data_subject"))
+                except Exception as e:
+                    return [TextContent(type="text", text=json.dumps({"error": f"{type(e).__name__}: {e}"}))]
+                result["certificate_status"] = "issued" if result.get("certificates") else "not_issued"
+                return [TextContent(type="text", text=json.dumps(result, default=str))]
+            refs = backend.erase_data_subject(dsid, WriteOptions(tenant_id=scope))
+            backend.flush()
+            return [TextContent(type="text", text=json.dumps({
+                "facts": len(refs), "fact_refs": refs, "key_destroyed": False,
+                "certificates": [],
+                "certificate_status": "not_issued: no erasure service in this MCP process",
+            }))]
 
         elif name == "delete_memory":
             ref = arguments["ref"]

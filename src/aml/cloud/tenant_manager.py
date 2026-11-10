@@ -203,6 +203,8 @@ class TenantManager:
         
         # Add home_region column
         conn.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS home_region TEXT DEFAULT 'global';")
+        # 0019 F7: per-tenant opt-in to per-data-subject keys (migration 022 in cloud)
+        conn.execute("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS data_subject_encryption BOOLEAN NOT NULL DEFAULT FALSE;")
         
         logger.info("Tenant schema ensured")
 
@@ -270,6 +272,28 @@ class TenantManager:
             limits=PLAN_LIMITS[plan],
             home_region=home_region,
         )
+
+    def data_subject_encryption_enabled(self, tenant_id: str) -> bool:
+        """0019 F7: is this tenant opted in to per-data-subject keys? Read on every call
+        (no cache): the write path asks per write and must see a flip at once."""
+        conn = self._get_conn()
+        try:
+            row = conn.execute(
+                "SELECT data_subject_encryption FROM tenants WHERE id = %s", (tenant_id,)
+            ).fetchone()
+        except Exception:
+            conn.rollback()
+            return False  # column not provisioned (migration 022 not applied): feature off
+        if not row:
+            return False
+        v = row["data_subject_encryption"] if isinstance(row, dict) else row[0]
+        return bool(v)
+
+    def set_data_subject_encryption(self, tenant_id: str, enabled: bool) -> bool:
+        conn = self._get_conn()
+        conn.execute("UPDATE tenants SET data_subject_encryption = %s WHERE id = %s", (bool(enabled), tenant_id))
+        conn.commit()
+        return self.data_subject_encryption_enabled(tenant_id)
 
     def get_tenant(self, tenant_id: str) -> TenantInfo | None:
         """Look up a tenant by ID.  Returns ``None`` if not found."""

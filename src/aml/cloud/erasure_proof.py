@@ -28,6 +28,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 from typing import Any, Iterator
 
+from aml.cloud.tenant_key_manager import data_subject_fingerprint
+
 import psycopg
 from psycopg.rows import dict_row
 
@@ -188,6 +190,18 @@ class FactStillPresent(ValueError):
 
 # Verified coverage statuses (0014): a real observation of the store.
 VERIFIED_STATUSES = ("present", "absent")
+
+
+def _row_is_data_subject_keyed(backend, ref) -> bool:
+    """Was this row encrypted under a data-subject key (0019 `gfm.ds1:` prefix)? Read
+    from the row's ciphertext, never inferred from the tenant's current opt-in flag."""
+    probe = getattr(backend, "row_is_data_subject_keyed", None)
+    if probe is None:
+        return False
+    try:
+        return bool(probe(ref))
+    except Exception:
+        return False
 # Subsystems stage-1 records but does not probe yet (they stay "unverified").
 _UNPROBED_SUBSYSTEMS = ("embedding", "cache")
 
@@ -355,8 +369,16 @@ class ErasureProofService:
         legal_basis: str = "GDPR Article 17 — Right to Erasure",
         requested_by: str | None = "data_subject",
         signing_identity=None,
+        extra_coverage: dict[str, str] | None = None,
+        extra_addressing: dict[str, Any] | None = None,
     ) -> ErasureCertificate:
         """Issue a signed erasure certificate.
+
+        extra_coverage (0019): observations of subsystems the service itself cannot probe
+        here, in the 0014 vocabulary (present/absent/unverified) — e.g.
+        ``{"data_subject_key": "absent"}`` when erase_data_subject observed the key's
+        tombstone. extra_addressing: identifiers to bind under governance_record.addressing
+        (e.g. the destroyed key's fingerprint). Both are signed with the rest.
 
         Performs the full erasure workflow:
         1. Scrubs the fact from all decision trail records
@@ -462,6 +484,11 @@ class ErasureProofService:
             decision_trail_absent=decision_trail_absent,
             declared_extra=declared_subsystems,
         )
+        if extra_coverage:
+            for store, status in extra_coverage.items():
+                if status not in VERIFIED_STATUSES and status != "unverified":
+                    raise ValueError(f"coverage status {status!r} is outside the 0014 vocabulary")
+                coverage_dict[store] = status
 
         # Gate 1 (0014 vacuity) — a certificate must carry at least one VERIFIED entry.
         # Refuse zero-verified coverage: no fabricated default, no all-"unverified" cert.
@@ -525,7 +552,8 @@ class ErasureProofService:
             },
             "addressing": {
                 "certificate_id": certificate_id,
-                "fact_content_hash": content_hash
+                "fact_content_hash": content_hash,
+                **(extra_addressing or {}),
             },
             "verifier": {
                 "identity": "grafomem_erasure_daemon",
@@ -760,17 +788,145 @@ class ErasureProofService:
             )
             pub = Ed25519PublicKey.from_public_bytes(cert.public_key)
             pub.verify(cert.signature, digest)
-            return {
-                "valid": True,
-                "certificate_id": certificate_id,
-                "detail": "Ed25519 signature verified — certificate is authentic",
-            }
         except Exception as e:
             return {
                 "valid": False,
                 "certificate_id": certificate_id,
                 "detail": f"Signature verification failed: {e}",
             }
+        # 0019 F5 — a certificate that claims the data subject's key is gone is checked
+        # against the key store's tombstone, not taken on faith: a restored key (or a
+        # certificate for the wrong key) fails here even though the signature is fine.
+        key_check = self._verify_data_subject_key_claim(cert)
+        if key_check is not None and not key_check["ok"]:
+            return {
+                "valid": False,
+                "certificate_id": certificate_id,
+                "detail": f"Ed25519 signature verified, but {key_check['detail']}",
+                "data_subject_key": key_check,
+            }
+        out = {
+            "valid": True,
+            "certificate_id": certificate_id,
+            "detail": "Ed25519 signature verified — certificate is authentic",
+        }
+        if key_check is not None:
+            out["detail"] += "; data-subject key destruction confirmed against the key store"
+            out["data_subject_key"] = key_check
+        return out
+
+    def _verify_data_subject_key_claim(self, cert: "ErasureCertificate") -> dict[str, Any] | None:
+        """None when the certificate makes no data-subject-key claim; otherwise
+        {ok, detail, fingerprint, status}. Needs the key manager (set via
+        `attach_key_manager`); without one the claim cannot be checked and verification
+        FAILS — a claim that cannot be verified is not a verified claim."""
+        if cert.coverage.get("data_subject_key") != "absent":
+            return None
+        addr = (cert.governance_record or {}).get("addressing", {}) or {}
+        fp = addr.get("data_subject_key_fingerprint")
+        ds_fp = addr.get("data_subject_fingerprint")
+        if not fp:
+            return {"ok": False, "detail": "coverage claims the data-subject key is absent but no key fingerprint is bound", "fingerprint": None}
+        km = getattr(self, "_key_manager", None)
+        if km is None:
+            return {"ok": False, "detail": "data-subject key claim cannot be checked: no key manager attached", "fingerprint": fp}
+        status, found_fp = km.data_subject_key_status_by_fingerprint(cert.tenant_id, fp)
+        if status == "destroyed" and found_fp == fp:
+            return {"ok": True, "detail": "key tombstone matches", "fingerprint": fp, "status": status,
+                    "data_subject_fingerprint": ds_fp}
+        if status == "active":
+            return {"ok": False, "detail": f"key {fp} is ACTIVE in the key store (restored or never destroyed)", "fingerprint": fp, "status": status}
+        return {"ok": False, "detail": f"key {fp} is not on record in the key store", "fingerprint": fp, "status": status}
+
+    def attach_key_manager(self, key_manager) -> None:
+        """0019: the key manager this service verifies data-subject-key claims against and
+        destroys keys with (erase_data_subject)."""
+        self._key_manager = key_manager
+
+    def erase_data_subject(
+        self,
+        tenant_id: str,
+        data_subject_id: str,
+        *,
+        backend,
+        requested_by: str | None = "data_subject",
+        legal_basis: str = "GDPR Article 17 — Right to Erasure",
+    ) -> dict[str, Any]:
+        """0019 F6 — erase one data subject: every fact (existing per-fact machinery, one
+        certificate each, read-before-delete), the embeddings synchronously (backend,
+        F3), the data-subject key (F2), one chained ledger entry for the destruction.
+
+        Per fact the certificate says which it was: `coverage.data_subject_key = absent`
+        with the key fingerprint bound (the fact was keyed, the key is now a tombstone)
+        or `unverified` (the fact was tenant-keyed — written before the tenant opted in —
+        so deletion is all it got; no claim is made). Never a claim about old rows (F7).
+        """
+        from aml.backends.interface import Capability, WriteOptions
+        if Capability.DATA_SUBJECT not in set(backend.capabilities()):
+            raise CertificateNotIssued("backend does not declare DATA_SUBJECT (§7.7)")
+        km = getattr(self, "_key_manager", None)
+        opts = WriteOptions(tenant_id=tenant_id)
+
+        # 1. read every fact of the subject BEFORE anything is erased (0016: server-observed hash)
+        refs = list(backend.data_subject_refs(data_subject_id, tenant_id)) \
+            if hasattr(backend, "data_subject_refs") else []
+        pre: dict[int, str | None] = {}
+        keyed: dict[int, bool] = {}
+        for ref in refs:
+            m = backend.get(ref)
+            pre[ref] = m.content if m is not None else None
+            keyed[ref] = _row_is_data_subject_keyed(backend, ref)
+
+        # 2. erase on the read path (rows + embeddings, one transaction in the backend)
+        erased = backend.erase_data_subject(data_subject_id, opts)
+
+        # 3. destroy the key, observe the tombstone (the ONLY source of the "absent" claim)
+        key_fp = km.destroy_data_subject_key(tenant_id, data_subject_id) if km is not None else None
+        key_status, fp_on_record = (km.data_subject_key_status(tenant_id, data_subject_id)
+                                    if km is not None else ("absent", None))
+        key_gone = key_status == "destroyed" and fp_on_record is not None and fp_on_record == key_fp
+        ds_fp = data_subject_fingerprint(tenant_id, data_subject_id)
+
+        # 4. one certificate per fact
+        certs, failures = [], []
+        for ref in erased:
+            if keyed.get(ref) and key_gone:
+                cov = {"data_subject_key": "absent"}
+                addr = {"data_subject_key_fingerprint": key_fp, "data_subject_fingerprint": ds_fp}
+            else:
+                cov = {"data_subject_key": "unverified"}   # tenant-keyed row: deletion only, no claim
+                addr = {"data_subject_fingerprint": ds_fp}
+            try:
+                c = self.issue_certificate(
+                    tenant_id, ref, fact_content=pre.get(ref), backend=backend,
+                    legal_basis=legal_basis, requested_by=requested_by,
+                    extra_coverage=cov, extra_addressing=addr,
+                )
+                certs.append(c)
+            except Exception as e:  # a refused certificate is reported, never hidden
+                failures.append({"fact_ref": ref, "error": f"{type(e).__name__}: {e}"})
+
+        # 5. the destruction itself goes on the chain (restore-scrub replays it)
+        ledger_entry_id = None
+        if self._erasure_ledger is not None and hasattr(self._erasure_ledger, "record_data_subject_key_destroyed"):
+            ledger_entry_id = self._erasure_ledger.record_data_subject_key_destroyed(
+                tenant_id=tenant_id, data_subject_fingerprint=ds_fp, key_fingerprint=key_fp,
+                key_destroyed=key_gone, fact_refs=list(erased),
+                certificate_ids=[c.certificate_id for c in certs],
+            )
+        return {
+            "tenant_id": tenant_id,
+            "data_subject_fingerprint": ds_fp,
+            "facts": len(erased),
+            "fact_refs": list(erased),
+            "key_destroyed": key_gone,
+            "key_fingerprint": key_fp,
+            "keyed_facts": sum(1 for r in erased if keyed.get(r)),
+            "certificates": [c.certificate_id for c in certs],
+            "certificate_failures": failures,
+            "ledger_entry_id": ledger_entry_id,
+            "embeddings": "deleted synchronously (not key-covered)",
+        }
 
     # ------------------------------------------------------------------
     # Helpers
