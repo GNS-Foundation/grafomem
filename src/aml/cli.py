@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -781,3 +782,27 @@ def serve(host, port, backend, db, embedder, mcp, mcp_port, auth, batch, batch_s
 
 if __name__ == "__main__":
     main()
+
+
+@main.command()
+@click.option("--host", default="127.0.0.1", help="Bind address (private network only; never expose publicly)")
+@click.option("--port", "-p", default=8644, type=int, help="Port")
+@click.option("--log", "log_path", default=None,
+              help="Chained JSONL receipt log (env GRAFOMEM_SIGNER_LOG; default grafomem_signer_log.jsonl)")
+def signer(host, port, log_path):
+    """Run the ledger signer: a separate process that holds the erasure-receipt key and the
+    only write handle to its receipt log (ADR-0020). Env: GRAFOMEM_SIGNER_KEY (32-byte hex
+    seed), GRAFOMEM_SIGNER_KEY_ID, GRAFOMEM_SIGNER_TOKEN (bearer, required), GRAFOMEM_SIGNER_LOG.
+    Callers — the LangGraph adapter's RemoteReceiptSigner, and the API once cut over — hand
+    it a claim; it signs with its key and appends. They hold neither key nor handle.
+    """
+    import uvicorn
+    from aml.cloud.signer import create_signer_app, signer_from_env
+    if log_path:
+        os.environ["GRAFOMEM_SIGNER_LOG"] = log_path
+    s, token = signer_from_env()
+    app = create_signer_app(s, token)
+    click.echo(f"GRAFOMEM ledger signer key_id={s.key_id} public_key={s.public_key_hex()} "
+               f"log={os.environ.get('GRAFOMEM_SIGNER_LOG', 'grafomem_signer_log.jsonl')} "
+               f"entries={len(s.entries())} auth={'bearer' if token else 'NONE (UNSAFE_LOCAL_DEV)'}", err=True)
+    uvicorn.run(app, host=host, port=port, log_level="info")
