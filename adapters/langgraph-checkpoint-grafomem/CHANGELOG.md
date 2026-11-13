@@ -2,6 +2,23 @@
 
 All notable changes to `langgraph-checkpoint-grafomem` are documented here.
 
+## [1.3.0] — unreleased
+
+### Added
+- **Separate receipt signer (opt-in).** `receipt_signer=RemoteReceiptSigner(url, token)` makes
+  the saver hand erasure claims to a `grafomem signer` process that holds the receipt key and
+  the only write handle to the log; the saver holds neither. Receipts carry the signer's
+  `key_id`; `verify_log` / `Receipt.verify` work unchanged. Fail closed: `delete_thread`
+  pre-flights the signer and refuses (`SignerUnavailable`) if it is down; a failure after the
+  delete leaves a pending marker (`ReceiptPending`, `flush_pending()`, `pending()`), or
+  continues with `allow_unreceipted=True`. New exports: `ReceiptSigner`, `LocalReceiptSigner`,
+  `RemoteReceiptSigner`, `ReceiptPending`, `SignerUnavailable`. (ADR-0020, C4 from the forum
+  thread.)
+
+### Changed
+- The same-process behaviour is now the named `LocalReceiptSigner` (still the default). Passing
+  both `receipt_log` and `receipt_signer` raises. `saver.audit_log()` reads through the signer.
+
 ## [1.2.1] — 2026-11-03
 
 ### Fixed
