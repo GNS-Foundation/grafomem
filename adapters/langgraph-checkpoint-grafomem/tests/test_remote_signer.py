@@ -17,6 +17,11 @@ import time
 import pytest
 from cryptography.hazmat.primitives.asymmetric import ed25519
 
+# The remote signer is tested against the real ledger signer service from core, which needs
+# grafomem's `server` extra (FastAPI + uvicorn). Without it these tests skip, they do not error.
+pytest.importorskip("fastapi")
+pytest.importorskip("uvicorn")
+
 from langgraph.checkpoint.memory import InMemorySaver
 
 from grafomem_checkpoint import (
