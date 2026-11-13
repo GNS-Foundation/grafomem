@@ -2,7 +2,7 @@
 
 All notable changes to `langgraph-checkpoint-grafomem` are documented here.
 
-## [1.3.0] — unreleased
+## [1.3.0] — 2026-11-13
 
 ### Added
 - **Separate receipt signer (opt-in).** `receipt_signer=RemoteReceiptSigner(url, token)` makes
