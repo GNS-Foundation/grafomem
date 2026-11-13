@@ -6,11 +6,16 @@ released separately and has its own changelog under `adapters/`.
 
 Decision records referenced below live in `docs/decisions/`.
 
-## [Unreleased]
+## [0.6.0] — 2026-11-13
 
-Data-subject scope and per-data-subject crypto-erasure (ADR-0019; GMP v0.2 §7.7). Additive on
-the protocol (a twelfth, optional capability); the Cloud part needs migration 022 and is
-opt-in per tenant. A minor bump is warranted when released.
+Data-subject scope and per-data-subject crypto-erasure (ADR-0019; GMP v0.2 §7.7), the ledger
+signer service (ADR-0020 part 1), and the MCP-over-SSE transport fix. Additive on the
+protocol (a twelfth, optional capability); the Cloud part needs migration 022 (applied to
+the hosted service on 2026-11-10) and is opt-in per tenant. Minor bump: new capability, new
+endpoints, new CLI command, one migration; no breaking change to existing calls.
+
+Companion release: `langgraph-checkpoint-grafomem` 1.3.0 (separate signer; see
+`adapters/langgraph-checkpoint-grafomem/CHANGELOG.md`).
 
 ### Fixed
 - **MCP over SSE dropped the connection after every message** (0.5.0 and earlier): both
