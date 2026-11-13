@@ -12,6 +12,18 @@ Data-subject scope and per-data-subject crypto-erasure (ADR-0019; GMP v0.2 §7.7
 the protocol (a twelfth, optional capability); the Cloud part needs migration 022 and is
 opt-in per tenant. A minor bump is warranted when released.
 
+### Fixed
+- **MCP over SSE dropped the connection after every message** (0.5.0 and earlier): both
+  Starlette route endpoints in `run_mcp_sse` returned `None`, so Starlette raised
+  `TypeError: 'NoneType' object is not callable` per message, uvicorn closed the connection
+  and Python MCP clients hung on their next message (`httpx.ReadError`, "Error in
+  post_writer"). Routes now follow the SDK's `FastMCP.sse_app()` shape: the SSE endpoint
+  returns a `Response`, the message handler is mounted as an ASGI app at `/messages/`
+  (clients learn the path from the `endpoint` event). Reported from the Valmerra demo behind
+  agentgateway 1.6 (2026-11-13). Regression test `tests/test_mcp_sse_transport.py`: three
+  sessions × two calls complete, no `TypeError` logged; it hangs against the old routes.
+  stdio was never affected.
+
 ### Added
 - **`DATA_SUBJECT` capability** (GMP §7.7): `WriteOptions.data_subject_id`,
   `Memory.data_subject_id`, `erase_data_subject(id, opts) -> [ref]` — two-sided on the read
