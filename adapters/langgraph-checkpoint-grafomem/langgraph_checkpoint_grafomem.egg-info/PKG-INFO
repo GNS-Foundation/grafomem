@@ -1,15 +1,122 @@
 Metadata-Version: 2.4
 Name: langgraph-checkpoint-grafomem
-Version: 1.0.0
+Version: 1.2.1
 Summary: Grafomem (Fair Source) adapter for LangGraph Checkpointers
 Author-email: "Ulissy s.r.l." <hello@grafomem.com>
 License: Apache-2.0
 Project-URL: Homepage, https://grafomem.com
-Project-URL: Repository, https://github.com/cayerbe/grafomem
+Project-URL: Repository, https://github.com/GNS-Foundation/grafomem
 Keywords: agent-memory,langgraph,checkpointer,governance,erasure,fair-source
+Description-Content-Type: text/markdown
 Requires-Dist: langgraph-checkpoint
 Requires-Dist: grafomem[runtime]>=0.4.0
 Provides-Extra: dev
 Requires-Dist: pytest; extra == "dev"
 Requires-Dist: langgraph; extra == "dev"
-Requires-Dist: trio; extra == "dev"
+
+# langgraph-checkpoint-grafomem
+
+A drop-in LangGraph checkpointer that wraps the saver you already use and adds two things:
+
+- **every checkpoint is Ed25519-signed** (tamper-evident — a modified checkpoint fails verification on load), and
+- **`delete_thread` emits a signed erasure receipt**, appended to an append-only, hash-chained log.
+
+It's **Fair Source** — free to self-host and modify, your own signing keys, no cloud dependency.
+
+```bash
+pip install langgraph-checkpoint-grafomem
+```
+
+## Usage
+
+It wraps your existing saver; nothing else about how you build changes.
+
+```python
+import sqlite3
+from langgraph.checkpoint.sqlite import SqliteSaver
+from grafomem_checkpoint import GrafomemSerializer, GrafomemCheckpointSaver
+
+conn = sqlite3.connect("memory.db", check_same_thread=False)
+inner = SqliteSaver(conn, serde=GrafomemSerializer(private_key, key_id=key_id, trusted_keys=trusted_keys))
+saver = GrafomemCheckpointSaver(inner)
+graph = builder.compile(checkpointer=saver)
+
+# right to be forgotten, with proof:
+saver.delete_thread("user-123")
+receipt = saver.last_receipt("user-123")
+assert receipt.verify(public_key)   # signed proof of the erasure transition
+print(receipt.to_json())
+```
+
+## The erasure receipt
+
+On `delete_thread`, the receipt's signed `before` field is a **SHA-256 digest of the thread's
+entire checkpoint history as it stood immediately before deletion** — so it commits to the
+specific data that was erased, not merely to the fact that an erase happened. Anyone with the
+public key can verify it, no database access required.
+
+## The append-only erasure log
+
+Every erasure is appended to a hash-chained `ReceiptLog`. Each entry links to the previous one by
+hash, so reordering or silently dropping an entry is detectable, and the signature inside each
+entry catches forgery. A thread that was never deleted simply has no entry — so **an auditor can
+distinguish a real deletion from a `delete_thread` that was never called.**
+
+```python
+from grafomem_checkpoint import FileReceiptLog, verify_log
+
+saver = GrafomemCheckpointSaver(inner, receipt_log=FileReceiptLog("receipts.jsonl"))
+# ... delete some threads ...
+
+entries = saver.audit_log()                 # all erasures, in append order, survives restart
+ok, problems = verify_log(entries, {key_id: public_key})
+assert ok, problems
+```
+
+The default log is a `FileReceiptLog` at `grafomem_receipts.jsonl` (override with the
+`GRAFOMEM_RECEIPT_LOG` env var, or pass your own `ReceiptLog`). The file is created on the first
+erasure. Pass `InMemoryReceiptLog()` to opt out of disk entirely.
+
+## Per-thread crypto-erasure (opt-in)
+
+The receipt and log above prove an erasure *happened*, but the inner store's residual copies
+(WAL, dead tuples, replicas, backups) are outside the wrapper. To cover those, turn on per-thread
+encryption: each thread's checkpoints are encrypted under a per-thread key, and `delete_thread`
+**destroys that key** — so residual ciphertext becomes undecryptable, and the receipt commits to
+the key destruction.
+
+```python
+from grafomem_checkpoint import GrafomemSerializer, GrafomemCheckpointSaver, ThreadKeyManager
+
+# master key (KEK) wraps the per-thread keys; keep it safe, losing it makes threads unrecoverable
+km = ThreadKeyManager()  # reads GRAFOMEM_MASTER_KEY (32-byte hex); keys in GRAFOMEM_THREAD_KEYS
+serde = GrafomemSerializer(private_key, key_id=key_id, trusted_keys=trusted_keys, key_manager=km)
+inner = SqliteSaver(conn, serde=serde)
+saver = GrafomemCheckpointSaver(inner)
+
+saver.delete_thread("user-123")
+receipt = saver.last_receipt("user-123")
+assert receipt.after.startswith("key_destroyed:")   # signed commitment to the destroyed key
+```
+
+Encryption is opt-in (no `key_manager` → unchanged signed-but-plaintext behavior), backward
+compatible (1.0/1.1 checkpoints still load), and stays inside the adapter — the core `.gfm` wire
+format is untouched. One constraint: with encryption on, a cross-thread `list()` raises
+`ThreadContextMissing`; list per `thread_id`.
+
+## What it proves — and what it doesn't
+
+The receipt is **tamper-evidence and non-repudiation for the erase transition**, bound to a key
+and a timestamp, with the thread's pre-deletion content bound in. The honest statement is *"we can
+prove this thread was erased on this date, bound to what was there, signed and independently
+verifiable."*
+
+On its own it is **not** a claim of media-level unrecoverability: the inner store's WAL, freelist
+pages, dead tuples before VACUUM, replicas, snapshots and backups are outside this wrapper's
+control. Turning on per-thread crypto-erasure (above) covers those residual copies by destroying
+the thread's key on delete — but that is still key-destruction, not a guarantee the physical
+ciphertext bytes were overwritten, and it depends on the KEK and key store being managed correctly.
+
+## License
+
+Apache-2.0. © Ulissy s.r.l. · [grafomem.com](https://grafomem.com)

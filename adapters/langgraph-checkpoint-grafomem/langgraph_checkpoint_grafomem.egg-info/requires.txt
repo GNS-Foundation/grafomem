@@ -4,4 +4,3 @@ grafomem[runtime]>=0.4.0
 [dev]
 pytest
 langgraph
-trio

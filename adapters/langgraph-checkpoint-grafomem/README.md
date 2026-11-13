@@ -88,6 +88,41 @@ compatible (1.0/1.1 checkpoints still load), and stays inside the adapter — th
 format is untouched. One constraint: with encryption on, a cross-thread `list()` raises
 `ThreadContextMissing`; list per `thread_id`.
 
+## Separate signer (opt-in, 1.3.0)
+
+By default the saver signs receipts with the same key that signs checkpoints, and appends to a
+log file it opens itself — so a buggy or compromised process can sign a receipt that verifies.
+To take both the key and the log out of the agent's hands, run a **ledger signer** as a separate
+process and point the saver at it:
+
+```bash
+# the signer: holds the receipt key and the only write handle to the log
+GRAFOMEM_SIGNER_KEY=$(python -c "import secrets;print(secrets.token_hex(32))") \
+GRAFOMEM_SIGNER_TOKEN=... grafomem signer --port 8644 --log receipts.jsonl
+```
+
+```python
+from grafomem_checkpoint import RemoteReceiptSigner
+
+saver = GrafomemCheckpointSaver(
+    inner, receipt_signer=RemoteReceiptSigner("http://127.0.0.1:8644", token="..."))
+```
+
+The saver then holds **no receipt key and no log handle**: it hands the signer a claim
+(`before`, `after`, `thread_id`), the signer signs with its own key and appends. Receipts carry
+the signer's `key_id`; `verify_log` and `Receipt.verify` work unchanged against the signer's
+public key, which the saver learns at start-up. Entries record the caller and mark the `before`
+digest as **caller-asserted** — the signer cannot look inside your store, so what this buys is
+custody separation, not independent verification of the claim.
+
+Failure semantics are **fail closed**: `delete_thread` checks the signer *before* deleting and
+refuses (`SignerUnavailable`) if it is down. If the signer fails between the delete and the sign,
+the thread is erased and unreceipted: a marker goes to `grafomem_receipts_pending.jsonl`
+(`GRAFOMEM_RECEIPT_PENDING`) and `ReceiptPending` is raised; `saver.flush_pending()` retries, and
+the eventual entry shows `caller_erased_at` earlier than `recorded_at`. Pass
+`allow_unreceipted=True` to record the marker and continue instead of raising. The old
+behaviour is `LocalReceiptSigner` and remains the default.
+
 ## What it proves — and what it doesn't
 
 The receipt is **tamper-evidence and non-repudiation for the erase transition**, bound to a key

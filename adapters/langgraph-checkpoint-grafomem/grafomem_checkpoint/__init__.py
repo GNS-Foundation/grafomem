@@ -8,6 +8,13 @@ from .receipt_log import (
     receipt_to_dict,
     receipt_from_dict,
 )
+from .signer import (
+    ReceiptSigner,
+    LocalReceiptSigner,
+    RemoteReceiptSigner,
+    ReceiptPending,
+    SignerUnavailable,
+)
 from .thread_keys import (
     ThreadKeyManager,
     KeyStore,
@@ -27,6 +34,11 @@ __all__ = [
     "verify_log",
     "receipt_to_dict",
     "receipt_from_dict",
+    "ReceiptSigner",
+    "LocalReceiptSigner",
+    "RemoteReceiptSigner",
+    "ReceiptPending",
+    "SignerUnavailable",
     "ThreadKeyManager",
     "KeyStore",
     "FileKeyStore",

@@ -43,6 +43,14 @@ opt-in per tenant. A minor bump is warranted when released.
   `data_subject_deks`; the runtime role keeps its `tenant_deks` DML until a later held
   migration (deploy-window safety).
 
+### Added (ADR-0020, part 1)
+- **`grafomem signer`** — a ledger signer process: holds an Ed25519 receipt key and the only
+  write handle to a chained JSONL receipt log; `POST /v1/sign/receipt`, `GET
+  /v1/sign/{health,entries,verify}`, bearer-token auth (`GRAFOMEM_SIGNER_TOKEN`, required
+  unless `UNSAFE_LOCAL_DEV`). Entry format identical to the LangGraph adapter's receipt log,
+  so its `verify_log` verifies the signer's entries unchanged. Callers: the adapter's
+  `RemoteReceiptSigner` (1.3.0); the API in part 2.
+
 ### Migration
 - **022** (additive, idempotent): `memories.data_subject_id` + index, `data_subject_deks`,
   `tenants.data_subject_encryption` (default false), role grants. Applied by the pre-deploy
