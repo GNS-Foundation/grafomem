@@ -746,11 +746,23 @@ async def run_mcp_sse(backend_factory, *, host: str = "0.0.0.0", port: int = 864
     """Run the MCP server over HTTP+SSE (for remote agent integration)."""
     from mcp.server.sse import SseServerTransport
     from starlette.applications import Starlette
-    from starlette.routing import Route
+    from starlette.responses import Response
+    from starlette.routing import Mount, Route
 
     server = create_mcp_server(backend_factory, erasure_service=erasure_service,
                                tenant_id=tenant_id, scratch_factory=scratch_factory)
-    sse = SseServerTransport("/messages")
+
+    # Shape taken from the SDK's own FastMCP.sse_app() (mcp 1.30.0). The 0.5.0 version
+    # had both route endpoints return None: Starlette then awaited the missing response
+    # (`await response(scope, receive, send)`) and raised `TypeError: 'NoneType' object is
+    # not callable` on EVERY message; uvicorn dropped the connection and Python MCP clients
+    # hung on their next message (httpx.ReadError, "Error in post_writer"). Reported from
+    # the Valmerra demo behind agentgateway 1.6 (2026-11-13); tests/test_mcp_sse_transport.py.
+    #   - the SSE endpoint returns an (empty) Response once the stream ends;
+    #   - the message handler is mounted as an ASGI app, so the transport sends its own 202
+    #     and Starlette has nothing to await. Message path is therefore "/messages/" (with
+    #     the trailing slash); clients learn it from the `endpoint` SSE event.
+    sse = SseServerTransport("/messages/")
 
     async def handle_sse(request):
         async with sse.connect_sse(
@@ -760,14 +772,12 @@ async def run_mcp_sse(backend_factory, *, host: str = "0.0.0.0", port: int = 864
                 streams[0], streams[1],
                 server.create_initialization_options(),
             )
-
-    async def handle_messages(request):
-        await sse.handle_post_message(request.scope, request.receive, request._send)
+        return Response()
 
     starlette_app = Starlette(
         routes=[
-            Route("/sse", endpoint=handle_sse),
-            Route("/messages", endpoint=handle_messages, methods=["POST"]),
+            Route("/sse", endpoint=handle_sse, methods=["GET"]),
+            Mount("/messages/", app=sse.handle_post_message),
         ],
     )
 
